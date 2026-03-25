@@ -1,0 +1,600 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		9117FFF22F73F3BC0081475D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9117FFD82F73F3BA0081475D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9117FFDF2F73F3BA0081475D;
+			remoteInfo = "Hair Compass AI 5";
+		};
+		9117FFFC2F73F3BC0081475D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9117FFD82F73F3BA0081475D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9117FFDF2F73F3BA0081475D;
+			remoteInfo = "Hair Compass AI 5";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		9117FFE02F73F3BA0081475D /* Hair Compass AI 5.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Hair Compass AI 5.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9117FFF12F73F3BC0081475D /* Hair Compass AI 5Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Hair Compass AI 5Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9117FFFB2F73F3BC0081475D /* Hair Compass AI 5UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Hair Compass AI 5UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		911700032F73F3BC0081475D /* Exceptions for "Hair Compass AI 5" folder in "Hair Compass AI 5" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9117FFDF2F73F3BA0081475D /* Hair Compass AI 5 */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		9117FFE22F73F3BA0081475D /* Hair Compass AI 5 */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				911700032F73F3BC0081475D /* Exceptions for "Hair Compass AI 5" folder in "Hair Compass AI 5" target */,
+			);
+			path = "Hair Compass AI 5";
+			sourceTree = "<group>";
+		};
+		9117FFF42F73F3BC0081475D /* Hair Compass AI 5Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Hair Compass AI 5Tests";
+			sourceTree = "<group>";
+		};
+		9117FFFE2F73F3BC0081475D /* Hair Compass AI 5UITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Hair Compass AI 5UITests";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9117FFDD2F73F3BA0081475D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9117FFEE2F73F3BC0081475D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9117FFF82F73F3BC0081475D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		9117FFD72F73F3BA0081475D = {
+			isa = PBXGroup;
+			children = (
+				9117FFE22F73F3BA0081475D /* Hair Compass AI 5 */,
+				9117FFF42F73F3BC0081475D /* Hair Compass AI 5Tests */,
+				9117FFFE2F73F3BC0081475D /* Hair Compass AI 5UITests */,
+				9117FFE12F73F3BA0081475D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9117FFE12F73F3BA0081475D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9117FFE02F73F3BA0081475D /* Hair Compass AI 5.app */,
+				9117FFF12F73F3BC0081475D /* Hair Compass AI 5Tests.xctest */,
+				9117FFFB2F73F3BC0081475D /* Hair Compass AI 5UITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9117FFDF2F73F3BA0081475D /* Hair Compass AI 5 */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 911700042F73F3BC0081475D /* Build configuration list for PBXNativeTarget "Hair Compass AI 5" */;
+			buildPhases = (
+				9117FFDC2F73F3BA0081475D /* Sources */,
+				9117FFDD2F73F3BA0081475D /* Frameworks */,
+				9117FFDE2F73F3BA0081475D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				9117FFE22F73F3BA0081475D /* Hair Compass AI 5 */,
+			);
+			name = "Hair Compass AI 5";
+			packageProductDependencies = (
+			);
+			productName = "Hair Compass AI 5";
+			productReference = 9117FFE02F73F3BA0081475D /* Hair Compass AI 5.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9117FFF02F73F3BC0081475D /* Hair Compass AI 5Tests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 911700092F73F3BC0081475D /* Build configuration list for PBXNativeTarget "Hair Compass AI 5Tests" */;
+			buildPhases = (
+				9117FFED2F73F3BC0081475D /* Sources */,
+				9117FFEE2F73F3BC0081475D /* Frameworks */,
+				9117FFEF2F73F3BC0081475D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9117FFF32F73F3BC0081475D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				9117FFF42F73F3BC0081475D /* Hair Compass AI 5Tests */,
+			);
+			name = "Hair Compass AI 5Tests";
+			packageProductDependencies = (
+			);
+			productName = "Hair Compass AI 5Tests";
+			productReference = 9117FFF12F73F3BC0081475D /* Hair Compass AI 5Tests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		9117FFFA2F73F3BC0081475D /* Hair Compass AI 5UITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9117000C2F73F3BC0081475D /* Build configuration list for PBXNativeTarget "Hair Compass AI 5UITests" */;
+			buildPhases = (
+				9117FFF72F73F3BC0081475D /* Sources */,
+				9117FFF82F73F3BC0081475D /* Frameworks */,
+				9117FFF92F73F3BC0081475D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9117FFFD2F73F3BC0081475D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				9117FFFE2F73F3BC0081475D /* Hair Compass AI 5UITests */,
+			);
+			name = "Hair Compass AI 5UITests";
+			packageProductDependencies = (
+			);
+			productName = "Hair Compass AI 5UITests";
+			productReference = 9117FFFB2F73F3BC0081475D /* Hair Compass AI 5UITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9117FFD82F73F3BA0081475D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					9117FFDF2F73F3BA0081475D = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					9117FFF02F73F3BC0081475D = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 9117FFDF2F73F3BA0081475D;
+					};
+					9117FFFA2F73F3BC0081475D = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 9117FFDF2F73F3BA0081475D;
+					};
+				};
+			};
+			buildConfigurationList = 9117FFDB2F73F3BA0081475D /* Build configuration list for PBXProject "Hair Compass AI 5" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 9117FFD72F73F3BA0081475D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 9117FFE12F73F3BA0081475D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9117FFDF2F73F3BA0081475D /* Hair Compass AI 5 */,
+				9117FFF02F73F3BC0081475D /* Hair Compass AI 5Tests */,
+				9117FFFA2F73F3BC0081475D /* Hair Compass AI 5UITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9117FFDE2F73F3BA0081475D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9117FFEF2F73F3BC0081475D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9117FFF92F73F3BC0081475D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9117FFDC2F73F3BA0081475D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9117FFED2F73F3BC0081475D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9117FFF72F73F3BC0081475D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9117FFF32F73F3BC0081475D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9117FFDF2F73F3BA0081475D /* Hair Compass AI 5 */;
+			targetProxy = 9117FFF22F73F3BC0081475D /* PBXContainerItemProxy */;
+		};
+		9117FFFD2F73F3BC0081475D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9117FFDF2F73F3BA0081475D /* Hair Compass AI 5 */;
+			targetProxy = 9117FFFC2F73F3BC0081475D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		911700052F73F3BC0081475D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Hair Compass AI 5/Hair_Compass_AI_5.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LZ89Q26N8;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Hair Compass AI 5/Info.plist";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "harib.Hair-Compass-AI-5";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		911700062F73F3BC0081475D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Hair Compass AI 5/Hair_Compass_AI_5.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LZ89Q26N8;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Hair Compass AI 5/Info.plist";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "harib.Hair-Compass-AI-5";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		911700072F73F3BC0081475D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 2LZ89Q26N8;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		911700082F73F3BC0081475D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 2LZ89Q26N8;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		9117000A2F73F3BC0081475D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LZ89Q26N8;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "harib.Hair-Compass-AI-5Tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Hair Compass AI 5.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hair Compass AI 5";
+			};
+			name = Debug;
+		};
+		9117000B2F73F3BC0081475D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LZ89Q26N8;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "harib.Hair-Compass-AI-5Tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Hair Compass AI 5.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hair Compass AI 5";
+			};
+			name = Release;
+		};
+		9117000D2F73F3BC0081475D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LZ89Q26N8;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "harib.Hair-Compass-AI-5UITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "Hair Compass AI 5";
+			};
+			name = Debug;
+		};
+		9117000E2F73F3BC0081475D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LZ89Q26N8;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "harib.Hair-Compass-AI-5UITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "Hair Compass AI 5";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		911700042F73F3BC0081475D /* Build configuration list for PBXNativeTarget "Hair Compass AI 5" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				911700052F73F3BC0081475D /* Debug */,
+				911700062F73F3BC0081475D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		911700092F73F3BC0081475D /* Build configuration list for PBXNativeTarget "Hair Compass AI 5Tests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9117000A2F73F3BC0081475D /* Debug */,
+				9117000B2F73F3BC0081475D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9117000C2F73F3BC0081475D /* Build configuration list for PBXNativeTarget "Hair Compass AI 5UITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9117000D2F73F3BC0081475D /* Debug */,
+				9117000E2F73F3BC0081475D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9117FFDB2F73F3BA0081475D /* Build configuration list for PBXProject "Hair Compass AI 5" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				911700072F73F3BC0081475D /* Debug */,
+				911700082F73F3BC0081475D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9117FFD82F73F3BA0081475D /* Project object */;
+}
