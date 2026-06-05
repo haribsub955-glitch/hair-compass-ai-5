@@ -1,0 +1,101 @@
+{
+  "identifier" : "C4FA71F3-98D3-4F9A-BE11-7695F8C88210",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "7A7F7AD6-451A-4D45-AB4B-7C508AC1FE4F",
+    "_developerTeamID" : "",
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "en_US",
+    "_renewalRate" : 3,
+    "_storefront" : "USA"
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21442176",
+      "localizations" : [
+        {
+          "description" : "Unlock AI intelligence, clinician export, AI product reads, and AI photo session analysis.",
+          "displayName" : "Hair Compass Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "Hair Compass Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "9.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "D0DECC4F-1E87-4722-BB1B-A85338D16744",
+          "localizations" : [
+            {
+              "description" : "Monthly access to Hair Compass Pro features.",
+              "displayName" : "Hair Compass Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "name" : "Hair Compass Pro Monthly",
+          "offers" : [
+
+          ],
+          "price" : "9.99",
+          "productID" : "com.harib.haircompass.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Hair Compass Pro Monthly",
+          "type" : "Auto-Renewable Subscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "59.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "F1D84680-EF54-40A7-ABBA-1A0EEC82920D",
+          "introductoryOffer" : {
+            "displayPrice" : "0.00",
+            "internalID" : "8C944E14-0388-435E-A941-F09D86C5F61C",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Annual access to Hair Compass Pro with a free introductory trial for eligible new subscribers.",
+              "displayName" : "Hair Compass Pro Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "name" : "Hair Compass Pro Yearly",
+          "offers" : [
+
+          ],
+          "price" : "59.99",
+          "productID" : "com.harib.haircompass.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Hair Compass Pro Yearly",
+          "type" : "Auto-Renewable Subscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

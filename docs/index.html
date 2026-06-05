@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hair Compass AI</title>
+  <style>
+    :root {
+      --bg: #f4f7f8;
+      --card: rgba(255, 255, 255, 0.92);
+      --text: #1f2a28;
+      --muted: #5d6c68;
+      --accent: #2c6760;
+      --line: #d7e3df;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(144, 189, 222, 0.35), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(224, 197, 160, 0.30), transparent 28%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .wrap {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 20px 50px rgba(37, 67, 62, 0.08);
+    }
+    h1, h2 { line-height: 1.2; margin: 0 0 14px; }
+    h1 { font-size: 2.2rem; letter-spacing: -0.03em; }
+    p, li { color: var(--muted); font-size: 1rem; }
+    .eyebrow {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #e3efec;
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.8rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .links {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }
+    a.card-link {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+    }
+    a.card-link strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="eyebrow">Hair Compass AI</div>
+      <h1>Support Hub</h1>
+      <p>Public pages for Hair Compass AI app support and App Store submission requirements.</p>
+
+      <div class="links">
+        <a class="card-link" href="./privacy-policy.html">
+          <strong>Privacy Policy</strong>
+          Review how Hair Compass AI handles photos, Health data, AI features, subscriptions, and affiliate links.
+        </a>
+        <a class="card-link" href="./support.html">
+          <strong>Support</strong>
+          Get product support information for subscriptions, AI features, Health access, and app permissions.
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

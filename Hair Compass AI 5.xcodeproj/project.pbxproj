@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A10000092F73F3BC0081475D /* Hair Compass CheckIn Widget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000012F73F3BC0081475D /* Hair Compass CheckIn Widget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		9117FFF22F73F3BC0081475D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -23,10 +27,25 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		A10000082F73F3BC0081475D /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A10000092F73F3BC0081475D /* Hair Compass CheckIn Widget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		9117FFE02F73F3BA0081475D /* Hair Compass AI 5.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Hair Compass AI 5.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9117FFF12F73F3BC0081475D /* Hair Compass AI 5Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Hair Compass AI 5Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9117FFFB2F73F3BC0081475D /* Hair Compass AI 5UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Hair Compass AI 5UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000012F73F3BC0081475D /* Hair Compass CheckIn Widget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Hair Compass CheckIn Widget.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -36,6 +55,13 @@
 				Info.plist,
 			);
 			target = 9117FFDF2F73F3BA0081475D /* Hair Compass AI 5 */;
+		};
+		A10000022F73F3BC0081475D /* Exceptions for "Hair Compass CheckIn Widget" folder in "Hair Compass CheckIn Widget" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A10000072F73F3BC0081475D /* Hair Compass CheckIn Widget */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -56,6 +82,14 @@
 		9117FFFE2F73F3BC0081475D /* Hair Compass AI 5UITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Hair Compass AI 5UITests";
+			sourceTree = "<group>";
+		};
+		A10000032F73F3BC0081475D /* Hair Compass CheckIn Widget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A10000022F73F3BC0081475D /* Exceptions for "Hair Compass CheckIn Widget" folder in "Hair Compass CheckIn Widget" target */,
+			);
+			path = "Hair Compass CheckIn Widget";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -82,6 +116,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000042F73F3BC0081475D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -89,6 +130,7 @@
 			isa = PBXGroup;
 			children = (
 				9117FFE22F73F3BA0081475D /* Hair Compass AI 5 */,
+				A10000032F73F3BC0081475D /* Hair Compass CheckIn Widget */,
 				9117FFF42F73F3BC0081475D /* Hair Compass AI 5Tests */,
 				9117FFFE2F73F3BC0081475D /* Hair Compass AI 5UITests */,
 				9117FFE12F73F3BA0081475D /* Products */,
@@ -99,6 +141,7 @@
 			isa = PBXGroup;
 			children = (
 				9117FFE02F73F3BA0081475D /* Hair Compass AI 5.app */,
+				A10000012F73F3BC0081475D /* Hair Compass CheckIn Widget.appex */,
 				9117FFF12F73F3BC0081475D /* Hair Compass AI 5Tests.xctest */,
 				9117FFFB2F73F3BC0081475D /* Hair Compass AI 5UITests.xctest */,
 			);
@@ -115,6 +158,7 @@
 				9117FFDC2F73F3BA0081475D /* Sources */,
 				9117FFDD2F73F3BA0081475D /* Frameworks */,
 				9117FFDE2F73F3BA0081475D /* Resources */,
+				A10000082F73F3BC0081475D /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
@@ -176,6 +220,28 @@
 			productReference = 9117FFFB2F73F3BC0081475D /* Hair Compass AI 5UITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		A10000072F73F3BC0081475D /* Hair Compass CheckIn Widget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A100000C2F73F3BC0081475D /* Build configuration list for PBXNativeTarget "Hair Compass CheckIn Widget" */;
+			buildPhases = (
+				A10000062F73F3BC0081475D /* Sources */,
+				A10000042F73F3BC0081475D /* Frameworks */,
+				A10000052F73F3BC0081475D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A10000032F73F3BC0081475D /* Hair Compass CheckIn Widget */,
+			);
+			name = "Hair Compass CheckIn Widget";
+			packageProductDependencies = (
+			);
+			productName = "Hair Compass CheckIn Widget";
+			productReference = A10000012F73F3BC0081475D /* Hair Compass CheckIn Widget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -197,6 +263,9 @@
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = 9117FFDF2F73F3BA0081475D;
 					};
+					A10000072F73F3BC0081475D = {
+						CreatedOnToolsVersion = 26.3;
+					};
 				};
 			};
 			buildConfigurationList = 9117FFDB2F73F3BA0081475D /* Build configuration list for PBXProject "Hair Compass AI 5" */;
@@ -213,6 +282,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				A10000072F73F3BC0081475D /* Hair Compass CheckIn Widget */,
 				9117FFDF2F73F3BA0081475D /* Hair Compass AI 5 */,
 				9117FFF02F73F3BC0081475D /* Hair Compass AI 5Tests */,
 				9117FFFA2F73F3BC0081475D /* Hair Compass AI 5UITests */,
@@ -242,6 +312,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000052F73F3BC0081475D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -260,6 +337,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		9117FFF72F73F3BC0081475D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000062F73F3BC0081475D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -294,6 +378,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Hair Compass AI 5/Info.plist";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Hair Compass uses the camera to capture standardized scalp and hair photos for record keeping and analysis.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, exercise, protein, and water data so you can compare hair trends with lifestyle patterns.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Hair Compass uses your photo library so you can import scalp and hair photos for comparison and analysis.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -328,6 +415,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Hair Compass AI 5/Info.plist";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Hair Compass uses the camera to capture standardized scalp and hair photos for record keeping and analysis.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, exercise, protein, and water data so you can compare hair trends with lifestyle patterns.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Hair Compass uses your photo library so you can import scalp and hair photos for comparison and analysis.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -555,6 +645,64 @@
 			};
 			name = Release;
 		};
+		A100000A2F73F3BC0081475D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = "Hair Compass CheckIn Widget/Hair_Compass_CheckIn_Widget.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LZ89Q26N8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Hair Compass CheckIn Widget/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "harib.Hair-Compass-AI-5.CheckInWidget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A100000B2F73F3BC0081475D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = "Hair Compass CheckIn Widget/Hair_Compass_CheckIn_Widget.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2LZ89Q26N8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Hair Compass CheckIn Widget/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "harib.Hair-Compass-AI-5.CheckInWidget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -590,6 +738,15 @@
 			buildConfigurations = (
 				911700072F73F3BC0081475D /* Debug */,
 				911700082F73F3BC0081475D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A100000C2F73F3BC0081475D /* Build configuration list for PBXNativeTarget "Hair Compass CheckIn Widget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A100000A2F73F3BC0081475D /* Debug */,
+				A100000B2F73F3BC0081475D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
