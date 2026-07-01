@@ -516,10 +516,11 @@ struct PhotoRecordsTab: View {
             Section {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Compare the same angle under the same conditions.")
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(.system(size: 15, weight: .bold, design: .serif))
+                        .foregroundStyle(PremiumTheme.ink)
                     Text("Best comparisons keep angle, lighting, wet or dry state, and hair parting the same. The compare flow only pairs records from the same angle.")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(PremiumTheme.mutedInk)
                 }
                 .padding(.vertical, 4)
             }
@@ -528,8 +529,21 @@ struct PhotoRecordsTab: View {
                 Button {
                     isPresentingCapture = true
                 } label: {
-                    Label("Capture Multi-Angle Session", systemImage: "camera.fill")
+                    HStack(spacing: 10) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 15, weight: .bold))
+                        Text("Capture Multi-Angle Session")
+                            .font(.system(size: 15, weight: .bold, design: .serif))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(PremiumTheme.accentGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: PremiumTheme.forest.opacity(0.25), radius: 10, y: 5)
                 }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
             }
 
             if groupedSessions.isEmpty {
@@ -626,6 +640,7 @@ struct PhotoRecordsTab: View {
             .ignoresSafeArea()
         )
         .navigationTitle("Photo Records")
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isPresentingCapture) {
             CapturePhotoSessionSheet()
         }

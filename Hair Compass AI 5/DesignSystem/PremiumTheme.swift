@@ -16,6 +16,15 @@ enum PremiumTheme {
     static let goldSoft = Color(red: 0.906, green: 0.831, blue: 0.651)   // #E7D4A6
     static let warmAmber = Color(red: 0.76, green: 0.49, blue: 0.23)
     static let softPurple = Color(red: 0.59, green: 0.41, blue: 0.71)
+    static let rose = Color(red: 0.76, green: 0.36, blue: 0.53)
+
+    // MARK: - Signal Palette
+    // One hue per tracked signal. Legends, chart lines, metric tiles, and score
+    // tags must all read from these so a signal is the same color everywhere.
+    static let signalScalp = forest
+    static let signalHydration = teal
+    static let signalShedding = warmAmber
+    static let signalStress = rose
 
     // MARK: - Gradients
     static let accentGradient = LinearGradient(

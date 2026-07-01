@@ -66,6 +66,35 @@ struct CheckInsTab: View {
         let stress: Double
     }
 
+    // Long-format point for the signals chart: one row per (day, signal).
+    // Each LineMark is differentiated via foregroundStyle(by:) so Swift Charts
+    // treats the four signals as four series — without this they merge into a
+    // single connected line rendered in one color.
+    private struct SignalPoint: Identifiable {
+        let id: String
+        let signal: String
+        let date: Date
+        let value: Double
+    }
+
+    private static let signalColorScale: KeyValuePairs<String, Color> = [
+        "Scalp": PremiumTheme.signalScalp,
+        "Hydration": PremiumTheme.signalHydration,
+        "Shedding": PremiumTheme.signalShedding,
+        "Stress": PremiumTheme.signalStress
+    ]
+
+    private var signalChartPoints: [SignalPoint] {
+        datasetChartPoints.flatMap { point in
+            [
+                SignalPoint(id: "scalp-\(point.id)", signal: "Scalp", date: point.date, value: point.scalp),
+                SignalPoint(id: "hydration-\(point.id)", signal: "Hydration", date: point.date, value: point.hydration),
+                SignalPoint(id: "shedding-\(point.id)", signal: "Shedding", date: point.date, value: point.shedding),
+                SignalPoint(id: "stress-\(point.id)", signal: "Stress", date: point.date, value: point.stress)
+            ]
+        }
+    }
+
     private var impactPoints: [RoutineImpactPoint] {
         RoutineImpactCalculator.buildPoints(
             RoutineImpactInput(
@@ -135,7 +164,7 @@ struct CheckInsTab: View {
                 currentAverage: average(\.scalpScore, in: datasetEntries),
                 delta: average(\.scalpScore, in: datasetEntries) - average(\.scalpScore, in: previousDatasetEntries),
                 hasPreviousBaseline: !previousDatasetEntries.isEmpty,
-                tint: Color(red: 0.27, green: 0.54, blue: 0.42),
+                tint: PremiumTheme.signalScalp,
                 improvesWhenLower: false
             ),
             DatasetMetricCardData(
@@ -143,7 +172,7 @@ struct CheckInsTab: View {
                 currentAverage: average(\.hydrationScore, in: datasetEntries),
                 delta: average(\.hydrationScore, in: datasetEntries) - average(\.hydrationScore, in: previousDatasetEntries),
                 hasPreviousBaseline: !previousDatasetEntries.isEmpty,
-                tint: Color(red: 0.23, green: 0.49, blue: 0.72),
+                tint: PremiumTheme.signalHydration,
                 improvesWhenLower: false
             ),
             DatasetMetricCardData(
@@ -151,7 +180,7 @@ struct CheckInsTab: View {
                 currentAverage: average(\.sheddingLevel, in: datasetEntries),
                 delta: average(\.sheddingLevel, in: datasetEntries) - average(\.sheddingLevel, in: previousDatasetEntries),
                 hasPreviousBaseline: !previousDatasetEntries.isEmpty,
-                tint: Color(red: 0.80, green: 0.52, blue: 0.23),
+                tint: PremiumTheme.signalShedding,
                 improvesWhenLower: true
             ),
             DatasetMetricCardData(
@@ -159,7 +188,7 @@ struct CheckInsTab: View {
                 currentAverage: average(\.stressLevel, in: datasetEntries),
                 delta: average(\.stressLevel, in: datasetEntries) - average(\.stressLevel, in: previousDatasetEntries),
                 hasPreviousBaseline: !previousDatasetEntries.isEmpty,
-                tint: Color(red: 0.76, green: 0.36, blue: 0.53),
+                tint: PremiumTheme.signalStress,
                 improvesWhenLower: true
             )
         ]
@@ -194,6 +223,7 @@ struct CheckInsTab: View {
             .ignoresSafeArea()
             .allowsHitTesting(false)
 
+            ScrollViewReader { scrollProxy in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     // Header
@@ -271,10 +301,10 @@ struct CheckInsTab: View {
                         VStack(alignment: .leading, spacing: 12) {
                             // Legend row
                             HStack(spacing: 10) {
-                                legendItem(title: "Scalp", tint: PremiumTheme.forest)
-                                legendItem(title: "Hydration", tint: PremiumTheme.teal)
-                                legendItem(title: "Shedding", tint: PremiumTheme.gold)
-                                legendItem(title: "Stress", tint: Color(red: 0.76, green: 0.36, blue: 0.53))
+                                legendItem(title: "Scalp", tint: PremiumTheme.signalScalp)
+                                legendItem(title: "Hydration", tint: PremiumTheme.signalHydration)
+                                legendItem(title: "Shedding", tint: PremiumTheme.signalShedding)
+                                legendItem(title: "Stress", tint: PremiumTheme.signalStress)
                             }
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
 
@@ -282,54 +312,38 @@ struct CheckInsTab: View {
                                 ForEach(datasetChartPoints) { point in
                                     AreaMark(
                                         x: .value("Date", point.date, unit: .day),
-                                        y: .value("Scalp", point.scalp)
+                                        y: .value("Score", point.scalp),
+                                        series: .value("Signal", "ScalpFill")
                                     )
                                     .interpolationMethod(.monotone)
-                                    .foregroundStyle(Color(red: 0.27, green: 0.54, blue: 0.42).opacity(0.08))
-
-                                    LineMark(
-                                        x: .value("Date", point.date, unit: .day),
-                                        y: .value("Scalp", point.scalp)
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [
+                                                PremiumTheme.signalScalp.opacity(0.10),
+                                                PremiumTheme.signalScalp.opacity(0.01)
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
                                     )
-                                    .interpolationMethod(.monotone)
-                                    .lineStyle(.init(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                                    .foregroundStyle(Color(red: 0.27, green: 0.54, blue: 0.42))
                                 }
 
-                                ForEach(datasetChartPoints) { point in
+                                ForEach(signalChartPoints) { point in
                                     LineMark(
                                         x: .value("Date", point.date, unit: .day),
-                                        y: .value("Hydration", point.hydration)
+                                        y: .value("Score", point.value)
                                     )
                                     .interpolationMethod(.monotone)
-                                    .lineStyle(.init(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                                    .foregroundStyle(Color(red: 0.23, green: 0.49, blue: 0.72))
-                                }
-
-                                ForEach(datasetChartPoints) { point in
-                                    LineMark(
-                                        x: .value("Date", point.date, unit: .day),
-                                        y: .value("Shedding", point.shedding)
-                                    )
-                                    .interpolationMethod(.monotone)
-                                    .lineStyle(.init(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                                    .foregroundStyle(Color(red: 0.80, green: 0.52, blue: 0.23))
-                                }
-
-                                ForEach(datasetChartPoints) { point in
-                                    LineMark(
-                                        x: .value("Date", point.date, unit: .day),
-                                        y: .value("Stress", point.stress)
-                                    )
-                                    .interpolationMethod(.monotone)
-                                    .lineStyle(.init(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                                    .foregroundStyle(Color(red: 0.76, green: 0.36, blue: 0.53))
+                                    .lineStyle(.init(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+                                    .foregroundStyle(by: .value("Signal", point.signal))
                                 }
                             }
+                            .chartForegroundStyleScale(Self.signalColorScale)
+                            .chartLegend(.hidden)
                             .frame(height: 260)
                             .chartYScale(domain: 0...100)
                             .chartXAxis {
-                                AxisMarks(values: .stride(by: .day, count: selectedDatasetRange.axisDayStride)) { value in
+                                AxisMarks(values: selectedDatasetRange.axisMarkValues) { value in
                                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4, 5]))
                                         .foregroundStyle(PremiumTheme.forest.opacity(0.08))
                                     AxisTick()
@@ -339,6 +353,7 @@ struct CheckInsTab: View {
                                             Text(date.formatted(selectedDatasetRange.axisDateFormat))
                                                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                                                 .foregroundStyle(PremiumTheme.mutedInk)
+                                                .fixedSize()
                                         }
                                     }
                                 }
@@ -383,6 +398,7 @@ struct CheckInsTab: View {
                         RoutineImpactChart(points: impactPoints)
                     }
                     .cardStyle()
+                    .id("patterns")
 
                     // Recent entries
                     if entries.isEmpty {
@@ -434,17 +450,17 @@ struct CheckInsTab: View {
 
                                     ViewThatFits(in: .horizontal) {
                                         HStack(spacing: 8) {
-                                            scoreTag(label: "Scalp", value: entry.scalpScore, tint: PremiumTheme.forest)
-                                            scoreTag(label: "Hydration", value: entry.hydrationScore, tint: PremiumTheme.teal)
-                                            scoreTag(label: "Shedding", value: entry.sheddingLevel, tint: PremiumTheme.gold)
-                                            scoreTag(label: "Stress", value: entry.stressLevel, tint: Color(red: 0.76, green: 0.36, blue: 0.53))
+                                            scoreTag(label: "Scalp", value: entry.scalpScore, tint: PremiumTheme.signalScalp)
+                                            scoreTag(label: "Hydration", value: entry.hydrationScore, tint: PremiumTheme.signalHydration)
+                                            scoreTag(label: "Shedding", value: entry.sheddingLevel, tint: PremiumTheme.signalShedding)
+                                            scoreTag(label: "Stress", value: entry.stressLevel, tint: PremiumTheme.signalStress)
                                         }
 
                                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                                            scoreTag(label: "Scalp", value: entry.scalpScore, tint: PremiumTheme.forest)
-                                            scoreTag(label: "Hydration", value: entry.hydrationScore, tint: PremiumTheme.teal)
-                                            scoreTag(label: "Shedding", value: entry.sheddingLevel, tint: PremiumTheme.gold)
-                                            scoreTag(label: "Stress", value: entry.stressLevel, tint: Color(red: 0.76, green: 0.36, blue: 0.53))
+                                            scoreTag(label: "Scalp", value: entry.scalpScore, tint: PremiumTheme.signalScalp)
+                                            scoreTag(label: "Hydration", value: entry.hydrationScore, tint: PremiumTheme.signalHydration)
+                                            scoreTag(label: "Shedding", value: entry.sheddingLevel, tint: PremiumTheme.signalShedding)
+                                            scoreTag(label: "Stress", value: entry.stressLevel, tint: PremiumTheme.signalStress)
                                         }
                                     }
 
@@ -488,6 +504,17 @@ struct CheckInsTab: View {
                 .padding(.bottom, 40)
             }
             .safeAreaPadding(.top, 12)
+            .onAppear {
+                #if DEBUG
+                // Headless UI inspection: jump to the Pattern Studio card.
+                if ProcessInfo.processInfo.arguments.contains("HC_SCROLL_PATTERNS") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        scrollProxy.scrollTo("patternChart", anchor: .center)
+                    }
+                }
+                #endif
+            }
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .toolbar {
@@ -620,11 +647,12 @@ enum CheckInDatasetRange: String, CaseIterable, Identifiable {
         Calendar.current.date(byAdding: .day, value: -daySpan, to: .now) ?? .now
     }
 
-    var axisDayStride: Int {
+    // Weekly ticks inside a month; month boundaries beyond that. A fixed day
+    // stride with month-only labels repeats the same month name across ticks.
+    var axisMarkValues: AxisMarkValues {
         switch self {
-        case .oneMonth: return 7
-        case .threeMonths: return 14
-        case .sixMonths: return 30
+        case .oneMonth: return .stride(by: .day, count: 7)
+        case .threeMonths, .sixMonths: return .stride(by: .month, count: 1)
         }
     }
 

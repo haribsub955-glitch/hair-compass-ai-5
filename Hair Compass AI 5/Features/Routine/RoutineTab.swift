@@ -148,11 +148,12 @@ struct RoutineTab: View {
         Section("Schedule") {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Selected-day agenda")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                    Text("Use the calendar to focus on one day at a time. Medication slots follow the explicit times you set for each product.")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color(red: 0.43, green: 0.50, blue: 0.46))
+                    Text("Day agenda")
+                        .font(.system(size: 18, weight: .bold, design: .serif))
+                        .foregroundStyle(PremiumTheme.ink)
+                    Text("Pick a day to see its schedule. Medication slots follow the times you set for each product.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(PremiumTheme.mutedInk)
                 }
 
                 weatherRoutineModule {
@@ -165,7 +166,7 @@ struct RoutineTab: View {
                     Spacer()
                     Text("\(selectedDayAgenda.count) scheduled")
                         .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(red: 0.20, green: 0.47, blue: 0.79))
+                        .foregroundStyle(PremiumTheme.tealDeep)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(Color.white.opacity(0.85), in: Capsule())
@@ -214,10 +215,7 @@ struct RoutineTab: View {
                         .background(
                             Calendar.current.isDate(day, inSameDayAs: selectedDate)
                             ? LinearGradient(
-                                colors: [
-                                    Color(red: 0.15, green: 0.28, blue: 0.31),
-                                    Color(red: 0.34, green: 0.48, blue: 0.52)
-                                ],
+                                colors: [PremiumTheme.forest, PremiumTheme.teal],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -244,7 +242,7 @@ struct RoutineTab: View {
             HStack {
                 Text(group.bucket.title)
                     .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.42, green: 0.49, blue: 0.45))
+                    .foregroundStyle(PremiumTheme.mutedInk)
                 Spacer()
                 Text("\(group.entries.count)")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -340,12 +338,12 @@ struct RoutineTab: View {
     private var workspaceSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Choose a workspace")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                Text("Workspace")
+                    .font(.system(size: 17, weight: .bold, design: .serif))
                     .foregroundStyle(PremiumTheme.ink)
 
-                Text("Keep planning, tracking, and evidence browsing separate so the tab stays useful instead of becoming one long repeated list.")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                Text("Planning, tracking, and the evidence library each have their own space.")
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(PremiumTheme.mutedInk)
 
                 HStack(spacing: 10) {
@@ -363,7 +361,7 @@ struct RoutineTab: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Open the exact library you need instead of scrolling through the whole routine screen.")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color(red: 0.43, green: 0.50, blue: 0.46))
+                    .foregroundStyle(PremiumTheme.mutedInk)
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     Button {
@@ -472,7 +470,7 @@ struct RoutineTab: View {
 
                         Text("\(medication.dosage)  •  \(medication.frequencyPerDay)x daily")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.20, green: 0.47, blue: 0.79))
+                            .foregroundStyle(PremiumTheme.tealDeep)
 
                         Text("Started \(medication.startedAt, format: .dateTime.month().day().year())")
                             .font(.system(size: 13, weight: .medium, design: .rounded))
@@ -483,7 +481,7 @@ struct RoutineTab: View {
 
                         Text(medication.prescribedByClinician ? "Clinician-directed" : "Self-initiated")
                             .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(medication.prescribedByClinician ? Color.blue : Color.orange)
+                            .foregroundStyle(medication.prescribedByClinician ? PremiumTheme.tealDeep : PremiumTheme.warmAmber)
 
                         Text(todayEntrySummary(for: medication))
                             .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -587,7 +585,7 @@ struct RoutineTab: View {
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
                                 .background(Color(red: 0.89, green: 0.93, blue: 0.97), in: Capsule())
-                                .foregroundStyle(Color(red: 0.20, green: 0.47, blue: 0.79))
+                                .foregroundStyle(PremiumTheme.tealDeep)
                         }
 
                         Text(event.performedAt, format: .dateTime.month().day().year())
@@ -802,7 +800,7 @@ struct RoutineTab: View {
                             Spacer()
                             Text(test.evidenceStrength)
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color(red: 0.20, green: 0.47, blue: 0.79))
+                                .foregroundStyle(PremiumTheme.tealDeep)
                         }
                         Text(test.rationale)
                             .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -872,7 +870,7 @@ struct RoutineTab: View {
 
                         Text("\(result.valueText) \(result.unit)")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.20, green: 0.47, blue: 0.79))
+                            .foregroundStyle(PremiumTheme.tealDeep)
 
                         Text(result.collectedAt, format: .dateTime.month().day().year())
                             .font(.system(size: 13, weight: .medium, design: .rounded))
@@ -915,7 +913,7 @@ struct RoutineTab: View {
 
                         Text("\(entry.amount.formatted(.number.precision(.fractionLength(0...1)))) \(entry.unit)")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.20, green: 0.47, blue: 0.79))
+                            .foregroundStyle(PremiumTheme.tealDeep)
 
                         Text(entry.loggedAt, format: .dateTime.month().day().year().hour().minute())
                             .font(.system(size: 13, weight: .medium, design: .rounded))
@@ -948,7 +946,7 @@ struct RoutineTab: View {
 
     private func workspaceButton(_ workspace: RoutineWorkspace, subtitle: String) -> some View {
         let isSelected = selectedWorkspace == workspace
-        let tint = Color(red: 0.20, green: 0.47, blue: 0.79)
+        let tint = PremiumTheme.forest
         return Button {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                 selectedWorkspace = workspace
@@ -984,7 +982,7 @@ struct RoutineTab: View {
             } label: {
                 Image(systemName: isTaskCompleted(task, on: .now) ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 22))
-                    .foregroundStyle(isTaskCompleted(task, on: .now) ? Color.green : Color.gray.opacity(0.8))
+                    .foregroundStyle(isTaskCompleted(task, on: .now) ? PremiumTheme.forest : Color.gray.opacity(0.8))
             }
             .buttonStyle(.plain)
 
@@ -1005,10 +1003,10 @@ struct RoutineTab: View {
                     HStack(spacing: 8) {
                         Text("AI \(task.intelligenceScore)/100")
                             .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.14, green: 0.37, blue: 0.54))
+                            .foregroundStyle(PremiumTheme.tealDeep)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color(red: 0.87, green: 0.93, blue: 0.98), in: Capsule())
+                            .background(PremiumTheme.teal.opacity(0.14), in: Capsule())
                         Text(task.intelligenceSummary)
                             .font(.system(size: 12, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
@@ -1059,6 +1057,7 @@ struct RoutineTab: View {
             .ignoresSafeArea()
         )
         .navigationTitle("Plan")
+        .navigationBarTitleDisplayMode(.inline)
         .listStyle(.insetGrouped)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

@@ -24,8 +24,10 @@ struct ProfileEditor: View {
     private let goalOptions = ["Length retention", "Stronger roots", "Hydration", "Reduce shedding", "Scalp balance"]
     private let hairLossFocusOptions = HairLossFocus.allCases.map(\.rawValue)
 
+    // Emits plain Form sections; ProfileTab owns the containing Form so these
+    // rows scroll together with the profile header.
     var body: some View {
-        Form {
+        Group {
             Section("Profile") {
                 TextField("Name", text: $profile.name)
                 Picker("Texture", selection: $profile.texture) {
@@ -80,6 +82,9 @@ struct ProfileEditor: View {
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
             }
+            .fullScreenCover(isPresented: $isPresentingOnboardingUpdate) {
+                OnboardingSurveyView(profile: profile, mode: .update)
+            }
 
             Section("Clinician Export") {
                 if purchaseManager.hasPremiumAccess {
@@ -111,6 +116,9 @@ struct ProfileEditor: View {
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
             }
+            .sheet(isPresented: $isPresentingPremiumPaywall) {
+                PremiumPaywallView()
+            }
 
             Section("Privacy & Support") {
                 if let privacyURL = AppSubmissionLinks.privacyPolicyURL {
@@ -135,29 +143,6 @@ struct ProfileEditor: View {
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
             }
-        }
-        .scrollContentBackground(.hidden)
-        .background(
-            ZStack {
-                appBackground
-                Circle()
-                    .fill(PremiumTheme.warmAmber.opacity(0.12))
-                    .frame(width: 240, height: 240)
-                    .blur(radius: 60)
-                    .offset(x: -80, y: -180)
-                Circle()
-                    .fill(Color(red: 0.22, green: 0.50, blue: 0.43).opacity(0.10))
-                    .frame(width: 200, height: 200)
-                    .blur(radius: 50)
-                    .offset(x: 100, y: 250)
-            }
-            .ignoresSafeArea()
-        )
-        .sheet(isPresented: $isPresentingPremiumPaywall) {
-            PremiumPaywallView()
-        }
-        .fullScreenCover(isPresented: $isPresentingOnboardingUpdate) {
-            OnboardingSurveyView(profile: profile, mode: .update)
         }
     }
 

@@ -35,11 +35,12 @@ struct ProfileTab: View {
         return max(1, Calendar.current.dateComponents([.day], from: first, to: .now).day ?? 0)
     }
 
+    // The header renders as a clear Form row and the editor contributes plain
+    // Form sections — nesting the editor's own Form inside a ScrollView
+    // collapses its height, so this screen owns the one and only Form.
     var body: some View {
-        ZStack {
-            appBackground.ignoresSafeArea()
-
-            ScrollView(showsIndicators: false) {
+        Form {
+            Section {
                 VStack(spacing: 20) {
                     // Avatar and name header
                     VStack(spacing: 12) {
@@ -66,7 +67,7 @@ struct ProfileTab: View {
                         HStack(spacing: 6) {
                             Text("TRACKING")
                             Text("·")
-                            Text("\(trackingDays) DAYS")
+                            Text(trackingDays == 1 ? "1 DAY" : "\(trackingDays) DAYS")
                             Text("·")
                             Text(profile?.texture.uppercased() ?? "")
                         }
@@ -79,7 +80,7 @@ struct ProfileTab: View {
                     // Streak grid 3x1
                     HStack(spacing: 12) {
                         profileStreakTile(value: "\(streak)d", label: "Ritual streak", tint: PremiumTheme.forest)
-                        profileStreakTile(value: "\(completionRate)%", label: "This month", tint: PremiumTheme.teal)
+                        profileStreakTile(value: "\(completionRate)%", label: "Tasks done", tint: PremiumTheme.teal)
                         profileStreakTile(value: "\(photoRecords.count)", label: "Photos", tint: PremiumTheme.gold)
                     }
                     .padding(.horizontal, 20)
@@ -147,23 +148,28 @@ struct ProfileTab: View {
                         .padding(.horizontal, 20)
                     }
 
-                    // Full profile editor below
-                    if let profile {
-                        ProfileEditor(
-                            profile: profile,
-                            entries: entries,
-                            tasks: tasks,
-                            triggerEvents: triggerEvents,
-                            medications: medications,
-                            procedureEvents: procedureEvents,
-                            labResults: labResults,
-                            photoRecords: photoRecords
-                        )
-                    }
                 }
-                .padding(.bottom, 40)
+            }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
+
+            // Full profile editor sections
+            if let profile {
+                ProfileEditor(
+                    profile: profile,
+                    entries: entries,
+                    tasks: tasks,
+                    triggerEvents: triggerEvents,
+                    medications: medications,
+                    procedureEvents: procedureEvents,
+                    labResults: labResults,
+                    photoRecords: photoRecords
+                )
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(appBackground.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $isPresentingPremiumPaywall) {
             PremiumPaywallView()
@@ -200,9 +206,6 @@ struct ProfileTab: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(PremiumTheme.ink)
                 .lineLimit(1)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(PremiumTheme.mutedInk.opacity(0.5))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 13)

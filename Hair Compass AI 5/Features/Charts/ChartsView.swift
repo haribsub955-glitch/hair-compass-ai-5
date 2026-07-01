@@ -340,18 +340,18 @@ struct RoutineImpactChart: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Pattern Studio")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.42, green: 0.49, blue: 0.45))
-                            .textCase(.uppercase)
+                        Text("PATTERN STUDIO")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .tracking(1.8)
+                            .foregroundStyle(PremiumTheme.mutedInk)
 
                         Text(chartTitle)
-                            .font(.system(size: presentationStyle == .expanded ? 30 : 26, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.15, green: 0.21, blue: 0.18))
+                            .font(.system(size: presentationStyle == .expanded ? 30 : 26, weight: .bold, design: .serif))
+                            .foregroundStyle(PremiumTheme.ink)
 
                     Text(isPreviewMode ? "Preview how your own pattern studio can look once you start logging." : "Track two signals in the same window and look for repeating patterns rather than one-off spikes.")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color(red: 0.40, green: 0.46, blue: 0.43))
+                            .font(.system(size: 14, weight: .medium, design: .default))
+                            .foregroundStyle(PremiumTheme.mutedInk)
                     }
 
                     Spacer()
@@ -361,10 +361,10 @@ struct RoutineImpactChart: View {
                             isPresentingExpanded = true
                         } label: {
                             Label("Expand", systemImage: "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .font(.system(size: 12, weight: .bold, design: .default))
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(Color(red: 0.20, green: 0.34, blue: 0.33))
+                        .tint(PremiumTheme.forest)
                     }
                 }
             }
@@ -379,16 +379,13 @@ struct RoutineImpactChart: View {
                             }
                         } label: {
                             Text(preset.title)
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .font(.system(size: 13, weight: .bold, design: .default))
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
                                 .background(
                                     selectedPrimaryMetric == preset.primary && selectedSecondaryMetric == preset.secondary
                                     ? LinearGradient(
-                                        colors: [
-                                            Color(red: 0.15, green: 0.24, blue: 0.23),
-                                            Color(red: 0.26, green: 0.40, blue: 0.39)
-                                        ],
+                                        colors: [PremiumTheme.forest, PremiumTheme.teal],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     )
@@ -405,7 +402,7 @@ struct RoutineImpactChart: View {
                                 .foregroundStyle(
                                     selectedPrimaryMetric == preset.primary && selectedSecondaryMetric == preset.secondary
                                     ? Color.white
-                                    : Color(red: 0.20, green: 0.24, blue: 0.22)
+                                    : PremiumTheme.ink
                                 )
                         }
                         .buttonStyle(.plain)
@@ -455,7 +452,7 @@ struct RoutineImpactChart: View {
                         }
                     } label: {
                         Text(weeks == 0 ? "Same day" : "\(weeks)W lag")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .font(.system(size: 12, weight: .bold, design: .default))
                             .foregroundStyle(selectedLagWeeks == weeks ? .white : Color(red: 0.27, green: 0.31, blue: 0.29))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -471,16 +468,17 @@ struct RoutineImpactChart: View {
             }
 
             VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    LegendChip(metric: selectedPrimaryMetric, role: "Primary")
-                    LegendChip(metric: selectedSecondaryMetric, role: secondaryLegendRole)
-                    Spacer()
-                    Text(isPreviewMode ? "Preview" : "\(pairedObservations.count) paired")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(red: 0.45, green: 0.50, blue: 0.47))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.88), in: Capsule())
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        LegendChip(metric: selectedPrimaryMetric, role: "Primary")
+                        LegendChip(metric: selectedSecondaryMetric, role: secondaryLegendRole)
+                        Text(isPreviewMode ? "Preview" : "\(pairedObservations.count) paired")
+                            .font(.system(size: 12, weight: .bold, design: .default))
+                            .foregroundStyle(PremiumTheme.mutedInk)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.white.opacity(0.88), in: Capsule())
+                    }
                 }
 
                 ChartEvidenceCard(
@@ -523,7 +521,8 @@ struct RoutineImpactChart: View {
                         ForEach(secondaryRenderPoints) { point in
                             LineMark(
                                 x: .value("Date", point.date, unit: .day),
-                                y: .value(selectedSecondaryMetric.title, point.chartValue)
+                                y: .value(selectedSecondaryMetric.title, point.chartValue),
+                                series: .value("Series", "Compare")
                             )
                             .interpolationMethod(.linear)
                             .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
@@ -544,7 +543,8 @@ struct RoutineImpactChart: View {
                         ForEach(primaryRenderPoints) { point in
                             LineMark(
                                 x: .value("Date", point.date, unit: .day),
-                                y: .value(selectedPrimaryMetric.title, point.chartValue)
+                                y: .value(selectedPrimaryMetric.title, point.chartValue),
+                                series: .value("Series", "Primary")
                             )
                             .interpolationMethod(.linear)
                             .lineStyle(StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
@@ -579,7 +579,7 @@ struct RoutineImpactChart: View {
                         AxisValueLabel {
                             if let numericValue = value.as(Double.self) {
                                 Text(axisLabel(for: selectedPrimaryMetric, chartValue: numericValue))
-                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .font(.system(size: 11, weight: .semibold, design: .default))
                                     .foregroundStyle(selectedPrimaryMetric.color)
                             }
                         }
@@ -591,7 +591,7 @@ struct RoutineImpactChart: View {
                         AxisValueLabel {
                             if let numericValue = value.as(Double.self) {
                                 Text(axisLabel(for: selectedSecondaryMetric, chartValue: numericValue))
-                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .font(.system(size: 11, weight: .semibold, design: .default))
                                     .foregroundStyle(selectedSecondaryMetric.color)
                             }
                         }
@@ -604,8 +604,8 @@ struct RoutineImpactChart: View {
                         AxisValueLabel {
                             if let date = value.as(Date.self) {
                                 Text(date.formatted(selectedRange.xAxisFormat))
-                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Color(red: 0.41, green: 0.46, blue: 0.43))
+                                    .font(.system(size: 11, weight: .semibold, design: .default))
+                                    .foregroundStyle(PremiumTheme.mutedInk)
                             }
                         }
                     }
@@ -658,13 +658,13 @@ struct RoutineImpactChart: View {
                     if isPreviewMode {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Preview")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.system(size: 11, weight: .bold, design: .default))
                                 .textCase(.uppercase)
                             Text("Start check-ins, routine logs, or meds to replace this sample with your own chart.")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .font(.system(size: 13, weight: .semibold, design: .default))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .foregroundStyle(Color(red: 0.26, green: 0.33, blue: 0.31))
+                        .foregroundStyle(PremiumTheme.secondaryInk)
                         .padding(12)
                         .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .padding(12)
@@ -678,6 +678,7 @@ struct RoutineImpactChart: View {
                     .stroke(Color.white.opacity(0.88), lineWidth: 1)
             )
             .contentTransition(.interpolate)
+            .id("patternChart")
 
             if let selectedPoint {
                 SelectedPointCard(
@@ -700,8 +701,8 @@ struct RoutineImpactChart: View {
             if evidenceState != .tooThin && !lagInsights.isEmpty && !isPreviewMode {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Lag Windows")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(red: 0.42, green: 0.49, blue: 0.45))
+                        .font(.system(size: 12, weight: .bold, design: .default))
+                        .foregroundStyle(PremiumTheme.mutedInk)
                         .textCase(.uppercase)
 
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -844,16 +845,16 @@ struct ChartEvidenceCard: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(state.title)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.17, green: 0.22, blue: 0.19))
+                    .font(.system(size: 14, weight: .bold, design: .default))
+                    .foregroundStyle(PremiumTheme.ink)
                 Text(state == .preview
                     ? "This is sample data to show what the chart looks like."
                     : "\(primaryMetric.title) against \(secondaryMetric.title.lowercased()) across \(pointCount) paired days."
                 )
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.system(size: 12, weight: .bold, design: .default))
                     .foregroundStyle(state.tint)
                 Text(state.message)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(.system(size: 13, weight: .medium, design: .default))
                     .foregroundStyle(Color(red: 0.40, green: 0.45, blue: 0.42))
             }
             Spacer()
@@ -1489,8 +1490,8 @@ struct ChartMetricPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.41, green: 0.46, blue: 0.43))
+                .font(.system(size: 12, weight: .bold, design: .default))
+                .foregroundStyle(PremiumTheme.mutedInk)
 
             Button {
                 isPresentingMetricSheet = true
@@ -1504,14 +1505,14 @@ struct ChartMetricPicker: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(selection.title)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.18, green: 0.22, blue: 0.20))
+                            .font(.system(size: 15, weight: .bold, design: .default))
+                            .foregroundStyle(PremiumTheme.ink)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
 
                         Text(selection.selectorSubtitle)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.45, green: 0.50, blue: 0.47))
+                            .font(.system(size: 11, weight: .semibold, design: .default))
+                            .foregroundStyle(PremiumTheme.mutedInk)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                     }
@@ -1519,7 +1520,7 @@ struct ChartMetricPicker: View {
 
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color(red: 0.45, green: 0.50, blue: 0.47))
+                        .foregroundStyle(PremiumTheme.mutedInk)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -1579,12 +1580,12 @@ struct ChartMetricSelectionSheet: View {
                                 }
 
                                 Text(metric.title)
-                                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                                    .foregroundStyle(Color(red: 0.17, green: 0.22, blue: 0.19))
+                                    .font(.system(size: 15, weight: .bold, design: .default))
+                                    .foregroundStyle(PremiumTheme.ink)
 
                                 Text(metric.selectorSubtitle)
-                                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                                    .foregroundStyle(Color(red: 0.44, green: 0.49, blue: 0.46))
+                                    .font(.system(size: 12, weight: .medium, design: .default))
+                                    .foregroundStyle(PremiumTheme.mutedInk)
                                     .multilineTextAlignment(.leading)
                             }
                             .frame(maxWidth: .infinity, minHeight: 138, alignment: .topLeading)
@@ -1635,12 +1636,16 @@ struct LegendChip: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(role)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.47, green: 0.51, blue: 0.49))
+                    .font(.system(size: 10, weight: .bold, design: .default))
+                    .foregroundStyle(PremiumTheme.mutedInk)
                     .textCase(.uppercase)
+                    .lineLimit(1)
+                    .fixedSize()
                 Text(metric.title)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.18, green: 0.22, blue: 0.20))
+                    .font(.system(size: 12, weight: .bold, design: .default))
+                    .foregroundStyle(PremiumTheme.ink)
+                    .lineLimit(1)
+                    .fixedSize()
             }
         }
         .padding(.horizontal, 12)
@@ -1661,33 +1666,33 @@ struct LagInsightCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(insight.weeks == 0 ? "Same day" : "\(insight.weeks) weeks before")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.43, green: 0.50, blue: 0.46))
+                .font(.system(size: 11, weight: .bold, design: .default))
+                .foregroundStyle(PremiumTheme.mutedInk)
                 .textCase(.uppercase)
 
             if isTooFewPairs {
                 Text("--")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .bold, design: .default))
                     .foregroundStyle(Color(red: 0.60, green: 0.64, blue: 0.62))
             } else {
                 Text(correlationText)
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .bold, design: .default))
                     .foregroundStyle(secondaryMetric.color)
             }
 
             Text(isTooFewPairs ? "Too few points" : "Correlation")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.17, green: 0.22, blue: 0.19))
+                .font(.system(size: 14, weight: .bold, design: .default))
+                .foregroundStyle(PremiumTheme.ink)
 
             if !isTooFewPairs {
                 Text(effectText)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.37, green: 0.43, blue: 0.40))
+                    .font(.system(size: 12, weight: .semibold, design: .default))
+                    .foregroundStyle(PremiumTheme.secondaryInk)
             }
 
             Text("n=\(insight.pairCount) paired days")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.43, green: 0.50, blue: 0.46))
+                .font(.system(size: 11, weight: .bold, design: .default))
+                .foregroundStyle(PremiumTheme.mutedInk)
         }
         .frame(width: 170, alignment: .leading)
         .padding(16)
@@ -1730,13 +1735,13 @@ struct SelectedPointCard: View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Selected Point")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.43, green: 0.50, blue: 0.46))
+                    .font(.system(size: 12, weight: .bold, design: .default))
+                    .foregroundStyle(PremiumTheme.mutedInk)
                     .textCase(.uppercase)
 
                 Text(date.formatted(date: .abbreviated, time: .omitted))
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.17, green: 0.22, blue: 0.19))
+                    .font(.system(size: 20, weight: .bold, design: .default))
+                    .foregroundStyle(PremiumTheme.ink)
             }
 
             Spacer()
@@ -1769,11 +1774,11 @@ struct SelectedPointCard: View {
     private func metricValueChip(metric: ChartMetric, value: Double) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(metric.title)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.43, green: 0.50, blue: 0.46))
+                .font(.system(size: 11, weight: .bold, design: .default))
+                .foregroundStyle(PremiumTheme.mutedInk)
                 .textCase(.uppercase)
             Text(metric.formattedValue(value))
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 22, weight: .bold, design: .default))
                 .foregroundStyle(metric.color)
         }
         .padding(.horizontal, 14)
@@ -1790,17 +1795,17 @@ struct RelationshipSummaryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Effect Summary")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.43, green: 0.50, blue: 0.46))
+                .font(.system(size: 12, weight: .bold, design: .default))
+                .foregroundStyle(PremiumTheme.mutedInk)
                 .textCase(.uppercase)
 
             Text(headlineText)
-                .font(.system(size: 19, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.17, green: 0.22, blue: 0.19))
+                .font(.system(size: 19, weight: .bold, design: .default))
+                .foregroundStyle(PremiumTheme.ink)
 
             Text("Across \(summary.overlapCount) paired days, this compares high \(secondaryMetric.title.lowercased()) exposure windows against low exposure windows using a \(summary.lagWeeks)-week lag.")
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(Color(red: 0.38, green: 0.43, blue: 0.40))
+                .font(.system(size: 13, weight: .medium, design: .default))
+                .foregroundStyle(PremiumTheme.secondaryInk)
 
             HStack(spacing: 12) {
                 valueTile(title: "High Exposure", value: summary.highExposurePrimaryAverage)
@@ -1843,11 +1848,11 @@ struct RelationshipSummaryCard: View {
     private func valueTile(title: String, value: Double? = nil, customValue: String? = nil, tint: Color? = nil) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.43, green: 0.50, blue: 0.46))
+                .font(.system(size: 11, weight: .bold, design: .default))
+                .foregroundStyle(PremiumTheme.mutedInk)
                 .textCase(.uppercase)
             Text(customValue ?? primaryMetric.formattedValue(value ?? 0))
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(.system(size: 24, weight: .bold, design: .default))
                 .foregroundStyle(tint ?? primaryMetric.color)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

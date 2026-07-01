@@ -42,7 +42,19 @@ struct ContentView: View {
     @Query(sort: \LabResultEntry.collectedAt, order: .reverse) private var labResults: [LabResultEntry]
     @Query(sort: \HairTriggerEvent.startedAt, order: .reverse) private var triggerEvents: [HairTriggerEvent]
 
-    @State private var selectedTab: AppTab = .today
+    @State private var selectedTab: AppTab = ContentView.initialTab
+
+    private static var initialTab: AppTab {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if let flagIndex = arguments.firstIndex(of: "HC_TAB"),
+           flagIndex + 1 < arguments.count,
+           let tab = AppTab(rawValue: arguments[flagIndex + 1]) {
+            return tab
+        }
+        #endif
+        return .today
+    }
     @State private var hasSeeded = false
     @State private var healthInsights = HealthInsightsStore()
     @State private var isPresentingDashboardCheckIn = false
@@ -287,7 +299,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .today: return "list.bullet"
+        case .today: return "sun.max"
         case .chart: return "chart.xyaxis.line"
         case .photo: return "camera"
         case .plan: return "checklist"

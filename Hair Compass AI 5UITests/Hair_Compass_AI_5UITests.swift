@@ -55,16 +55,15 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         app.buttons["3–6 months"].tap()
         tapPrimaryProgressButton(in: app)
 
-        // Pattern & history (combined screen)
+        // Pattern & history (combined screen) — both fields are required to
+        // enable Next (pattern ≥ 3 chars, family history ≥ 2 chars).
         let patternField = app.textFields["onboardingPatternField"]
         XCTAssertTrue(patternField.waitForExistence(timeout: 4))
-        patternField.tap()
-        patternField.typeText("temples and part line")
+        typeIfNeeded(patternField, text: "temples and part line")
 
         let familyField = app.textFields["onboardingFamilyHistoryField"]
         XCTAssertTrue(familyField.waitForExistence(timeout: 4))
-        familyField.tap()
-        familyField.typeText("mother")
+        typeIfNeeded(familyField, text: "mother")
         tapPrimaryProgressButton(in: app)
 
         // Should now show conditional patch step
@@ -96,6 +95,8 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
                 app.buttons["onboardingChoice_not_sure_yet"].tap()
             }
 
+            // Pattern and family history are required to advance step 7;
+            // patch area is required only on the alopecia-areata branch.
             if app.textFields["onboardingPatternField"].exists {
                 typeIfNeeded(app.textFields["onboardingPatternField"], text: "temples")
             }
@@ -111,7 +112,9 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
             tapPrimaryProgressButton(in: app)
         }
 
-        XCTAssertTrue(app.tabBars.buttons["Dashboard"].waitForExistence(timeout: 6))
+        // The app uses a custom floating tab bar (no UITabBar); "Today" is its
+        // first tab and only exists once onboarding has been dismissed.
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 6))
     }
 
     @MainActor
@@ -169,8 +172,17 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         guard field.waitForExistence(timeout: 4) else { return }
         let current = field.value as? String
         if current == text { return }
-        if current == nil || current == "Your name" || current == "Pattern distribution (e.g., temples and crown)" || current == "Family history (optional)" || current == "Patch area details (optional)" {
+        // An empty text field reports its placeholder as its value, so compare
+        // against the live placeholder instead of hardcoded copies of it.
+        guard current == nil || current?.isEmpty == true || current == field.placeholderValue else { return }
+        // Tapping a field while the keyboard is up for another field can fail
+        // to move focus; retry until this field actually owns the keyboard.
+        for _ in 0..<4 {
+            if (field.value(forKey: "hasKeyboardFocus") as? Bool) == true { break }
             field.tap()
+            usleep(400_000)
+        }
+        if (field.value(forKey: "hasKeyboardFocus") as? Bool) == true {
             field.typeText(text)
         }
     }
@@ -209,6 +221,15 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         let done = app.buttons["Done"]
         if done.exists && done.isHittable {
             done.tap()
+            return
+        }
+        // The onboarding scroll view uses .scrollDismissesKeyboard(.interactively),
+        // so a downward swipe reliably hides the keyboard when no Done button exists.
+        if app.keyboards.count > 0 {
+            let scrollView = app.scrollViews.firstMatch
+            if scrollView.exists {
+                scrollView.swipeDown()
+            }
         }
     }
 }
