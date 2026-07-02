@@ -87,14 +87,23 @@ struct BaselineFlow: View {
     }
 
     private var intro: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Eyebrow(text: "Set up once")
-            Text("A few facts that shape everything")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(Clinical.ink)
-            Text("These are the signals a dermatologist weighs first. You'll only set them once.")
-                .font(.system(size: 14))
-                .foregroundStyle(Clinical.secondary)
+        VStack(alignment: .leading, spacing: 16) {
+            Image(BrandArt.baselineHero)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .frame(maxHeight: 220)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Eyebrow(text: "Set up once")
+                Text("A few facts that shape everything")
+                    .font(Clinical.headline(26))
+                    .foregroundStyle(Clinical.ink)
+                Text("These are the signals a dermatologist weighs first. You'll only set them once.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Clinical.secondary)
+            }
         }
     }
 

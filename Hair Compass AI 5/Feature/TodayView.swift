@@ -27,6 +27,7 @@ struct TodayView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 header
+                heroBanner
                 logCard
                 if !activeDaily.isEmpty { treatmentsCard }
                 readoutCard
@@ -45,7 +46,7 @@ struct TodayView: View {
 
     private var header: some View {
         ScreenHeader(
-            eyebrow: Date.now.formatted(.dateTime.weekday(.wide).month().day()),
+            eyebrow: Date.now.formatted(.dateTime.weekday(.wide).month().day()).uppercased(),
             title: greeting,
             trailing: AnyView(
                 Button(action: onOpenBaseline) {
@@ -56,6 +57,20 @@ struct TodayView: View {
             )
         )
         .padding(.top, 8)
+    }
+
+    private var heroBanner: some View {
+        Image(BrandArt.todayHero)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(maxWidth: .infinity)
+            .frame(height: 120)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Clinical.hairline, lineWidth: 1)
+            )
+            .shadow(color: Clinical.cardShadow, radius: 12, y: 5)
     }
 
     private var greeting: String {

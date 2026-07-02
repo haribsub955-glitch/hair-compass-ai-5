@@ -46,11 +46,17 @@ struct PhotosView: View {
 
                 if regionPhotos.isEmpty {
                     ClinicalCard {
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(spacing: 14) {
+                            Image(BrandArt.photosEmpty)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 140, height: 140)
                             Eyebrow(text: "No \(region.title.lowercased()) photos")
                             Text("Capture this region to start a comparable series.")
                                 .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                                .multilineTextAlignment(.center)
                         }
+                        .frame(maxWidth: .infinity)
                     }
                 } else {
                     grid

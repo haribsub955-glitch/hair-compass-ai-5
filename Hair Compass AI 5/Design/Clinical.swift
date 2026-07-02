@@ -1,24 +1,29 @@
 import SwiftUI
 
-/// Clinical-minimal design system. Pure white, a single precise accent, hairline structure,
-/// tabular numerals. Deliberately nothing like the previous pearl/forest/serif look.
+/// Warm & premium design system — ivory surfaces, a signature copper accent, sage and
+/// antique-gold supporting tones, serif headlines, soft tactile depth. Built around the
+/// generated compass/botanical/hair artwork in Assets.xcassets (see BrandArt).
 enum Clinical {
 
-    // MARK: Palette — a near-neutral instrument with one signal accent.
-    static let surface = Color.white
-    static let canvas = Color(red: 0.97, green: 0.97, blue: 0.975)   // #F7F7F9 grouped background
-    static let ink = Color(red: 0.043, green: 0.043, blue: 0.047)    // #0B0B0C
-    static let secondary = Color(red: 0.42, green: 0.44, blue: 0.47) // #6B7078
-    static let tertiary = Color(red: 0.62, green: 0.64, blue: 0.67)  // #9FA3A8
-    static let hairline = Color(red: 0.90, green: 0.905, blue: 0.915) // #E6E7EA
+    // MARK: Palette
+    static let canvas = Color(red: 0.984, green: 0.965, blue: 0.937)   // #FBF6EF warm ivory
+    static let surface = Color(red: 0.996, green: 0.988, blue: 0.976)  // #FEFCF9 warm card white
+    static let ink = Color(red: 0.169, green: 0.129, blue: 0.102)      // #2B211A espresso
+    static let secondary = Color(red: 0.478, green: 0.420, blue: 0.365) // #7A6B5D warm taupe
+    static let tertiary = Color(red: 0.651, green: 0.588, blue: 0.529)  // #A69687 muted warm gray
+    static let hairline = Color(red: 0.929, green: 0.882, blue: 0.827)  // #EDE1D3 soft warm tan
 
-    static let accent = Color(red: 0.09, green: 0.36, blue: 0.84)    // #1666D6 clinical blue
-    static let accentSoft = Color(red: 0.09, green: 0.36, blue: 0.84).opacity(0.08)
+    static let accent = Color(red: 0.694, green: 0.349, blue: 0.180)    // #B1592E copper/terracotta
+    static let accentSoft = Color(red: 0.694, green: 0.349, blue: 0.180).opacity(0.10)
+    static let gold = Color(red: 0.788, green: 0.631, blue: 0.353)      // #C9A15A antique gold
+    static let sage = Color(red: 0.541, green: 0.616, blue: 0.482)      // #8A9D7B
 
     // Flags only — used sparingly, never decoratively.
-    static let positive = Color(red: 0.11, green: 0.49, blue: 0.33)  // #1C7C54
-    static let warning = Color(red: 0.71, green: 0.41, blue: 0.055)  // #B4690E
-    static let critical = Color(red: 0.78, green: 0.21, blue: 0.21)  // #C73636
+    static let positive = Color(red: 0.361, green: 0.478, blue: 0.322)  // #5C7A52 warm sage
+    static let warning = Color(red: 0.725, green: 0.545, blue: 0.180)   // #B98B2E ochre
+    static let critical = Color(red: 0.651, green: 0.263, blue: 0.180)  // #A6432E brick
+
+    static let cardShadow = Color(red: 0.353, green: 0.220, blue: 0.106).opacity(0.10) // warm espresso shadow
 
     static func bandColor(_ band: SeverityBand) -> Color {
         switch band {
@@ -35,18 +40,29 @@ enum Clinical {
         }
     }
 
-    // MARK: Type — SF with tabular figures for all data.
+    // MARK: Type — serif headlines for warmth, SF body/data with tabular figures.
     static func eyebrow(_ size: CGFloat = 11) -> Font {
         .system(size: size, weight: .semibold).monospaced()
     }
     static func number(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
         .system(size: size, weight: weight).monospacedDigit()
     }
+    static func headline(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
+        .system(size: size, weight: weight, design: .serif)
+    }
+}
+
+/// Generated brand artwork — one consistent painterly gouache style across the app.
+enum BrandArt {
+    static let todayHero = "hero-today"
+    static let baselineHero = "hero-baseline"
+    static let photosEmpty = "hero-photos-empty"
 }
 
 // MARK: - Reusable structure
 
-/// A hairline-bordered card. No heavy shadow — structure comes from the rule, not depth.
+/// A warm card with soft tactile depth. Depth comes from a diffuse warm shadow, not a shadow-free
+/// hairline — this is the opposite instinct from a clinical instrument, on purpose.
 struct ClinicalCard<Content: View>: View {
     var padding: CGFloat = 18
     @ViewBuilder var content: Content
@@ -56,11 +72,12 @@ struct ClinicalCard<Content: View>: View {
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Clinical.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .strokeBorder(Clinical.hairline, lineWidth: 1)
             )
+            .shadow(color: Clinical.cardShadow, radius: 14, y: 6)
     }
 }
 
@@ -76,7 +93,7 @@ struct Eyebrow: View {
     }
 }
 
-/// A screen title block: eyebrow + serifless bold headline.
+/// A screen title block: eyebrow + warm serif headline.
 struct ScreenHeader: View {
     let eyebrow: String
     let title: String
@@ -87,7 +104,7 @@ struct ScreenHeader: View {
             VStack(alignment: .leading, spacing: 6) {
                 Eyebrow(text: eyebrow)
                 Text(title)
-                    .font(.system(size: 30, weight: .bold))
+                    .font(Clinical.headline(30))
                     .foregroundStyle(Clinical.ink)
             }
             Spacer()
@@ -122,7 +139,7 @@ struct StatBlock: View {
     }
 }
 
-/// A flat segmented selector styled to match the clinical grid.
+/// A warm segmented selector — the active pill uses the signature copper accent.
 struct ClinicalSegmented<T: Hashable>: View {
     let options: [T]
     let label: (T) -> String
@@ -140,7 +157,7 @@ struct ClinicalSegmented<T: Hashable>: View {
                         .foregroundStyle(isOn ? Clinical.surface : Clinical.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(isOn ? Clinical.ink : Color.clear)
+                        .background(isOn ? Clinical.accent : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -148,15 +165,15 @@ struct ClinicalSegmented<T: Hashable>: View {
         }
         .padding(3)
         .background(Clinical.canvas)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Clinical.hairline, lineWidth: 1)
         )
     }
 }
 
-/// Primary action styled as a solid ink bar — high contrast, no gradient.
+/// Primary action styled as a solid copper bar with a warm glow.
 struct ClinicalButtonStyle: ButtonStyle {
     var filled: Bool = true
     func makeBody(configuration: Configuration) -> some View {
@@ -165,12 +182,13 @@ struct ClinicalButtonStyle: ButtonStyle {
             .foregroundStyle(filled ? Clinical.surface : Clinical.ink)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
-            .background(filled ? Clinical.ink : Clinical.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .background(filled ? Clinical.accent : Clinical.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .strokeBorder(filled ? Color.clear : Clinical.hairline, lineWidth: 1)
             )
+            .shadow(color: filled ? Clinical.accent.opacity(0.28) : .clear, radius: 12, y: 5)
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
@@ -203,11 +221,11 @@ struct PipStepper: View {
                         value = i
                         UISelectionFeedbackGenerator().selectionChanged()
                     } label: {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .fill(on ? tint : Clinical.canvas)
                             .frame(height: 30)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
                                     .strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1)
                             )
                     }
@@ -219,7 +237,7 @@ struct PipStepper: View {
 }
 
 extension View {
-    /// Standard screen scaffold: canvas background + generous horizontal gutter.
+    /// Standard screen scaffold: warm ivory canvas.
     func clinicalScreen() -> some View {
         self
             .background(Clinical.canvas.ignoresSafeArea())

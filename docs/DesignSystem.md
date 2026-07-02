@@ -1,56 +1,68 @@
-# Hair Compass — Clinical Minimal Design System
+# Hair Compass — Warm & Premium Design System
 
-Source of truth for tokens is `Hair Compass AI 5/Design/Clinical.swift`. This document
-is the written spec (refined via a Google Stitch concept pass, 2026-07-02) — update both
-together.
+Source of truth for tokens is `Hair Compass AI 5/Design/Clinical.swift` (type name kept
+for low-risk continuity; the content is warm & premium, not clinical-minimal — see history
+below). This document is the written spec — update both together.
+
+## History
+1. **Pearl/forest/serif** — the original app design.
+2. **Clinical-minimal** — a full from-scratch rebuild (white/gray/blue, hairline structure,
+   no imagery). Rejected by the user (2026-07-02): "too plain, doesn't feel like a hair
+   app, wrong colors, no pictures."
+3. **Warm & premium** (current) — ivory/cream surfaces, a signature copper accent, real
+   generated illustrated artwork. Chosen explicitly by the user over bold/vibrant and
+   dark/luxe alternatives.
 
 ## Principles
-Clinical minimalism: clarity, data integrity, professional trust. Objective, meticulous,
-calm — built for a high-stakes documentation context, not a lifestyle app.
-
-- **No decorative effects.** No shadows, gradients, blurs, or glassmorphism.
-- **Structural depth, not elevation.** Hairline borders and tonal shifts, never drop shadows.
-- **High information density, low visual noise.** A rigorous grid over decoration.
+A premium wellness/skincare brand feel — warm, tactile, a little indulgent, unmistakably
+about hair. Real illustrated imagery carries emotional weight; flat tokens alone don't.
 
 ## Color
 | Token | Hex | Use |
 |---|---|---|
-| Canvas | `#F7F7F9` | Screen background |
-| Surface | `#FFFFFF` | Cards, inputs — anything interactive |
-| Ink | `#0B0B0C` | Primary text |
-| Secondary | `#6B7078` | Supporting text |
-| Tertiary | `#9FA3A8` | Captions, disabled, chart ticks |
-| Hairline | `#E6E7EA` | The only border color |
-| Accent | `#1666D6` | The one functional color — actions, active states, links |
-| Positive / Warning / Critical | `#1C7C54` / `#B4690E` / `#C73636` | Flags only, never decorative |
+| Canvas | `#FBF6EF` | Screen background — warm ivory |
+| Surface | `#FEFCF9` | Cards — warm card white |
+| Ink | `#2B211A` | Primary text — espresso, not black |
+| Secondary | `#7A6B5D` | Supporting text — warm taupe |
+| Tertiary | `#A69687` | Captions, chart ticks — muted warm gray |
+| Hairline | `#EDE1D3` | Borders — soft warm tan |
+| Accent | `#B1592E` | Signature copper/terracotta — CTAs, active states, selected segments |
+| Gold | `#C9A15A` | Antique gold — secondary highlight, not yet load-bearing in UI |
+| Sage | `#8A9D7B` | Botanical green — matches the artwork palette |
+| Positive / Warning / Critical | `#5C7A52` / `#B98B2E` / `#A6432E` | Flags only |
 
 ## Typography
-Native SF (San Francisco) — not Inter/Space Mono as in the Stitch concept, since a bundled
-web font breaks the "this is a native iOS instrument" read. SF's tabular-digit feature
-serves the same role as a monospaced data face.
-
-- **Eyebrow:** SF monospaced, 10–11pt, semibold, uppercase, tracked +1.2–1.8pt.
-- **Headline:** SF, 24–30pt, bold.
-- **Body:** SF, 13–16pt, regular/medium.
-- **Data:** SF monospaced-digit, sized to context — always tabular so values don't jitter.
+- **Headlines:** `.serif` design (renders as New York) — warm, editorial. `Clinical.headline(_:)`.
+- **Eyebrows:** SF monospaced, uppercase, tracked.
+- **Body/data:** SF, tabular digits for numbers.
 
 ## Shape & elevation
-- Card radius: 16pt. Small controls: 9–13pt. Capsule for chips/segmented backgrounds only.
-- Depth = a 1px hairline border, never a shadow. Pressed/active state = fill or border-color
-  change, not a lift.
+Soft tactile depth, not hairline-only: cards are 22pt-radius warm white with a diffuse
+warm-espresso shadow (`Clinical.cardShadow`, not a cold gray shadow). Primary buttons are
+solid copper with a soft copper glow shadow.
 
-## Components
-- **Card** (`ClinicalCard`): white fill, 16pt radius, 1px hairline border, no shadow.
-- **Primary button** (`ClinicalButtonStyle(filled: true)`): solid ink fill, white text.
-- **Secondary button** (`filled: false`): white fill, hairline border, ink text.
-- **Segmented control** (`ClinicalSegmented`): canvas track, ink pill for the active option.
-- **Checklist row:** outlined 22pt ring, fills with an accent check only when done — never a
-  solid pre-filled circle. (Adopted from the Stitch concept pass; more restrained than a
-  filled/unfilled system icon toggle.)
-- **Status footer:** a quiet, centered card reporting real last-activity time — confirms the
-  app is current instead of leaving a silent screen to read as stale.
+## Imagery — `BrandArt`
+All artwork is one consistent painterly gouache style: warm terracotta/cream/sage/gold,
+botanical sprigs (rosemary, eucalyptus) woven with hair-strand and compass-rose motifs, no
+text baked into any asset. Generated via Nano Banana Pro (Higgsfield MCP,
+`nano_banana_pro`), 2k resolution.
 
-## What we deliberately did not adopt from the Stitch concept
-- Inter / Space Mono fonts — SF is the correct native choice.
-- Fully custom Material-style token names (`surface-container-highest`, etc.) — our SwiftUI
-  token set in `Clinical.swift` covers the same ground with fewer names.
+| Asset | Imageset | Used in |
+|---|---|---|
+| Today hero banner | `hero-today` | `TodayView` — 16:9 banner under the greeting |
+| Baseline welcome art | `hero-baseline` | `BaselineFlow` — portrait hero above the intro copy |
+| Photos empty state | `hero-photos-empty` | `PhotosView` — shown when a region has no captures |
+| App icon (light/dark/tinted) | `AppIcon.appiconset` | Home screen |
+
+**App icon gotcha:** the first dark-icon generation baked in its own rounded corners with
+a white background showing through the gaps — iOS applies its own corner mask on top of a
+full-bleed square asset, so any pre-baked rounding shows as a corner artifact. Verified by
+sampling corner pixels with a small CoreGraphics script; fixed by explicitly prompting for
+"full-bleed square, sharp 90° corners, background extends to all four corners."
+
+## What changed from clinical-minimal
+- No more hairline-only depth — soft shadows are back, deliberately.
+- No more flat blue accent — copper/terracotta carries the same job.
+- Segmented control and buttons use the accent color, not ink, for selected/filled states.
+- Real illustrated imagery on Today, Baseline, and Photos-empty — the single biggest lever
+  for "feels like a hair app."
