@@ -47,6 +47,8 @@ struct LabsView: View {
     }
 
     private func labRow(_ lab: LabResult) -> some View {
+        // .swipeActions only functions inside a List row — this screen uses a plain
+        // ScrollView, so deletion is a context menu instead (same pattern as Photos/Care).
         ClinicalCard {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -66,9 +68,9 @@ struct LabsView: View {
                         .foregroundStyle(Clinical.flagColor(lab.flag))
                 }
             }
-            .swipeActions {
-                Button("Delete", role: .destructive) { context.delete(lab) }
-            }
+        }
+        .contextMenu {
+            Button("Delete", role: .destructive) { context.delete(lab) }
         }
     }
 
