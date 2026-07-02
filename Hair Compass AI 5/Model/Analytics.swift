@@ -1,0 +1,143 @@
+import Foundation
+
+/// Pure, deterministic analytics. No SwiftData, no UI — this is the unit-tested core.
+/// Every rule here is anchored to docs/TrackingSpec.md.
+enum HairAnalytics {
+
+    // MARK: - Seborrheic-dermatitis 16-point scale (Zhang 2023)
+
+    /// Maps the 0–3 self-report flaking band onto the validated 0–10 flaking item.
+    static func flakingContribution(_ band: Int) -> Int {
+        let clamped = min(max(band, 0), 3)
+        return [0, 3, 6, 10][clamped]
+    }
+
+    static func scalpTotal(flaking: Int, erythema: Int, itch: Int) -> Int {
+        flakingContribution(flaking)
+            + min(max(erythema, 0), 3)
+            + min(max(itch, 0), 3)
+    }
+
+    /// Bands from the paper: 0–5 mild · 6–9 moderate · 10–16 severe.
+    static func scalpBand(total: Int) -> SeverityBand {
+        switch total {
+        case ...5: return .mild
+        case 6...9: return .moderate
+        default: return .severe
+        }
+    }
+
+    // MARK: - Labs
+
+    static func flag(for value: Double, test: LabTest) -> LabFlag {
+        let range = test.referenceRange
+        if value < range.lowerBound { return .low }
+        if value > range.upperBound { return .high }
+        return .normal
+    }
+
+    // MARK: - Treatment adherence & the 24-week outcome gate
+
+    /// Standard AGA RCT endpoint for hair-density change (verified 3-0).
+    static let outcomeWindowWeeks = 24
+
+    static func weeksElapsed(since start: Date, now: Date = .now, calendar: Calendar = .current) -> Int {
+        max(0, calendar.dateComponents([.weekOfYear], from: calendar.startOfDay(for: start), to: now).weekOfYear ?? 0)
+    }
+
+    /// True once a treatment has run long enough to judge (≥24 weeks).
+    static func outcomeReady(weeksElapsed: Int) -> Bool { weeksElapsed >= outcomeWindowWeeks }
+
+    /// 0…1 progress toward the 24-week judging milestone.
+    static func outcomeProgress(weeksElapsed: Int) -> Double {
+        min(1, Double(weeksElapsed) / Double(outcomeWindowWeeks))
+    }
+
+    /// Adherence over a trailing window for a daily treatment.
+    /// - Returns nil for non-daily (periodic) treatments where % adherence is meaningless.
+    static func adherence(
+        doseDates: [Date],
+        expectedPerDay: Int,
+        windowDays: Int = 14,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> Double? {
+        guard expectedPerDay > 0 else { return nil }
+        let start = calendar.date(byAdding: .day, value: -(windowDays - 1), to: calendar.startOfDay(for: now)) ?? now
+        let logged = doseDates.filter { $0 >= start }.count
+        let expected = expectedPerDay * windowDays
+        guard expected > 0 else { return nil }
+        return min(1, Double(logged) / Double(expected))
+    }
+
+    // MARK: - Trends
+
+    /// Trailing rolling average that keeps series readable instead of noisy.
+    static func rollingAverage(_ values: [Double], window: Int) -> [Double] {
+        guard window > 1, values.count > 1 else { return values }
+        return values.indices.map { i in
+            let lo = max(0, i - window + 1)
+            let slice = values[lo...i]
+            return slice.reduce(0, +) / Double(slice.count)
+        }
+    }
+
+    /// Signed change between the average of the first and last thirds of a series.
+    /// Positive = rising. Used for shedding / severity direction readouts.
+    static func direction(_ values: [Double]) -> Double {
+        guard values.count >= 3 else { return 0 }
+        let third = max(1, values.count / 3)
+        let head = values.prefix(third)
+        let tail = values.suffix(third)
+        let headAvg = head.reduce(0, +) / Double(head.count)
+        let tailAvg = tail.reduce(0, +) / Double(tail.count)
+        return tailAvg - headAvg
+    }
+
+    static func mean(_ values: [Double]) -> Double {
+        guard !values.isEmpty else { return 0 }
+        return values.reduce(0, +) / Double(values.count)
+    }
+
+    // MARK: - Streak
+
+    /// Consecutive days (ending today or yesterday) that have a daily entry.
+    static func loggingStreak(entryDates: [Date], now: Date = .now, calendar: Calendar = .current) -> Int {
+        let days = Set(entryDates.map { calendar.startOfDay(for: $0) })
+        guard !days.isEmpty else { return 0 }
+        var cursor = calendar.startOfDay(for: now)
+        if !days.contains(cursor) {
+            // Allow the streak to still count if today isn't logged yet.
+            cursor = calendar.date(byAdding: .day, value: -1, to: cursor) ?? cursor
+            guard days.contains(cursor) else { return 0 }
+        }
+        var streak = 0
+        while days.contains(cursor) {
+            streak += 1
+            cursor = calendar.date(byAdding: .day, value: -1, to: cursor) ?? cursor
+        }
+        return streak
+    }
+
+    // MARK: - Baseline risk readout (context, not prediction)
+
+    /// Orders baseline risk factors by verified effect size for a plain-language readout.
+    /// This is descriptive framing only — it does not forecast an individual's outcome.
+    static func baselineRiskNotes(familyHistory: FamilyHistory, condition: HairCondition) -> [String] {
+        var notes: [String] = []
+        switch familyHistory {
+        case .bothParents:
+            notes.append("Family history in both parents is the strongest measured risk factor for pattern loss.")
+        case .oneParent:
+            notes.append("A parent with hair loss meaningfully raises pattern-loss risk.")
+        case .extended:
+            notes.append("Extended-family history is a mild risk signal.")
+        case .none:
+            notes.append("No known family history recorded.")
+        }
+        if condition == .androgenetic {
+            notes.append("Judge treatment response at 6 months, not sooner.")
+        }
+        return notes
+    }
+}
