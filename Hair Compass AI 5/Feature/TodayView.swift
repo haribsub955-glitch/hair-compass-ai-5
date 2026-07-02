@@ -31,6 +31,7 @@ struct TodayView: View {
                 if !activeDaily.isEmpty { treatmentsCard }
                 readoutCard
                 if let profile { baselineCard(profile) }
+                statusCard
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -130,9 +131,16 @@ struct TodayView: View {
             toggle(treatment, slot: slot, currentlyDone: done)
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22))
-                    .foregroundStyle(done ? Clinical.accent : Clinical.tertiary)
+                ZStack {
+                    Circle()
+                        .strokeBorder(done ? Clinical.accent : Clinical.hairline, lineWidth: 1.5)
+                        .frame(width: 22, height: 22)
+                    if done {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Clinical.accent)
+                    }
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(treatment.name)
                         .font(.system(size: 15, weight: .medium))
@@ -211,6 +219,23 @@ struct TodayView: View {
                     .foregroundStyle(Clinical.accent)
                     .padding(.top, 2)
             }
+        }
+    }
+
+    /// A quiet footer confirming the app is current — not decorative copy, an honest
+    /// reflection of when data last changed, so silence never reads as staleness.
+    private var statusCard: some View {
+        let lastActivity = [entries.first?.date, doses.map(\.loggedAt).max()].compactMap { $0 }.max()
+        return ClinicalCard(padding: 14) {
+            VStack(alignment: .center, spacing: 4) {
+                Eyebrow(text: "System status")
+                Text(lastActivity.map { "Up to date · last entry \($0.formatted(.relative(presentation: .named)))" }
+                     ?? "Ready for your first entry")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Clinical.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 
