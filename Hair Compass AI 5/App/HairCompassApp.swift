@@ -6,13 +6,16 @@ struct HairCompassApp: App {
     let container: ModelContainer
 
     init() {
+        AIConfig.seedKeyIfProvided()
         let schema = Schema([
             Profile.self,
             DailyEntry.self,
             Treatment.self,
             TreatmentDose.self,
             LabResult.self,
-            PhotoRecord.self
+            PhotoRecord.self,
+            HealthSnapshot.self,
+            TriggerEvent.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {

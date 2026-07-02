@@ -27,7 +27,7 @@ Build order (phased implementation plan): 1 → 2 → 3 → 4 → 5.
 
 - **Wearables:** HealthKit-only, with a pluggable `SignalSource` protocol so a direct Whoop connector can be added later without touching the rest.
 - **AI:** Hybrid — on-device Apple Foundation Models for daily insight, opt-in cloud "deep analysis" per request.
-- **Cloud model:** Claude via the Messages API (`claude-sonnet-5` default; `claude-haiku-4-5` cost-optimized fallback). Swift has no official Anthropic SDK, so the call is raw HTTPS.
+- **Cloud model:** Claude **Fable 5** (`claude-fable-5`) via the Messages API — the most capable model, chosen for best-quality analysis. Swift has no official Anthropic SDK, so the call is raw HTTPS. Fable specifics: thinking is always on (omit the `thinking` param — sending `disabled`/`budget_tokens`/`temperature` returns 400); check `stop_reason == "refusal"` before reading content; include a server-side fallback to `claude-opus-4-8` (beta header `server-side-fallback-2026-06-01`).
 - **Oiliness:** included because the user asked for it, but labeled an **observation** (WEAK tier), not a risk driver.
 - **Excluded myths are named in-app** so users trust the app's honesty.
 
@@ -110,7 +110,7 @@ prioritizes those facts in plain language. Numbers come from analytics, never fr
 - `InsightEngine` protocol → three implementations:
   - `RuleBasedInsight` — always available; also the grounding input for the LLMs and the fallback.
   - `OnDeviceInsightEngine` — Apple **Foundation Models** (`import FoundationModels`, `SystemLanguageModel`/`LanguageModelSession`), iOS 26. Private, offline, free. Availability-guarded; falls back to rule-based on unsupported devices.
-  - `CloudInsightEngine` (`CloudAnalysisService`) — opt-in, per-request "Deep analysis" (e.g. review progress photos). Raw HTTPS to the Claude Messages API (`claude-sonnet-5`; `claude-haiku-4-5` fallback). Explicit off-device-data consent before each cloud send. API key from env/UserDefaults (mirrors the deleted OpenAI key pattern; no key in repo).
+  - `CloudInsightEngine` (`CloudAnalysisService`) — opt-in, per-request "Deep analysis" (e.g. review progress photos). Raw HTTPS to the Claude Messages API (`claude-fable-5`, server-side fallback to `claude-opus-4-8`). Explicit off-device-data consent before each cloud send. API key from env/UserDefaults (mirrors the deleted OpenAI key pattern; no key in repo).
 - **Guardrails baked into every prompt/output:** record-keeping/not-diagnosis framing; treatment-efficacy statements gated behind the 24-week rule; honest uncertainty; evidence tiers respected.
 - **Surface:** an "Insight" card on `TodayView` (rule-based + on-device), and a clearly-labeled "Deep analysis" entry point (cloud, opt-in) in Photos or You.
 

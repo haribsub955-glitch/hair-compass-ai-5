@@ -40,6 +40,17 @@ enum Clinical {
         }
     }
 
+    /// Confidence, not good/bad — how much weight to give a signal. Strong reads authoritative,
+    /// weaker tiers recede into the muted palette so nothing overclaims.
+    static func tierColor(_ tier: EvidenceTier) -> Color {
+        switch tier {
+        case .strong: return ink
+        case .moderate: return gold
+        case .weak: return tertiary
+        case .context: return tertiary
+        }
+    }
+
     // MARK: Type — serif headlines for warmth, SF body/data with tabular figures.
     static func eyebrow(_ size: CGFloat = 11) -> Font {
         .system(size: size, weight: .semibold).monospaced()
@@ -232,6 +243,61 @@ struct PipStepper: View {
                     .buttonStyle(.plain)
                 }
             }
+        }
+    }
+}
+
+/// A small pill stating how strong the evidence for a signal is — the app's honesty made visible.
+struct TierBadge: View {
+    let tier: EvidenceTier
+    var body: some View {
+        Text(tier.short.uppercased())
+            .font(Clinical.eyebrow(9)).tracking(0.8)
+            .foregroundStyle(Clinical.tierColor(tier))
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(Clinical.tierColor(tier).opacity(0.12), in: Capsule())
+    }
+}
+
+/// A "Why this matters" affordance that expands to the plain-language rationale — progressive
+/// disclosure so a logging screen stays calm but the evidence is a tap away.
+struct WhyDisclosure: View {
+    let text: String
+    @State private var expanded = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button { withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() } } label: {
+                Label(expanded ? "Hide" : "Why this matters", systemImage: expanded ? "chevron.up" : "info.circle")
+                    .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+            }
+            .buttonStyle(.plain)
+            if expanded {
+                Text(text).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+            }
+        }
+    }
+}
+
+/// A section header driven by the tracked-variable catalog: title + evidence tier + capture badge
+/// + a why-this-matters disclosure, all from one source of truth.
+struct VariableSectionHeader: View {
+    let variableID: String
+    var body: some View {
+        if let v = TrackedVariable[variableID] {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Eyebrow(text: v.title)
+                    TierBadge(tier: v.tier)
+                    if v.capture == .auto {
+                        Label(v.capture.badge, systemImage: v.capture.symbol)
+                            .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                WhyDisclosure(text: v.why)
+            }
+        } else {
+            Eyebrow(text: variableID)
         }
     }
 }

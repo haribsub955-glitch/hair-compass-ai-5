@@ -8,6 +8,7 @@ struct PhotosView: View {
 
     @State private var region: PhotoRegion = .frontal
     @State private var showAdd = false
+    @State private var showCompare = false
 
     private var regionPhotos: [PhotoRecord] {
         photos.filter { $0.region == region }.sorted { $0.createdAt < $1.createdAt }
@@ -67,7 +68,12 @@ struct PhotosView: View {
             .padding(.bottom, 110)
         }
         .clinicalScreen()
-        .sheet(isPresented: $showAdd) { CapturePhotoSheet(defaultRegion: region) }
+        .sheet(isPresented: $showAdd) { GuidedCaptureView(defaultRegion: region) }
+        .fullScreenCover(isPresented: $showCompare) {
+            if regionPhotos.count >= 2 {
+                PhotoCompareView(before: regionPhotos.first!, after: regionPhotos.last!, region: region)
+            }
+        }
     }
 
     private var regionPicker: some View {
@@ -95,7 +101,16 @@ struct PhotosView: View {
         let last = regionPhotos.last!
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 10) {
-                Eyebrow(text: "First vs latest")
+                HStack {
+                    Eyebrow(text: "First vs latest")
+                    Spacer()
+                    Button {
+                        showCompare = true
+                    } label: {
+                        Label("Slider", systemImage: "slider.horizontal.below.rectangle")
+                            .font(Clinical.eyebrow(11)).foregroundStyle(Clinical.accent)
+                    }
+                }
                 HStack(spacing: 12) {
                     comparePane(first, label: "Baseline")
                     comparePane(last, label: "Latest")

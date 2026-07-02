@@ -3,9 +3,16 @@ import SwiftData
 import SwiftUI
 
 struct TrendsView: View {
+    @Environment(\.modelContext) private var context
+    @Environment(HealthKitService.self) private var healthKit
     @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
+    @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
+    @Query(sort: \TriggerEvent.date, order: .reverse) private var triggers: [TriggerEvent]
+    @Query(sort: \Profile.createdAt) private var profiles: [Profile]
+
+    @State private var connecting = false
 
     enum Range: String, CaseIterable { case m1 = "1M", m3 = "3M", m6 = "6M"
         var days: Int { self == .m1 ? 30 : (self == .m3 ? 90 : 180) }
@@ -24,6 +31,8 @@ struct TrendsView: View {
 
                 ClinicalSegmented(options: Range.allCases, label: { $0.rawValue }, selection: $range)
 
+                lifestyleCard
+
                 if windowEntries.count < 2 {
                     emptyState
                 } else {
@@ -31,6 +40,8 @@ struct TrendsView: View {
                     scalpCard
                     adherenceCard
                 }
+
+                excludedCard
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -45,6 +56,143 @@ struct TrendsView: View {
                 Eyebrow(text: "Not enough data")
                 Text("Trends appear after two or more daily logs in this window.")
                     .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+            }
+        }
+    }
+
+    // MARK: Lifestyle signals (auto-fetched from Health) + context
+
+    private var latestSnapshot: HealthSnapshot? { snapshots.last }
+    private var profile: Profile? { profiles.first }
+
+    private var rapidWeightLossPercent: Double? {
+        let samples = snapshots.compactMap { s -> (date: Date, massKg: Double)? in
+            guard let m = s.bodyMassKg else { return nil }
+            return (s.date, m)
+        }
+        return HairAnalytics.rapidWeightLossPercent(samples: samples)
+    }
+
+    private var lifestyleCard: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Eyebrow(text: "Lifestyle signals")
+                    Spacer()
+                    if healthKit.authorization.isUsable {
+                        Label("Auto from Health", systemImage: "heart.text.square")
+                            .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
+                    }
+                }
+
+                switch healthKit.authorization {
+                case .unavailable:
+                    Text("Apple Health isn't available on this device — lifestyle factors stay manual.")
+                        .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                case .authorized:
+                    healthMetrics
+                default:
+                    connectPrompt
+                }
+
+                if let pct = rapidWeightLossPercent {
+                    contextNote(
+                        icon: "arrow.down.right.circle",
+                        color: Clinical.warning,
+                        text: "Body weight is down about \(Int(pct.rounded()))% recently. Rapid loss can trigger shedding ~2–3 months later — worth watching."
+                    )
+                }
+                if profile?.hasTractionRisk == true {
+                    contextNote(
+                        icon: "exclamationmark.triangle",
+                        color: Clinical.warning,
+                        text: "Your baseline notes tight styling, heat or chemical treatment. Sustained tension is a preventable cause of traction loss."
+                    )
+                }
+                if let recent = triggers.first {
+                    contextNote(
+                        icon: recent.type.symbol,
+                        color: Clinical.tertiary,
+                        text: "\(recent.type.title), \(recent.weeksElapsed()) weeks ago. Diffuse shedding often follows a trigger by 2–3 months."
+                    )
+                }
+            }
+        }
+    }
+
+    private var connectPrompt: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Connect Apple Health to auto-fill sleep, body weight, and a recovery (HRV) stress proxy — no manual entry.")
+                .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+            Button(connecting ? "Connecting…" : "Connect Apple Health") {
+                connecting = true
+                Task {
+                    await healthKit.requestAuthorization()
+                    await healthKit.refreshSnapshot(context: context)
+                    connecting = false
+                }
+            }
+            .buttonStyle(ClinicalButtonStyle(filled: false))
+            .disabled(connecting)
+        }
+    }
+
+    private var healthMetrics: some View {
+        let s = latestSnapshot
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                metric(s?.sleepHours.map { String(format: "%.1f h", $0) }, "Sleep")
+                Divider().frame(height: 34)
+                metric(s?.hrvSDNN.map { "\(Int($0.rounded())) ms" }, "HRV")
+                Divider().frame(height: 34)
+                metric(s?.bodyMassKg.map { String(format: "%.1f kg", $0) }, "Weight")
+            }
+            if s?.hasAnyValue != true {
+                Text("Connected — no readings yet. Values appear once Health has data for today.")
+                    .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+            } else {
+                Text("HRV is shown as a stress/recovery proxy — there's no evidence it predicts hair loss directly.")
+                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+            }
+        }
+    }
+
+    private func metric(_ value: String?, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value ?? "—")
+                .font(Clinical.number(16))
+                .foregroundStyle(value == nil ? Clinical.tertiary : Clinical.ink)
+            Text(label.uppercased())
+                .font(Clinical.eyebrow(9)).tracking(1).foregroundStyle(Clinical.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func contextNote(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon).font(.system(size: 13)).foregroundStyle(color)
+            Text(text).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+        }
+        .padding(.top, 2)
+    }
+
+    // MARK: Explicitly-not-tracked (honesty made visible)
+
+    private var excludedCard: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow(text: "Explicitly not tracked")
+                Text("Left out on purpose — the evidence doesn't support them.")
+                    .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                ForEach(ExcludedMyth.allCases) { myth in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "xmark.circle").font(.system(size: 12)).foregroundStyle(Clinical.tertiary).padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(myth.title).font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.ink)
+                            Text(myth.reason).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        }
+                    }
+                }
             }
         }
     }

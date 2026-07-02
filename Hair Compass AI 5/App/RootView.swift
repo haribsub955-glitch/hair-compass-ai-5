@@ -32,6 +32,7 @@ struct RootView: View {
     @State private var tab: AppTab = RootView.initialTab
     @State private var didBootstrap = false
     @State private var showOnboarding = false
+    @State private var healthKit = HealthKitService()
 
     private var profile: Profile? { profiles.first }
 
@@ -59,6 +60,7 @@ struct RootView: View {
 
             TabBar(selection: $tab)
         }
+        .environment(healthKit)
         .task {
             guard !didBootstrap else { return }
             didBootstrap = true
@@ -69,6 +71,10 @@ struct RootView: View {
             }
             try? await Task.sleep(for: .milliseconds(150))
             if profile?.hasOnboarded == false { showOnboarding = true }
+            // If the user has already granted Health access, refresh today's snapshot on launch.
+            if healthKit.authorization.isUsable {
+                await healthKit.refreshSnapshot(context: context)
+            }
         }
         .fullScreenCover(isPresented: $showOnboarding) {
             if let profile {

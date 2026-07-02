@@ -70,6 +70,26 @@ enum HairAnalytics {
         return min(1, Double(logged) / Double(expected))
     }
 
+    // MARK: - Rapid weight loss (telogen-effluvium trigger)
+
+    /// A meaningful weight drop over a short window is a recognized shedding trigger, typically
+    /// showing up ~2–3 months later. Given dated body-mass samples (kg), returns the percent
+    /// drop from the window's peak to its latest reading if it clears the threshold, else nil.
+    /// Pure: takes plain samples, not SwiftData models.
+    static func rapidWeightLossPercent(
+        samples: [(date: Date, massKg: Double)],
+        windowDays: Int = 90,
+        thresholdPercent: Double = 5,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> Double? {
+        let start = calendar.date(byAdding: .day, value: -windowDays, to: now) ?? now
+        let window = samples.filter { $0.date >= start && $0.massKg > 0 }.sorted { $0.date < $1.date }
+        guard let latest = window.last, let peak = window.map(\.massKg).max(), peak > 0 else { return nil }
+        let dropPercent = (peak - latest.massKg) / peak * 100
+        return dropPercent >= thresholdPercent ? dropPercent : nil
+    }
+
     // MARK: - Trends
 
     /// Trailing rolling average that keeps series readable instead of noisy.

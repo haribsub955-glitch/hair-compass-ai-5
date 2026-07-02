@@ -54,6 +54,16 @@ struct BaselineFlow: View {
                             .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
                     }
 
+                    field("Hair-care practices") {
+                        VStack(spacing: 10) {
+                            practiceToggle("Tight styles (braids, ponytails, extensions)", isOn: $profile.wearsTightStyles)
+                            practiceToggle("Regular heat styling", isOn: $profile.usesHeat)
+                            practiceToggle("Chemical treatments (relaxers, dyes, perms)", isOn: $profile.usesChemicalTreatments)
+                        }
+                        Text("Sustained tension, heat and chemicals cause traction alopecia — preventable and reversible early.")
+                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    }
+
                     field("Baseline stage (optional)") {
                         TextField("e.g. \(profile.sex.stagingScaleName) III", text: $profile.baselineStage)
                             .textFieldStyle(.plain)
@@ -143,6 +153,13 @@ struct BaselineFlow: View {
 
     private func chips(_ items: [String], selected: String, onPick: @escaping (String) -> Void) -> some View {
         FlowChips(items: items, selected: selected, onPick: onPick)
+    }
+
+    private func practiceToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Text(title).font(.system(size: 14)).foregroundStyle(Clinical.ink)
+        }
+        .tint(Clinical.accent)
     }
 
     private func complete() {

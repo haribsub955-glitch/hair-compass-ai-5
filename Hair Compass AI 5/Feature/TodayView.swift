@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct TodayView: View {
     let profile: Profile?
@@ -9,8 +10,13 @@ struct TodayView: View {
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
+    @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
+    @Query(sort: \TriggerEvent.date, order: .reverse) private var triggers: [TriggerEvent]
+    @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
 
     @State private var showLog = false
+    @State private var insight: DailyInsight?
+    @State private var showDeepAnalysis = false
 
     private var calendar: Calendar { .current }
     private var todayEntry: DailyEntry? {
@@ -29,6 +35,7 @@ struct TodayView: View {
                 header
                 heroBanner
                 logCard
+                insightCard
                 if !activeDaily.isEmpty { treatmentsCard }
                 readoutCard
                 if let profile { baselineCard(profile) }
@@ -39,8 +46,68 @@ struct TodayView: View {
             .padding(.bottom, 110)
         }
         .clinicalScreen()
+        .task(id: insightFingerprint) { await refreshInsight() }
         .sheet(isPresented: $showLog) {
             LogSheet(existing: todayEntry, condition: profile?.condition ?? .unsure)
+        }
+        .sheet(isPresented: $showDeepAnalysis) {
+            DeepAnalysisSheet(context: buildContext(), images: analysisImages())
+        }
+    }
+
+    // MARK: - Insight (hybrid: on-device AI, deterministic fallback)
+
+    private var insightFingerprint: String {
+        "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(snapshots.count)-\(treatments.count)"
+    }
+
+    @MainActor
+    private func buildContext() -> InsightContext {
+        InsightContext.build(
+            entries: entries, treatments: treatments, doses: doses,
+            snapshots: snapshots, triggers: triggers, profile: profile
+        )
+    }
+
+    private func refreshInsight() async {
+        let ctx = buildContext()
+        insight = await InsightEngine.dailyInsight(for: ctx)
+    }
+
+    /// The latest photo per region, loaded for the cloud call (capped downstream).
+    private func analysisImages() -> [UIImage] {
+        var seen = Set<PhotoRegion>()
+        var images: [UIImage] = []
+        for record in photos where !seen.contains(record.region) {
+            if let image = PhotoStore.shared.load(record.imagePath) {
+                images.append(image)
+                seen.insert(record.region)
+            }
+        }
+        return images
+    }
+
+    private var insightCard: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Eyebrow(text: "Today's insight")
+                    Spacer()
+                    if let source = insight?.source {
+                        Label(source.label, systemImage: source == .onDevice ? "cpu" : "checkmark.seal")
+                            .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
+                    }
+                }
+                Text(insight?.text ?? "Reading your recent entries…")
+                    .font(.system(size: 15))
+                    .foregroundStyle(insight == nil ? Clinical.tertiary : Clinical.ink)
+                Text("For record-keeping, not diagnosis.")
+                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                Button("Deep analysis with photos") { showDeepAnalysis = true }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Clinical.accent)
+                    .padding(.top, 2)
+            }
         }
     }
 

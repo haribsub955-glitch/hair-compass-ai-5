@@ -237,3 +237,123 @@ enum SeverityBand: Int {
         }
     }
 }
+
+// MARK: - Evidence tiers & the tracked-variable catalog
+// The app's identity is honest uncertainty: every signal shows its evidence tier, and myths
+// are named and excluded (see docs/TrackingSpec.md + the 2026-07-02 targeted evidence pass).
+
+/// How much the 2020–2026 literature actually supports a variable's link to hair loss.
+enum EvidenceTier: Int, Codable, CaseIterable, Identifiable {
+    case strong, moderate, weak, context
+    var id: Int { rawValue }
+    var title: String {
+        switch self {
+        case .strong: return "Strong evidence"
+        case .moderate: return "Moderate evidence"
+        case .weak: return "Weak signal"
+        case .context: return "Context only"
+        }
+    }
+    var short: String {
+        switch self {
+        case .strong: return "Strong"
+        case .moderate: return "Moderate"
+        case .weak: return "Weak"
+        case .context: return "Context"
+        }
+    }
+}
+
+/// Whether a value comes from HealthKit/a wearable automatically, or is entered by hand.
+enum CaptureMode {
+    case auto, manual
+    var badge: String { self == .auto ? "Auto from Health" : "Manual" }
+    var symbol: String { self == .auto ? "heart.text.square" : "hand.tap" }
+}
+
+/// Episodic telogen-effluvium context. Diffuse shedding follows a trigger by ~2–3 months, so
+/// these are dated events, not daily fields.
+enum TriggerType: String, Codable, CaseIterable, Identifiable {
+    case crashDiet, illness, majorStress, childbirth, newMedication, other
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .crashDiet: return "Crash diet / big weight loss"
+        case .illness: return "Illness or fever"
+        case .majorStress: return "Major stress event"
+        case .childbirth: return "Childbirth"
+        case .newMedication: return "New medication"
+        case .other: return "Other trigger"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .crashDiet: return "fork.knife"
+        case .illness: return "thermometer.medium"
+        case .majorStress: return "bolt.heart"
+        case .childbirth: return "figure.2.and.child.holdinghands"
+        case .newMedication: return "pills"
+        case .other: return "calendar.badge.exclamationmark"
+        }
+    }
+}
+
+/// One row of the tracked-variable catalog — the single source of truth the UX layer reads to
+/// render a label, an evidence tier, a capture badge, and a "why this matters" line.
+struct TrackedVariable: Identifiable {
+    let id: String
+    let title: String
+    let tier: EvidenceTier
+    let capture: CaptureMode
+    let why: String
+
+    static let catalog: [TrackedVariable] = [
+        .init(id: "shedding", title: "Shedding", tier: .moderate, capture: .manual,
+              why: "The core patient-tracked signal for telogen effluvium and pattern loss. Trended over time."),
+        .init(id: "scalp", title: "Scalp severity", tier: .strong, capture: .manual,
+              why: "Flaking, redness and itch form a validated 16-point seborrheic-dermatitis score (Zhang 2023)."),
+        .init(id: "oiliness", title: "Scalp oiliness", tier: .weak, capture: .manual,
+              why: "An observation, not a risk driver. Sebum tracks with hormones but isn't independently actionable."),
+        .init(id: "sleep", title: "Sleep", tier: .moderate, capture: .auto,
+              why: "Poor sleep is linked to pattern-loss progression (not presence). Timed, never framed as a cause."),
+        .init(id: "stress", title: "Stress", tier: .context, capture: .manual,
+              why: "A common shedding-trigger context. Lower-tier evidence — shown as context, not cause."),
+        .init(id: "hrv", title: "Recovery (HRV)", tier: .context, capture: .auto,
+              why: "An objective stress/recovery proxy. No direct evidence it predicts hair loss — a soft signal only."),
+        .init(id: "cigarettes", title: "Smoking", tier: .strong, capture: .manual,
+              why: "A genuine, quantified risk factor for pattern loss (ever-smoker pooled OR ~1.8)."),
+        .init(id: "alcohol", title: "Alcohol", tier: .weak, capture: .manual,
+              why: "A possible modest association — not proven. The pooled effect isn't statistically significant."),
+        .init(id: "weight", title: "Body weight", tier: .moderate, capture: .auto,
+              why: "Linked to metabolic factors in pattern loss; rapid loss can trigger shedding ~2–3 months later."),
+        .init(id: "diet", title: "Diet quality", tier: .weak, capture: .manual,
+              why: "A vegetable-forward pattern shows a protective association; crash diets can trigger shedding."),
+        .init(id: "traction", title: "Hair-care tension", tier: .strong, capture: .manual,
+              why: "Tight styles, heat and chemical treatment cause traction alopecia — preventable, reversible early."),
+    ]
+
+    static subscript(_ id: String) -> TrackedVariable? {
+        catalog.first { $0.id == id }
+    }
+}
+
+/// Variables we deliberately DO NOT track, named in-app so the app's honesty is visible —
+/// the same stance docs/TrackingSpec.md takes toward zinc and biotin.
+enum ExcludedMyth: String, CaseIterable, Identifiable {
+    case water, caffeine, exercise
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .water: return "Water intake"
+        case .caffeine: return "Dietary caffeine"
+        case .exercise: return "Exercise level"
+        }
+    }
+    var reason: String {
+        switch self {
+        case .water: return "No evidence links hydration to hair loss."
+        case .caffeine: return "Drinking coffee has no proven effect — topical-caffeine studies don't transfer to intake."
+        case .exercise: return "No credible evidence that exercise causes or prevents hair loss."
+        }
+    }
+}

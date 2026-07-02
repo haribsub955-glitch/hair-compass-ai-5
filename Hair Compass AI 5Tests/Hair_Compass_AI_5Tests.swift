@@ -85,6 +85,66 @@ struct Hair_Compass_AI_5Tests {
         #expect(smoothed[3] == 5)
     }
 
+    // MARK: - Rapid weight loss (telogen-effluvium trigger)
+
+    @Test func rapidWeightLossFlagsMeaningfulDrop() throws {
+        let cal = Calendar.current
+        let now = Date.now
+        // 80kg → 74kg over the window = 7.5% drop, above the 5% threshold.
+        let samples: [(date: Date, massKg: Double)] = [
+            (cal.date(byAdding: .day, value: -60, to: now)!, 80),
+            (cal.date(byAdding: .day, value: -30, to: now)!, 77),
+            (cal.date(byAdding: .day, value: -2, to: now)!, 74)
+        ]
+        let pct = try #require(HairAnalytics.rapidWeightLossPercent(samples: samples, now: now))
+        #expect(abs(pct - 7.5) < 0.001)
+    }
+
+    @Test func rapidWeightLossIgnoresSmallOrStableChange() {
+        let cal = Calendar.current
+        let now = Date.now
+        let samples: [(date: Date, massKg: Double)] = [
+            (cal.date(byAdding: .day, value: -60, to: now)!, 80),
+            (cal.date(byAdding: .day, value: -2, to: now)!, 79) // 1.25% — below threshold
+        ]
+        #expect(HairAnalytics.rapidWeightLossPercent(samples: samples, now: now) == nil)
+    }
+
+    @Test func rapidWeightLossIgnoresReadingsOutsideWindow() {
+        let cal = Calendar.current
+        let now = Date.now
+        // Only an old reading and a recent one 6 months apart — the old one is outside 90 days.
+        let samples: [(date: Date, massKg: Double)] = [
+            (cal.date(byAdding: .day, value: -180, to: now)!, 90),
+            (cal.date(byAdding: .day, value: -2, to: now)!, 74)
+        ]
+        #expect(HairAnalytics.rapidWeightLossPercent(samples: samples, now: now) == nil)
+    }
+
+    // MARK: - New daily fields
+
+    @Test func dailyEntryStoresOilinessAndAlcohol() {
+        let entry = DailyEntry(alcoholDrinks: 2, oiliness: 3)
+        #expect(entry.alcoholDrinks == 2)
+        #expect(entry.oiliness == 3)
+        // Oiliness must not feed the validated scalp score.
+        #expect(entry.scalpTotal == 0)
+    }
+
+    @Test func profileFlagsTractionRisk() {
+        #expect(Profile().hasTractionRisk == false)
+        #expect(Profile(usesHeat: true).hasTractionRisk == true)
+    }
+
+    // MARK: - Tracked-variable catalog
+
+    @Test func catalogTiersMatchTheEvidencePass() {
+        #expect(TrackedVariable["oiliness"]?.tier == .weak)   // observation, not a risk driver
+        #expect(TrackedVariable["cigarettes"]?.tier == .strong)
+        #expect(TrackedVariable["hrv"]?.capture == .auto)     // stress proxy, auto-fetched
+        #expect(TrackedVariable["weight"]?.capture == .auto)
+    }
+
     // MARK: - Streak
 
     @Test func loggingStreakCountsConsecutiveDays() {

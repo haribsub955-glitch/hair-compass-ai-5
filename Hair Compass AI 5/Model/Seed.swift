@@ -25,11 +25,13 @@ enum Seed {
             existing.familyHistory = .oneParent
             existing.baselineStage = "Norwood III"
             existing.hasOnboarded = true
+            existing.usesHeat = true
         } else {
             context.insert(Profile(
                 name: "Demo", sex: .male, ageBand: "26–35",
                 condition: .androgenetic, familyHistory: .oneParent,
-                baselineStage: "Norwood III", hasOnboarded: true
+                baselineStage: "Norwood III", hasOnboarded: true,
+                usesHeat: true
             ))
         }
 
@@ -63,9 +65,24 @@ enum Seed {
                 sleepQuality: min(5, max(1, Int((3.2 + progress * 1.2 + noise * 0.1).rounded()))),
                 stress: min(5, max(1, Int((3.6 - progress * 1.1).rounded()))),
                 cigarettes: 0,
+                alcoholDrinks: offset % 6 == 0 ? 2 : 0,
+                oiliness: clampBand(1.4 - progress * 0.6),
                 note: ""
             )
             context.insert(entry)
+
+            // A weekly HealthKit-style snapshot so Trends/AI have auto data to work with.
+            if offset % 7 == 0 {
+                context.insert(HealthSnapshot(
+                    date: day,
+                    sleepHours: 6.4 + progress * 1.0 + noise * 0.05,
+                    hrvSDNN: 42 + progress * 12 + noise,
+                    restingHR: 64 - progress * 4,
+                    bodyMassKg: 78 - progress * 1.5,
+                    bmi: 24.1 - progress * 0.4,
+                    dietaryProteinG: 90 + progress * 20
+                ))
+            }
 
             // Log doses with realistic ~85% adherence.
             if offset % 7 != 3 {
@@ -81,5 +98,9 @@ enum Seed {
         context.insert(LabResult(test: .ferritin, value: 38, collectedAt: start, note: "Baseline"))
         context.insert(LabResult(test: .tsh, value: 2.1, collectedAt: start))
         context.insert(LabResult(test: .vitaminD, value: 24, collectedAt: start, note: "Flagged low"))
+
+        // A dated shedding trigger ~10 weeks back, so the TE-lag readout has something to show.
+        let triggerDate = calendar.date(byAdding: .day, value: -70, to: today) ?? today
+        context.insert(TriggerEvent(type: .illness, date: triggerDate, note: "Flu, ran a fever for several days"))
     }
 }

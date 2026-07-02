@@ -16,6 +16,8 @@ struct LogSheet: View {
     @State private var sleepQuality = 3
     @State private var stress = 3
     @State private var cigarettes = 0
+    @State private var alcoholDrinks = 0
+    @State private var oiliness = 0
     @State private var note = ""
 
     private var scalpTotal: Int { HairAnalytics.scalpTotal(flaking: flaking, erythema: erythema, itch: itch) }
@@ -25,7 +27,7 @@ struct LogSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
-                    section("Shedding") {
+                    section(variable: "shedding") {
                         ClinicalSegmented(
                             options: ShedLevel.allCases,
                             label: { $0.title },
@@ -36,7 +38,7 @@ struct LogSheet: View {
                             .foregroundStyle(Clinical.secondary)
                     }
 
-                    section("Scalp signs") {
+                    section(variable: "scalp") {
                         VStack(spacing: 16) {
                             PipStepper(title: "Flaking", caption: flakingCaption, range: 0...3, value: $flaking)
                             PipStepper(title: "Redness", caption: level3Caption(erythema), range: 0...3, value: $erythema)
@@ -52,6 +54,13 @@ struct LogSheet: View {
                                 .foregroundStyle(Clinical.bandColor(scalpBand))
                         }
                         .padding(.top, 2)
+
+                        Divider().overlay(Clinical.hairline).padding(.vertical, 2)
+
+                        PipStepper(title: "Oiliness", caption: oilinessCaption, range: 0...3, value: $oiliness, tint: Clinical.gold)
+                        Text("An observation, not a risk driver — it doesn't feed the severity score.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Clinical.tertiary)
                     }
 
                     section("Wellbeing") {
@@ -70,6 +79,20 @@ struct LogSheet: View {
                                     .foregroundStyle(cigarettes > 0 ? Clinical.warning : Clinical.tertiary)
                             }
                         }
+                        Stepper(value: $alcoholDrinks, in: 0...30) {
+                            HStack {
+                                Text("Alcoholic drinks")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(Clinical.ink)
+                                Spacer()
+                                Text("\(alcoholDrinks)")
+                                    .font(Clinical.number(15))
+                                    .foregroundStyle(Clinical.tertiary)
+                            }
+                        }
+                        Text("Smoking is a strong, quantified risk factor. Sleep and stress are context; alcohol is a weak signal.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Clinical.tertiary)
                     }
 
                     section("Note") {
@@ -106,6 +129,9 @@ struct LogSheet: View {
     private var flakingCaption: String {
         ["None", "Powdery", "Visible", "Adherent"][min(max(flaking, 0), 3)]
     }
+    private var oilinessCaption: String {
+        ["Normal", "Slightly oily", "Oily", "Very oily"][min(max(oiliness, 0), 3)]
+    }
     private func level3Caption(_ v: Int) -> String {
         ["None", "Mild", "Moderate", "Marked"][min(max(v, 0), 3)]
     }
@@ -114,6 +140,14 @@ struct LogSheet: View {
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Eyebrow(text: title)
+            content()
+        }
+    }
+
+    @ViewBuilder
+    private func section<Content: View>(variable id: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VariableSectionHeader(variableID: id)
             content()
         }
     }
@@ -127,6 +161,8 @@ struct LogSheet: View {
         sleepQuality = e.sleepQuality
         stress = e.stress
         cigarettes = e.cigarettes
+        alcoholDrinks = e.alcoholDrinks
+        oiliness = e.oiliness
         note = e.note
     }
 
@@ -145,6 +181,8 @@ struct LogSheet: View {
         target.sleepQuality = sleepQuality
         target.stress = stress
         target.cigarettes = cigarettes
+        target.alcoholDrinks = alcoholDrinks
+        target.oiliness = oiliness
         target.note = note
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
