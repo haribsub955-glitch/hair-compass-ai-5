@@ -145,6 +145,69 @@ struct Hair_Compass_AI_5Tests {
         #expect(TrackedVariable["weight"]?.capture == .auto)
     }
 
+    // MARK: - Routine planner (Plan)
+
+    @Test func routineGroupsSlotsIntoTimeBlocks() {
+        let steps = RoutinePlanner.steps(
+            treatments: [
+                (id: "1", name: "Minoxidil", symbol: "drop.fill", slots: ["08:00", "21:00"], isActive: true, treatmentClass: .minoxidil),
+                (id: "2", name: "PRP", symbol: "syringe.fill", slots: [], isActive: true, treatmentClass: .prp),
+                (id: "3", name: "Old", symbol: "x", slots: ["09:00"], isActive: false, treatmentClass: .other)
+            ],
+            loggedSlots: ["1|08:00"]
+        )
+        #expect(steps[.morning]?.count == 1)      // 08:00 minoxidil
+        #expect(steps[.evening]?.count == 1)      // 21:00 minoxidil
+        #expect(steps[.periodic]?.count == 1)     // PRP
+        #expect(steps[.morning]?.first?.done == true)   // logged
+        #expect(steps[.evening]?.first?.done == false)  // not logged
+        // Inactive treatment is excluded entirely.
+        #expect((steps[.morning] ?? []).allSatisfy { $0.treatmentName != "Old" })
+    }
+
+    @Test func dailyProgressCountsNonPeriodicSteps() {
+        let steps = RoutinePlanner.steps(
+            treatments: [(id: "1", name: "Minox", symbol: "d", slots: ["08:00", "21:00"], isActive: true, treatmentClass: .minoxidil)],
+            loggedSlots: ["1|08:00"]
+        )
+        let p = RoutinePlanner.dailyProgress(steps)
+        #expect(p.done == 1)
+        #expect(p.total == 2)
+    }
+
+    // MARK: - Adherence coach
+
+    @Test func coachReflectsRemainingSteps() {
+        let done = AdherenceCoach.message(doneToday: 2, totalToday: 2, streak: 5, weeklyAdherence: nil)
+        #expect(done.headline == "Today's routine is done")
+        let left = AdherenceCoach.message(doneToday: 1, totalToday: 3, streak: 0, weeklyAdherence: nil)
+        #expect(left.headline == "2 steps left today")
+        let one = AdherenceCoach.message(doneToday: 2, totalToday: 3, streak: 0, weeklyAdherence: nil)
+        #expect(one.headline == "1 step left today")
+    }
+
+    // MARK: - Milestones
+
+    @Test func milestonesDetectStreakAndTreatmentMarks() {
+        let m = Milestones.achieved(streak: 7, treatments: [(name: "Minox", weeks: 26), (name: "Fin", weeks: 13)])
+        #expect(m.contains { $0.id == "streak-7" })
+        #expect(m.contains { $0.id == "ready-Minox" })   // >= 24 weeks
+        #expect(m.contains { $0.id == "half-Fin" })       // 12..<24
+        // Below the first threshold, no streak milestone.
+        #expect(Milestones.achieved(streak: 2, treatments: []).isEmpty)
+    }
+
+    // MARK: - Learn library integrity
+
+    @Test func learnLibraryCoversEveryCategoryWithUniqueIDs() {
+        for category in LearnCategory.allCases {
+            #expect(!LearnLibrary.cards(in: category).isEmpty)
+        }
+        let ids = LearnLibrary.cards.map(\.id)
+        #expect(Set(ids).count == ids.count)                       // unique ids
+        #expect(LearnLibrary.cards(in: .myths).allSatisfy { $0.isMyth })
+    }
+
     // MARK: - Streak
 
     @Test func loggingStreakCountsConsecutiveDays() {

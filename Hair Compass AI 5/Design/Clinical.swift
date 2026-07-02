@@ -68,6 +68,13 @@ enum BrandArt {
     static let todayHero = "hero-today"
     static let baselineHero = "hero-baseline"
     static let photosEmpty = "hero-photos-empty"
+
+    // Learn-library category art (generated in the same painterly gouache style).
+    static let learnBasics = "learn-basics"
+    static let learnConditions = "learn-conditions"
+    static let learnTreatments = "learn-treatments"
+    static let learnMyths = "learn-myths"
+    static let learnDailyCare = "learn-dailycare"
 }
 
 // MARK: - Reusable structure

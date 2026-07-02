@@ -17,6 +17,7 @@ struct TodayView: View {
     @State private var showLog = false
     @State private var insight: DailyInsight?
     @State private var showDeepAnalysis = false
+    @State private var showLearn = false
 
     private var calendar: Calendar { .current }
     private var todayEntry: DailyEntry? {
@@ -37,6 +38,7 @@ struct TodayView: View {
                 logCard
                 insightCard
                 if !activeDaily.isEmpty { treatmentsCard }
+                learnStrip
                 readoutCard
                 if let profile { baselineCard(profile) }
                 statusCard
@@ -47,12 +49,47 @@ struct TodayView: View {
         }
         .clinicalScreen()
         .task(id: insightFingerprint) { await refreshInsight() }
+        .onAppear {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("HC_LEARN") { showLearn = true }
+            #endif
+        }
         .sheet(isPresented: $showLog) {
             LogSheet(existing: todayEntry, condition: profile?.condition ?? .unsure)
         }
         .sheet(isPresented: $showDeepAnalysis) {
             DeepAnalysisSheet(context: buildContext(), images: analysisImages())
         }
+        .sheet(isPresented: $showLearn) {
+            NavigationStack {
+                LearnView()
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showLearn = false } } }
+            }
+        }
+    }
+
+    // MARK: - Learn strip (flash cards)
+
+    private var learnStrip: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Eyebrow(text: "Learn")
+                Spacer()
+                Button("See all") { showLearn = true }
+                    .font(Clinical.eyebrow(11)).foregroundStyle(Clinical.accent)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(learnPreview) { card in
+                        FlashCardView(card: card).frame(width: 250)
+                    }
+                }
+            }
+        }
+    }
+
+    private var learnPreview: [FlashCard] {
+        Array(LearnLibrary.cards.prefix(6))
     }
 
     // MARK: - Insight (hybrid: on-device AI, deterministic fallback)

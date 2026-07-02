@@ -8,7 +8,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .today: return "Today"
         case .trends: return "Trends"
-        case .care: return "Care"
+        case .care: return "Plan"
         case .labs: return "Labs"
         case .photos: return "Photos"
         }
@@ -17,7 +17,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .today: return "checkmark.circle"
         case .trends: return "chart.xyaxis.line"
-        case .care: return "cross.case"
+        case .care: return "checklist"
         case .labs: return "testtube.2"
         case .photos: return "camera"
         }
@@ -33,6 +33,7 @@ struct RootView: View {
     @State private var didBootstrap = false
     @State private var showOnboarding = false
     @State private var healthKit = HealthKitService()
+    @State private var notifications = NotificationService()
 
     private var profile: Profile? { profiles.first }
 
@@ -61,6 +62,7 @@ struct RootView: View {
             TabBar(selection: $tab)
         }
         .environment(healthKit)
+        .environment(notifications)
         .task {
             guard !didBootstrap else { return }
             didBootstrap = true

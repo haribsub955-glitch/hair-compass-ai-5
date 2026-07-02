@@ -144,6 +144,50 @@ Iterate over every entry surface — `TodayView`, `LogSheet`, `CareView`, `LabsV
 - Build + launch verification in the iPhone 17 Pro simulator after each phase; screenshot each affected tab (`HC_TAB`, `HC_SEED_DEMO` debug args).
 - Full suite (`xcodebuild test`) at the end of each phase.
 
+## Phase 6 (approved 2026-07-02): Plan, coaching & the Learn library
+
+User direction: the tool should help a person know what to do (procedures/medication/daily
+routine), keep them adherent, and encourage them — "tracking of a new level." Decisions locked:
+**gentle-educator** posture (educate + rank evidence, never prescribe; clinician-referral framing),
+**local reminders + milestones**, **routine + coaching first** (personalized treatment recommender
+is phase 7). Added in the same breath: a **flash-card Learn library** (beautiful, nano-banana art,
+Stitch-informed layout) and a gap analysis.
+
+### 6a · Routine (protocol builder)
+Care tab becomes **Plan**. From the user's own treatments, build the day's checklist grouped
+Morning / Evening / Periodic; each step carries plain application guidance from a per-class
+`TreatmentGuide` content library ("typical practice — follow your product's label and clinician"),
+checking a step logs the dose (same `TreatmentDose` data as before).
+
+### 6b · Coach + milestones
+Deterministic `AdherenceCoach` (pure, unit-tested): today's remaining steps, streak encouragement,
+weekly adherence read, and milestones — streaks (3/7/14/30/100), the 24-week "results are now fair
+to judge" gate, halfway mark. Celebrated in-app on Plan + a coach line on Today.
+
+### 6c · Reminders (local notifications)
+`NotificationService` wraps UNUserNotificationCenter: repeating daily notifications at each active
+daily treatment's slot times + a gentle evening log reminder. One toggle on Plan asks permission and
+schedules; reschedules whenever treatments change. On-device only.
+
+### 6d · Learn (flash cards)
+Evidence-based flash cards in five categories — Basics, Conditions, Treatments, Myths, Daily care —
+each card front = question, back = the evidence-aligned answer + tier badge; content mirrors
+docs/TrackingSpec.md (incl. the named myths). Category art generated with nano_banana_pro in the
+established gouache brand style; layout informed by a Stitch concept. Entry: a Learn carousel on
+Today + full browser.
+
+### 6e · Gap analysis (what the tool still needs — priority order)
+1. **Clinician export** — one-tap plain-text/PDF summary (baseline, trends, adherence, labs,
+   trigger timeline) to bring to an appointment. Old app had this; the rebuild dropped it. High value.
+2. **Data backup/export** — the store is device-local; no iCloud backup or CSV/JSON export yet.
+3. **Widget refresh** — the CheckIn widget reads the old snapshot shape; update it to streak +
+   today's remaining plan steps.
+4. **Treatment recommender (phase 7)** — gentle-educator, evidence-ranked options for the user's
+   stated pattern with contraindication flags + "discuss with your clinician" gate.
+5. **Photo reminders** — monthly "capture your five regions" prompt tied to the guided camera.
+6. **App Store readiness** — privacy policy/support URLs, App Privacy labels (HealthKit + photos +
+   optional cloud AI), paywall decision for Fable deep-analysis (per-request cost).
+
 ## Explicitly out of scope
 
 - Direct Whoop API integration (deferred; `SignalSource` leaves the seam).
