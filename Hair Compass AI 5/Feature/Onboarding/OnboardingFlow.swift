@@ -151,6 +151,8 @@ struct OnboardingFlow: View {
     private var sexStep: some View {
         VStack(spacing: 0) {
             head("About you", "Your biological sex", "It sets the staging scale we compare against.")
+            StagingScalePreview(sex: profile.sex)
+                .padding(.horizontal, 20).padding(.top, 8)
             Spacer()
             VStack(spacing: 12) {
                 ForEach(BiologicalSex.allCases) { s in
