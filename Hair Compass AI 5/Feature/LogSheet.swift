@@ -61,28 +61,8 @@ struct LogSheet: View {
                             PipStepper(title: "Sleep quality", caption: "\(sleepQuality)/5", range: 1...5, value: $sleepQuality, tint: Clinical.ink)
                             PipStepper(title: "Stress", caption: "\(stress)/5", range: 1...5, value: $stress, tint: Clinical.ink)
                         }
-                        Stepper(value: $cigarettes, in: 0...60) {
-                            HStack {
-                                Text("Cigarettes today")
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(Clinical.ink)
-                                Spacer()
-                                Text("\(cigarettes)")
-                                    .font(Clinical.number(15))
-                                    .foregroundStyle(cigarettes > 0 ? Clinical.warning : Clinical.tertiary)
-                            }
-                        }
-                        Stepper(value: $alcoholDrinks, in: 0...30) {
-                            HStack {
-                                Text("Alcoholic drinks")
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(Clinical.ink)
-                                Spacer()
-                                Text("\(alcoholDrinks)")
-                                    .font(Clinical.number(15))
-                                    .foregroundStyle(Clinical.tertiary)
-                            }
-                        }
+                        CountScrubber(title: "Cigarettes today", value: $cigarettes, range: 0...60, tint: Clinical.warning, motif: .smoke)
+                        CountScrubber(title: "Alcoholic drinks", value: $alcoholDrinks, range: 0...30, tint: Clinical.secondary, motif: .drops)
                         Text("Smoking is a strong, quantified risk factor. Sleep and stress are context; alcohol is a weak signal.")
                             .font(.system(size: 11))
                             .foregroundStyle(Clinical.tertiary)
