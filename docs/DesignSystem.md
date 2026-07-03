@@ -60,6 +60,13 @@ full-bleed square asset, so any pre-baked rounding shows as a corner artifact. V
 sampling corner pixels with a small CoreGraphics script; fixed by explicitly prompting for
 "full-bleed square, sharp 90° corners, background extends to all four corners."
 
+## Redesign v2 (2026-07-03) — layout polish, same tokens
+An external design handoff ([docs/design-handoff-v2/](design-handoff-v2/)) upgraded four screens
+without changing any token: **Today** merges the header into a full-bleed hero and combines the
+daily-log + routine into one card (readout/baseline cards dropped); **Plan**'s coach card gained a
+copper progress ring; **Labs** results became reference-range gauges; **Photos** gained an inline
+drag-to-compare slider (the separate full-screen compare view was removed).
+
 ## What changed from clinical-minimal
 - No more hairline-only depth — soft shadows are back, deliberately.
 - No more flat blue accent — copper/terracotta carries the same job.

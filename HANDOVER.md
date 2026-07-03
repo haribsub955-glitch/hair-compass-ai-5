@@ -100,6 +100,19 @@ hair strands + compass rose), generated with `nano_banana_pro` (Higgsfield MCP).
 treatments,supplements,myths,dailycare}`. **App-icon gotcha:** generated icon art can bake in its own
 rounded corners; prompt for "full-bleed square, sharp 90° corners" and verify corner pixels.
 
+### Redesign v2 (2026-07-03, incorporated)
+A layout-level polish pass from an external design handoff (preserved in
+[docs/design-handoff-v2/](docs/design-handoff-v2/) — README with per-file snippets + an interactive
+HTML prototype). Same tokens, no new dependencies. Four screen upgrades, all shipped:
+- **Today** — the greeting sits *inside* a full-bleed hero (gradient-faded to canvas), profile button
+  + streak chip float over it; the daily-log stats and today's routine share one card; the old
+  standalone readout + baseline cards are gone (consolidated into Plan/profile).
+- **Plan** — the coach card shows a copper **progress ring** instead of a bar.
+- **Labs** — each result reads as a **reference-range gauge** (value dot on a 0→high axis with the
+  healthy band shaded).
+- **Photos** — an inline **drag-to-compare** before/after slider replaced the two-thumbnail card
+  (and the separate full-screen `PhotoCompareView`, now removed).
+
 ---
 
 ## 4. Architecture

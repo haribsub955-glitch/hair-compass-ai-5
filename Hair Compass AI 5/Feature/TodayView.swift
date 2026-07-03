@@ -32,20 +32,18 @@ struct TodayView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                heroBanner
-                logCard
-                insightCard
-                if !activeDaily.isEmpty { treatmentsCard }
-                learnStrip
-                readoutCard
-                if let profile { baselineCard(profile) }
-                statusCard
+            VStack(alignment: .leading, spacing: 0) {
+                heroHeader
+                VStack(alignment: .leading, spacing: 16) {
+                    logCard
+                    insightCard
+                    learnStrip
+                    statusCard
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 110)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 110)
         }
         .clinicalScreen()
         .task(id: insightFingerprint) { await refreshInsight() }
@@ -148,33 +146,46 @@ struct TodayView: View {
         }
     }
 
-    private var header: some View {
-        ScreenHeader(
-            eyebrow: Date.now.formatted(.dateTime.weekday(.wide).month().day()).uppercased(),
-            title: greeting,
-            trailing: AnyView(
-                Button(action: onOpenBaseline) {
-                    Image(systemName: "person.circle")
-                        .font(.system(size: 26, weight: .regular))
-                        .foregroundStyle(Clinical.ink)
+    /// Redesign v2: the greeting sits *inside* a full-bleed hero, with the profile button and the
+    /// streak chip floating over it — one block instead of a separate header + banner.
+    private var heroHeader: some View {
+        ZStack(alignment: .bottomLeading) {
+            Image(BrandArt.todayHero)
+                .resizable().aspectRatio(contentMode: .fill)
+                .frame(height: 224).frame(maxWidth: .infinity).clipped()
+            LinearGradient(
+                colors: [Clinical.canvas.opacity(0.06), Clinical.canvas.opacity(0.72), Clinical.canvas],
+                startPoint: .top, endPoint: .bottom
+            )
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: onOpenBaseline) {
+                        Image(systemName: "person.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundStyle(Clinical.ink.opacity(0.85), Clinical.surface.opacity(0.9))
+                    }
                 }
-            )
-        )
-        .padding(.top, 8)
-    }
+                Spacer()
+            }
+            .padding(.horizontal, 20).padding(.top, 14)
 
-    private var heroBanner: some View {
-        Image(BrandArt.todayHero)
-            .resizable()
-            .aspectRatio(contentMode: .fill)
-            .frame(maxWidth: .infinity)
-            .frame(height: 120)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Clinical.hairline, lineWidth: 1)
-            )
-            .shadow(color: Clinical.cardShadow, radius: 12, y: 5)
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(Date.now.formatted(.dateTime.weekday(.wide).month().day()).uppercased())
+                        .font(Clinical.eyebrow(10)).tracking(1.4).foregroundStyle(Clinical.secondary)
+                    Text(greeting).font(Clinical.headline(31)).foregroundStyle(Clinical.ink)
+                }
+                Spacer()
+                Label("\(streak)-day streak", systemImage: "flame.fill")
+                    .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(Clinical.surface.opacity(0.85), in: Capsule())
+                    .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+            }
+            .padding(.horizontal, 20).padding(.bottom, 10)
+        }
+        .frame(height: 224)
     }
 
     private var greeting: String {
@@ -184,16 +195,11 @@ struct TodayView: View {
         return name.isEmpty ? part : "\(part), \(name)"
     }
 
+    /// Redesign v2: log stats and today's routine live in ONE card, not two.
     private var logCard: some View {
         ClinicalCard {
             VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Eyebrow(text: "Daily log")
-                    Spacer()
-                    Label("\(streak)-day streak", systemImage: "flame")
-                        .font(Clinical.eyebrow(11))
-                        .foregroundStyle(streak > 0 ? Clinical.accent : Clinical.tertiary)
-                }
+                Eyebrow(text: "Daily log")
                 if let entry = todayEntry {
                     HStack(spacing: 18) {
                         miniStat("\(entry.shed.title)", "Shedding")
@@ -211,6 +217,19 @@ struct TodayView: View {
                     Button("Log today") { showLog = true }
                         .buttonStyle(ClinicalButtonStyle())
                 }
+
+                if !activeDaily.isEmpty {
+                    Divider().overlay(Clinical.hairline).padding(.vertical, 2)
+                    Eyebrow(text: "Today's routine")
+                    ForEach(activeDaily) { treatment in
+                        ForEach(treatment.slots, id: \.self) { slot in
+                            treatmentRow(treatment, slot: slot)
+                            if !(treatment.id == activeDaily.last?.id && slot == treatment.slots.last) {
+                                Divider().overlay(Clinical.hairline)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -226,22 +245,6 @@ struct TodayView: View {
                 .foregroundStyle(Clinical.tertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var treatmentsCard: some View {
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Eyebrow(text: "Today's treatments")
-                ForEach(activeDaily) { treatment in
-                    ForEach(treatment.slots, id: \.self) { slot in
-                        treatmentRow(treatment, slot: slot)
-                        if !(treatment.id == activeDaily.last?.id && slot == treatment.slots.last) {
-                            Divider().overlay(Clinical.hairline)
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private func treatmentRow(_ treatment: Treatment, slot: String) -> some View {
@@ -274,71 +277,6 @@ struct TodayView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private var readoutCard: some View {
-        let condition = profile?.condition ?? .unsure
-        return ClinicalCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Eyebrow(text: "Current readout")
-                if let entry = latestEntry {
-                    if condition.usesScalpScale {
-                        readoutRow(
-                            "Scalp severity",
-                            value: "\(entry.scalpTotal)/16 · \(entry.scalpBand.title)",
-                            color: Clinical.bandColor(entry.scalpBand)
-                        )
-                    }
-                    readoutRow("Shedding", value: entry.shed.title, color: Clinical.ink)
-                    readoutRow("Recorded", value: entry.date.formatted(.dateTime.month().day()), color: Clinical.secondary)
-                } else {
-                    Text("No entries yet. Your readout appears after the first daily log.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Clinical.secondary)
-                }
-            }
-        }
-    }
-
-    private var latestEntry: DailyEntry? { entries.first }
-
-    private func readoutRow(_ label: String, value: String, color: Color) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 14))
-                .foregroundStyle(Clinical.secondary)
-            Spacer()
-            Text(value)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(color)
-        }
-    }
-
-    private func baselineCard(_ profile: Profile) -> some View {
-        let notes = HairAnalytics.baselineRiskNotes(familyHistory: profile.familyHistory, condition: profile.condition)
-        return ClinicalCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Eyebrow(text: "Baseline")
-                    Spacer()
-                    Text(profile.condition.shortLabel)
-                        .font(Clinical.eyebrow(11))
-                        .foregroundStyle(Clinical.accent)
-                }
-                ForEach(notes, id: \.self) { note in
-                    HStack(alignment: .top, spacing: 8) {
-                        Circle().fill(Clinical.tertiary).frame(width: 4, height: 4).padding(.top, 7)
-                        Text(note)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Clinical.secondary)
-                    }
-                }
-                Button("Edit baseline") { onOpenBaseline() }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Clinical.accent)
-                    .padding(.top, 2)
-            }
-        }
     }
 
     /// A quiet footer confirming the app is current — not decorative copy, an honest

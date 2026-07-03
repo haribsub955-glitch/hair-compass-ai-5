@@ -115,23 +115,39 @@ struct CareView: View {
 
     // MARK: Coach
 
+    /// Redesign v2: progress reads as a ring on the trailing side, not a bar.
     private var coachCard: some View {
         let msg = AdherenceCoach.message(doneToday: doneToday, totalToday: dailySteps.count, streak: streak, weeklyAdherence: nil)
+        let progress = dailySteps.isEmpty ? 0 : Double(doneToday) / Double(dailySteps.count)
         return ClinicalCard {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Eyebrow(text: "Coach")
-                    Spacer()
-                    if streak > 0 {
-                        Label("\(streak)-day streak", systemImage: "flame")
-                            .font(Clinical.eyebrow(11)).foregroundStyle(Clinical.accent)
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Eyebrow(text: "Coach")
+                        if streak > 0 {
+                            Label("\(streak)d", systemImage: "flame")
+                                .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+                        }
                     }
+                    Text(msg.headline).font(Clinical.headline(21)).foregroundStyle(Clinical.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(msg.detail).font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Text(msg.headline).font(Clinical.headline(20)).foregroundStyle(Clinical.ink)
-                Text(msg.detail).font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                Spacer(minLength: 8)
                 if dailySteps.count > 0 {
-                    ProgressBar(value: Double(doneToday) / Double(dailySteps.count))
-                        .frame(height: 8).padding(.top, 2)
+                    ZStack {
+                        Circle().stroke(Clinical.hairline, lineWidth: 7)
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                        VStack(spacing: 1) {
+                            Text("\(doneToday)").font(Clinical.headline(17)).foregroundStyle(Clinical.ink)
+                            Text("OF \(dailySteps.count)").font(Clinical.eyebrow(8)).foregroundStyle(Clinical.tertiary)
+                        }
+                    }
+                    .frame(width: 60, height: 60)
                 }
             }
         }

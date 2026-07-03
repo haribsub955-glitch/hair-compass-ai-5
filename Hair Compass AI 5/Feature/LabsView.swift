@@ -46,26 +46,53 @@ struct LabsView: View {
         .sheet(isPresented: $showAdd) { AddLabSheet() }
     }
 
+    /// Redesign v2: each result reads as a gauge — the value dotted along a 0→high axis with the
+    /// healthy reference band shaded, so "in / below / above range" is visible at a glance.
     private func labRow(_ lab: LabResult) -> some View {
-        // .swipeActions only functions inside a List row — this screen uses a plain
-        // ScrollView, so deletion is a context menu instead (same pattern as Photos/Care).
-        ClinicalCard {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(lab.test.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
-                    Text(lab.collectedAt.formatted(.dateTime.month().day().year()))
-                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                    if !lab.note.isEmpty {
-                        Text(lab.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+        let lo = lab.test.referenceRange.lowerBound
+        let hi = lab.test.referenceRange.upperBound
+        let domainHi = hi * 1.1               // headroom above the range
+        let pct = min(1, max(0, lab.value / domainHi))
+        let bandStart = lo / domainHi
+        let bandWidth = (hi - lo) / domainHi
+
+        return ClinicalCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(lab.test.title).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(Clinical.ink)
+                        Text(lab.collectedAt.formatted(.dateTime.month().day().year()))
+                            .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        if !lab.note.isEmpty {
+                            Text(lab.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        }
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("\(lab.value.formatted(.number.precision(.fractionLength(0...1)))) \(lab.test.unit)")
+                            .font(Clinical.number(17)).foregroundStyle(Clinical.ink)
+                        Text(lab.flag.title).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.flagColor(lab.flag))
                     }
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("\(lab.value.formatted(.number.precision(.fractionLength(0...1)))) \(lab.test.unit)")
-                        .font(Clinical.number(16)).foregroundStyle(Clinical.ink)
-                    Text(lab.flag.title)
-                        .font(Clinical.eyebrow(10))
-                        .foregroundStyle(Clinical.flagColor(lab.flag))
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Clinical.hairline.opacity(0.5)).frame(height: 6).offset(y: 4)
+                        Capsule().fill(Clinical.positive.opacity(0.22))
+                            .frame(width: geo.size.width * bandWidth, height: 6)
+                            .offset(x: geo.size.width * bandStart, y: 4)
+                        Circle().fill(Clinical.flagColor(lab.flag))
+                            .frame(width: 14, height: 14)
+                            .overlay(Circle().stroke(Clinical.surface, lineWidth: 2.5))
+                            .offset(x: min(geo.size.width - 14, max(0, geo.size.width * pct - 7)))
+                    }
+                }
+                .frame(height: 14)
+                HStack {
+                    Text("0").font(Clinical.number(9)).foregroundStyle(Clinical.tertiary)
+                    Spacer()
+                    Text("RANGE \(lo.formatted())–\(hi.formatted())").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.secondary)
+                    Spacer()
+                    Text("\(domainHi.formatted(.number.precision(.fractionLength(0))))").font(Clinical.number(9)).foregroundStyle(Clinical.tertiary)
                 }
             }
         }

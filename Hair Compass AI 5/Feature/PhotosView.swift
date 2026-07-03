@@ -8,7 +8,7 @@ struct PhotosView: View {
 
     @State private var region: PhotoRegion = .frontal
     @State private var showAdd = false
-    @State private var showCompare = false
+    @State private var comparePosition: CGFloat = 0.5
 
     private var regionPhotos: [PhotoRecord] {
         photos.filter { $0.region == region }.sorted { $0.createdAt < $1.createdAt }
@@ -69,11 +69,6 @@ struct PhotosView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { GuidedCaptureView(defaultRegion: region) }
-        .fullScreenCover(isPresented: $showCompare) {
-            if regionPhotos.count >= 2 {
-                PhotoCompareView(before: regionPhotos.first!, after: regionPhotos.last!, region: region)
-            }
-        }
     }
 
     private var regionPicker: some View {
@@ -96,6 +91,7 @@ struct PhotosView: View {
         }
     }
 
+    /// Redesign v2: a draggable before/after slider in place of two side-by-side thumbnails.
     private var compareCard: some View {
         let first = regionPhotos.first!
         let last = regionPhotos.last!
@@ -104,29 +100,51 @@ struct PhotosView: View {
                 HStack {
                     Eyebrow(text: "First vs latest")
                     Spacer()
-                    Button {
-                        showCompare = true
-                    } label: {
-                        Label("Slider", systemImage: "slider.horizontal.below.rectangle")
-                            .font(Clinical.eyebrow(11)).foregroundStyle(Clinical.accent)
-                    }
+                    Text("DRAG TO COMPARE").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.accent)
                 }
-                HStack(spacing: 12) {
-                    comparePane(first, label: "Baseline")
-                    comparePane(last, label: "Latest")
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        thumbImage(last).frame(width: geo.size.width, height: 260)
+                        thumbImage(first)
+                            .frame(width: geo.size.width, height: 260)
+                            .mask(alignment: .leading) { Rectangle().frame(width: geo.size.width * comparePosition) }
+                        Rectangle().fill(Clinical.surface).frame(width: 2)
+                            .offset(x: geo.size.width * comparePosition - 1)
+                            .shadow(radius: 3)
+                        Circle().fill(Clinical.surface).frame(width: 34, height: 34).shadow(radius: 3)
+                            .overlay(Image(systemName: "arrow.left.and.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Clinical.accent))
+                            .position(x: geo.size.width * comparePosition, y: 130)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0).onChanged { v in
+                            comparePosition = min(1, max(0, v.location.x / geo.size.width))
+                        }
+                    )
+                }
+                .frame(height: 260)
+                HStack {
+                    Text("BASELINE · \(first.createdAt.formatted(.dateTime.month().day().year()))")
+                        .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                    Spacer()
+                    Text("LATEST · \(last.createdAt.formatted(.dateTime.month().day().year()))")
+                        .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                 }
             }
         }
     }
 
-    private func comparePane(_ record: PhotoRecord, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            thumb(record, height: 150)
-            Text(label.uppercased()).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-            Text(record.createdAt.formatted(.dateTime.month().day().year()))
-                .font(Clinical.number(12)).foregroundStyle(Clinical.ink)
+    private func thumbImage(_ record: PhotoRecord) -> some View {
+        Group {
+            if let image = PhotoStore.shared.load(record.imagePath) {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Clinical.canvas.overlay(Image(systemName: "photo").foregroundStyle(Clinical.tertiary))
+            }
         }
-        .frame(maxWidth: .infinity)
+        .clipped()
     }
 
     private var grid: some View {

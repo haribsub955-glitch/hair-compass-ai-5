@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&amp;display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #EFE5D7; }
+    @keyframes hcFadeUp { from { transform: translateY(10px); } to { transform: none; } }
+    @keyframes hcSheetUp { from { transform: translateY(28px); } to { transform: none; } }
+    input.hc-compare { -webkit-appearance: none; appearance: none; background: transparent; margin: 0; }
+    input.hc-compare::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 44px; height: 260px; background: transparent; cursor: ew-resize; }
+    input.hc-compare::-moz-range-thumb { width: 44px; height: 260px; background: transparent; border: none; cursor: ew-resize; }
+  </style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px 24px;background:radial-gradient(120% 120% at 50% 0%, #F7EFE3 0%, #EFE5D7 60%, #E9DCCA 100%);">
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ 402 }}" height="{{ 874 }}" hint-size="402px,874px">
+  <div style="height:100%;display:flex;flex-direction:column;position:relative;background:#FBF6EF;overflow:hidden;font-family:-apple-system,system-ui,sans-serif;">
+
+    <div style="flex:1;overflow-y:auto;overflow-x:hidden;">
+
+      <!-- ============ TODAY ============ -->
+      <sc-if value="{{ isToday }}" hint-placeholder-val="{{ true }}">
+        <div data-screen-label="Today" style="animation:hcFadeUp .35s ease both;padding-bottom:24px;">
+          <!-- Immersive hero -->
+          <div style="position:relative;height:224px;">
+            <img src="assets/hero-today.png" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 42%;">
+            <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(251,246,239,0.06) 30%, rgba(251,246,239,0.72) 72%, #FBF6EF 100%);"></div>
+            <div style="position:absolute;left:20px;right:20px;bottom:10px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;">
+              <div style="display:flex;flex-direction:column;gap:5px;">
+                <div style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:#7A6B5D;">Thursday, July 2</div>
+                <div style="font-family:'Source Serif 4',Georgia,serif;font-size:31px;font-weight:700;line-height:1.05;color:#2B211A;">Good morning</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:7px 12px 7px 9px;border-radius:999px;background:rgba(254,252,249,0.85);border:1px solid #EDE1D3;box-shadow:0 4px 12px rgba(90,56,27,0.10);backdrop-filter:blur(8px);">
+                <svg width="14" height="16" viewBox="0 0 14 16"><path d="M7 0.5C7 4 2.4 5.8 2.4 10a4.9 4.9 0 0 0 9.8 0c0-1.8-.9-3.1-1.8-4 0 1.4-.9 2.3-1.8 2.3.5-1.8-.4-5.4-1.6-7.8z" style="fill:#B1592E;"></path></svg>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10.5px;font-weight:600;letter-spacing:0.8px;color:#B1592E;">{{ streakText }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:14px;padding:14px 20px 0;">
+
+            <!-- Daily log -->
+            <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;">Daily log</span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:0.8px;color:#A69687;">≈ 20 SECONDS</span>
+              </div>
+              <sc-if value="{{ logged }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:0;margin-bottom:14px;">
+                  <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+                    <span style="font-size:19px;font-weight:600;color:#2B211A;font-variant-numeric:tabular-nums;">{{ statShed }}</span>
+                    <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:1px;color:#A69687;">SHEDDING</span>
+                  </div>
+                  <div style="width:1px;background:#EDE1D3;margin:0 14px;"></div>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+                    <span style="font-size:19px;font-weight:600;color:#2B211A;font-variant-numeric:tabular-nums;">{{ statScalp }}</span>
+                    <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:1px;color:#A69687;">SCALP</span>
+                  </div>
+                  <div style="width:1px;background:#EDE1D3;margin:0 14px;"></div>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+                    <span style="font-size:19px;font-weight:600;color:#2B211A;font-variant-numeric:tabular-nums;">{{ statSleep }}</span>
+                    <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:1px;color:#A69687;">SLEEP</span>
+                  </div>
+                </div>
+                <div onClick="{{ openSheet }}" style-active="transform:scale(0.98)" style="cursor:pointer;text-align:center;padding:12px;border-radius:14px;border:1.5px solid #B1592E;color:#B1592E;font-size:14px;font-weight:600;">Edit today&#8217;s log</div>
+              </sc-if>
+              <sc-if value="{{ notLogged }}" hint-placeholder-val="{{ true }}">
+                <div style="font-size:14px;line-height:1.45;color:#7A6B5D;margin-bottom:14px;">Shedding, scalp signs, sleep and stress — four taps, once a day.</div>
+                <div onClick="{{ openSheet }}" style-active="transform:scale(0.98)" style="cursor:pointer;text-align:center;padding:14px;border-radius:14px;background:#B1592E;color:#FFF8F0;font-size:15px;font-weight:600;box-shadow:0 8px 20px rgba(177,89,46,0.35);">Log today</div>
+              </sc-if>
+            </div>
+
+            <!-- Routine -->
+            <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;">Today&#8217;s routine</span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:0.8px;color:#B1592E;">{{ doneCount }} OF 4 DONE</span>
+              </div>
+              <div style="display:flex;flex-direction:column;">
+                <sc-for list="{{ todayRows }}" as="row" hint-placeholder-count="4">
+                  <div onClick="{{ row.onToggle }}" style-active="transform:scale(0.99)" style="cursor:pointer;display:flex;align-items:center;gap:13px;padding:11px 0;border-bottom:1px solid #F3EADD;">
+                    <div style="width:24px;height:24px;border-radius:12px;flex-shrink:0;border:1.5px solid {{ row.circleBorder }};background:{{ row.circleBg }};display:flex;align-items:center;justify-content:center;">
+                      <svg width="11" height="9" viewBox="0 0 11 9" style="opacity:{{ row.checkOp }};"><path d="M1 4.5L4 7.5L10 1" style="fill:none;stroke:#B1592E;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:2px;">
+                      <span style="font-size:15px;font-weight:500;color:{{ row.nameColor }};text-decoration:{{ row.nameDeco }};">{{ row.name }}</span>
+                      <span style="font-size:12px;color:#A69687;">{{ row.sub }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- Insight -->
+            <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;">Today&#8217;s insight</span>
+                <span style="display:flex;align-items:center;gap:5px;">
+                  <svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" style="fill:none;stroke:#A69687;stroke-width:1.2;"></rect><path d="M4.5 0v2M7.5 0v2M4.5 10v2M7.5 10v2M0 4.5h2M0 7.5h2M10 4.5h2M10 7.5h2" style="stroke:#A69687;stroke-width:1.2;"></path></svg>
+                  <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:0.8px;color:#A69687;">ON-DEVICE</span>
+                </span>
+              </div>
+              <div style="font-family:'Source Serif 4',Georgia,serif;font-size:17px;font-weight:500;line-height:1.5;color:#2B211A;">Shedding has held in the normal band for three weeks while evening adherence stayed above 90%. Steady — and consistent with an early minoxidil response.</div>
+              <div style="font-size:11px;color:#A69687;margin-top:8px;">For record-keeping, not diagnosis.</div>
+            </div>
+
+            <!-- Learn strip -->
+            <sc-if value="{{ showLearn }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px;">
+                  <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;">Learn</span>
+                  <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:0.8px;color:#B1592E;">SEE ALL</span>
+                </div>
+                <div style="display:flex;gap:12px;overflow-x:auto;margin:0 -20px;padding:2px 20px 10px;">
+                  <div style="flex-shrink:0;width:216px;background:#FEFCF9;border:1px solid #EDE1D3;border-radius:18px;box-shadow:0 5px 14px rgba(90,56,27,0.09);overflow:hidden;">
+                    <img src="assets/learn-basics.png" alt="" style="width:100%;height:92px;object-fit:cover;display:block;">
+                    <div style="padding:12px 14px 14px;">
+                      <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:1px;color:#8A9D7B;margin-bottom:5px;">BASICS</div>
+                      <div style="font-family:'Source Serif 4',Georgia,serif;font-size:15.5px;font-weight:600;color:#2B211A;line-height:1.25;margin-bottom:4px;">Hair grows in cycles</div>
+                      <div style="font-size:12px;line-height:1.4;color:#7A6B5D;">Up to 100 shed hairs a day is normal turnover, not loss.</div>
+                    </div>
+                  </div>
+                  <div style="flex-shrink:0;width:216px;background:#FEFCF9;border:1px solid #EDE1D3;border-radius:18px;box-shadow:0 5px 14px rgba(90,56,27,0.09);overflow:hidden;">
+                    <img src="assets/learn-myths.png" alt="" style="width:100%;height:92px;object-fit:cover;display:block;">
+                    <div style="padding:12px 14px 14px;">
+                      <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:1px;color:#C9A15A;margin-bottom:5px;">MYTHS</div>
+                      <div style="font-family:'Source Serif 4',Georgia,serif;font-size:15.5px;font-weight:600;color:#2B211A;line-height:1.25;margin-bottom:4px;">Hats don&#8217;t cause loss</div>
+                      <div style="font-size:12px;line-height:1.4;color:#7A6B5D;">No evidence everyday wear compresses follicles.</div>
+                    </div>
+                  </div>
+                  <div style="flex-shrink:0;width:216px;background:#FEFCF9;border:1px solid #EDE1D3;border-radius:18px;box-shadow:0 5px 14px rgba(90,56,27,0.09);overflow:hidden;">
+                    <img src="assets/learn-dailycare.png" alt="" style="width:100%;height:92px;object-fit:cover;display:block;">
+                    <div style="padding:12px 14px 14px;">
+                      <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:1px;color:#B1592E;margin-bottom:5px;">DAILY CARE</div>
+                      <div style="font-family:'Source Serif 4',Georgia,serif;font-size:15.5px;font-weight:600;color:#2B211A;line-height:1.25;margin-bottom:4px;">Washing reveals, not causes</div>
+                      <div style="font-size:12px;line-height:1.4;color:#7A6B5D;">Shampooing releases hairs that already detached.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <div style="text-align:center;padding:4px 0 2px;">
+              <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:1.2px;color:#C4B5A3;">UP TO DATE · LAST ENTRY 2 HOURS AGO</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ TRENDS ============ -->
+      <sc-if value="{{ isTrends }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Trends" style="animation:hcFadeUp .35s ease both;padding:74px 20px 24px;display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;">
+            <div style="display:flex;flex-direction:column;gap:5px;">
+              <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:#A69687;">Longitudinal</div>
+              <div style="font-family:'Source Serif 4',Georgia,serif;font-size:30px;font-weight:700;color:#2B211A;">Trends</div>
+            </div>
+            <div onClick="{{ openExport }}" style-active="transform:scale(0.95)" style="cursor:pointer;width:38px;height:38px;border-radius:19px;background:#2B211A;display:flex;align-items:center;justify-content:center;margin-bottom:3px;box-shadow:0 4px 12px rgba(43,33,26,0.22);">
+              <svg width="15" height="17" viewBox="0 0 15 17"><path d="M7.5 1v9M4 4l3.5-3L11 4" style="fill:none;stroke:#FBF6EF;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;"></path><path d="M2 8v6.5A1.5 1.5 0 0 0 3.5 16h8a1.5 1.5 0 0 0 1.5-1.5V8" style="fill:none;stroke:#FBF6EF;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+            </div>
+          </div>
+
+          <div style="display:flex;background:#FEFCF9;border:1px solid #EDE1D3;border-radius:999px;padding:3px;box-shadow:0 3px 10px rgba(90,56,27,0.07);">
+            <sc-for list="{{ rangeOpts }}" as="opt" hint-placeholder-count="3">
+              <div onClick="{{ opt.onClick }}" style="cursor:pointer;flex:1;text-align:center;padding:8px 0;border-radius:999px;background:{{ opt.bg }};color:{{ opt.color }};font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;font-weight:600;letter-spacing:1px;transition:background .18s ease;">{{ opt.label }}</div>
+            </sc-for>
+          </div>
+
+          <!-- Compare entry -->
+          <div onClick="{{ openCompare }}" style-active="transform:scale(0.99)" style="cursor:pointer;background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:13px 16px;display:flex;align-items:center;gap:13px;">
+            <img src="assets/chart-art.png" alt="" style="width:46px;height:46px;object-fit:cover;border-radius:13px;border:1px solid #EDE1D3;flex-shrink:0;">
+            <div style="flex:1;display:flex;flex-direction:column;gap:2px;">
+              <span style="font-size:15px;font-weight:600;color:#2B211A;">Compare signals</span>
+              <span style="font-size:12px;line-height:1.4;color:#7A6B5D;">Overlay hair fall against a lifestyle statistic.</span>
+            </div>
+            <svg width="8" height="14" viewBox="0 0 8 14" style="flex-shrink:0;"><path d="M1 1l6 6-6 6" style="fill:none;stroke:#C4B5A3;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+          </div>
+
+          <!-- Shedding chart -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;">Shedding</span>
+              <span style="display:flex;align-items:center;gap:4px;">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 3l5 5M6 8h-4M6 8V4" style="fill:none;stroke:#5C7A52;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:0.8px;color:#5C7A52;">IMPROVING</span>
+              </span>
+            </div>
+            <svg viewBox="0 0 326 150" width="100%" height="150" style="display:block;">
+              <defs>
+                <linearGradient id="hcShedGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" style="stop-color:#B1592E;stop-opacity:0.18;"></stop>
+                  <stop offset="1" style="stop-color:#B1592E;stop-opacity:0;"></stop>
+                </linearGradient>
+              </defs>
+              <line x1="4" y1="4" x2="322" y2="4" style="stroke:#F0E5D6;stroke-width:1;stroke-dasharray:3 4;"></line>
+              <line x1="4" y1="51.3" x2="322" y2="51.3" style="stroke:#F0E5D6;stroke-width:1;stroke-dasharray:3 4;"></line>
+              <line x1="4" y1="98.7" x2="322" y2="98.7" style="stroke:#F0E5D6;stroke-width:1;stroke-dasharray:3 4;"></line>
+              <line x1="4" y1="146" x2="322" y2="146" style="stroke:#EDE1D3;stroke-width:1;"></line>
+              <text x="6" y="14" style="font:600 8.5px ui-monospace,Menlo,monospace;fill:#C4B5A3;letter-spacing:0.8px;">HEAVY</text>
+              <text x="6" y="61" style="font:600 8.5px ui-monospace,Menlo,monospace;fill:#C4B5A3;letter-spacing:0.8px;">ELEVATED</text>
+              <text x="6" y="109" style="font:600 8.5px ui-monospace,Menlo,monospace;fill:#C4B5A3;letter-spacing:0.8px;">NORMAL</text>
+              <text x="6" y="142" style="font:600 8.5px ui-monospace,Menlo,monospace;fill:#C4B5A3;letter-spacing:0.8px;">MINIMAL</text>
+              <path d="{{ shedArea }}" fill="url(#hcShedGrad)"></path>
+              <path d="{{ shedPath }}" style="fill:none;stroke:#B1592E;stroke-width:2.2;stroke-linecap:round;"></path>
+              <circle cx="{{ shedDotX }}" cy="{{ shedDotY }}" r="4.5" style="fill:#B1592E;stroke:#FEFCF9;stroke-width:2;"></circle>
+            </svg>
+            <div style="display:flex;justify-content:space-between;margin-top:8px;">
+              <sc-for list="{{ xLabels }}" as="lbl" hint-placeholder-count="4">
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.6px;color:#C4B5A3;">{{ lbl.t }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- Scalp severity chart -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;">Scalp severity · 0&#8211;16</span>
+              <span style="display:flex;align-items:center;gap:4px;">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 3l5 5M6 8h-4M6 8V4" style="fill:none;stroke:#5C7A52;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:0.8px;color:#5C7A52;">IMPROVING</span>
+              </span>
+            </div>
+            <svg viewBox="0 0 326 150" width="100%" height="150" style="display:block;">
+              <rect x="4" y="4" width="318" height="57.7" style="fill:#A6432E;opacity:0.055;"></rect>
+              <rect x="4" y="61.7" width="318" height="35.5" style="fill:#B98B2E;opacity:0.06;"></rect>
+              <rect x="4" y="97.2" width="318" height="48.8" style="fill:#5C7A52;opacity:0.06;"></rect>
+              <line x1="4" y1="146" x2="322" y2="146" style="stroke:#EDE1D3;stroke-width:1;"></line>
+              <text x="318" y="35" style="font:600 8.5px ui-monospace,Menlo,monospace;fill:#C09A8E;letter-spacing:0.8px;text-anchor:end;">SEVERE</text>
+              <text x="318" y="82" style="font:600 8.5px ui-monospace,Menlo,monospace;fill:#C0A87A;letter-spacing:0.8px;text-anchor:end;">MODERATE</text>
+              <text x="318" y="124" style="font:600 8.5px ui-monospace,Menlo,monospace;fill:#9DAF90;letter-spacing:0.8px;text-anchor:end;">MILD</text>
+              <path d="{{ scalpPath }}" style="fill:none;stroke:#2B211A;stroke-width:2.2;stroke-linecap:round;"></path>
+              <circle cx="{{ scalpDotX }}" cy="{{ scalpDotY }}" r="4.5" style="fill:#2B211A;stroke:#FEFCF9;stroke-width:2;"></circle>
+            </svg>
+            <div style="display:flex;justify-content:space-between;margin-top:8px;">
+              <sc-for list="{{ xLabels }}" as="lbl" hint-placeholder-count="4">
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.6px;color:#C4B5A3;">{{ lbl.t }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- Adherence -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;margin-bottom:14px;">14-day adherence</div>
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <sc-for list="{{ adhRows }}" as="row" hint-placeholder-count="2">
+                <div style="display:flex;flex-direction:column;gap:7px;">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;">
+                    <span style="font-size:14px;font-weight:500;color:#2B211A;">{{ row.name }}</span>
+                    <span style="font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:{{ row.pctColor }};">{{ row.pct }}</span>
+                  </div>
+                  <div style="display:flex;gap:4px;">
+                    <sc-for list="{{ row.dots }}" as="dot" hint-placeholder-count="14">
+                      <div style="flex:1;height:10px;border-radius:5px;background:{{ dot.bg }};"></div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="font-size:11px;color:#A69687;margin-top:12px;">One pill per day, newest on the right.</div>
+          </div>
+
+          <!-- Lifestyle signals -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;">Lifestyle signals</span>
+              <span style="display:flex;align-items:center;gap:5px;">
+                <svg width="11" height="10" viewBox="0 0 11 10"><path d="M5.5 9S1 6 1 3.2C1 1.8 2.1 1 3.2 1c.9 0 1.8.5 2.3 1.4C6 1.5 6.9 1 7.8 1 8.9 1 10 1.8 10 3.2 10 6 5.5 9 5.5 9z" style="fill:none;stroke:#A69687;stroke-width:1.2;"></path></svg>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:0.8px;color:#A69687;">AUTO FROM HEALTH</span>
+              </span>
+            </div>
+            <div style="display:flex;">
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+                <span style="font-size:18px;font-weight:600;color:#2B211A;font-variant-numeric:tabular-nums;">7.2 h</span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:1px;color:#A69687;">SLEEP</span>
+              </div>
+              <div style="width:1px;background:#EDE1D3;margin:0 14px;"></div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+                <span style="font-size:18px;font-weight:600;color:#2B211A;font-variant-numeric:tabular-nums;">48 ms</span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:1px;color:#A69687;">HRV</span>
+              </div>
+              <div style="width:1px;background:#EDE1D3;margin:0 14px;"></div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+                <span style="font-size:18px;font-weight:600;color:#2B211A;font-variant-numeric:tabular-nums;">74.6 kg</span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:1px;color:#A69687;">WEIGHT</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid #F3EADD;">
+              <svg width="13" height="13" viewBox="0 0 13 13" style="flex-shrink:0;margin-top:1px;"><circle cx="6.5" cy="6.5" r="5.5" style="fill:none;stroke:#B98B2E;stroke-width:1.3;"></circle><path d="M6.5 3.8v3.2l2 1.4" style="fill:none;stroke:#B98B2E;stroke-width:1.3;stroke-linecap:round;"></path></svg>
+              <span style="font-size:12px;line-height:1.45;color:#7A6B5D;">High-fever illness, 9 weeks ago. Diffuse shedding often follows a trigger by 2&#8211;3 months — the next month is the window to watch.</span>
+            </div>
+            <div style="font-size:11px;color:#A69687;margin-top:8px;">HRV is a stress proxy — no evidence it predicts hair loss directly.</div>
+          </div>
+
+          <!-- Not tracked -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;margin-bottom:6px;">Explicitly not tracked</div>
+            <div style="font-size:12px;color:#A69687;margin-bottom:12px;">Left out on purpose — the evidence doesn&#8217;t support them.</div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="display:flex;align-items:flex-start;gap:9px;">
+                <svg width="13" height="13" viewBox="0 0 13 13" style="flex-shrink:0;margin-top:2px;"><circle cx="6.5" cy="6.5" r="5.5" style="fill:none;stroke:#C4B5A3;stroke-width:1.3;"></circle><path d="M4.5 4.5l4 4M8.5 4.5l-4 4" style="stroke:#C4B5A3;stroke-width:1.3;stroke-linecap:round;"></path></svg>
+                <div><span style="font-size:13px;font-weight:600;color:#2B211A;">Shampoo frequency</span><span style="font-size:12px;color:#7A6B5D;"> — washing releases already-detached hairs.</span></div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:9px;">
+                <svg width="13" height="13" viewBox="0 0 13 13" style="flex-shrink:0;margin-top:2px;"><circle cx="6.5" cy="6.5" r="5.5" style="fill:none;stroke:#C4B5A3;stroke-width:1.3;"></circle><path d="M4.5 4.5l4 4M8.5 4.5l-4 4" style="stroke:#C4B5A3;stroke-width:1.3;stroke-linecap:round;"></path></svg>
+                <div><span style="font-size:13px;font-weight:600;color:#2B211A;">Hat wearing</span><span style="font-size:12px;color:#7A6B5D;"> — no follicle-compression evidence.</span></div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:9px;">
+                <svg width="13" height="13" viewBox="0 0 13 13" style="flex-shrink:0;margin-top:2px;"><circle cx="6.5" cy="6.5" r="5.5" style="fill:none;stroke:#C4B5A3;stroke-width:1.3;"></circle><path d="M4.5 4.5l4 4M8.5 4.5l-4 4" style="stroke:#C4B5A3;stroke-width:1.3;stroke-linecap:round;"></path></svg>
+                <div><span style="font-size:13px;font-weight:600;color:#2B211A;">Creatine</span><span style="font-size:12px;color:#7A6B5D;"> — the evidence is weak and indirect.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ PLAN ============ -->
+      <sc-if value="{{ isPlan }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Plan" style="animation:hcFadeUp .35s ease both;padding:74px 20px 24px;display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:#A69687;">Your plan</div>
+            <div style="font-family:'Source Serif 4',Georgia,serif;font-size:30px;font-weight:700;color:#2B211A;">Plan</div>
+          </div>
+
+          <!-- Coach -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;display:flex;align-items:center;gap:16px;">
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;">Coach</span>
+              <span style="font-family:'Source Serif 4',Georgia,serif;font-size:21px;font-weight:700;color:#2B211A;line-height:1.15;">{{ coachHead }}</span>
+              <span style="font-size:13px;line-height:1.45;color:#7A6B5D;">{{ coachDetail }}</span>
+            </div>
+            <div style="position:relative;width:72px;height:72px;flex-shrink:0;">
+              <svg width="72" height="72" viewBox="0 0 72 72" style="display:block;">
+                <circle cx="36" cy="36" r="29" style="fill:none;stroke:#F1E7D9;stroke-width:7;"></circle>
+                <circle cx="36" cy="36" r="29" transform="rotate(-90 36 36)" style="fill:none;stroke:#B1592E;stroke-width:7;stroke-linecap:round;stroke-dasharray:182.2;stroke-dashoffset:{{ ringOffset }};transition:stroke-dashoffset .4s ease;"></circle>
+              </svg>
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;">
+                <span style="font-family:'Source Serif 4',Georgia,serif;font-size:18px;font-weight:700;line-height:1;color:#2B211A;">{{ doneCount }}</span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8px;font-weight:600;letter-spacing:1px;color:#A69687;">OF 4</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Milestone -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:16px 18px;display:flex;align-items:center;gap:13px;">
+            <div style="width:42px;height:42px;border-radius:13px;background:rgba(201,161,90,0.16);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="20" height="22" viewBox="0 0 20 22"><circle cx="10" cy="8" r="5.2" style="fill:none;stroke:#C9A15A;stroke-width:1.7;"></circle><path d="M7 12.4L5 20l5-2.8L15 20l-2-7.6" style="fill:none;stroke:#C9A15A;stroke-width:1.7;stroke-linejoin:round;"></path></svg>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <span style="font-size:14.5px;font-weight:600;color:#2B211A;">{{ streakText }} of logging</span>
+              <span style="font-size:12.5px;line-height:1.4;color:#7A6B5D;">Two weeks of daily data makes your trend lines trustworthy.</span>
+            </div>
+          </div>
+
+          <!-- Routine grouped -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;margin-bottom:12px;">Today&#8217;s routine</div>
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;">
+              <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="3" style="fill:none;stroke:#C9A15A;stroke-width:1.4;"></circle><path d="M7 0.8v1.8M7 11.4v1.8M0.8 7h1.8M11.4 7h1.8M2.6 2.6l1.3 1.3M10.1 10.1l1.3 1.3M11.4 2.6l-1.3 1.3M3.9 10.1l-1.3 1.3" style="stroke:#C9A15A;stroke-width:1.3;stroke-linecap:round;"></path></svg>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:1px;color:#A69687;">MORNING</span>
+            </div>
+            <sc-for list="{{ morningRows }}" as="row" hint-placeholder-count="2">
+              <div onClick="{{ row.onToggle }}" style-active="transform:scale(0.99)" style="cursor:pointer;display:flex;align-items:center;gap:13px;padding:10px 0;border-bottom:1px solid #F3EADD;">
+                <div style="width:24px;height:24px;border-radius:12px;flex-shrink:0;border:1.5px solid {{ row.circleBorder }};background:{{ row.circleBg }};display:flex;align-items:center;justify-content:center;">
+                  <svg width="11" height="9" viewBox="0 0 11 9" style="opacity:{{ row.checkOp }};"><path d="M1 4.5L4 7.5L10 1" style="fill:none;stroke:#B1592E;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                  <span style="font-size:15px;font-weight:500;color:{{ row.nameColor }};text-decoration:{{ row.nameDeco }};">{{ row.name }}</span>
+                  <span style="font-size:12px;color:#A69687;">{{ row.sub }}</span>
+                </div>
+              </div>
+            </sc-for>
+            <div style="display:flex;align-items:center;gap:7px;margin:14px 0 4px;">
+              <svg width="14" height="14" viewBox="0 0 14 14"><path d="M11.5 8.8A5.3 5.3 0 0 1 5.2 2.5a5.3 5.3 0 1 0 6.3 6.3z" style="fill:none;stroke:#8A9D7B;stroke-width:1.4;stroke-linejoin:round;"></path></svg>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:1px;color:#A69687;">EVENING</span>
+            </div>
+            <sc-for list="{{ eveningRows }}" as="row" hint-placeholder-count="2">
+              <div onClick="{{ row.onToggle }}" style-active="transform:scale(0.99)" style="cursor:pointer;display:flex;align-items:center;gap:13px;padding:10px 0;border-bottom:1px solid #F3EADD;">
+                <div style="width:24px;height:24px;border-radius:12px;flex-shrink:0;border:1.5px solid {{ row.circleBorder }};background:{{ row.circleBg }};display:flex;align-items:center;justify-content:center;">
+                  <svg width="11" height="9" viewBox="0 0 11 9" style="opacity:{{ row.checkOp }};"><path d="M1 4.5L4 7.5L10 1" style="fill:none;stroke:#B1592E;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                  <span style="font-size:15px;font-weight:500;color:{{ row.nameColor }};text-decoration:{{ row.nameDeco }};">{{ row.name }}</span>
+                  <span style="font-size:12px;color:#A69687;">{{ row.sub }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- Reminders -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <span style="font-size:15px;font-weight:600;color:#2B211A;">Reminders</span>
+              <span style="font-size:12px;color:#7A6B5D;">Nudge me at routine times and each evening.</span>
+            </div>
+            <div onClick="{{ toggleReminders }}" style="cursor:pointer;width:48px;height:28px;border-radius:999px;background:{{ remTrack }};position:relative;flex-shrink:0;transition:background .2s ease;">
+              <div style="position:absolute;top:2px;left:{{ remKnob }};width:24px;height:24px;border-radius:12px;background:#FEFCF9;box-shadow:0 1px 4px rgba(43,33,26,0.3);transition:left .2s ease;"></div>
+            </div>
+          </div>
+
+          <!-- Gate explainer -->
+          <div style="background:rgba(177,89,46,0.07);border:1px solid rgba(177,89,46,0.18);border-radius:18px;padding:14px 16px;display:flex;align-items:flex-start;gap:10px;">
+            <svg width="16" height="16" viewBox="0 0 16 16" style="flex-shrink:0;margin-top:1px;"><circle cx="8" cy="8" r="6.6" style="fill:none;stroke:#B1592E;stroke-width:1.5;"></circle><path d="M8 4.6v3.6l2.4 1.7" style="fill:none;stroke:#B1592E;stroke-width:1.5;stroke-linecap:round;"></path></svg>
+            <span style="font-size:12.5px;line-height:1.45;color:#7A6B5D;">Hair-density change is judged at <span style="font-weight:600;color:#2B211A;">24 weeks</span> in clinical trials. Each treatment shows progress toward that gate — resist judging sooner.</span>
+          </div>
+
+          <!-- Treatment cards -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+              <div style="width:38px;height:38px;border-radius:11px;background:rgba(177,89,46,0.10);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="16" height="18" viewBox="0 0 16 18"><path d="M5 1h6M6 1v5.2L2.3 13a3 3 0 0 0 2.6 4.5h6.2A3 3 0 0 0 13.7 13L10 6.2V1" style="fill:none;stroke:#B1592E;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"></path><path d="M4 12h8" style="stroke:#B1592E;stroke-width:1.5;stroke-linecap:round;"></path></svg>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:1px;">
+                <span style="font-size:16px;font-weight:600;color:#2B211A;">Minoxidil 5% foam</span>
+                <span style="font-size:12px;color:#7A6B5D;">Topical · 1 mL twice daily</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:#2B211A;">Week 9 of 24</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9.5px;font-weight:600;letter-spacing:0.8px;color:#A69687;">TOO EARLY TO JUDGE</span>
+            </div>
+            <div style="height:8px;border-radius:4px;background:#F3EADD;overflow:hidden;margin-bottom:12px;">
+              <div style="width:37%;height:100%;border-radius:4px;background:#B1592E;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="font-size:13px;color:#7A6B5D;">14-day adherence</span>
+              <span style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:#5C7A52;">86%</span>
+            </div>
+          </div>
+
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+              <div style="width:38px;height:38px;border-radius:11px;background:rgba(177,89,46,0.10);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="18" height="18" viewBox="0 0 18 18"><rect x="1.5" y="7" width="15" height="6" rx="3" transform="rotate(-35 9 10)" style="fill:none;stroke:#B1592E;stroke-width:1.5;"></rect><path d="M6.5 11.5l4.5-3" style="stroke:#B1592E;stroke-width:1.5;stroke-linecap:round;"></path></svg>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:1px;">
+                <span style="font-size:16px;font-weight:600;color:#2B211A;">Finasteride 1 mg</span>
+                <span style="font-size:12px;color:#7A6B5D;">Oral · once daily</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:#2B211A;">Week 21 of 24</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9.5px;font-weight:600;letter-spacing:0.8px;color:#5C7A52;">ASSESSMENT NEAR</span>
+            </div>
+            <div style="height:8px;border-radius:4px;background:#F3EADD;overflow:hidden;margin-bottom:12px;">
+              <div style="width:87%;height:100%;border-radius:4px;background:#5C7A52;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="font-size:13px;color:#7A6B5D;">14-day adherence</span>
+              <span style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:#5C7A52;">100%</span>
+            </div>
+          </div>
+
+          <!-- What helps -->
+          <div onClick="{{ openRecommender }}" style-active="transform:scale(0.99)" style="cursor:pointer;background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);overflow:hidden;">
+            <img src="assets/routine-art.png" alt="" style="width:100%;height:98px;object-fit:cover;object-position:50% 60%;display:block;">
+            <div style="padding:13px 16px 15px;display:flex;align-items:center;gap:12px;">
+              <div style="flex:1;display:flex;flex-direction:column;gap:2px;">
+                <span style="font-size:15.5px;font-weight:600;color:#2B211A;">What helps — ranked by evidence</span>
+                <span style="font-size:12.5px;line-height:1.4;color:#7A6B5D;">Education for your pattern, never a prescription.</span>
+              </div>
+              <svg width="8" height="14" viewBox="0 0 8 14" style="flex-shrink:0;"><path d="M1 1l6 6-6 6" style="fill:none;stroke:#C4B5A3;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+            </div>
+          </div>
+
+          <!-- Science-backed options -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;margin-bottom:8px;">Science-backed options</div>
+            <div style="font-size:12.5px;line-height:1.45;color:#7A6B5D;margin-bottom:14px;">Substances with real evidence — each shown with how strong that evidence actually is. None rival minoxidil or finasteride.</div>
+
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:1px;color:#C9A15A;margin-bottom:10px;">SOME EVIDENCE</div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding-bottom:12px;border-bottom:1px solid #F3EADD;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <span style="font-size:14px;font-weight:600;color:#2B211A;">Rosemary oil <span style="font-size:11px;font-weight:500;color:#A69687;">· Topical</span></span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.8px;color:#C9A15A;border:1px solid rgba(201,161,90,0.45);border-radius:999px;padding:3px 8px;">SOME</span>
+              </div>
+              <span style="font-size:12.5px;line-height:1.4;color:#7A6B5D;">Matched 2% minoxidil in one six-month trial.</span>
+              <span style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:#B1592E;cursor:pointer;">View on iHerb
+                <svg width="9" height="9" viewBox="0 0 9 9"><path d="M2 7L7 2M3.5 1.5H7.5V5.5" style="fill:none;stroke:#B1592E;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+              </span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding:12px 0;border-bottom:1px solid #F3EADD;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <span style="font-size:14px;font-weight:600;color:#2B211A;">Pumpkin seed oil <span style="font-size:11px;font-weight:500;color:#A69687;">· Oral</span></span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.8px;color:#C9A15A;border:1px solid rgba(201,161,90,0.45);border-radius:999px;padding:3px 8px;">SOME</span>
+              </div>
+              <span style="font-size:12.5px;line-height:1.4;color:#7A6B5D;">One small positive trial.</span>
+              <span style="display:flex;align-items:flex-start;gap:6px;font-size:11px;color:#A69687;">
+                <svg width="11" height="11" viewBox="0 0 11 11" style="flex-shrink:0;margin-top:1px;"><path d="M1.5 10V3.5L5.5 1l4 2.5V10M1.5 10h8M4 10V7h3v3" style="fill:none;stroke:#A69687;stroke-width:1.1;stroke-linejoin:round;"></path></svg>
+                Key trial was funded by the maker — weigh that in.</span>
+            </div>
+
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:1px;color:#B98B2E;margin:12px 0 10px;">TEST FIRST</div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding-bottom:12px;border-bottom:1px solid #F3EADD;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <span style="font-size:14px;font-weight:600;color:#2B211A;">Iron bisglycinate <span style="font-size:11px;font-weight:500;color:#A69687;">· Oral</span></span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.8px;color:#B98B2E;border:1px solid rgba(185,139,46,0.45);border-radius:999px;padding:3px 8px;">GATED</span>
+              </div>
+              <span style="font-size:12.5px;line-height:1.4;color:#7A6B5D;">Only worth it if ferritin is low — your Jun 12 result was. Check Labs.</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding:12px 0;border-bottom:1px solid #F3EADD;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <span style="font-size:14px;font-weight:600;color:#2B211A;">Vitamin D3 <span style="font-size:11px;font-weight:500;color:#A69687;">· Oral</span></span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.8px;color:#B98B2E;border:1px solid rgba(185,139,46,0.45);border-radius:999px;padding:3px 8px;">GATED</span>
+              </div>
+              <span style="font-size:12.5px;line-height:1.4;color:#7A6B5D;">Supplement only a proven deficiency — yours is in range.</span>
+            </div>
+
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:1px;color:#A69687;margin:12px 0 10px;">SKIP</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <span style="font-size:14px;font-weight:600;color:#2B211A;">Biotin <span style="font-size:11px;font-weight:500;color:#A69687;">· Oral</span></span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.8px;color:#A69687;border:1px solid #E2D5C3;border-radius:999px;padding:3px 8px;">SKIP</span>
+              </div>
+              <span style="font-size:12.5px;line-height:1.4;color:#7A6B5D;">No evidence without deficiency — and it skews thyroid lab tests.</span>
+            </div>
+
+            <div style="font-size:10.5px;line-height:1.45;color:#A69687;margin-top:14px;padding-top:12px;border-top:1px solid #F3EADD;">Affiliate disclosure: buying through these links may earn us a commission. It never changes a product&#8217;s evidence rating.</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ LABS ============ -->
+      <sc-if value="{{ isLabs }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Labs" style="animation:hcFadeUp .35s ease both;padding:74px 20px 24px;display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:#A69687;">Bloodwork</div>
+            <div style="font-family:'Source Serif 4',Georgia,serif;font-size:30px;font-weight:700;color:#2B211A;">Labs</div>
+          </div>
+
+          <div style="background:rgba(177,89,46,0.07);border:1px solid rgba(177,89,46,0.18);border-radius:18px;padding:14px 16px;display:flex;align-items:flex-start;gap:10px;">
+            <svg width="15" height="15" viewBox="0 0 15 15" style="flex-shrink:0;margin-top:1px;"><circle cx="7.5" cy="7.5" r="6.2" style="fill:none;stroke:#B1592E;stroke-width:1.4;"></circle><path d="M7.5 6.8v3.6" style="stroke:#B1592E;stroke-width:1.5;stroke-linecap:round;"></path><circle cx="7.5" cy="4.6" r="0.9" style="fill:#B1592E;"></circle></svg>
+            <span style="font-size:12.5px;line-height:1.45;color:#7A6B5D;">Order tests individually with a clinician, not as a blanket panel. Ranges shown for context only — not a diagnosis.</span>
+          </div>
+
+          <!-- Ferritin -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:2px;">
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <span style="font-size:15.5px;font-weight:600;color:#2B211A;">Ferritin</span>
+                <span style="font-size:12px;color:#A69687;">Jun 12, 2026</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+                <span style="font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;color:#2B211A;">24 <span style="font-size:12px;font-weight:500;color:#7A6B5D;">ng/mL</span></span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9.5px;font-weight:600;letter-spacing:1px;color:#B98B2E;">LOW</span>
+              </div>
+            </div>
+            <div style="position:relative;height:6px;border-radius:3px;background:#F3EADD;margin-top:14px;">
+              <div style="position:absolute;top:0;height:6px;border-radius:3px;background:rgba(92,122,82,0.22);left:9.1%;width:81.8%;"></div>
+              <div style="position:absolute;top:-4px;width:14px;height:14px;border-radius:7px;background:#B98B2E;border:2.5px solid #FEFCF9;left:7.3%;transform:translateX(-7px);box-shadow:0 1px 4px rgba(90,56,27,0.35);"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:7px;">
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;color:#C4B5A3;">0</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.6px;color:#A69687;">RANGE 30&#8211;300</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;color:#C4B5A3;">330</span>
+            </div>
+            <div style="font-size:12px;color:#7A6B5D;margin-top:10px;padding-top:10px;border-top:1px solid #F3EADD;">Below range — the most common addressable factor in diffuse shedding. Retest after 8 weeks on iron.</div>
+          </div>
+
+          <!-- Vitamin D -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:2px;">
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <span style="font-size:15.5px;font-weight:600;color:#2B211A;">Vitamin D</span>
+                <span style="font-size:12px;color:#A69687;">Jun 12, 2026</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+                <span style="font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;color:#2B211A;">38 <span style="font-size:12px;font-weight:500;color:#7A6B5D;">ng/mL</span></span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9.5px;font-weight:600;letter-spacing:1px;color:#5C7A52;">NORMAL</span>
+              </div>
+            </div>
+            <div style="position:relative;height:6px;border-radius:3px;background:#F3EADD;margin-top:14px;">
+              <div style="position:absolute;top:0;height:6px;border-radius:3px;background:rgba(92,122,82,0.22);left:27.3%;width:63.6%;"></div>
+              <div style="position:absolute;top:-4px;width:14px;height:14px;border-radius:7px;background:#5C7A52;border:2.5px solid #FEFCF9;left:34.5%;transform:translateX(-7px);box-shadow:0 1px 4px rgba(90,56,27,0.35);"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:7px;">
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;color:#C4B5A3;">0</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.6px;color:#A69687;">RANGE 30&#8211;100</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;color:#C4B5A3;">110</span>
+            </div>
+          </div>
+
+          <!-- TSH -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:2px;">
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <span style="font-size:15.5px;font-weight:600;color:#2B211A;">TSH</span>
+                <span style="font-size:12px;color:#A69687;">Jun 12, 2026</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+                <span style="font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;color:#2B211A;">2.1 <span style="font-size:12px;font-weight:500;color:#7A6B5D;">mIU/L</span></span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9.5px;font-weight:600;letter-spacing:1px;color:#5C7A52;">NORMAL</span>
+              </div>
+            </div>
+            <div style="position:relative;height:6px;border-radius:3px;background:#F3EADD;margin-top:14px;">
+              <div style="position:absolute;top:0;height:6px;border-radius:3px;background:rgba(92,122,82,0.22);left:8%;width:82%;"></div>
+              <div style="position:absolute;top:-4px;width:14px;height:14px;border-radius:7px;background:#5C7A52;border:2.5px solid #FEFCF9;left:42%;transform:translateX(-7px);box-shadow:0 1px 4px rgba(90,56,27,0.35);"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:7px;">
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;color:#C4B5A3;">0</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.6px;color:#A69687;">RANGE 0.4&#8211;4.5</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;color:#C4B5A3;">5</span>
+            </div>
+          </div>
+
+          <!-- Zinc -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:2px;">
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <span style="font-size:15.5px;font-weight:600;color:#2B211A;">Zinc</span>
+                <span style="font-size:12px;color:#A69687;">Mar 3, 2026</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+                <span style="font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;color:#2B211A;">82 <span style="font-size:12px;font-weight:500;color:#7A6B5D;">µg/dL</span></span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9.5px;font-weight:600;letter-spacing:1px;color:#5C7A52;">NORMAL</span>
+              </div>
+            </div>
+            <div style="position:relative;height:6px;border-radius:3px;background:#F3EADD;margin-top:14px;">
+              <div style="position:absolute;top:0;height:6px;border-radius:3px;background:rgba(92,122,82,0.22);left:50%;width:35.7%;"></div>
+              <div style="position:absolute;top:-4px;width:14px;height:14px;border-radius:7px;background:#5C7A52;border:2.5px solid #FEFCF9;left:58.6%;transform:translateX(-7px);box-shadow:0 1px 4px rgba(90,56,27,0.35);"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:7px;">
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;color:#C4B5A3;">0</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.6px;color:#A69687;">RANGE 70&#8211;120</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;color:#C4B5A3;">140</span>
+            </div>
+          </div>
+
+          <!-- Reference -->
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;margin-bottom:12px;">Tests derms order for hair loss</div>
+            <div style="display:flex;flex-direction:column;gap:11px;">
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;font-weight:600;color:#2B211A;">Ferritin</span><span style="font-size:12px;font-variant-numeric:tabular-nums;color:#7A6B5D;">30&#8211;300 ng/mL</span></div>
+                <span style="font-size:12px;color:#A69687;">Iron stores; low is the most common addressable factor.</span>
+              </div>
+              <div style="height:1px;background:#F3EADD;"></div>
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;font-weight:600;color:#2B211A;">TSH</span><span style="font-size:12px;font-variant-numeric:tabular-nums;color:#7A6B5D;">0.4&#8211;4.5 mIU/L</span></div>
+                <span style="font-size:12px;color:#A69687;">Thyroid screen; both hypo- and hyper- can shed.</span>
+              </div>
+              <div style="height:1px;background:#F3EADD;"></div>
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;font-weight:600;color:#2B211A;">Vitamin D</span><span style="font-size:12px;font-variant-numeric:tabular-nums;color:#7A6B5D;">30&#8211;100 ng/mL</span></div>
+                <span style="font-size:12px;color:#A69687;">Commonly low; evidence for hair is moderate.</span>
+              </div>
+              <div style="height:1px;background:#F3EADD;"></div>
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;font-weight:600;color:#2B211A;">Zinc</span><span style="font-size:12px;font-variant-numeric:tabular-nums;color:#7A6B5D;">70&#8211;120 µg/dL</span></div>
+                <span style="font-size:12px;color:#A69687;">Deficiency is uncommon but easy to rule out.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ PHOTOS ============ -->
+      <sc-if value="{{ isPhotos }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Photos" style="animation:hcFadeUp .35s ease both;padding:74px 20px 24px;display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:#A69687;">Documentation</div>
+            <div style="font-family:'Source Serif 4',Georgia,serif;font-size:30px;font-weight:700;color:#2B211A;">Photos</div>
+          </div>
+
+          <div style="display:flex;gap:8px;">
+            <sc-for list="{{ regionOpts }}" as="opt" hint-placeholder-count="3">
+              <div onClick="{{ opt.onClick }}" style-active="transform:scale(0.97)" style="cursor:pointer;padding:9px 16px;border-radius:999px;background:{{ opt.bg }};color:{{ opt.color }};border:1px solid {{ opt.border }};font-size:13px;font-weight:600;transition:background .15s ease;">{{ opt.label }}</div>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ isCrown }}" hint-placeholder-val="{{ true }}">
+            <!-- Compare slider -->
+            <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;">First vs latest</span>
+                <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9.5px;font-weight:600;letter-spacing:0.8px;color:#B1592E;">DRAG TO COMPARE</span>
+              </div>
+              <div style="position:relative;height:260px;border-radius:16px;overflow:hidden;">
+                <img src="assets/dashboard-hero.png" alt="Baseline crown photo" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">
+                <img src="assets/journey-photo.png" alt="Latest crown photo" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;clip-path:inset(0 0 0 {{ comparePct }}%);">
+                <div style="position:absolute;top:0;bottom:0;left:calc({{ comparePct }}% - 1px);width:2px;background:rgba(254,252,249,0.95);box-shadow:0 0 8px rgba(43,33,26,0.4);"></div>
+                <div style="position:absolute;top:50%;left:{{ comparePct }}%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:17px;background:#FEFCF9;box-shadow:0 2px 10px rgba(43,33,26,0.35);display:flex;align-items:center;justify-content:center;gap:3px;">
+                  <svg width="6" height="10" viewBox="0 0 6 10"><path d="M5 1L1 5l4 4" style="fill:none;stroke:#B1592E;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+                  <svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" style="fill:none;stroke:#B1592E;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+                </div>
+                <div style="position:absolute;left:10px;bottom:10px;padding:5px 10px;border-radius:999px;background:rgba(43,33,26,0.55);backdrop-filter:blur(6px);color:#FBF6EF;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:0.8px;">BASELINE · MAR 2</div>
+                <div style="position:absolute;right:10px;bottom:10px;padding:5px 10px;border-radius:999px;background:rgba(43,33,26,0.55);backdrop-filter:blur(6px);color:#FBF6EF;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:0.8px;">LATEST · JUN 28</div>
+                <input class="hc-compare" type="range" min="0" max="100" value="{{ comparePct }}" onChange="{{ onCompareInput }}" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;">
+              </div>
+              <div style="font-size:11px;color:#A69687;margin-top:10px;">Same region, matched lighting and parting — 17 weeks apart.</div>
+            </div>
+
+            <!-- Grid -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="display:flex;flex-direction:column;gap:5px;">
+                <img src="assets/journey-photo.png" alt="" style="width:100%;height:124px;object-fit:cover;border-radius:14px;border:1px solid #EDE1D3;display:block;">
+                <span style="font-size:11px;font-variant-numeric:tabular-nums;color:#7A6B5D;">Jun 28</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;">
+                <img src="assets/dashboard-hero.png" alt="" style="width:100%;height:124px;object-fit:cover;border-radius:14px;border:1px solid #EDE1D3;display:block;">
+                <span style="font-size:11px;font-variant-numeric:tabular-nums;color:#7A6B5D;">Jun 14</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;">
+                <img src="assets/journey-photo.png" alt="" style="width:100%;height:124px;object-fit:cover;border-radius:14px;border:1px solid #EDE1D3;display:block;filter:saturate(0.92);">
+                <span style="font-size:11px;font-variant-numeric:tabular-nums;color:#7A6B5D;">May 30</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;">
+                <img src="assets/dashboard-hero.png" alt="" style="width:100%;height:124px;object-fit:cover;border-radius:14px;border:1px solid #EDE1D3;display:block;filter:saturate(0.92);">
+                <span style="font-size:11px;font-variant-numeric:tabular-nums;color:#7A6B5D;">May 16</span>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ notCrown }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:26px 18px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;">
+              <img src="assets/hero-photos-empty.png" alt="" style="width:132px;height:132px;object-fit:cover;border-radius:20px;">
+              <div style="font-family:'Source Serif 4',Georgia,serif;font-size:19px;font-weight:600;color:#2B211A;">{{ emptyTitle }}</div>
+              <div style="font-size:13px;line-height:1.45;color:#7A6B5D;max-width:250px;">Capture this region under matched lighting, distance and parting to start a comparable series.</div>
+              <div style-active="transform:scale(0.98)" style="cursor:pointer;margin-top:4px;padding:12px 26px;border-radius:14px;background:#B1592E;color:#FFF8F0;font-size:14px;font-weight:600;box-shadow:0 8px 20px rgba(177,89,46,0.35);">Guided capture</div>
+            </div>
+          </sc-if>
+
+          <div style="background:rgba(177,89,46,0.07);border:1px solid rgba(177,89,46,0.18);border-radius:18px;padding:14px 16px;display:flex;align-items:flex-start;gap:10px;">
+            <svg width="16" height="14" viewBox="0 0 16 14" style="flex-shrink:0;margin-top:1px;"><rect x="1" y="3" width="14" height="10" rx="2.5" style="fill:none;stroke:#B1592E;stroke-width:1.4;"></rect><path d="M5.5 3L6.8 1h2.4l1.3 2" style="fill:none;stroke:#B1592E;stroke-width:1.4;stroke-linejoin:round;"></path><circle cx="8" cy="8" r="2.6" style="fill:none;stroke:#B1592E;stroke-width:1.4;"></circle></svg>
+            <span style="font-size:12.5px;line-height:1.45;color:#7A6B5D;">Compare only same-region shots under matched conditions. A phone can&#8217;t do trichoscopy — that needs a clip-on dermatoscope.</span>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- ============ TAB BAR ============ -->
+    <div style="display:flex;align-items:stretch;padding:8px 8px 26px;background:rgba(251,246,239,0.94);backdrop-filter:blur(18px);border-top:1px solid #EDE1D3;position:relative;z-index:20;">
+      <div onClick="{{ goToday }}" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:6px;">
+        <svg width="23" height="23" viewBox="0 0 23 23"><circle cx="11.5" cy="11.5" r="8.6" style="fill:none;stroke:{{ colToday }};stroke-width:1.7;"></circle><path d="M7.8 11.8l2.4 2.4 5-5.2" style="fill:none;stroke:{{ colToday }};stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+        <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:0.7px;color:{{ colToday }};">TODAY</span>
+      </div>
+      <div onClick="{{ goTrends }}" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:6px;">
+        <svg width="23" height="23" viewBox="0 0 23 23"><path d="M3 19h17" style="stroke:{{ colTrends }};stroke-width:1.7;stroke-linecap:round;"></path><path d="M3.5 15l5-6 4.2 3.2L19.5 4.5" style="fill:none;stroke:{{ colTrends }};stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+        <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:0.7px;color:{{ colTrends }};">TRENDS</span>
+      </div>
+      <div onClick="{{ goPlan }}" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:6px;">
+        <svg width="23" height="23" viewBox="0 0 23 23"><path d="M9 6h11M9 12h11M9 18h11" style="stroke:{{ colPlan }};stroke-width:1.7;stroke-linecap:round;"></path><path d="M3 5.5l1.3 1.3 2.2-2.4" style="fill:none;stroke:{{ colPlan }};stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;"></path><path d="M3 11.5l1.3 1.3 2.2-2.4" style="fill:none;stroke:{{ colPlan }};stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;"></path><path d="M3 17.5l1.3 1.3 2.2-2.4" style="fill:none;stroke:{{ colPlan }};stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;"></path></svg>
+        <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:0.7px;color:{{ colPlan }};">PLAN</span>
+      </div>
+      <div onClick="{{ goLabs }}" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:6px;">
+        <svg width="23" height="23" viewBox="0 0 23 23"><path d="M8.5 2.5h6M9.5 2.5v6.3l-4.6 8A2.6 2.6 0 0 0 7.2 20.5h8.6a2.6 2.6 0 0 0 2.3-3.7l-4.6-8V2.5" style="fill:none;stroke:{{ colLabs }};stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;"></path><path d="M6.5 14.5h10" style="stroke:{{ colLabs }};stroke-width:1.7;stroke-linecap:round;"></path></svg>
+        <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:0.7px;color:{{ colLabs }};">LABS</span>
+      </div>
+      <div onClick="{{ goPhotos }}" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:6px;">
+        <svg width="23" height="23" viewBox="0 0 23 23"><rect x="2" y="6" width="19" height="13.5" rx="3" style="fill:none;stroke:{{ colPhotos }};stroke-width:1.7;"></rect><path d="M7.5 6l1.7-2.7h4.6L15.5 6" style="fill:none;stroke:{{ colPhotos }};stroke-width:1.7;stroke-linejoin:round;"></path><circle cx="11.5" cy="12.5" r="3.4" style="fill:none;stroke:{{ colPhotos }};stroke-width:1.7;"></circle></svg>
+        <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;font-weight:600;letter-spacing:0.7px;color:{{ colPhotos }};">PHOTOS</span>
+      </div>
+    </div>
+
+    <!-- ============ LOG SHEET ============ -->
+    <sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Daily log sheet" onClick="{{ closeSheet }}" style="position:absolute;inset:0;z-index:40;background:rgba(43,33,26,0.38);display:flex;flex-direction:column;justify-content:flex-end;">
+        <div onClick="{{ stopProp }}" style="background:#FBF6EF;border-radius:28px 28px 0 0;box-shadow:0 -12px 40px rgba(43,33,26,0.25);padding:10px 22px 30px;animation:hcSheetUp .32s cubic-bezier(0.2,0.9,0.3,1) both;">
+          <div style="width:36px;height:5px;border-radius:3px;background:#D9CBB8;margin:0 auto 16px;"></div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px;">
+            <span style="font-family:'Source Serif 4',Georgia,serif;font-size:24px;font-weight:700;color:#2B211A;">Daily log</span>
+            <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1px;color:#A69687;">THU · JUL 2</span>
+          </div>
+
+          <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;color:#A69687;margin-bottom:8px;">SHEDDING TODAY</div>
+          <div style="display:flex;background:#FEFCF9;border:1px solid #EDE1D3;border-radius:14px;padding:3px;margin-bottom:16px;">
+            <sc-for list="{{ shedOpts }}" as="opt" hint-placeholder-count="4">
+              <div onClick="{{ opt.onClick }}" style="cursor:pointer;flex:1;text-align:center;padding:9px 0;border-radius:11px;background:{{ opt.bg }};color:{{ opt.color }};font-size:12.5px;font-weight:600;transition:background .15s ease;">{{ opt.label }}</div>
+            </sc-for>
+          </div>
+
+          <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;color:#A69687;margin-bottom:8px;">SCALP SIGNS</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+            <sc-for list="{{ scalpOpts }}" as="opt" hint-placeholder-count="5">
+              <div onClick="{{ opt.onClick }}" style-active="transform:scale(0.97)" style="cursor:pointer;padding:8px 15px;border-radius:999px;background:{{ opt.bg }};color:{{ opt.color }};border:1px solid {{ opt.border }};font-size:13px;font-weight:500;transition:background .15s ease;">{{ opt.label }}</div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;gap:20px;margin-bottom:22px;">
+            <div style="flex:1;">
+              <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;color:#A69687;margin-bottom:8px;">SLEEP QUALITY</div>
+              <div style="display:flex;gap:6px;">
+                <sc-for list="{{ sleepOpts }}" as="opt" hint-placeholder-count="5">
+                  <div onClick="{{ opt.onClick }}" style="cursor:pointer;flex:1;height:36px;border-radius:10px;background:{{ opt.bg }};color:{{ opt.color }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;transition:background .15s ease;">{{ opt.n }}</div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:20px;margin-bottom:22px;margin-top:-6px;">
+            <div style="flex:1;">
+              <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;color:#A69687;margin-bottom:8px;">STRESS</div>
+              <div style="display:flex;gap:6px;">
+                <sc-for list="{{ stressOpts }}" as="opt" hint-placeholder-count="5">
+                  <div onClick="{{ opt.onClick }}" style="cursor:pointer;flex:1;height:36px;border-radius:10px;background:{{ opt.bg }};color:{{ opt.color }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;transition:background .15s ease;">{{ opt.n }}</div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div onClick="{{ saveLog }}" style-active="transform:scale(0.98)" style="cursor:pointer;text-align:center;padding:15px;border-radius:15px;background:#B1592E;color:#FFF8F0;font-size:15.5px;font-weight:600;box-shadow:0 8px 20px rgba(177,89,46,0.35);">Save today&#8217;s log</div>
+          <div onClick="{{ closeSheet }}" style="cursor:pointer;text-align:center;padding:13px 0 0;color:#A69687;font-size:13.5px;font-weight:500;">Cancel</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ COMPARE OVERLAY ============ -->
+    <sc-if value="{{ isCompare }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Compare builder" style="position:absolute;inset:0;z-index:45;background:#FBF6EF;animation:hcSheetUp .3s cubic-bezier(0.2,0.9,0.3,1) both;display:flex;flex-direction:column;">
+        <div style="padding:70px 20px 12px;display:flex;align-items:flex-end;justify-content:space-between;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:#A69687;">Build a chart</div>
+            <div style="font-family:'Source Serif 4',Georgia,serif;font-size:28px;font-weight:700;color:#2B211A;">Compare</div>
+          </div>
+          <div onClick="{{ closeOverlay }}" style="cursor:pointer;font-size:15px;font-weight:600;color:#B1592E;padding:6px 2px;">Done</div>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:4px 20px 34px;display:flex;flex-direction:column;gap:14px;">
+
+          <div style="display:flex;gap:8px;overflow-x:auto;margin:0 -20px;padding:2px 20px 4px;">
+            <sc-for list="{{ cmpPresetOpts }}" as="opt" hint-placeholder-count="3">
+              <div onClick="{{ opt.onClick }}" style-active="transform:scale(0.97)" style="cursor:pointer;flex-shrink:0;padding:8px 15px;border-radius:999px;background:{{ opt.bg }};color:{{ opt.color }};border:1px solid {{ opt.border }};font-size:12.5px;font-weight:600;transition:background .15s ease;">{{ opt.label }}</div>
+            </sc-for>
+          </div>
+
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <div style="display:flex;align-items:center;gap:14px;">
+                <span style="display:flex;align-items:center;gap:5px;"><span style="width:8px;height:8px;border-radius:4px;background:#2B211A;"></span><span style="font-size:11.5px;font-weight:600;color:#2B211A;">{{ cmpHairName }}</span></span>
+                <span style="display:flex;align-items:center;gap:5px;"><span style="width:8px;height:8px;border-radius:4px;background:#8A9D7B;"></span><span style="font-size:11.5px;font-weight:600;color:#7A6B5D;">{{ cmpOvName }}</span></span>
+              </div>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9.5px;font-weight:600;letter-spacing:0.8px;color:{{ fitColor }};">{{ fitLabel }}</span>
+            </div>
+            <svg viewBox="0 0 326 150" width="100%" height="150" style="display:block;">
+              <line x1="4" y1="40" x2="322" y2="40" style="stroke:#F0E5D6;stroke-width:1;stroke-dasharray:3 4;"></line>
+              <line x1="4" y1="93" x2="322" y2="93" style="stroke:#F0E5D6;stroke-width:1;stroke-dasharray:3 4;"></line>
+              <line x1="4" y1="146" x2="322" y2="146" style="stroke:#EDE1D3;stroke-width:1;"></line>
+              <path d="{{ cmpOvPath }}" style="fill:none;stroke:#8A9D7B;stroke-width:2;stroke-linecap:round;opacity:0.9;"></path>
+              <path d="{{ cmpHairPath }}" style="fill:none;stroke:#2B211A;stroke-width:2.2;stroke-linecap:round;"></path>
+            </svg>
+            <div style="display:flex;justify-content:space-between;margin-top:8px;">
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.6px;color:#C4B5A3;">APR</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.6px;color:#C4B5A3;">MAY</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.6px;color:#C4B5A3;">JUN</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.6px;color:#C4B5A3;">JUL</span>
+            </div>
+          </div>
+
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;margin-bottom:10px;">Lag — shift lifestyle forward</div>
+            <div style="display:flex;background:#FBF6EF;border:1px solid #EDE1D3;border-radius:14px;padding:3px;">
+              <sc-for list="{{ lagOpts }}" as="opt" hint-placeholder-count="4">
+                <div onClick="{{ opt.onClick }}" style="cursor:pointer;flex:1;text-align:center;padding:9px 0;border-radius:11px;background:{{ opt.bg }};color:{{ opt.color }};font-size:12px;font-weight:600;transition:background .15s ease;">{{ opt.label }}</div>
+              </sc-for>
+            </div>
+            <div style="font-size:11px;color:#A69687;margin-top:10px;">Shedding often follows a lifestyle trigger by 2&#8211;3 months — slide the lag to test the timing.</div>
+          </div>
+
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;margin-bottom:8px;">Honest read</div>
+            <div style="font-family:'Source Serif 4',Georgia,serif;font-size:16.5px;font-weight:500;line-height:1.5;color:#2B211A;">{{ cmpRead }}</div>
+            <div style="font-size:11px;color:#A69687;margin-top:8px;">Alignment isn&#8217;t causation — bring it to your derm as a question, not an answer.</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ RECOMMENDER OVERLAY ============ -->
+    <sc-if value="{{ isRecommender }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="What helps" style="position:absolute;inset:0;z-index:45;background:#FBF6EF;animation:hcSheetUp .3s cubic-bezier(0.2,0.9,0.3,1) both;display:flex;flex-direction:column;">
+        <div style="padding:70px 20px 12px;display:flex;align-items:flex-end;justify-content:space-between;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:#A69687;">Guidance</div>
+            <div style="font-family:'Source Serif 4',Georgia,serif;font-size:28px;font-weight:700;color:#2B211A;">What helps</div>
+          </div>
+          <div onClick="{{ closeOverlay }}" style="cursor:pointer;font-size:15px;font-weight:600;color:#B1592E;padding:6px 2px;">Done</div>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:4px 20px 34px;display:flex;flex-direction:column;gap:14px;">
+
+          <div style="background:rgba(177,89,46,0.07);border:1px solid rgba(177,89,46,0.18);border-radius:18px;padding:14px 16px;display:flex;align-items:flex-start;gap:10px;">
+            <svg width="15" height="15" viewBox="0 0 15 15" style="flex-shrink:0;margin-top:1px;"><path d="M3 1v4a4.5 4.5 0 0 0 9 0V1M3 1h2M10 1h2M7.5 9.5V12a2.5 2.5 0 0 0 5 0v-1" style="fill:none;stroke:#B1592E;stroke-width:1.4;stroke-linecap:round;"></path><circle cx="12.5" cy="9.5" r="1.4" style="fill:none;stroke:#B1592E;stroke-width:1.4;"></circle></svg>
+            <span style="font-size:12.5px;line-height:1.45;color:#7A6B5D;">Education, not a prescription. Every option here needs a conversation with a clinician before starting.</span>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:4px;padding:0 2px;">
+            <span style="font-family:'Source Serif 4',Georgia,serif;font-size:19px;font-weight:600;color:#2B211A;line-height:1.25;">Options with real evidence for pattern loss</span>
+            <span style="font-size:12px;color:#A69687;">Based on your baseline: androgenetic, suspected. Change it in your baseline if that&#8217;s not right.</span>
+          </div>
+
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-size:15.5px;font-weight:600;color:#2B211A;">Minoxidil 5% topical</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.8px;color:#FFF8F0;background:#2B211A;border-radius:999px;padding:4px 9px;">STRONG</span>
+            </div>
+            <div style="font-size:13.5px;line-height:1.45;color:#7A6B5D;margin-bottom:10px;">Visible regrowth in roughly 4 in 10 people at a year; works regardless of cause. Expect a temporary shed at weeks 2&#8211;6.</div>
+            <div style="display:flex;align-items:flex-start;gap:7px;"><span style="width:4px;height:4px;border-radius:2px;background:#B1592E;margin-top:6px;flex-shrink:0;"></span><span style="font-size:12px;line-height:1.4;color:#7A6B5D;">Confirm strength and frequency with a clinician.</span></div>
+          </div>
+
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-size:15.5px;font-weight:600;color:#2B211A;">Finasteride 1 mg</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.8px;color:#FFF8F0;background:#2B211A;border-radius:999px;padding:4px 9px;">STRONG</span>
+            </div>
+            <div style="font-size:13.5px;line-height:1.45;color:#7A6B5D;margin-bottom:10px;">Slows the driver (DHT); the best evidence for holding the line long-term.</div>
+            <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:6px;"><span style="width:4px;height:4px;border-radius:2px;background:#B1592E;margin-top:6px;flex-shrink:0;"></span><span style="font-size:12px;line-height:1.4;color:#7A6B5D;">Prescription only — needs a clinician.</span></div>
+            <div style="display:flex;align-items:flex-start;gap:7px;"><span style="width:4px;height:4px;border-radius:2px;background:#B98B2E;margin-top:6px;flex-shrink:0;"></span><span style="font-size:12px;line-height:1.4;color:#7A6B5D;">Discuss the sexual side-effect profile before starting.</span></div>
+          </div>
+
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-size:15.5px;font-weight:600;color:#2B211A;">Microneedling</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.8px;color:#8A6F33;background:rgba(201,161,90,0.18);border-radius:999px;padding:4px 9px;">MODERATE</span>
+            </div>
+            <div style="font-size:13.5px;line-height:1.45;color:#7A6B5D;margin-bottom:10px;">Boosts the response to topical minoxidil when combined; weaker alone.</div>
+            <div style="display:flex;align-items:flex-start;gap:7px;"><span style="width:4px;height:4px;border-radius:2px;background:#B1592E;margin-top:6px;flex-shrink:0;"></span><span style="font-size:12px;line-height:1.4;color:#7A6B5D;">Get depth and cadence guidance — overdoing it harms.</span></div>
+          </div>
+
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-size:15.5px;font-weight:600;color:#2B211A;">Ketoconazole 2% shampoo</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.8px;color:#7A6B5D;background:#F3EADD;border-radius:999px;padding:4px 9px;">WEAK</span>
+            </div>
+            <div style="font-size:13.5px;line-height:1.45;color:#7A6B5D;margin-bottom:10px;">Small studies only; a reasonable add-on for scalp health, not a driver of regrowth.</div>
+            <div style="display:flex;align-items:flex-start;gap:7px;"><span style="width:4px;height:4px;border-radius:2px;background:#B1592E;margin-top:6px;flex-shrink:0;"></span><span style="font-size:12px;line-height:1.4;color:#7A6B5D;">Worth mentioning at your next appointment, not a reason to book one.</span></div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ EXPORT SHEET ============ -->
+    <sc-if value="{{ isExport }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Export sheet" onClick="{{ closeOverlay }}" style="position:absolute;inset:0;z-index:46;background:rgba(43,33,26,0.38);display:flex;flex-direction:column;justify-content:flex-end;">
+        <div onClick="{{ stopProp }}" style="background:#FBF6EF;border-radius:28px 28px 0 0;box-shadow:0 -12px 40px rgba(43,33,26,0.25);padding:10px 22px 30px;animation:hcSheetUp .32s cubic-bezier(0.2,0.9,0.3,1) both;">
+          <div style="width:36px;height:5px;border-radius:3px;background:#D9CBB8;margin:0 auto 16px;"></div>
+          <div style="font-family:'Source Serif 4',Georgia,serif;font-size:24px;font-weight:700;color:#2B211A;margin-bottom:16px;">Export</div>
+
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;margin-bottom:12px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;margin-bottom:8px;">For your clinician</div>
+            <div style="font-size:13px;line-height:1.45;color:#7A6B5D;margin-bottom:12px;">A plain-language summary of your baseline, signals, treatments, labs and triggers — ready to hand to a dermatologist or GP.</div>
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;line-height:1.7;color:#A69687;background:#FBF6EF;border:1px solid #F3EADD;border-radius:12px;padding:10px 12px;margin-bottom:12px;">HAIR COMPASS · CLINICIAN SUMMARY<br>Baseline: AGA suspected · family history +<br>Shedding: normal band, 3-wk stable<br>Ferritin 24 ng/mL (LOW) · retest wk 8&#8230;</div>
+            <div style-active="transform:scale(0.98)" style="cursor:pointer;text-align:center;padding:13px;border-radius:14px;background:#B1592E;color:#FFF8F0;font-size:14.5px;font-weight:600;box-shadow:0 8px 20px rgba(177,89,46,0.35);">Share summary</div>
+          </div>
+
+          <div style="background:#FEFCF9;border:1px solid #EDE1D3;border-radius:22px;box-shadow:0 6px 16px rgba(90,56,27,0.10);padding:18px;">
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:#A69687;margin-bottom:8px;">Your data</div>
+            <div style="font-size:13px;line-height:1.45;color:#7A6B5D;margin-bottom:12px;">Everything as a JSON file — a portable backup you own.</div>
+            <div style-active="transform:scale(0.98)" style="cursor:pointer;text-align:center;padding:13px;border-radius:14px;border:1.5px solid #B1592E;color:#B1592E;font-size:14.5px;font-weight:600;">Export data (JSON)</div>
+          </div>
+
+          <div style="font-size:11px;color:#A69687;text-align:center;margin-top:14px;">A self-tracked record for documentation, not a diagnosis.</div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 520, &quot;height&quot;: 980 },
+  &quot;hasLoggedToday&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;State&quot; },
+  &quot;streakDays&quot;: { &quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 12, &quot;min&quot;: 0, &quot;max&quot;: 365, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;State&quot; },
+  &quot;showLearnStrip&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Content&quot; }
+}">
+class Component extends DCLogic {
+  state = {
+    tab: 'today',
+    sheetOpen: false,
+    loggedOverride: null,
+    shedSel: 1,
+    scalpSel: [],
+    sleep: 4,
+    stress: 2,
+    checks: { 'minox-am': true },
+    range: '3M',
+    region: 'Crown',
+    comparePct: 50,
+    remindersOn: true,
+    overlay: null,
+    cmpPreset: 0,
+    lagIdx: 0,
+  };
+
+  C = {
+    ink: '#2B211A', sec: '#7A6B5D', ter: '#A69687', hair: '#EDE1D3',
+    accent: '#B1592E', gold: '#C9A15A', sage: '#8A9D7B',
+    pos: '#5C7A52', warn: '#B98B2E', crit: '#A6432E', surface: '#FEFCF9',
+  };
+
+  steps = [
+    { key: 'minox-am', name: 'Minoxidil 5% foam', slot: 'Morning', cls: 'Topical' },
+    { key: 'fin-am', name: 'Finasteride 1 mg', slot: 'Morning', cls: 'Oral' },
+    { key: 'minox-pm', name: 'Minoxidil 5% foam', slot: 'Evening', cls: 'Topical' },
+    { key: 'massage-pm', name: 'Scalp massage · 4 min', slot: 'Evening', cls: 'Physical' },
+  ];
+
+  series(n, start, end, wig, seed) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const ease = t * t * (3 - 2 * t);
+      out.push(start + (end - start) * ease + Math.sin(i * 0.9 + seed) * wig + Math.sin(i * 0.33 + seed * 1.7) * wig * 0.7);
+    }
+    return out;
+  }
+
+  smooth(pts) {
+    let d = 'M ' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+      d += ' C ' + (p1[0] + (p2[0] - p0[0]) / 6).toFixed(1) + ' ' + (p1[1] + (p2[1] - p0[1]) / 6).toFixed(1) + ', '
+        + (p2[0] - (p3[0] - p1[0]) / 6).toFixed(1) + ' ' + (p2[1] - (p3[1] - p1[1]) / 6).toFixed(1) + ', '
+        + p2[0].toFixed(1) + ' ' + p2[1].toFixed(1);
+    }
+    return d;
+  }
+
+  chart(vals, max) {
+    const n = vals.length;
+    const pts = vals.map((v, i) => [4 + (i / (n - 1)) * 318, 4 + (1 - v / max) * 142]);
+    const path = this.smooth(pts);
+    const last = pts[n - 1];
+    return {
+      path,
+      area: path + ' L 322 146 L 4 146 Z',
+      dotX: last[0].toFixed(1),
+      dotY: last[1].toFixed(1),
+    };
+  }
+
+  compareVals() {
+    const C = this.C, st = this.state;
+    const presets = [
+      { label: 'Shedding vs Sleep', hair: 'Shedding', ov: 'Sleep quality', seed: 1.3, inverse: true },
+      { label: 'Shedding vs Stress', hair: 'Shedding', ov: 'Stress', seed: 2.6, inverse: false },
+      { label: 'Scalp vs Sleep', hair: 'Scalp severity', ov: 'Sleep quality', seed: 3.9, inverse: true },
+    ];
+    const cp = presets[st.cmpPreset];
+
+    // Latent lifestyle signal with 14 samples of history beyond the display window.
+    const L = [];
+    for (let i = 0; i < 60; i++) L.push(Math.sin(i * 0.42 + cp.seed) + 0.5 * Math.sin(i * 0.19 + cp.seed * 2.2));
+    const HOFF = 14; // hair follows lifestyle by ~6 weeks (14 of 30 samples over 90 days)
+    const hairVals = [];
+    for (let i = 0; i < 30; i++) hairVals.push((cp.inverse ? -L[i] : L[i]) * 0.8 + Math.sin(i * 1.7 + cp.seed) * 0.15);
+    const lagSamples = [0, 5, 14, 30][st.lagIdx];
+    const ovVals = [];
+    for (let i = 0; i < 30; i++) {
+      const idx = Math.max(0, Math.min(59, i + HOFF - lagSamples));
+      ovVals.push(L[idx] + Math.sin(i * 2.1 + cp.seed * 3) * 0.12);
+    }
+
+    const norm = vals => {
+      let mn = Infinity, mx = -Infinity;
+      for (const v of vals) { if (v < mn) mn = v; if (v > mx) mx = v; }
+      const span = mx - mn || 1;
+      return vals.map((v, i) => [4 + (i / (vals.length - 1)) * 318, 138 - ((v - mn) / span) * 122]);
+    };
+
+    const fits = [
+      ['NO FIT', C.ter], ['LOOSE FIT', C.warn], ['CLOSE FIT', C.pos], ['FADES', C.warn],
+    ][st.lagIdx];
+    const reads = [
+      cp.ov + ' and ' + cp.hair.toLowerCase() + ' don\u2019t track each other same-day \u2014 shedding rarely responds immediately.',
+      'Shifted two weeks, a few stretches overlap, but the fit stays loose.',
+      'With a six-week lag the curves track \u2014 ' + cp.ov.toLowerCase() + ' moves first, ' + cp.hair.toLowerCase() + ' follows.',
+      'Pushed to three months, the alignment washes out \u2014 any real window is likely shorter.',
+    ];
+
+    return {
+      cmpPresetOpts: presets.map((p, i) => ({
+        label: p.label,
+        bg: i === st.cmpPreset ? C.accent : C.surface,
+        color: i === st.cmpPreset ? '#FFF8F0' : C.ink,
+        border: i === st.cmpPreset ? C.accent : '#D9CBB8',
+        onClick: () => this.setState({ cmpPreset: i }),
+      })),
+      lagOpts: ['Same day', '2 wk', '6 wk', '3 mo'].map((l, i) => ({
+        label: l,
+        bg: i === st.lagIdx ? C.accent : 'transparent',
+        color: i === st.lagIdx ? '#FFF8F0' : C.ink,
+        onClick: () => this.setState({ lagIdx: i }),
+      })),
+      cmpHairName: cp.hair,
+      cmpOvName: cp.ov,
+      cmpHairPath: this.smooth(norm(hairVals)),
+      cmpOvPath: this.smooth(norm(ovVals)),
+      fitLabel: fits[0],
+      fitColor: fits[1],
+      cmpRead: reads[st.lagIdx],
+    };
+  }
+
+  renderVals() {
+    const C = this.C, st = this.state;
+    const logged = st.loggedOverride != null ? st.loggedOverride : (this.props.hasLoggedToday != null ? this.props.hasLoggedToday : false);
+    const streakBase = this.props.streakDays != null ? this.props.streakDays : 12;
+    const streak = streakBase + (st.loggedOverride ? 1 : 0);
+
+    const go = t => () => this.setState({ tab: t });
+    const col = t => (st.tab === t ? C.accent : '#B3A490');
+
+    // Routine rows
+    const row = s => {
+      const done = !!st.checks[s.key];
+      return {
+        name: s.name,
+        sub: s.slot + ' · ' + s.cls,
+        circleBorder: done ? C.accent : '#D9CBB8',
+        circleBg: done ? 'rgba(177,89,46,0.08)' : 'transparent',
+        checkOp: done ? 1 : 0,
+        nameColor: done ? C.ter : C.ink,
+        nameDeco: done ? 'line-through' : 'none',
+        onToggle: () => this.setState(p => ({ checks: { ...p.checks, [s.key]: !p.checks[s.key] } })),
+      };
+    };
+    const doneCount = this.steps.filter(s => st.checks[s.key]).length;
+    const coach = doneCount === 0
+      ? ['Ready when you are.', 'Four steps today — two this morning, two tonight. Each takes under five minutes.']
+      : doneCount === 4
+        ? ['Routine complete.', 'Every step logged. Nothing else to do today — see you tomorrow morning.']
+        : ['Momentum building.', doneCount + ' of 4 done. The evening block is where streaks are made.'];
+
+    // Log sheet segments
+    const shedLabels = ['Minimal', 'Normal', 'Elevated', 'Heavy'];
+    const shedOpts = shedLabels.map((l, i) => ({
+      label: l,
+      bg: i === st.shedSel ? C.accent : 'transparent',
+      color: i === st.shedSel ? '#FFF8F0' : C.ink,
+      onClick: () => this.setState({ shedSel: i }),
+    }));
+    const scalpLabels = ['None', 'Itch', 'Flaking', 'Redness', 'Tenderness'];
+    const scalpOpts = scalpLabels.map(l => {
+      const on = l === 'None' ? st.scalpSel.length === 0 : st.scalpSel.includes(l);
+      return {
+        label: l,
+        bg: on ? C.ink : C.surface,
+        color: on ? '#FFF8F0' : C.ink,
+        border: on ? C.ink : '#D9CBB8',
+        onClick: () => this.setState(p => ({
+          scalpSel: l === 'None' ? [] : (p.scalpSel.includes(l) ? p.scalpSel.filter(x => x !== l) : [...p.scalpSel, l]),
+        })),
+      };
+    });
+    const rate = key => [1, 2, 3, 4, 5].map(n => ({
+      n,
+      bg: st[key] >= n ? C.accent : '#F3EADD',
+      color: st[key] >= n ? '#FFF8F0' : C.ter,
+      onClick: () => this.setState({ [key]: n }),
+    }));
+
+    const scalpScore = st.scalpSel.length === 0 ? 2 : Math.min(16, st.scalpSel.length * 3);
+
+    // Charts
+    const cfg = {
+      '1M': { shed: [1.55, 1.15, 0.10, 2.1], scalp: [5.4, 4.2, 0.5, 5.3], labels: ['Jun 4', 'Jun 11', 'Jun 18', 'Jun 25', 'Jul 2'] },
+      '3M': { shed: [2.05, 1.15, 0.13, 3.2], scalp: [7.4, 4.3, 0.6, 7.1], labels: ['Apr', 'May', 'Jun', 'Jul'] },
+      '6M': { shed: [2.35, 1.15, 0.16, 4.3], scalp: [9.6, 4.3, 0.8, 9.2], labels: ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'] },
+    }[st.range];
+    const shedVals = this.series(30, cfg.shed[0], cfg.shed[1], cfg.shed[2], cfg.shed[3]).map(v => Math.max(0.15, Math.min(2.9, v)));
+    const scalpVals = this.series(30, cfg.scalp[0], cfg.scalp[1], cfg.scalp[2], cfg.scalp[3]).map(v => Math.max(0.5, Math.min(15.5, v)));
+    const shed = this.chart(shedVals, 3);
+    const scalp = this.chart(scalpVals, 16);
+
+    const rangeOpts = ['1M', '3M', '6M'].map(r => ({
+      label: r,
+      bg: r === st.range ? C.accent : 'transparent',
+      color: r === st.range ? '#FFF8F0' : C.sec,
+      onClick: () => this.setState({ range: r }),
+    }));
+
+    const dotRow = misses => Array.from({ length: 14 }, (_, i) => ({ bg: misses.includes(i) ? '#EFE3D2' : C.accent }));
+    const adhRows = [
+      { name: 'Minoxidil 5% foam', pct: '86%', pctColor: C.pos, dots: dotRow([4, 11]) },
+      { name: 'Finasteride 1 mg', pct: '100%', pctColor: C.pos, dots: dotRow([]) },
+    ];
+
+    // Photos
+    const regionOpts = ['Frontal', 'Crown', 'Temples'].map(r => ({
+      label: r,
+      bg: r === st.region ? C.ink : C.surface,
+      color: r === st.region ? '#FFF8F0' : C.ink,
+      border: r === st.region ? C.ink : '#D9CBB8',
+      onClick: () => this.setState({ region: r }),
+    }));
+
+    return {
+      // tabs
+      isToday: st.tab === 'today', isTrends: st.tab === 'trends', isPlan: st.tab === 'plan',
+      isLabs: st.tab === 'labs', isPhotos: st.tab === 'photos',
+      goToday: go('today'), goTrends: go('trends'), goPlan: go('plan'), goLabs: go('labs'), goPhotos: go('photos'),
+      colToday: col('today'), colTrends: col('trends'), colPlan: col('plan'), colLabs: col('labs'), colPhotos: col('photos'),
+
+      // today
+      logged, notLogged: !logged,
+      streakText: streak + '-day streak',
+      statShed: shedLabels[st.shedSel],
+      statScalp: scalpScore + '/16',
+      statSleep: st.sleep + '/5',
+      todayRows: this.steps.map(row),
+      doneCount,
+      showLearn: this.props.showLearnStrip != null ? this.props.showLearnStrip : true,
+
+      // sheet
+      sheetOpen: st.sheetOpen,
+      openSheet: () => this.setState({ sheetOpen: true }),
+      closeSheet: () => this.setState({ sheetOpen: false }),
+      stopProp: e => e.stopPropagation(),
+      saveLog: () => this.setState({ loggedOverride: true, sheetOpen: false }),
+      shedOpts, scalpOpts,
+      sleepOpts: rate('sleep'), stressOpts: rate('stress'),
+
+      // trends
+      rangeOpts,
+      shedPath: shed.path, shedArea: shed.area, shedDotX: shed.dotX, shedDotY: shed.dotY,
+      scalpPath: scalp.path, scalpDotX: scalp.dotX, scalpDotY: scalp.dotY,
+      xLabels: cfg.labels.map(t => ({ t })),
+      adhRows,
+
+      // plan
+      coachHead: coach[0], coachDetail: coach[1],
+      ringOffset: (182.2 * (1 - doneCount / 4)).toFixed(1),
+      morningRows: this.steps.slice(0, 2).map(row),
+      eveningRows: this.steps.slice(2).map(row),
+      remTrack: st.remindersOn ? C.accent : '#E2D5C3',
+      remKnob: st.remindersOn ? '22px' : '2px',
+      toggleReminders: () => this.setState(p => ({ remindersOn: !p.remindersOn })),
+
+      // overlays
+      isCompare: st.overlay === 'compare',
+      isRecommender: st.overlay === 'recommender',
+      isExport: st.overlay === 'export',
+      openCompare: () => this.setState({ overlay: 'compare' }),
+      openRecommender: () => this.setState({ overlay: 'recommender' }),
+      openExport: () => this.setState({ overlay: 'export' }),
+      closeOverlay: () => this.setState({ overlay: null }),
+      ...this.compareVals(),
+
+      // photos
+      regionOpts,
+      isCrown: st.region === 'Crown', notCrown: st.region !== 'Crown',
+      emptyTitle: 'No ' + st.region.toLowerCase() + ' photos yet',
+      comparePct: st.comparePct,
+      onCompareInput: e => this.setState({ comparePct: +e.target.value }),
+    };
+  }
+}
+</script>
+</body>
+</html>
