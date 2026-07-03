@@ -85,6 +85,68 @@ struct Hair_Compass_AI_5Tests {
         #expect(smoothed[3] == 5)
     }
 
+    // MARK: - Refill tracking
+
+    @Test func refillUrgencyBandsAtTheDocumentedEdges() {
+        #expect(HairAnalytics.refillUrgency(daysLeft: nil) == RefillUrgency.none)
+        #expect(HairAnalytics.refillUrgency(daysLeft: -1) == .overdue)
+        #expect(HairAnalytics.refillUrgency(daysLeft: 0) == .urgent)
+        #expect(HairAnalytics.refillUrgency(daysLeft: 7) == .urgent)
+        #expect(HairAnalytics.refillUrgency(daysLeft: 8) == .soon)
+        #expect(HairAnalytics.refillUrgency(daysLeft: 14) == .soon)
+        #expect(HairAnalytics.refillUrgency(daysLeft: 15) == .ok)
+    }
+
+    @Test func daysUntilRefillCountsWholeDaysAndGoesNegativeWhenOverdue() throws {
+        let cal = Calendar.current
+        let now = Date.now
+        #expect(HairAnalytics.daysUntilRefill(nil, now: now) == nil)
+        #expect(HairAnalytics.daysUntilRefill(now, now: now) == 0)
+        let inTen = try #require(cal.date(byAdding: .day, value: 10, to: now))
+        #expect(HairAnalytics.daysUntilRefill(inTen, now: now) == 10)
+        let threeAgo = try #require(cal.date(byAdding: .day, value: -3, to: now))
+        #expect(HairAnalytics.daysUntilRefill(threeAgo, now: now) == -3)
+    }
+
+    @Test func treatmentBridgesRefillDate() throws {
+        let none = Treatment(treatmentClass: .minoxidil)
+        #expect(none.daysUntilRefill == nil)
+        let due = try #require(Calendar.current.date(byAdding: .day, value: 5, to: .now))
+        let tracked = Treatment(treatmentClass: .minoxidil, refillBy: due)
+        #expect(tracked.daysUntilRefill == 5)
+    }
+
+    // MARK: - Tolerability (side effects)
+
+    @Test func severeSideEffectBannerNeedsSeverityThreeWithinFourteenDays() throws {
+        let cal = Calendar.current
+        let now = Date.now
+        let recent = try #require(cal.date(byAdding: .day, value: -3, to: now))
+        let old = try #require(cal.date(byAdding: .day, value: -20, to: now))
+        // Severity 3 in-window → banner.
+        #expect(HairAnalytics.hasRecentSevereSideEffect(logs: [(3, recent)], now: now) == true)
+        // Severity 3 but stale, or recent-but-mild → no banner.
+        #expect(HairAnalytics.hasRecentSevereSideEffect(logs: [(3, old)], now: now) == false)
+        #expect(HairAnalytics.hasRecentSevereSideEffect(logs: [(2, recent), (1, recent)], now: now) == false)
+        #expect(HairAnalytics.hasRecentSevereSideEffect(logs: [], now: now) == false)
+    }
+
+    @Test func sideEffectLogBridgesTypeAndClampsSeverity() {
+        let log = SideEffectLog(type: .shedding, severity: 9, note: "early flare")
+        #expect(log.type == .shedding)
+        #expect(log.severity == 3)                        // clamped to 1…3
+        #expect(log.type.caption == "Often transient early on")
+        #expect(SideEffectLog(severity: 0).severity == 1) // floor
+    }
+
+    @Test @MainActor func refillReminderFiresAWeekBeforeAtTen() throws {
+        let cal = Calendar.current
+        let refillBy = try #require(cal.date(byAdding: .day, value: 30, to: cal.startOfDay(for: .now)))
+        let fire = try #require(NotificationService.refillReminderDate(for: refillBy, calendar: cal))
+        #expect(cal.dateComponents([.day], from: cal.startOfDay(for: fire), to: cal.startOfDay(for: refillBy)).day == 7)
+        #expect(cal.component(.hour, from: fire) == 10)
+    }
+
     // MARK: - Rapid weight loss (telogen-effluvium trigger)
 
     @Test func rapidWeightLossFlagsMeaningfulDrop() throws {

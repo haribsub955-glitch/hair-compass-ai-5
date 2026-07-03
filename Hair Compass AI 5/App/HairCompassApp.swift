@@ -12,6 +12,7 @@ struct HairCompassApp: App {
             DailyEntry.self,
             Treatment.self,
             TreatmentDose.self,
+            SideEffectLog.self,
             LabResult.self,
             PhotoRecord.self,
             HealthSnapshot.self,

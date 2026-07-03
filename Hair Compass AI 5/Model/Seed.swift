@@ -39,7 +39,8 @@ enum Seed {
         let start = calendar.date(byAdding: .day, value: -140, to: today) ?? today
         let minox = Treatment(
             name: "Minoxidil 5%", treatmentClass: .minoxidil, dose: "1 mL",
-            scheduleTimes: "08:00,21:00", startDate: start, isActive: true
+            scheduleTimes: "08:00,21:00", startDate: start, isActive: true,
+            refillBy: calendar.date(byAdding: .day, value: 6, to: today)   // inside the urgent band
         )
         let fin = Treatment(
             name: "Finasteride 1mg", treatmentClass: .finasteride, dose: "1 mg",
@@ -47,6 +48,19 @@ enum Seed {
         )
         context.insert(minox)
         context.insert(fin)
+
+        // Tolerability history: a mild transient shedding flare early on, and a moderate
+        // irritation more recently — enough for chips and the detail list, no severe banner.
+        context.insert(SideEffectLog(
+            treatment: minox, type: .shedding, severity: 1,
+            date: calendar.date(byAdding: .day, value: -110, to: today) ?? today,
+            note: "Week 3–4 flare, settled on its own"
+        ))
+        context.insert(SideEffectLog(
+            treatment: minox, type: .scalpIrritation, severity: 2,
+            date: calendar.date(byAdding: .day, value: -9, to: today) ?? today,
+            note: "Stinging after the evening application"
+        ))
 
         for offset in stride(from: span, through: 0, by: -1) {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }

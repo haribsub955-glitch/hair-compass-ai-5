@@ -148,6 +148,53 @@ enum TreatmentClass: String, Codable, CaseIterable, Identifiable {
     var isDaily: Bool { defaultDailyCount > 0 }
 }
 
+/// Pragmatic, class-agnostic tolerability vocabulary. Covers the common minoxidil
+/// (irritation, swelling, dizziness) and finasteride/dutasteride (sexual, mood) reports
+/// without pretending to be a medical taxonomy.
+enum SideEffectType: String, Codable, CaseIterable, Identifiable {
+    case scalpIrritation, itching, dizziness, headache, sexual, mood, swelling, shedding, other
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .scalpIrritation: return "Scalp irritation"
+        case .itching: return "Itching"
+        case .dizziness: return "Dizziness"
+        case .headache: return "Headache"
+        case .sexual: return "Sexual side effect"
+        case .mood: return "Mood change"
+        case .swelling: return "Swelling"
+        case .shedding: return "Shedding flare"
+        case .other: return "Other"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .scalpIrritation: return "flame"
+        case .itching: return "hand.raised.fingers.spread"
+        case .dizziness: return "tornado"
+        case .headache: return "brain.head.profile"
+        case .sexual: return "heart.slash"
+        case .mood: return "cloud.rain"
+        case .swelling: return "bandage"
+        case .shedding: return "wind"
+        case .other: return "exclamationmark.circle"
+        }
+    }
+
+    /// Honest context shown in the log form — only where it genuinely reassures.
+    var caption: String? {
+        self == .shedding ? "Often transient early on" : nil
+    }
+}
+
+/// How pressing a refill is, banded from days remaining. Pure display vocabulary —
+/// the banding math lives in `HairAnalytics.refillUrgency`.
+enum RefillUrgency {
+    case none, ok, soon, urgent, overdue
+}
+
 enum LabTest: String, Codable, CaseIterable, Identifiable {
     case ferritin, tsh, freeT4, vitaminD, vitaminB12
     var id: String { rawValue }

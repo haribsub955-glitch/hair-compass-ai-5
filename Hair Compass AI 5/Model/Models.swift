@@ -124,9 +124,15 @@ final class Treatment {
     var scheduleTimes: String = ""   // "08:00,21:00"
     var startDate: Date = Date.now
     var isActive: Bool = true
+    /// When the current supply is expected to run out. Optional — unset means "not tracked".
+    /// Running low is the most common reason a regimen lapses, so it gets a first-class date.
+    var refillBy: Date? = nil
 
     @Relationship(deleteRule: .cascade, inverse: \TreatmentDose.treatment)
     var doses: [TreatmentDose] = []
+
+    @Relationship(deleteRule: .cascade, inverse: \SideEffectLog.treatment)
+    var sideEffects: [SideEffectLog] = []
 
     init(
         name: String = "",
@@ -134,7 +140,8 @@ final class Treatment {
         dose: String = "",
         scheduleTimes: String = "",
         startDate: Date = .now,
-        isActive: Bool = true
+        isActive: Bool = true,
+        refillBy: Date? = nil
     ) {
         self.name = name
         self.classRaw = treatmentClass.rawValue
@@ -142,12 +149,17 @@ final class Treatment {
         self.scheduleTimes = scheduleTimes
         self.startDate = startDate
         self.isActive = isActive
+        self.refillBy = refillBy
     }
 
     var treatmentClass: TreatmentClass {
         get { TreatmentClass(rawValue: classRaw) ?? .other }
         set { classRaw = newValue.rawValue }
     }
+
+    /// Whole days from today until `refillBy` (start-of-day to start-of-day). nil when unset;
+    /// 0 = due today; negative = overdue.
+    var daysUntilRefill: Int? { HairAnalytics.daysUntilRefill(refillBy) }
 
     var slots: [String] {
         let parsed = scheduleTimes
@@ -174,6 +186,36 @@ final class TreatmentDose {
         self.treatment = treatment
         self.loggedAt = loggedAt
         self.slot = slot
+    }
+}
+
+/// One dated tolerability observation for a treatment. Side effects are why people quit
+/// finasteride/minoxidil or need their prescriber — a record, never medical advice.
+@Model
+final class SideEffectLog {
+    var treatment: Treatment?
+    var date: Date = Date.now
+    var severity: Int = 1   // 1 mild · 2 moderate · 3 severe
+    var typeRaw: String = SideEffectType.other.rawValue
+    var note: String = ""
+
+    init(
+        treatment: Treatment? = nil,
+        type: SideEffectType = .other,
+        severity: Int = 1,
+        date: Date = .now,
+        note: String = ""
+    ) {
+        self.treatment = treatment
+        self.typeRaw = type.rawValue
+        self.severity = min(max(severity, 1), 3)
+        self.date = date
+        self.note = note
+    }
+
+    var type: SideEffectType {
+        get { SideEffectType(rawValue: typeRaw) ?? .other }
+        set { typeRaw = newValue.rawValue }
     }
 }
 

@@ -11,11 +11,13 @@ struct CareView: View {
     @Query private var doses: [TreatmentDose]
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
+    @Query private var sideEffectLogs: [SideEffectLog]
 
     @State private var showAdd = false
     @State private var showRecommender = false
     @State private var remindersOn = false
     @State private var expandedSteps: Set<String> = []
+    @State private var detailTreatment: Treatment?
 
     private var profile: Profile? { profiles.first }
 
@@ -39,6 +41,7 @@ struct CareView: View {
                     )
                 ).padding(.top, 8)
 
+                if hasRecentSevereSideEffect { severeSideEffectBanner }
                 coachCard
                 if let milestone = Milestones.achieved(streak: streak, treatments: treatmentWeeks).first {
                     milestoneCard(milestone)
@@ -62,6 +65,7 @@ struct CareView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
+        .sheet(item: $detailTreatment) { TreatmentDetailSheet(treatment: $0) }
         .sheet(isPresented: $showRecommender) {
             NavigationStack {
                 RecommenderView(condition: profile?.condition ?? .unsure, sex: profile?.sex ?? .male)
@@ -76,10 +80,14 @@ struct CareView: View {
                 try? await Task.sleep(for: .milliseconds(250))
                 withAnimation { proxy.scrollTo("science", anchor: .top) }
             }
+            if ProcessInfo.processInfo.arguments.contains("HC_TREATMENT_DETAIL") {
+                try? await Task.sleep(for: .milliseconds(250))
+                detailTreatment = treatments.first
+            }
             #endif
         }
         .task(id: treatmentFingerprint) {
-            await notifications.reschedule(treatments: notifTreatments)
+            await notifications.reschedule(treatments: notifTreatments, refills: notifRefills)
         }
         }
     }
@@ -93,10 +101,18 @@ struct CareView: View {
     private var notifTreatments: [(name: String, slots: [String])] {
         activeTreatments.filter { !$0.slots.isEmpty }.map { ($0.name.isEmpty ? $0.treatmentClass.title : $0.name, $0.slots) }
     }
+    private var notifRefills: [(name: String, refillBy: Date)] {
+        activeTreatments.compactMap { t in
+            t.refillBy.map { (t.name.isEmpty ? t.treatmentClass.title : t.name, $0) }
+        }
+    }
     private var treatmentFingerprint: String {
-        activeTreatments.map { "\($0.name)\($0.scheduleTimes)\($0.isActive)" }.joined(separator: "|")
+        activeTreatments.map { "\($0.name)\($0.scheduleTimes)\($0.isActive)\($0.refillBy?.timeIntervalSince1970 ?? 0)" }.joined(separator: "|")
     }
     private var streak: Int { HairAnalytics.loggingStreak(entryDates: entries.map(\.date)) }
+    private var hasRecentSevereSideEffect: Bool {
+        HairAnalytics.hasRecentSevereSideEffect(logs: sideEffectLogs.map { ($0.severity, $0.date) })
+    }
 
     /// Today's routine grouped into blocks, carrying the Treatment so a tap can log the dose.
     private var routine: [(block: RoutineBlock, steps: [(treatment: Treatment, slot: String)])] {
@@ -173,6 +189,20 @@ struct CareView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    /// One calm, non-blocking nudge when a severity-3 side effect was logged in the last 14 days.
+    /// A prompt to have a conversation — never advice to stop or change anything.
+    private var severeSideEffectBanner: some View {
+        ClinicalCard(padding: 14) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.bubble")
+                    .font(.system(size: 16)).foregroundStyle(Clinical.critical)
+                Text("You logged a severe side effect — worth discussing with your prescriber.")
+                    .font(.system(size: 13)).foregroundStyle(Clinical.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private func milestoneCard(_ m: Milestone) -> some View {
@@ -262,7 +292,7 @@ struct CareView: View {
                 .onChange(of: remindersOn) { _, on in
                     Task {
                         if on {
-                            let granted = await notifications.enable(treatments: notifTreatments)
+                            let granted = await notifications.enable(treatments: notifTreatments, refills: notifRefills)
                             if !granted { remindersOn = false }
                         } else {
                             notifications.disable()
@@ -324,6 +354,7 @@ struct CareView: View {
                     }
                     Spacer()
                     Menu {
+                        Button("Refill & side effects") { detailTreatment = t }
                         Button(t.isActive ? "Mark inactive" : "Reactivate") { t.isActive.toggle() }
                         Button("Delete", role: .destructive) { context.delete(t) }
                     } label: {
@@ -357,12 +388,44 @@ struct CareView: View {
                         .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
                 }
 
+                let urgency = HairAnalytics.refillUrgency(daysLeft: t.daysUntilRefill)
+                if urgency == .soon || urgency == .urgent || urgency == .overdue || !t.sideEffects.isEmpty {
+                    HStack(spacing: 6) {
+                        if let days = t.daysUntilRefill {
+                            switch urgency {
+                            case .overdue:
+                                statusChip("Refill overdue", symbol: "pills.circle", tint: Clinical.critical)
+                            case .urgent, .soon:
+                                statusChip(days == 0 ? "Refill due today" : "Refill in \(days) day\(days == 1 ? "" : "s")",
+                                           symbol: "pills.circle", tint: Clinical.warning)
+                            case .ok, .none:
+                                EmptyView()
+                            }
+                        }
+                        if !t.sideEffects.isEmpty {
+                            statusChip("\(t.sideEffects.count) side effect\(t.sideEffects.count == 1 ? "" : "s")",
+                                       symbol: "waveform.path.ecg", tint: Clinical.tertiary)
+                        }
+                    }
+                }
+
                 if !t.isActive {
                     Text("Inactive").font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
                 }
             }
         }
         .opacity(t.isActive ? 1 : 0.6)
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .onTapGesture { detailTreatment = t }
+    }
+
+    /// Small tinted status pill used on treatment cards (refill countdown, side-effect count).
+    private func statusChip(_ text: String, symbol: String, tint: Color) -> some View {
+        Label(text, systemImage: symbol)
+            .font(Clinical.eyebrow(10)).tracking(0.4)
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(tint.opacity(0.12), in: Capsule())
     }
 
     // MARK: Dose logging (shared pattern with Today)

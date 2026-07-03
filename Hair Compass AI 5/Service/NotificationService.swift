@@ -13,6 +13,7 @@ final class NotificationService {
     private let center = UNUserNotificationCenter.current()
 
     private let treatmentPrefix = "treatment."
+    private let refillPrefix = "refill."
     private let logNudgeID = "logNudge"
     private let photoReminderID = "photoReminder"
 
@@ -24,7 +25,10 @@ final class NotificationService {
 
     /// Turn reminders on: request permission if needed, then schedule. Returns whether it's on.
     @discardableResult
-    func enable(treatments: [(name: String, slots: [String])]) async -> Bool {
+    func enable(
+        treatments: [(name: String, slots: [String])],
+        refills: [(name: String, refillBy: Date)] = []
+    ) async -> Bool {
         let granted: Bool
         if authorization == .notDetermined {
             granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
@@ -37,7 +41,7 @@ final class NotificationService {
             return false
         }
         UserDefaults.standard.set(true, forKey: Self.enabledKey)
-        await reschedule(treatments: treatments)
+        await reschedule(treatments: treatments, refills: refills)
         return true
     }
 
@@ -48,7 +52,10 @@ final class NotificationService {
 
     /// Replace all scheduled reminders with fresh ones for the current active daily treatments.
     /// No-op when reminders are off, so callers can fire it freely whenever treatments change.
-    func reschedule(treatments: [(name: String, slots: [String])]) async {
+    func reschedule(
+        treatments: [(name: String, slots: [String])],
+        refills: [(name: String, refillBy: Date)] = []
+    ) async {
         guard isEnabled, authorization == .authorized || authorization == .provisional else { return }
         center.removeAllPendingNotificationRequests()
 
@@ -63,6 +70,20 @@ final class NotificationService {
                 let request = UNNotificationRequest(identifier: "\(treatmentPrefix)\(i).\(slot)", content: content, trigger: trigger)
                 try? await center.add(request)
             }
+        }
+
+        // One-off refill heads-up, 7 days before each refill-by date at 10:00. Skipped when
+        // that moment is already past — the in-app chip carries urgent/overdue from there.
+        for (i, r) in refills.enumerated() {
+            guard let fireDate = Self.refillReminderDate(for: r.refillBy), fireDate > .now else { continue }
+            let content = UNMutableNotificationContent()
+            content.title = "Running low soon"
+            content.body = "Your \(r.name) supply runs out around \(r.refillBy.formatted(date: .abbreviated, time: .omitted)). A good week to arrange a refill."
+            content.sound = .default
+            let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+            let request = UNNotificationRequest(identifier: "\(refillPrefix)\(i)", content: content, trigger: trigger)
+            try? await center.add(request)
         }
 
         // Evening nudge to log the day and protect the streak.
@@ -90,6 +111,12 @@ final class NotificationService {
             trigger: UNCalendarNotificationTrigger(dateMatching: monthly, repeats: true)
         )
         try? await center.add(photoRequest)
+    }
+
+    /// 10:00 local time, 7 days before the refill-by date. nil if the calendar math fails.
+    static func refillReminderDate(for refillBy: Date, calendar: Calendar = .current) -> Date? {
+        guard let weekBefore = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: refillBy)) else { return nil }
+        return calendar.date(byAdding: .hour, value: 10, to: weekBefore)
     }
 
     /// "08:00" → hour/minute DateComponents for a repeating daily trigger.

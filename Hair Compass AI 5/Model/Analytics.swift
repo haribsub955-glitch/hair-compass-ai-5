@@ -70,6 +70,49 @@ enum HairAnalytics {
         return min(1, Double(logged) / Double(expected))
     }
 
+    // MARK: - Refill tracking
+
+    /// Whole days from today until `refillBy`, start-of-day to start-of-day.
+    /// nil when unset · 0 = due today · negative = overdue.
+    static func daysUntilRefill(
+        _ refillBy: Date?,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> Int? {
+        guard let refillBy else { return nil }
+        return calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: now),
+            to: calendar.startOfDay(for: refillBy)
+        ).day
+    }
+
+    /// Bands days-remaining into a display urgency:
+    /// nil → none · <0 → overdue · 0…7 → urgent · 8…14 → soon · else ok.
+    static func refillUrgency(daysLeft: Int?) -> RefillUrgency {
+        guard let daysLeft else { return .none }
+        switch daysLeft {
+        case ..<0: return .overdue
+        case 0...7: return .urgent
+        case 8...14: return .soon
+        default: return .ok
+        }
+    }
+
+    // MARK: - Tolerability
+
+    /// True when any log is severity 3 within the trailing window — drives the single calm
+    /// "worth discussing with your prescriber" banner. A nudge to talk, never advice.
+    static func hasRecentSevereSideEffect(
+        logs: [(severity: Int, date: Date)],
+        windowDays: Int = 14,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> Bool {
+        let start = calendar.date(byAdding: .day, value: -windowDays, to: now) ?? now
+        return logs.contains { $0.severity >= 3 && $0.date >= start && $0.date <= now }
+    }
+
     // MARK: - Rapid weight loss (telogen-effluvium trigger)
 
     /// A meaningful weight drop over a short window is a recognized shedding trigger, typically
