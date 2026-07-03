@@ -74,34 +74,22 @@ struct CompareView: View {
         .buttonStyle(.plain)
     }
 
+    /// Two stacked scrub-strips — drag across a strip and the sparkline preview (and the chart
+    /// behind) re-draws live with the metric under your finger; lifting/tapping selects it.
     private var pickers: some View {
-        HStack(spacing: 12) {
-            metricPicker("Hair fall", options: ChartMetric.hairFall, selection: $hairID, color: Clinical.ink)
-            Image(systemName: "arrow.left.arrow.right").font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
-            metricPicker("Lifestyle", options: ChartMetric.lifestyle, selection: $overlayID, color: Clinical.sage)
-        }
-    }
-
-    private func metricPicker(_ label: String, options: [ChartMetric], selection: Binding<String>, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Eyebrow(text: label)
-            Menu {
-                ForEach(options) { m in Button(m.title) { selection.wrappedValue = m.id } }
-            } label: {
-                HStack(spacing: 4) {
-                    Circle().fill(color).frame(width: 8, height: 8)
-                    Text(ChartMetric[selection.wrappedValue]?.title ?? "—")
-                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 9)).foregroundStyle(Clinical.tertiary)
-                }
-                .padding(.vertical, 8).padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Clinical.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+        VStack(alignment: .leading, spacing: 12) {
+            MetricScrubber(title: "Hair fall", options: ChartMetric.hairFall, selectionID: $hairID,
+                           tint: Clinical.ink,
+                           normalizedSeries: { ChartMath.normalize(series(for: $0.id).map(\.value)) })
+            HStack(spacing: 10) {
+                Rectangle().fill(Clinical.hairline).frame(height: 1)
+                Image(systemName: "arrow.up.arrow.down").font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                Rectangle().fill(Clinical.hairline).frame(height: 1)
             }
+            MetricScrubber(title: "Lifestyle", options: ChartMetric.lifestyle, selectionID: $overlayID,
+                           tint: Clinical.sage,
+                           normalizedSeries: { ChartMath.normalize(series(for: $0.id).map(\.value)) })
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: Chart
