@@ -31,6 +31,7 @@ struct RootView: View {
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab: AppTab = RootView.initialTab
     @State private var didBootstrap = false
     @State private var showOnboarding = false
@@ -38,6 +39,8 @@ struct RootView: View {
     @State private var healthKit = HealthKitService()
     @State private var notifications = NotificationService()
     @State private var affiliates = AffiliateStore()
+    @StateObject private var ritualCoordinator = LaunchRitualCoordinator()
+    @State private var ritualKind: RitualKind?
 
     private var profile: Profile? { profiles.first }
     private var widgetFingerprint: String {
@@ -85,6 +88,10 @@ struct RootView: View {
             if ProcessInfo.processInfo.arguments.contains("HC_ONBOARD") { showOnboarding = true }
             if ProcessInfo.processInfo.arguments.contains("HC_PROFILE") { showProfileEdit = true }
             #endif
+            // Launch-ritual roll — only once onboarding is resolved, and never over onboarding.
+            if !showOnboarding {
+                ritualKind = ritualCoordinator.rollOnLaunch(hasOnboarded: profile?.hasOnboarded == true)
+            }
             // If the user has already granted Health access, refresh today's snapshot on launch.
             if healthKit.authorization.isUsable {
                 await healthKit.refreshSnapshot(context: context)
@@ -98,8 +105,27 @@ struct RootView: View {
                 OnboardingFlow(profile: profile, onFinish: { showOnboarding = false })
             }
         }
+        // Onboarding wins: we only ever set `ritualKind` when not onboarding, so the two covers
+        // never contend. Dismissing the ritual reveals the normal Today screen underneath.
+        .fullScreenCover(item: $ritualKind) { kind in
+            RitualView(kind: kind) { ritualKind = nil }
+        }
         .sheet(isPresented: $showProfileEdit) {
             if let profile { BaselineFlow(profile: profile) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background:
+                ritualCoordinator.markBackgrounded()
+            case .active:
+                // Foreground after >4h in the background → re-roll (never over onboarding/another cover).
+                if !showOnboarding, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
+                    ritualKind = ritualCoordinator.rollOnForeground(hasOnboarded: profile?.hasOnboarded == true)
+                    ritualCoordinator.clearBackgrounded()
+                }
+            default:
+                break
+            }
         }
         .tint(Clinical.accent)
     }

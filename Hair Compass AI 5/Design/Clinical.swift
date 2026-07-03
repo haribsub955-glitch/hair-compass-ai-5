@@ -91,6 +91,10 @@ enum BrandArt {
     static let guidance = "art-guidance"    // Recommender "What helps"
     static let analysis = "art-analysis"    // Deep analysis
     static let trends = "art-trends"        // Trends header
+
+    // Launch-ritual art (botanical backdrop + the comb that follows the finger).
+    static let ritualBackdrop = "comb-bg"
+    static let combTool = "comb-tool"
 }
 
 /// A rounded brand-art banner in the warm gouache style — reused across screens so imagery reads as
