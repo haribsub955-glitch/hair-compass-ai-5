@@ -69,6 +69,11 @@ struct PhotosView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { GuidedCaptureView(defaultRegion: region) }
+        .onAppear {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("HC_ADDPHOTO") { showAdd = true }
+            #endif
+        }
     }
 
     private var regionPicker: some View {

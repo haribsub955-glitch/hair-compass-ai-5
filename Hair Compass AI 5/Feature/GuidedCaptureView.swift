@@ -52,6 +52,16 @@ struct GuidedCaptureView: View {
             .task { await camera.start() }
             .onDisappear { camera.stop() }
             .onAppear(perform: applyPrefill)
+            .onAppear {
+                #if DEBUG
+                if captured == nil, ProcessInfo.processInfo.arguments.contains("HC_CAPTURED") {
+                    let r = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 380))
+                    captured = r.image { ctx in
+                        UIColor(white: 0.82, alpha: 1).setFill(); ctx.fill(CGRect(x: 0, y: 0, width: 300, height: 380))
+                    }
+                }
+                #endif
+            }
             .onChange(of: region) { _, _ in applyPrefill() }
             .onChange(of: pickerItem) { _, item in loadPicked(item) }
         }
@@ -205,9 +215,9 @@ struct GuidedCaptureView: View {
                 section("Conditions") {
                     Text("Pre-filled to match your last \(region.title.lowercased()) shot — keep them the same so comparisons stay honest.")
                         .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
-                    pickerRow("Lighting", options: lightingOptions, selection: $lighting)
-                    pickerRow("Distance", options: distanceOptions, selection: $distance)
-                    pickerRow("Parting", options: partingOptions, selection: $parting)
+                    CapturePreviewChips(title: "Lighting", options: lightingOptions, selection: $lighting, kind: .lighting)
+                    CapturePreviewChips(title: "Distance", options: distanceOptions, selection: $distance, kind: .distance)
+                    CapturePreviewChips(title: "Parting", options: partingOptions, selection: $parting, kind: .parting)
                     Toggle(isOn: $isWet) { Text("Wet hair").font(.system(size: 15)).foregroundStyle(Clinical.ink) }
                         .tint(Clinical.accent)
                 }
@@ -238,21 +248,6 @@ struct GuidedCaptureView: View {
     @ViewBuilder
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12) { Eyebrow(text: title); content() }
-    }
-
-    private func pickerRow(_ title: String, options: [String], selection: Binding<String>) -> some View {
-        HStack {
-            Text(title).font(.system(size: 14)).foregroundStyle(Clinical.secondary)
-            Spacer()
-            Menu {
-                ForEach(options, id: \.self) { opt in Button(opt) { selection.wrappedValue = opt } }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(selection.wrappedValue).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 10)).foregroundStyle(Clinical.tertiary)
-                }
-            }
-        }
     }
 
     private func applyPrefill() {
