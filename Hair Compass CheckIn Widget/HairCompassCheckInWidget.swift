@@ -53,9 +53,11 @@ struct HairCompassWidgetView: View {
     @Environment(\.widgetFamily) private var family
     var entry: HairCompassProvider.Entry
 
-    private let ink = Color(red: 0.043, green: 0.043, blue: 0.047)
-    private let secondary = Color(red: 0.42, green: 0.44, blue: 0.47)
-    private let accent = Color(red: 0.09, green: 0.36, blue: 0.84)
+    // Warm & premium palette (mirrors Clinical in the app target).
+    private let ink = Color(red: 0.169, green: 0.129, blue: 0.102)      // espresso
+    private let secondary = Color(red: 0.478, green: 0.420, blue: 0.365) // warm taupe
+    private let accent = Color(red: 0.694, green: 0.349, blue: 0.180)    // copper
+    private let canvas = Color(red: 0.984, green: 0.965, blue: 0.937)    // warm ivory
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -91,7 +93,7 @@ struct HairCompassWidgetView: View {
             Spacer(minLength: 0)
         }
         .widgetURL(URL(string: "haircompass://today"))
-        .containerBackground(Color.white, for: .widget)
+        .containerBackground(canvas, for: .widget)
     }
 }
 

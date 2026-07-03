@@ -28,6 +28,8 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
+    @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
+    @Query private var doses: [TreatmentDose]
 
     @State private var tab: AppTab = RootView.initialTab
     @State private var didBootstrap = false
@@ -37,6 +39,9 @@ struct RootView: View {
     @State private var affiliates = AffiliateStore()
 
     private var profile: Profile? { profiles.first }
+    private var widgetFingerprint: String {
+        "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)"
+    }
 
     private static var initialTab: AppTab {
         #if DEBUG
@@ -79,6 +84,9 @@ struct RootView: View {
             if healthKit.authorization.isUsable {
                 await healthKit.refreshSnapshot(context: context)
             }
+        }
+        .task(id: widgetFingerprint) {
+            WidgetBridge.write(WidgetSnapshotBuilder.build(entries: entries, treatments: treatments, doses: doses))
         }
         .fullScreenCover(isPresented: $showOnboarding) {
             if let profile {

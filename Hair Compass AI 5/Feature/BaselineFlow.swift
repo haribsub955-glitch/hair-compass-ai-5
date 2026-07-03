@@ -79,6 +79,8 @@ struct BaselineFlow: View {
                         .disabled(profile.name.trimmingCharacters(in: .whitespaces).count < 2)
                         .opacity(profile.name.trimmingCharacters(in: .whitespaces).count < 2 ? 0.5 : 1)
                         .accessibilityIdentifier("baselineSave")
+
+                    aboutFooter
                 }
                 .padding(20)
                 .padding(.bottom, 24)
@@ -153,6 +155,25 @@ struct BaselineFlow: View {
 
     private func chips(_ items: [String], selected: String, onPick: @escaping (String) -> Void) -> some View {
         FlowChips(items: items, selected: selected, onPick: onPick)
+    }
+
+    private var aboutFooter: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider().overlay(Clinical.hairline)
+            Text(AppInfo.medicalDisclaimer)
+                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+            HStack(spacing: 16) {
+                if let url = AppInfo.privacyPolicyURL {
+                    Link("Privacy", destination: url).font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+                }
+                if let url = AppInfo.supportURL {
+                    Link("Support", destination: url).font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+                }
+                Spacer()
+                Text("v\(AppInfo.version)").font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
+            }
+        }
+        .padding(.top, 8)
     }
 
     private func practiceToggle(_ title: String, isOn: Binding<Bool>) -> some View {

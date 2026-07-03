@@ -10,10 +10,14 @@ struct CareView: View {
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
+    @Query(sort: \Profile.createdAt) private var profiles: [Profile]
 
     @State private var showAdd = false
+    @State private var showRecommender = false
     @State private var remindersOn = false
     @State private var expandedSteps: Set<String> = []
+
+    private var profile: Profile? { profiles.first }
 
     private var calendar: Calendar { .current }
 
@@ -40,6 +44,7 @@ struct CareView: View {
                     milestoneCard(milestone)
                 }
                 if !routine.isEmpty { routineCard }
+                guidanceCard
                 remindersCard
                 gateExplainer
 
@@ -57,6 +62,12 @@ struct CareView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
+        .sheet(isPresented: $showRecommender) {
+            NavigationStack {
+                RecommenderView(condition: profile?.condition ?? .unsure, sex: profile?.sex ?? .male)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showRecommender = false } } }
+            }
+        }
         .task {
             await notifications.refreshAuthorization()
             remindersOn = notifications.isEnabled
@@ -124,6 +135,28 @@ struct CareView: View {
                 }
             }
         }
+    }
+
+    private var guidanceCard: some View {
+        Button { showRecommender = true } label: {
+            ClinicalCard(padding: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "stethoscope")
+                        .font(.system(size: 16)).foregroundStyle(Clinical.accent)
+                        .frame(width: 38, height: 38)
+                        .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("What the evidence supports for you")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                        Text("Ranked options for \(profile?.condition.title.lowercased() ?? "your pattern") — education, not a prescription.")
+                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private func milestoneCard(_ m: Milestone) -> some View {

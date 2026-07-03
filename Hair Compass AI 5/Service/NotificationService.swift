@@ -14,6 +14,7 @@ final class NotificationService {
 
     private let treatmentPrefix = "treatment."
     private let logNudgeID = "logNudge"
+    private let photoReminderID = "photoReminder"
 
     var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
 
@@ -76,6 +77,19 @@ final class NotificationService {
             trigger: UNCalendarNotificationTrigger(dateMatching: evening, repeats: true)
         )
         try? await center.add(nudgeRequest)
+
+        // Monthly photo prompt — a comparable set on the 1st of each month.
+        var monthly = DateComponents(); monthly.day = 1; monthly.hour = 10
+        let photo = UNMutableNotificationContent()
+        photo.title = "Monthly photos"
+        photo.body = "Capture your five regions for a comparable set — same lighting and angle as last time."
+        photo.sound = .default
+        let photoRequest = UNNotificationRequest(
+            identifier: photoReminderID,
+            content: photo,
+            trigger: UNCalendarNotificationTrigger(dateMatching: monthly, repeats: true)
+        )
+        try? await center.add(photoRequest)
     }
 
     /// "08:00" → hour/minute DateComponents for a repeating daily trigger.

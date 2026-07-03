@@ -13,6 +13,8 @@ struct TrendsView: View {
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
 
     @State private var connecting = false
+    @State private var showCompare = false
+    @State private var showExport = false
 
     enum Range: String, CaseIterable { case m1 = "1M", m3 = "3M", m6 = "6M"
         var days: Int { self == .m1 ? 30 : (self == .m3 ? 90 : 180) }
@@ -27,11 +29,21 @@ struct TrendsView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
-                ScreenHeader(eyebrow: "Longitudinal", title: "Trends").padding(.top, 8)
+                ScreenHeader(
+                    eyebrow: "Longitudinal",
+                    title: "Trends",
+                    trailing: AnyView(
+                        Button { showExport = true } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 18)).foregroundStyle(Clinical.ink)
+                        }
+                    )
+                ).padding(.top, 8)
 
                 ClinicalSegmented(options: Range.allCases, label: { $0.rawValue }, selection: $range)
 
                 lifestyleCard
+                compareEntryCard
 
                 if windowEntries.count < 2 {
                     emptyState
@@ -48,6 +60,41 @@ struct TrendsView: View {
             .padding(.bottom, 110)
         }
         .clinicalScreen()
+        .sheet(isPresented: $showCompare) {
+            NavigationStack {
+                CompareView()
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showCompare = false } } }
+            }
+        }
+        .sheet(isPresented: $showExport) { ExportSheet() }
+        .onAppear {
+            #if DEBUG
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("HC_COMPARE") { showCompare = true }
+            if args.contains("HC_EXPORT") { showExport = true }
+            #endif
+        }
+    }
+
+    private var compareEntryCard: some View {
+        Button { showCompare = true } label: {
+            ClinicalCard(padding: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.system(size: 16)).foregroundStyle(Clinical.accent)
+                        .frame(width: 38, height: 38)
+                        .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Compare signals").font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                        Text("Overlay a hair-fall variable against a lifestyle statistic.")
+                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var emptyState: some View {

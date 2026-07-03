@@ -237,6 +237,67 @@ struct Hair_Compass_AI_5Tests {
         store.setLink("", for: id)                                 // clean up
     }
 
+    // MARK: - Compare (chart math)
+
+    @Test func chartAssociationReadsSignAndClarity() {
+        let up = [1.0, 2, 3, 4, 5], upToo = [2.0, 4, 6, 8, 10]
+        #expect(ChartMath.association(hair: up, lifestyle: upToo, minPairs: 4) == .together)
+        let down = [5.0, 4, 3, 2, 1]
+        #expect(ChartMath.association(hair: up, lifestyle: down, minPairs: 4) == .opposite)
+        // Too few pairs → insufficient regardless of shape.
+        if case .insufficient = ChartMath.association(hair: [1, 2], lifestyle: [1, 2], minPairs: 8) {} else {
+            Issue.record("expected .insufficient")
+        }
+    }
+
+    @Test func chartNormalizeMapsToUnitRange() {
+        let n = ChartMath.normalize([10, 20, 30])
+        #expect(n.first == 0)
+        #expect(n.last == 1)
+        // Flat series → all mid, no divide-by-zero.
+        #expect(ChartMath.normalize([7, 7, 7]).allSatisfy { $0 == 0.5 })
+    }
+
+    @Test func chartPairWithLagShiftsLifestyleEarlier() {
+        let cal = Calendar.current
+        let day0 = cal.startOfDay(for: .now)
+        func d(_ offset: Int) -> Date { cal.date(byAdding: .day, value: offset, to: day0)! }
+        // Hair today; lifestyle 14 days earlier. A 14-day lag should pair them.
+        let hair = [(day: d(0), value: 3.0)]
+        let life = [(day: d(-14), value: 9.0)]
+        let paired = ChartMath.pairWithLag(hair: hair, lifestyle: life, lagDays: 14)
+        #expect(paired.hair == [3.0])
+        #expect(paired.lifestyle == [9.0])
+        // With no lag, they wouldn't line up.
+        #expect(ChartMath.pairWithLag(hair: hair, lifestyle: life, lagDays: 0).hair.isEmpty)
+    }
+
+    // MARK: - Treatment recommender (gentle educator)
+
+    @Test func recommenderRanksByPatternAndStaysNonPrescriptive() {
+        let male = TreatmentRecommender.options(condition: .androgenetic, sex: .male)
+        #expect(male.first?.id == "combo")          // most effective combo ranked first
+        #expect(male.first?.tier == .strong)
+        // Every option carries a clinician note (never a bare prescription).
+        #expect(male.allSatisfy { !$0.clinicianNote.isEmpty })
+        // Female AGA leads with topical minoxidil, not finasteride.
+        #expect(TreatmentRecommender.options(condition: .androgenetic, sex: .female).first?.id == "minox-f")
+        // Alopecia areata routes to a specialist.
+        #expect(TreatmentRecommender.options(condition: .alopeciaAreata, sex: .male).first?.id == "derm-aa")
+    }
+
+    // MARK: - Widget snapshot
+
+    @Test @MainActor func widgetSnapshotSummarizesStreakAndDue() {
+        let cal = Calendar.current
+        let entry = DailyEntry(date: .now, flaking: 1, erythema: 1, itch: 1)
+        let t = Treatment(name: "Minoxidil", treatmentClass: .minoxidil, scheduleTimes: "08:00,21:00", startDate: .now, isActive: true)
+        let snap = WidgetSnapshotBuilder.build(entries: [entry], treatments: [t], doses: [], now: .now, calendar: cal)
+        #expect(snap.streakDays == 1)
+        #expect(snap.dueTitles.count == 2)          // both slots unlogged
+        #expect(snap.headline == "2 steps left today")
+    }
+
     // MARK: - Streak
 
     @Test func loggingStreakCountsConsecutiveDays() {
