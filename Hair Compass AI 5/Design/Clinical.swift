@@ -333,9 +333,11 @@ struct WhyDisclosure: View {
 }
 
 /// A section header driven by the tracked-variable catalog: title + evidence tier + capture badge
-/// + a why-this-matters disclosure, all from one source of truth.
+/// + a why-this-matters disclosure, all from one source of truth. `trailing` is an optional live
+/// readout on the right of the title row (e.g. the scalp-severity composite in the log sheet).
 struct VariableSectionHeader: View {
     let variableID: String
+    var trailing: AnyView? = nil
     var body: some View {
         if let v = TrackedVariable[variableID] {
             VStack(alignment: .leading, spacing: 8) {
@@ -347,6 +349,7 @@ struct VariableSectionHeader: View {
                             .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                     }
                     Spacer(minLength: 0)
+                    if let trailing { trailing }
                 }
                 WhyDisclosure(text: v.why)
             }

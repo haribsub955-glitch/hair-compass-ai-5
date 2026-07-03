@@ -2,6 +2,10 @@ import SwiftData
 import SwiftUI
 
 /// Daily self-report. Fields are exactly the evidence-backed signals from TrackingSpec.md.
+/// Every field is a living gauge — the animated preview *is* the thing being measured — so
+/// logging reads like your scalp, not a form. Gauges hold a 0…1 intensity while dragging;
+/// the discrete Ints stored on `DailyEntry` are derived from those intensities (same
+/// round-trip `ShedDialField` does with `shed`).
 struct LogSheet: View {
     let existing: DailyEntry?
     let condition: HairCondition
@@ -10,15 +14,24 @@ struct LogSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var shed: ShedLevel = .normal
-    @State private var flaking = 0
-    @State private var erythema = 0
-    @State private var itch = 0
-    @State private var sleepQuality = 3
-    @State private var stress = 3
+    @State private var flakeI: CGFloat = 0
+    @State private var redI: CGFloat = 0
+    @State private var itchI: CGFloat = 0
+    @State private var oilI: CGFloat = 0
+    @State private var sleepI: CGFloat = 0.5   // sleepQuality 3
+    @State private var stressI: CGFloat = 0.5  // stress 3
     @State private var cigarettes = 0
     @State private var alcoholDrinks = 0
-    @State private var oiliness = 0
     @State private var note = ""
+
+    // The stored values stay the source of truth in save(): each is the band of the live
+    // intensity, so the severity readout below updates as you drag.
+    private var flaking: Int { GaugeBand.index(flakeI, count: 4) }
+    private var erythema: Int { GaugeBand.index(redI, count: 4) }
+    private var itch: Int { GaugeBand.index(itchI, count: 4) }
+    private var oiliness: Int { GaugeBand.index(oilI, count: 4) }
+    private var sleepQuality: Int { 1 + GaugeBand.index(sleepI, count: 5) }
+    private var stress: Int { 1 + GaugeBand.index(stressI, count: 5) }
 
     private var scalpTotal: Int { HairAnalytics.scalpTotal(flaking: flaking, erythema: erythema, itch: itch) }
     private var scalpBand: SeverityBand { HairAnalytics.scalpBand(total: scalpTotal) }
@@ -31,26 +44,29 @@ struct LogSheet: View {
                         ShedDialField(shed: $shed)
                     }
 
-                    section(variable: "scalp") {
+                    section(variable: "scalp", trailing: AnyView(severityReadout)) {
                         VStack(spacing: 16) {
-                            PipStepper(title: "Flaking", caption: flakingCaption, range: 0...3, value: $flaking)
-                            PipStepper(title: "Redness", caption: level3Caption(erythema), range: 0...3, value: $erythema)
-                            PipStepper(title: "Itch", caption: level3Caption(itch), range: 0...3, value: $itch)
+                            LivingGauge(title: "Flaking", intensity: $flakeI, bandCount: 4,
+                                        tint: Clinical.secondary,
+                                        zones: ["NONE", "POWDERY", "VISIBLE", "ADHERENT"], ends: nil,
+                                        caption: flakeCaption) { i in FlakeMotif(intensity: i) }
+                            LivingGauge(title: "Redness", intensity: $redI, bandCount: 4,
+                                        tint: Clinical.critical,
+                                        panelBackground: Clinical.canvas,  // a hair warmer, so the flush reads
+                                        zones: ["NONE", "MILD", "MODERATE", "MARKED"], ends: nil,
+                                        caption: rednessCaption) { i in RednessMotif(intensity: i) }
+                            LivingGauge(title: "Itch", intensity: $itchI, bandCount: 4,
+                                        tint: Clinical.warning,
+                                        zones: ["NONE", "MILD", "MODERATE", "MARKED"], ends: nil,
+                                        caption: itchCaption) { i in ItchMotif(intensity: i) }
                         }
-                        HStack {
-                            Text("Scalp severity")
-                                .font(.system(size: 13))
-                                .foregroundStyle(Clinical.secondary)
-                            Spacer()
-                            Text("\(scalpTotal)/16 · \(scalpBand.title)")
-                                .font(Clinical.number(14))
-                                .foregroundStyle(Clinical.bandColor(scalpBand))
-                        }
-                        .padding(.top, 2)
 
                         Divider().overlay(Clinical.hairline).padding(.vertical, 2)
 
-                        PipStepper(title: "Oiliness", caption: oilinessCaption, range: 0...3, value: $oiliness, tint: Clinical.gold)
+                        LivingGauge(title: "Oiliness", intensity: $oilI, bandCount: 4,
+                                    tint: Clinical.gold,
+                                    zones: ["NORMAL", "SLIGHT", "OILY", "VERY"], ends: nil,
+                                    caption: oilinessCaption) { i in OilMotif(intensity: i) }
                         Text("An observation, not a risk driver — it doesn't feed the severity score.")
                             .font(.system(size: 11))
                             .foregroundStyle(Clinical.tertiary)
@@ -58,8 +74,14 @@ struct LogSheet: View {
 
                     section("Wellbeing") {
                         VStack(spacing: 16) {
-                            PipStepper(title: "Sleep quality", caption: "\(sleepQuality)/5", range: 1...5, value: $sleepQuality, tint: Clinical.ink)
-                            PipStepper(title: "Stress", caption: "\(stress)/5", range: 1...5, value: $stress, tint: Clinical.ink)
+                            LivingGauge(title: "Sleep quality", intensity: $sleepI, bandCount: 5,
+                                        tint: Clinical.ink,
+                                        zones: nil, ends: ("POOR", "DEEP"),
+                                        caption: sleepCaption) { i in SleepMotif(intensity: i) }
+                            LivingGauge(title: "Stress", intensity: $stressI, bandCount: 5,
+                                        tint: Clinical.critical,
+                                        zones: nil, ends: ("CALM", "HIGH"),
+                                        caption: stressCaption) { i in StressMotif(intensity: i) }
                         }
                         CountScrubber(title: "Cigarettes today", value: $cigarettes, range: 0...60, tint: Clinical.warning, motif: .smoke)
                         CountScrubber(title: "Alcoholic drinks", value: $alcoholDrinks, range: 0...30, tint: Clinical.secondary, motif: .drops)
@@ -99,11 +121,43 @@ struct LogSheet: View {
         }
     }
 
-    private var flakingCaption: String {
-        ["None", "Powdery", "Visible", "Adherent"][min(max(flaking, 0), 3)]
+    /// Live scalp-severity composite — recomputed from the current gauge intensities, so it
+    /// updates while you drag (flaking + redness + itch, the Zhang 2023 16-point scale).
+    private var severityReadout: some View {
+        Text("\(scalpTotal)/16 · \(scalpBand.title)")
+            .font(Clinical.number(12))
+            .foregroundStyle(Clinical.bandColor(scalpBand))
     }
-    private var oilinessCaption: String {
-        ["Normal", "Slightly oily", "Oily", "Very oily"][min(max(oiliness, 0), 3)]
+
+    // MARK: Captions — titles reuse the app's existing vocabulary; subtitles from the design.
+
+    private func flakeCaption(_ i: CGFloat) -> (String, String) {
+        let b = GaugeBand.index(i, count: 4)
+        return (["None", "Powdery", "Visible", "Adherent"][b],
+                ["clear today", "fine dust", "flakes you can see", "stuck to the scalp"][b])
+    }
+    private func rednessCaption(_ i: CGFloat) -> (String, String) {
+        let b = GaugeBand.index(i, count: 4)
+        return (level3Caption(b), ["calm scalp", "a slight flush", "clearly pink", "angry and inflamed"][b])
+    }
+    private func itchCaption(_ i: CGFloat) -> (String, String) {
+        let b = GaugeBand.index(i, count: 4)
+        return (level3Caption(b), ["settled", "the odd prickle", "distracting", "hard to ignore"][b])
+    }
+    private func oilinessCaption(_ i: CGFloat) -> (String, String) {
+        let b = GaugeBand.index(i, count: 4)
+        return (["Normal", "Slightly oily", "Oily", "Very oily"][b],
+                ["normal for you", "a little shine", "noticeably oily", "greasy by midday"][b])
+    }
+    private func sleepCaption(_ i: CGFloat) -> (String, String) {
+        let level = 1 + GaugeBand.index(i, count: 5)
+        return (["Poor", "Restless", "Okay", "Good", "Deep"][level - 1],
+                ["barely slept", "a broken night", "an average night", "solid rest", "fully rested"][level - 1] + " · \(level)/5")
+    }
+    private func stressCaption(_ i: CGFloat) -> (String, String) {
+        let level = 1 + GaugeBand.index(i, count: 5)
+        return (["Calm", "Steady", "Moderate", "Tense", "High"][level - 1],
+                ["at ease", "mostly fine", "some pressure", "wound up", "overwhelmed"][level - 1] + " · \(level)/5")
     }
     private func level3Caption(_ v: Int) -> String {
         ["None", "Mild", "Moderate", "Marked"][min(max(v, 0), 3)]
@@ -118,9 +172,9 @@ struct LogSheet: View {
     }
 
     @ViewBuilder
-    private func section<Content: View>(variable id: String, @ViewBuilder content: () -> Content) -> some View {
+    private func section<Content: View>(variable id: String, trailing: AnyView? = nil, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            VariableSectionHeader(variableID: id)
+            VariableSectionHeader(variableID: id, trailing: trailing)
             content()
         }
     }
@@ -128,14 +182,14 @@ struct LogSheet: View {
     private func loadExisting() {
         guard let e = existing else { return }
         shed = e.shed
-        flaking = e.flaking
-        erythema = e.erythema
-        itch = e.itch
-        sleepQuality = e.sleepQuality
-        stress = e.stress
+        flakeI = CGFloat(min(max(e.flaking, 0), 3)) / 3
+        redI = CGFloat(min(max(e.erythema, 0), 3)) / 3
+        itchI = CGFloat(min(max(e.itch, 0), 3)) / 3
+        oilI = CGFloat(min(max(e.oiliness, 0), 3)) / 3
+        sleepI = CGFloat(min(max(e.sleepQuality, 1), 5) - 1) / 4
+        stressI = CGFloat(min(max(e.stress, 1), 5) - 1) / 4
         cigarettes = e.cigarettes
         alcoholDrinks = e.alcoholDrinks
-        oiliness = e.oiliness
         note = e.note
     }
 
