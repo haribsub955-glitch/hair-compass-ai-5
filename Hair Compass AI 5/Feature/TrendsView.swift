@@ -44,6 +44,14 @@ struct TrendsView: View {
 
                 ClinicalSegmented(options: Range.allCases, label: { $0.rawValue }, selection: $range)
 
+                JourneyChart(
+                    entries: entries,
+                    treatments: treatments,
+                    doses: doses,
+                    triggers: triggers,
+                    windowDays: range.days
+                )
+
                 lifestyleCard
                 compareEntryCard
 

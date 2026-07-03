@@ -99,6 +99,14 @@ enum Seed {
         context.insert(LabResult(test: .tsh, value: 2.1, collectedAt: start))
         context.insert(LabResult(test: .vitaminD, value: 24, collectedAt: start, note: "Flagged low"))
 
+        // A one-off procedure ~7 weeks back — a periodic (non-daily) treatment, so it reads as a
+        // point event on the journey timeline rather than a daily med.
+        let prpDate = calendar.date(byAdding: .day, value: -50, to: today) ?? today
+        context.insert(Treatment(
+            name: "PRP session", treatmentClass: .prp, dose: "3 injections",
+            scheduleTimes: "", startDate: prpDate, isActive: true
+        ))
+
         // A dated shedding trigger ~10 weeks back, so the TE-lag readout has something to show.
         let triggerDate = calendar.date(byAdding: .day, value: -70, to: today) ?? today
         context.insert(TriggerEvent(type: .illness, date: triggerDate, note: "Flu, ran a fever for several days"))
