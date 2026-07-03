@@ -40,6 +40,21 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(replay.waitForExistence(timeout: 6))
     }
 
+    /// A launch ritual must always be skippable and never gate the app.
+    @MainActor
+    func testLaunchRitualIsSkippable() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_RITUAL_KIND", "comb"]   // force a ritual on launch
+        app.launch()
+
+        let skip = app.buttons["ritualSkip"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 8))
+        skip.tap()
+
+        // Skipping reveals the normal app (Today tab bar) underneath.
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 6))
+    }
+
     @MainActor
     func testLaunchPerformance() throws {
         measure(metrics: [XCTApplicationLaunchMetric()]) {

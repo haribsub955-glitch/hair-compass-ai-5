@@ -14,6 +14,7 @@ struct RitualView: View {
     @State private var finishing = false
     @State private var contentOpacity: Double = 1
     @State private var startedAt = Date()
+    @State private var serumBurst = false
 
     private let logger = Logger(subsystem: "hair-compass", category: "ritual")
 
@@ -77,6 +78,8 @@ struct RitualView: View {
                     .buttonStyle(.plain)
                     .padding(.top, 10)
                     .padding(.trailing, 16)
+                    .accessibilityLabel("Skip")
+                    .accessibilityIdentifier("ritualSkip")
                 }
                 Spacer()
 
@@ -92,6 +95,14 @@ struct RitualView: View {
                     .buttonStyle(.plain)
                     .padding(.bottom, 44)
                 }
+            }
+            .opacity(finishing ? 0 : 1)   // clear the skip/done chrome once we start finishing
+
+            // 5) Serum copper-burst finish (spec §2) — overlays everything, then reveals via onFinish.
+            if serumBurst {
+                SerumBurst(onDone: onFinish)
+                    .ignoresSafeArea()
+                    .transition(.identity)
             }
         }
         .onAppear { startedAt = Date() }
@@ -161,8 +172,8 @@ struct RitualView: View {
         onFinish()
     }
 
-    /// Success beat + finish sequence. Comb/knot use the plain fade; the serum copper-burst is added
-    /// in the follow-up — its hook is the `.serum` branch below.
+    /// Success beat + finish sequence. Comb / knot / massage use the plain fade; serum plays the
+    /// copper-burst overlay (which drives its own timing, then calls `onFinish`).
     private func complete() {
         guard !finishing else { return }
         finishing = true
@@ -176,14 +187,95 @@ struct RitualView: View {
 
         switch kind {
         case .serum:
-            // TODO(follow-up): copper-burst finish — a flat copper circle expands from the
-            // completion point covering the screen, 28 droplet particles fly out, then reveal.
-            // For now it falls through to the shared fade so the app is still revealed.
-            fallthrough
+            // Copper-burst finish: fade the ritual under the burst, which expands to cover, throws
+            // 28 droplets, fades, and reveals the destination via `onFinish`.
+            withAnimation(.easeInOut(duration: 0.5)) { contentOpacity = 0 }
+            serumBurst = true
         default:
             // Interaction + backdrop fade out over 0.9s; reveal the destination ≈0.65s after finish.
             withAnimation(.easeInOut(duration: 0.9)) { contentOpacity = 0 }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) { onFinish() }
+        }
+    }
+}
+
+/// The serum copper-burst finish (spec §2): a flat copper circle expands from the pool to cover the
+/// screen, then fades while 28 droplet particles fly outward under gravity. Drives its own frame
+/// clock and calls `onDone` (≈0.9s) to reveal the destination.
+private struct SerumBurst: View {
+    var onDone: () -> Void
+    @State private var box = BurstBox()
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            Canvas { ctx, size in
+                if !box.started { box.start(size: size); box.started = true }
+                let now = timeline.date
+                let dt = box.last.map { min(CGFloat(now.timeIntervalSince($0)), 0.05) } ?? 0
+                box.last = now
+                box.advance(dt: dt)
+                var context = ctx
+                box.draw(in: &context)
+                if box.done, !box.calledDone {
+                    box.calledDone = true
+                    DispatchQueue.main.async { onDone() }
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Reference box for the burst so the per-frame particle sim doesn't thrash SwiftUI state.
+@MainActor private final class BurstBox {
+    private struct Particle { var pos: CGPoint; var vel: CGPoint; var r: CGFloat }
+
+    var started = false
+    var done = false
+    var calledDone = false
+    var last: Date?
+
+    private var elapsed: CGFloat = 0
+    private var circleR: CGFloat = 0
+    private var maxR: CGFloat = 1
+    private var origin: CGPoint = .zero
+    private var particles: [Particle] = []
+
+    func start(size: CGSize) {
+        origin = CGPoint(x: size.width / 2, y: size.height * 0.78)   // burst from the pool
+        maxR = (size.width * size.width + size.height * size.height).squareRoot()
+        for _ in 0..<28 {
+            let ang = CGFloat.random(in: 0...(2 * CGFloat.pi))
+            let spd = CGFloat.random(in: 4...12)
+            particles.append(Particle(
+                pos: origin,
+                vel: CGPoint(x: cos(ang) * spd, y: sin(ang) * spd - 6),   // slight upward bias
+                r: CGFloat.random(in: 3...7)))
+        }
+    }
+
+    func advance(dt: CGFloat) {
+        elapsed += dt
+        circleR = min(maxR, circleR + maxR * 0.10)   // per-frame expansion
+        for i in particles.indices {
+            particles[i].vel.y += 0.3                 // gravity 0.3/frame
+            particles[i].pos.x += particles[i].vel.x
+            particles[i].pos.y += particles[i].vel.y
+            particles[i].r *= 0.99                     // shrink 0.99/frame
+        }
+        particles.removeAll { $0.r < 0.5 }
+        if elapsed > 0.9 { done = true }
+    }
+
+    func draw(in ctx: inout GraphicsContext) {
+        // Solid while covering, then fades from ~0.45s so the destination reads through.
+        let fade: Double = elapsed > 0.45 ? max(0, Double(1 - (elapsed - 0.45) / 0.45)) : 1
+        let circle = Path(ellipseIn: CGRect(x: origin.x - circleR, y: origin.y - circleR, width: circleR * 2, height: circleR * 2))
+        ctx.fill(circle, with: .color(Clinical.accent.opacity(fade)))
+        for p in particles {
+            let rect = CGRect(x: p.pos.x - p.r, y: p.pos.y - p.r, width: p.r * 2, height: p.r * 2)
+            ctx.fill(Path(ellipseIn: rect), with: .color(Clinical.accent.opacity(fade)))
         }
     }
 }
