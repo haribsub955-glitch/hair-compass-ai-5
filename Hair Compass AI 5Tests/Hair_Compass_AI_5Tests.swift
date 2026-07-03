@@ -329,4 +329,48 @@ struct Hair_Compass_AI_5Tests {
         let prp = Treatment(treatmentClass: .prp)
         #expect(prp.slots.isEmpty)
     }
+
+    // MARK: - Onboarding physics (falling-hair simulation)
+
+    @Test func simIntensityScalesSpawnGravityAndSway() {
+        // The shedding answer literally drives the simulation: heavier → faster, denser, wider swing.
+        #expect(HairSim.spawnRate(0) == 1.1)
+        #expect(HairSim.gravity(0) == 620)
+        #expect(HairSim.sway(0) == 46)
+        #expect(HairSim.spawnRate(1) > HairSim.spawnRate(0))
+        #expect(HairSim.gravity(1) > HairSim.gravity(0))
+        #expect(HairSim.sway(1) > HairSim.sway(0))
+    }
+
+    @Test func simSpawnsStrandsAndNeverExceedsMax() {
+        var sim = HairSim()
+        sim.size = CGSize(width: 200, height: 1_000_000)  // far taller than anything falls in this window
+        for i in 0..<120 { sim.step(dt: 0.1, time: CGFloat(i) * 0.1, intensity: 1.0, rand: { 0.5 }) }
+        #expect(!sim.strands.isEmpty)
+        #expect(sim.strands.count <= HairSim.maxStrands)   // the hard invariant: never overflows the cap
+        #expect(sim.strands.count == HairSim.maxStrands)   // 120 steps × ~2.31 spawns saturates it
+    }
+
+    @Test func simDoesNothingUntilItHasSize() {
+        var sim = HairSim()
+        sim.step(dt: 0.1, time: 0, intensity: 1.0, rand: { 0.5 })
+        #expect(sim.strands.isEmpty)
+    }
+
+    @Test func integratePullsEveryPointDownward() {
+        // rand 0.5 makes a perfectly vertical, evenly spaced strand, so uniform gravity translates it
+        // straight down with no constraint correction — each point's y must increase.
+        var s = HairSim.makeStrand(size: CGSize(width: 100, height: 100), rand: { 0.5 })
+        let before = s.p.map(\.y)
+        HairSim.integrate(&s, dt: 0.1, time: 0, g: 1000, swayA: 0)
+        for (i, pt) in s.p.enumerated() { #expect(pt.y > before[i]) }
+    }
+
+    @Test func sheddingDialMapsIntensityToShedLevel() {
+        #expect(SheddingDial.band(0.0) == 0)
+        #expect(SheddingDial.band(1.0) == 3)
+        #expect(SheddingDial.band(0.34) == 1)              // 0.34*3 = 1.02 → rounds to 1
+        #expect(SheddingDial.shedLevel(0.0) == .minimal)
+        #expect(SheddingDial.shedLevel(1.0) == .heavy)
+    }
 }

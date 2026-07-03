@@ -34,6 +34,7 @@ struct RootView: View {
     @State private var tab: AppTab = RootView.initialTab
     @State private var didBootstrap = false
     @State private var showOnboarding = false
+    @State private var showProfileEdit = false
     @State private var healthKit = HealthKitService()
     @State private var notifications = NotificationService()
     @State private var affiliates = AffiliateStore()
@@ -56,7 +57,7 @@ struct RootView: View {
         ZStack(alignment: .bottom) {
             Group {
                 switch tab {
-                case .today: TodayView(profile: profile, onOpenBaseline: { showOnboarding = true })
+                case .today: TodayView(profile: profile, onOpenBaseline: { showProfileEdit = true })
                 case .trends: TrendsView()
                 case .care: CareView()
                 case .labs: LabsView()
@@ -80,6 +81,9 @@ struct RootView: View {
             }
             try? await Task.sleep(for: .milliseconds(150))
             if profile?.hasOnboarded == false { showOnboarding = true }
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("HC_ONBOARD") { showOnboarding = true }
+            #endif
             // If the user has already granted Health access, refresh today's snapshot on launch.
             if healthKit.authorization.isUsable {
                 await healthKit.refreshSnapshot(context: context)
@@ -90,8 +94,11 @@ struct RootView: View {
         }
         .fullScreenCover(isPresented: $showOnboarding) {
             if let profile {
-                BaselineFlow(profile: profile)
+                OnboardingFlow(profile: profile, onFinish: { showOnboarding = false })
             }
+        }
+        .sheet(isPresented: $showProfileEdit) {
+            if let profile { BaselineFlow(profile: profile) }
         }
         .tint(Clinical.accent)
     }
