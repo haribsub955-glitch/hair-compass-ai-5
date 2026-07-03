@@ -4,7 +4,10 @@ An impressive, multi-screen first-run that *demonstrates* rather than asks. Each
 screen with a live, physics-driven visualization that reacts to the answer. It writes the same
 `Profile` fields as today's `BaselineFlow`, in the warm gouache design language.
 
-Status: design (2026-07-03). Fork decisions pending user confirmation (tech backbone; replace vs augment).
+Status: design (2026-07-03). **Decisions locked:** tech backbone = **hybrid** (SwiftUI Canvas +
+TimelineView everywhere; SpriteKit `SKEmitterNode` for the falling-hair flagship on screens 4-shedding
+& 5); relationship to the old form = **this becomes the first-run onboarding; `BaselineFlow` stays as
+the editable profile sheet**, both writing the same `Profile`.
 
 ---
 
