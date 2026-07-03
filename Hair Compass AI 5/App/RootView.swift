@@ -83,6 +83,7 @@ struct RootView: View {
             if profile?.hasOnboarded == false { showOnboarding = true }
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_ONBOARD") { showOnboarding = true }
+            if ProcessInfo.processInfo.arguments.contains("HC_PROFILE") { showProfileEdit = true }
             #endif
             // If the user has already granted Health access, refresh today's snapshot on launch.
             if healthKit.authorization.isUsable {

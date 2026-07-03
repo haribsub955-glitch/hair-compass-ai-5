@@ -7,6 +7,9 @@ import SwiftUI
 struct OnboardingFlow: View {
     @Bindable var profile: Profile
     var onFinish: () -> Void
+    /// Non-nil only when replayed from the profile — shows a close button so it can be exited early.
+    /// First-run leaves this nil so the walkthrough must be completed.
+    var onDismiss: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
     @State private var step = OnboardingFlow.initialStep
@@ -53,6 +56,12 @@ struct OnboardingFlow: View {
                 }
             }
             .frame(height: 4)
+            if let onDismiss {
+                Button { onDismiss() } label: {
+                    Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.tertiary)
+                }
+                .accessibilityLabel("Close walkthrough")
+            }
         }
         .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 6)
     }

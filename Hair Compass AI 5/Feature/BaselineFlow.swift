@@ -6,6 +6,7 @@ import SwiftUI
 struct BaselineFlow: View {
     @Bindable var profile: Profile
     @Environment(\.dismiss) private var dismiss
+    @State private var replayOnboarding = false
 
     private let ageBands = ["Under 25", "26–35", "36–45", "46–55", "56+"]
 
@@ -14,6 +15,8 @@ struct BaselineFlow: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {
                     intro
+
+                    replayRow
 
                     field("Your name") {
                         TextField("Name", text: $profile.name)
@@ -88,6 +91,11 @@ struct BaselineFlow: View {
             .clinicalScreen()
             .navigationTitle("Baseline")
             .navigationBarTitleDisplayMode(.inline)
+            .fullScreenCover(isPresented: $replayOnboarding) {
+                OnboardingFlow(profile: profile,
+                               onFinish: { replayOnboarding = false },
+                               onDismiss: { replayOnboarding = false })
+            }
             .toolbar {
                 if profile.hasOnboarded {
                     ToolbarItem(placement: .cancellationAction) {
@@ -117,6 +125,30 @@ struct BaselineFlow: View {
                     .foregroundStyle(Clinical.secondary)
             }
         }
+    }
+
+    private var replayRow: some View {
+        Button { replayOnboarding = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Clinical.accent)
+                    .frame(width: 40, height: 40)
+                    .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Replay the walkthrough").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                    Text("Revisit the animated intro anytime").font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.tertiary)
+            }
+            .padding(12)
+            .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("replayOnboarding")
     }
 
     @ViewBuilder

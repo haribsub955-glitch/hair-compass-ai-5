@@ -6,32 +6,38 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// First run presents the cinematic onboarding: welcome → name step.
     @MainActor
-    func testBaselineRequiresNameThenReachesToday() throws {
+    func testOnboardingFirstRunReachesNameStep() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["HC_ONBOARD"]
         app.launch()
 
-        // Fresh launch shows the one-time baseline flow.
-        let nameField = app.textFields["baselineName"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 6))
+        let begin = app.buttons["Begin"]
+        XCTAssertTrue(begin.waitForExistence(timeout: 8))
+        begin.tap()
 
-        // Save is disabled until a name is entered.
-        let save = app.buttons["baselineSave"]
-        XCTAssertTrue(save.exists)
-        XCTAssertFalse(save.isEnabled)
+        // Second screen collects the name.
+        XCTAssertTrue(app.textFields["onboardName"].waitForExistence(timeout: 6))
+    }
 
-        nameField.tap()
-        nameField.typeText("Ari")
+    /// The profile (Baseline) can replay the onboarding, and the replay can be closed again.
+    @MainActor
+    func testProfileCanReplayOnboarding() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_PROFILE"]   // onboarded demo profile + open the profile sheet
+        app.launch()
 
-        // Pick a condition so the baseline is meaningful.
-        app.buttons["condition_androgenetic"].tap()
+        let replay = app.buttons["replayOnboarding"]
+        XCTAssertTrue(replay.waitForExistence(timeout: 8))
+        replay.tap()
 
-        XCTAssertTrue(save.isEnabled)
-        save.tap()
+        // The animated walkthrough opens on its welcome screen.
+        XCTAssertTrue(app.buttons["Begin"].waitForExistence(timeout: 6))
 
-        // Lands on the Today tab of the main app.
-        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 6))
-        XCTAssertTrue(app.buttons["Trends"].exists)
+        // A replay can be exited early via the close button, returning to the profile.
+        app.buttons["Close walkthrough"].tap()
+        XCTAssertTrue(replay.waitForExistence(timeout: 6))
     }
 
     @MainActor
