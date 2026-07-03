@@ -13,6 +13,8 @@ struct RecommenderView: View {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenHeader(eyebrow: "Guidance", title: "What helps").padding(.top, 8)
 
+                BrandBanner(art: BrandArt.guidance, height: 140)
+
                 ClinicalCard(padding: 14) {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "stethoscope").font(.system(size: 15)).foregroundStyle(Clinical.accent)

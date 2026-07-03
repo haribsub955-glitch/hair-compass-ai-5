@@ -85,13 +85,13 @@ struct FlashCardView: View {
     private var front: some View {
         cardShell {
             VStack(alignment: .leading, spacing: featured ? 14 : 10) {
-                if featured {
-                    Image(card.category.art)
-                        .resizable().aspectRatio(contentMode: .fill)
-                        .frame(height: 150)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
+                // Every card carries its category illustration — large on the featured card,
+                // a compact banner on the grid cards.
+                Image(card.category.art)
+                    .resizable().aspectRatio(contentMode: .fill)
+                    .frame(height: featured ? 150 : 88)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: featured ? 14 : 10, style: .continuous))
                 HStack {
                     Eyebrow(text: card.category.eyebrow)
                     Spacer()
@@ -131,7 +131,7 @@ struct FlashCardView: View {
     private func cardShell<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(16)
-            .frame(maxWidth: .infinity, minHeight: featured ? 300 : 168, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: featured ? 300 : 210, alignment: .topLeading)
             .background(Clinical.surface)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))

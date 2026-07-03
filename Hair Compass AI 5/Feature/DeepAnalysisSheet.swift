@@ -16,6 +16,7 @@ struct DeepAnalysisSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
+                    BrandBanner(art: BrandArt.analysis, height: 130)
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 10) {
                             Eyebrow(text: "Deep analysis · Claude Fable 5")

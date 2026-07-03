@@ -40,6 +40,8 @@ struct TrendsView: View {
                     )
                 ).padding(.top, 8)
 
+                BrandBanner(art: BrandArt.trends, height: 108)
+
                 ClinicalSegmented(options: Range.allCases, label: { $0.rawValue }, selection: $range)
 
                 lifestyleCard

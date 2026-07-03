@@ -19,6 +19,10 @@ struct ScienceProductsSection: View {
     var body: some View {
         ClinicalCard {
             VStack(alignment: .leading, spacing: 14) {
+                Image(BrandArt.learnSupplements)
+                    .resizable().aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity).frame(height: 96)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 HStack {
                     Eyebrow(text: "Science-backed options")
                     Spacer()

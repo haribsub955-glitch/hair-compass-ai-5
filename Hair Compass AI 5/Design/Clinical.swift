@@ -86,6 +86,26 @@ enum BrandArt {
     static let learnMyths = "learn-myths"
     static let learnDailyCare = "learn-dailycare"
     static let learnSupplements = "learn-supplements"
+
+    // Section/screen banners (same gouache language).
+    static let guidance = "art-guidance"    // Recommender "What helps"
+    static let analysis = "art-analysis"    // Deep analysis
+    static let trends = "art-trends"        // Trends header
+}
+
+/// A rounded brand-art banner in the warm gouache style — reused across screens so imagery reads as
+/// one system (Today/Baseline heroes, and now Trends/Recommender/Deep-analysis/Science).
+struct BrandBanner: View {
+    let art: String
+    var height: CGFloat = 120
+    var body: some View {
+        Image(art)
+            .resizable().aspectRatio(contentMode: .fill)
+            .frame(maxWidth: .infinity).frame(height: height)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+            .shadow(color: Clinical.cardShadow, radius: 12, y: 5)
+    }
 }
 
 // MARK: - Reusable structure
