@@ -250,6 +250,23 @@ struct Hair_Compass_AI_5Tests {
         }
     }
 
+    @Test func chartRollingMeanSmoothsWithoutInventingData() {
+        // Constant input → same constant (a flat signal stays flat).
+        #expect(ChartMath.rollingMean([2, 2, 2, 2], window: 3) == [2, 2, 2, 2])
+        // A spike is attenuated but not erased, and the length is preserved.
+        let smoothed = ChartMath.rollingMean([0, 0, 6, 0, 0], window: 3)
+        #expect(smoothed.count == 5)
+        #expect(smoothed[2] < 6 && smoothed[2] > 0)   // (0+6+0)/3 = 2
+        #expect(smoothed[2] == 2)
+        // Centered: the spike bleeds symmetrically into both neighbors.
+        #expect(smoothed[1] == 2 && smoothed[3] == 2)
+        // Edges shrink the window to the array bounds instead of going blank.
+        #expect(smoothed[0] == 0 && smoothed[4] == 0)
+        // window ≤ 1 → identity; empty → empty.
+        #expect(ChartMath.rollingMean([1, 3, 5], window: 1) == [1, 3, 5])
+        #expect(ChartMath.rollingMean([], window: 7).isEmpty)
+    }
+
     @Test func chartNormalizeMapsToUnitRange() {
         let n = ChartMath.normalize([10, 20, 30])
         #expect(n.first == 0)

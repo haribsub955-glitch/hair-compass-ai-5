@@ -89,7 +89,11 @@ struct RootView: View {
             if ProcessInfo.processInfo.arguments.contains("HC_PROFILE") { showProfileEdit = true }
             #endif
             // Launch-ritual roll — only once onboarding is resolved, and never over onboarding.
-            if !showOnboarding {
+            var suppressRitual = false
+            #if DEBUG
+            suppressRitual = ProcessInfo.processInfo.arguments.contains("HC_NORITUAL")
+            #endif
+            if !showOnboarding && !suppressRitual {
                 ritualKind = ritualCoordinator.rollOnLaunch(hasOnboarded: profile?.hasOnboarded == true)
             }
             // If the user has already granted Health access, refresh today's snapshot on launch.

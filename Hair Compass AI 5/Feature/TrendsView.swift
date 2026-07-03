@@ -249,9 +249,11 @@ struct TrendsView: View {
     // MARK: Shedding trend
 
     private var sheddingCard: some View {
-        let smoothed = HairAnalytics.rollingAverage(windowEntries.map { Double($0.shed.rawValue) }, window: 5)
-        let dir = HairAnalytics.direction(windowEntries.map { Double($0.shed.rawValue) })
+        let raw = windowEntries.map { Double($0.shed.rawValue) }
+        let smoothed = ChartMath.rollingMean(raw, window: 7)
+        let dir = HairAnalytics.direction(raw)
         let points = Array(zip(windowEntries.map(\.date), smoothed))
+        let rawPoints = Array(zip(windowEntries.map(\.date), raw))
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -260,6 +262,12 @@ struct TrendsView: View {
                     directionTag(dir, invert: true)
                 }
                 Chart {
+                    // Faint raw daily values behind the trend — the honest reality.
+                    ForEach(rawPoints, id: \.0) { date, value in
+                        PointMark(x: .value("Date", date), y: .value("Shed", value))
+                            .symbolSize(12)
+                            .foregroundStyle(Clinical.accent.opacity(0.25))
+                    }
                     ForEach(points, id: \.0) { date, value in
                         AreaMark(x: .value("Date", date), y: .value("Shed", value))
                             .interpolationMethod(.monotone)
@@ -281,9 +289,11 @@ struct TrendsView: View {
     // MARK: Scalp severity trend
 
     private var scalpCard: some View {
-        let smoothed = HairAnalytics.rollingAverage(windowEntries.map { Double($0.scalpTotal) }, window: 5)
-        let dir = HairAnalytics.direction(windowEntries.map { Double($0.scalpTotal) })
+        let raw = windowEntries.map { Double($0.scalpTotal) }
+        let smoothed = ChartMath.rollingMean(raw, window: 7)
+        let dir = HairAnalytics.direction(raw)
         let points = Array(zip(windowEntries.map(\.date), smoothed))
+        let rawPoints = Array(zip(windowEntries.map(\.date), raw))
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -296,6 +306,12 @@ struct TrendsView: View {
                         RuleMark(y: .value("band", threshold))
                             .lineStyle(.init(lineWidth: 1, dash: [3, 4]))
                             .foregroundStyle(Clinical.hairline)
+                    }
+                    // Faint raw daily values behind the trend — the honest reality.
+                    ForEach(rawPoints, id: \.0) { date, value in
+                        PointMark(x: .value("Date", date), y: .value("Score", value))
+                            .symbolSize(12)
+                            .foregroundStyle(Clinical.ink.opacity(0.25))
                     }
                     ForEach(points, id: \.0) { date, value in
                         LineMark(x: .value("Date", date), y: .value("Score", value))

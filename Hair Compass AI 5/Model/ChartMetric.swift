@@ -66,6 +66,21 @@ enum ChartMath {
 
     static func mean(_ v: [Double]) -> Double { v.isEmpty ? 0 : v.reduce(0, +) / Double(v.count) }
 
+    /// Centered moving average — smooths daily noise so the trend's shape reads clearly.
+    /// For each index the window is `[i-half, i+half]` (half = window/2) clamped to the array
+    /// bounds, shrinking at the edges so the ends aren't blank. Same length as the input;
+    /// empty input → empty; window ≤ 1 → the input unchanged. Pure and deterministic.
+    static func rollingMean(_ values: [Double], window: Int) -> [Double] {
+        guard window > 1, !values.isEmpty else { return values }
+        let half = window / 2
+        return values.indices.map { i in
+            let lo = max(0, i - half)
+            let hi = min(values.count - 1, i + half)
+            let slice = values[lo...hi]
+            return slice.reduce(0, +) / Double(slice.count)
+        }
+    }
+
     /// Pearson-style correlation on the paired values; used only for its SIGN and MAGNITUDE band.
     static func correlation(_ a: [Double], _ b: [Double]) -> Double? {
         guard a.count == b.count, a.count >= 2 else { return nil }

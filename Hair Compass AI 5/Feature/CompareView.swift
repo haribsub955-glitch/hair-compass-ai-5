@@ -105,14 +105,26 @@ struct CompareView: View {
                         .font(.system(size: 13)).foregroundStyle(Clinical.secondary).frame(height: 120, alignment: .center)
                 } else {
                     Chart {
-                        ForEach(normalizedMarks(hairPts, name: hair.title), id: \.0) { date, v, name in
+                        // Faint daily reality behind the trend — kept visible for honesty.
+                        ForEach(normalizedMarks(hairPts, name: hair.title + " (daily)"), id: \.0) { date, v, name in
                             LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
-                                .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 2))
+                                .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 1))
+                                .foregroundStyle(Clinical.ink.opacity(0.22))
+                        }
+                        ForEach(normalizedMarks(overlayPts, name: overlay.title + " (daily)"), id: \.0) { date, v, name in
+                            LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
+                                .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 1))
+                                .foregroundStyle(Clinical.sage.opacity(0.22))
+                        }
+                        // Smoothed rolling-mean trend on top — this is the line to read.
+                        ForEach(smoothedMarks(hairPts, name: hair.title), id: \.0) { date, v, name in
+                            LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
+                                .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 2.5))
                                 .foregroundStyle(Clinical.ink)
                         }
-                        ForEach(normalizedMarks(overlayPts, name: overlay.title), id: \.0) { date, v, name in
+                        ForEach(smoothedMarks(overlayPts, name: overlay.title), id: \.0) { date, v, name in
                             LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
-                                .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 2))
+                                .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 2.5))
                                 .foregroundStyle(Clinical.sage)
                         }
                     }
@@ -129,7 +141,7 @@ struct CompareView: View {
                             }
                         }
                     }
-                    Text("Lines are scaled to each signal's own range, so this shows shape and timing — not absolute levels.")
+                    Text("Bold lines are a \(smoothWindow)-day smoothed trend over the faint daily values. Each signal is scaled to its own range, so this shows shape and timing — not absolute levels.")
                         .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
                 }
             }
@@ -210,6 +222,16 @@ struct CompareView: View {
     private func normalizedMarks(_ pts: [(day: Date, value: Double)], name: String) -> [(Date, Double, String)] {
         let norm = ChartMath.normalize(pts.map(\.value))
         return zip(pts, norm).map { ($0.0.day, $0.1, name) }
+    }
+
+    /// Rolling-mean window for the smoothed trend — wider for the longer chart windows.
+    private var smoothWindow: Int { window == .m1 ? 5 : 7 }
+
+    /// The smoothed display series: centered rolling mean of the RAW values, then normalized to
+    /// 0…1 by its own range. Smoothing only — no invented data.
+    private func smoothedMarks(_ pts: [(day: Date, value: Double)], name: String) -> [(Date, Double, String)] {
+        let smooth = ChartMath.normalize(ChartMath.rollingMean(pts.map(\.value), window: smoothWindow))
+        return zip(pts, smooth).map { ($0.0.day, $0.1, name) }
     }
 
     private func fmt(_ v: Double) -> String {
