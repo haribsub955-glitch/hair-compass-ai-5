@@ -28,14 +28,7 @@ struct LogSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     section(variable: "shedding") {
-                        ClinicalSegmented(
-                            options: ShedLevel.allCases,
-                            label: { $0.title },
-                            selection: $shed
-                        )
-                        Text(shed.caption)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Clinical.secondary)
+                        ShedDialField(shed: $shed)
                     }
 
                     section(variable: "scalp") {

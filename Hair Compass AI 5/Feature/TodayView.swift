@@ -50,6 +50,7 @@ struct TodayView: View {
         .onAppear {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_LEARN") { showLearn = true }
+            if ProcessInfo.processInfo.arguments.contains("HC_LOG") { showLog = true }
             #endif
         }
         .sheet(isPresented: $showLog) {
