@@ -18,6 +18,7 @@ struct CareView: View {
     private var calendar: Calendar { .current }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenHeader(
@@ -47,6 +48,8 @@ struct CareView: View {
                 } else {
                     ForEach(treatments) { t in treatmentCard(t) }
                 }
+
+                ScienceProductsSection().id("science")
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -57,9 +60,16 @@ struct CareView: View {
         .task {
             await notifications.refreshAuthorization()
             remindersOn = notifications.isEnabled
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("HC_SCROLL_PRODUCTS") {
+                try? await Task.sleep(for: .milliseconds(250))
+                withAnimation { proxy.scrollTo("science", anchor: .top) }
+            }
+            #endif
         }
         .task(id: treatmentFingerprint) {
             await notifications.reschedule(treatments: notifTreatments)
+        }
         }
     }
 

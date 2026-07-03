@@ -208,6 +208,35 @@ struct Hair_Compass_AI_5Tests {
         #expect(LearnLibrary.cards(in: .myths).allSatisfy { $0.isMyth })
     }
 
+    // MARK: - Science product catalog (affiliate)
+
+    @Test func scienceCatalogIsHonestAndMythFree() {
+        let ids = ScienceCatalog.products.map(\.id)
+        #expect(Set(ids).count == ids.count)                       // unique ids
+        // The myths/harmful items must never appear as sellable products.
+        let banned = ["biotin", "collagen", "zinc", "niacinamide", "gummies", "multivitamin"]
+        for product in ScienceCatalog.products {
+            #expect(!banned.contains(product.id))
+        }
+        // The three defensible ones are present and tiered moderate.
+        #expect(ScienceCatalog["rosemary"]?.evidence == .moderate)
+        #expect(ScienceCatalog["sawpalmetto"]?.evidence == .moderate)
+        // Deficiency-gated items are flagged so the UI can gate them.
+        #expect(ScienceCatalog["iron"]?.deficiencyGated == true)
+        #expect(ScienceCatalog["vitamind"]?.evidence == .conditional)
+    }
+
+    @Test @MainActor func affiliateStoreRoundTripsAndHidesEmpty() {
+        let store = AffiliateStore()
+        let id = "rosemary"
+        store.setLink("", for: id)
+        #expect(store.hasLink(for: id) == false)                   // empty → no buy button
+        store.setLink("https://iherb.com/pr/rosemary", for: id)
+        #expect(store.hasLink(for: id) == true)
+        #expect(store.url(for: id)?.absoluteString == "https://iherb.com/pr/rosemary")
+        store.setLink("", for: id)                                 // clean up
+    }
+
     // MARK: - Streak
 
     @Test func loggingStreakCountsConsecutiveDays() {

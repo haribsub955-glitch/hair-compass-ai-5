@@ -5,7 +5,7 @@ import Foundation
 /// Pure content; the UI (LearnView) renders it.
 
 enum LearnCategory: String, CaseIterable, Identifiable {
-    case basics, conditions, treatments, myths, dailyCare
+    case basics, conditions, treatments, supplements, myths, dailyCare
     var id: String { rawValue }
 
     var title: String {
@@ -13,6 +13,7 @@ enum LearnCategory: String, CaseIterable, Identifiable {
         case .basics: return "Basics"
         case .conditions: return "Conditions"
         case .treatments: return "Treatments"
+        case .supplements: return "Supplements"
         case .myths: return "Myths"
         case .dailyCare: return "Daily care"
         }
@@ -22,6 +23,7 @@ enum LearnCategory: String, CaseIterable, Identifiable {
         case .basics: return "Hair 101"
         case .conditions: return "Patterns"
         case .treatments: return "What helps"
+        case .supplements: return "Nature's evidence"
         case .myths: return "Myth vs fact"
         case .dailyCare: return "Everyday"
         }
@@ -31,6 +33,7 @@ enum LearnCategory: String, CaseIterable, Identifiable {
         case .basics: return BrandArt.learnBasics
         case .conditions: return BrandArt.learnConditions
         case .treatments: return BrandArt.learnTreatments
+        case .supplements: return BrandArt.learnSupplements
         case .myths: return BrandArt.learnMyths
         case .dailyCare: return BrandArt.learnDailyCare
         }
@@ -49,7 +52,7 @@ struct FlashCard: Identifiable {
 }
 
 enum LearnLibrary {
-    static let cards: [FlashCard] = basics + conditions + treatments + myths + dailyCare
+    static let cards: [FlashCard] = basics + conditions + treatments + supplements + myths + dailyCare
 
     static func cards(in category: LearnCategory) -> [FlashCard] {
         cards.filter { $0.category == category }
@@ -95,6 +98,24 @@ enum LearnLibrary {
         .init(id: "t4", category: .treatments, tierQ: .moderate,
               q: "Do I need blood tests?",
               a: "Sometimes. Ferritin (iron stores), thyroid (TSH/T4), and vitamin D are the ones dermatologists commonly check for diffuse shedding — individualized, not a routine panel for everyone."),
+    ]
+
+    private static let supplements: [FlashCard] = [
+        .init(id: "s1", category: .supplements, tierQ: .moderate,
+              q: "Does rosemary oil actually work?",
+              a: "In a 6-month trial it matched minoxidil 2% for regrowth, with less itching — the strongest natural topical. But it rests on a single study, so treat it as promising, not proven."),
+        .init(id: "s2", category: .supplements, tierQ: .moderate,
+              q: "Is saw palmetto as good as finasteride?",
+              a: "No. It's a milder natural DHT-blocker with several positive trials, but clearly weaker than finasteride, and potency varies by brand. A reasonable option, not an equal."),
+        .init(id: "s3", category: .supplements, tierQ: .weak,
+              q: "Are any supplements as good as minoxidil?",
+              a: "No supplement reaches the evidence level of minoxidil or finasteride. The best natural options only match minoxidil 2% — the weak strength — and usually in single studies."),
+        .init(id: "s4", category: .supplements, tierQ: .weak,
+              q: "Do biotin or 'hair, skin & nails' pills help?",
+              a: "No — the best trial found biotin no better than placebo unless you have a rare true deficiency, and hair-vitamin gummies can even cause shedding from too much vitamin A."),
+        .init(id: "s5", category: .supplements, tierQ: .weak,
+              q: "Do iron or vitamin D pills grow hair?",
+              a: "Only if a blood test shows you're low. Correcting a real deficiency can ease shedding; taking them when your levels are normal doesn't help and can be harmful. Test first."),
     ]
 
     private static let myths: [FlashCard] = [

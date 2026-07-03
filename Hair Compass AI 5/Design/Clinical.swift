@@ -51,6 +51,16 @@ enum Clinical {
         }
     }
 
+    /// Product evidence — the same honest recede: real trials read confident, lab-stage recedes.
+    static func productColor(_ evidence: ProductEvidence) -> Color {
+        switch evidence {
+        case .moderate: return positive
+        case .limited: return gold
+        case .early: return tertiary
+        case .conditional: return accent
+        }
+    }
+
     // MARK: Type — serif headlines for warmth, SF body/data with tabular figures.
     static func eyebrow(_ size: CGFloat = 11) -> Font {
         .system(size: size, weight: .semibold).monospaced()
@@ -75,6 +85,7 @@ enum BrandArt {
     static let learnTreatments = "learn-treatments"
     static let learnMyths = "learn-myths"
     static let learnDailyCare = "learn-dailycare"
+    static let learnSupplements = "learn-supplements"
 }
 
 // MARK: - Reusable structure
@@ -263,6 +274,18 @@ struct TierBadge: View {
             .foregroundStyle(Clinical.tierColor(tier))
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background(Clinical.tierColor(tier).opacity(0.12), in: Capsule())
+    }
+}
+
+/// A small pill stating a product's honest evidence tier — never dressed up as a treatment.
+struct ProductBadge: View {
+    let evidence: ProductEvidence
+    var body: some View {
+        Text(evidence.short.uppercased())
+            .font(Clinical.eyebrow(9)).tracking(0.8)
+            .foregroundStyle(Clinical.productColor(evidence))
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(Clinical.productColor(evidence).opacity(0.12), in: Capsule())
     }
 }
 

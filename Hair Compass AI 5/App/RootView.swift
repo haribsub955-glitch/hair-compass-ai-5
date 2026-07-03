@@ -34,6 +34,7 @@ struct RootView: View {
     @State private var showOnboarding = false
     @State private var healthKit = HealthKitService()
     @State private var notifications = NotificationService()
+    @State private var affiliates = AffiliateStore()
 
     private var profile: Profile? { profiles.first }
 
@@ -63,6 +64,7 @@ struct RootView: View {
         }
         .environment(healthKit)
         .environment(notifications)
+        .environment(affiliates)
         .task {
             guard !didBootstrap else { return }
             didBootstrap = true
