@@ -315,6 +315,51 @@ struct Hair_Compass_AI_5Tests {
         #expect(snap.headline == "2 steps left today")
     }
 
+    // MARK: - Calendar-day bounds (one-entry-per-day upsert window)
+
+    @Test func dayBoundsCoverTheWholeDayAndNothingMore() throws {
+        let cal = Calendar.current
+        let someAfternoon = try #require(cal.date(from: DateComponents(year: 2026, month: 6, day: 15, hour: 14, minute: 37)))
+        let bounds = HairAnalytics.dayBounds(for: someAfternoon, calendar: cal)
+
+        // Lower bound is that day's midnight; the window is exactly one calendar day.
+        #expect(bounds.lowerBound == cal.startOfDay(for: someAfternoon))
+        #expect(bounds.upperBound == cal.date(byAdding: .day, value: 1, to: bounds.lowerBound))
+
+        // 00:00:00 and 23:59:59 both belong to the day…
+        #expect(bounds.contains(bounds.lowerBound))
+        let lastSecond = try #require(cal.date(from: DateComponents(year: 2026, month: 6, day: 15, hour: 23, minute: 59, second: 59)))
+        #expect(bounds.contains(lastSecond))
+
+        // …but the next midnight and the previous day's last second do not.
+        #expect(!bounds.contains(bounds.upperBound))
+        let previousDay = try #require(cal.date(from: DateComponents(year: 2026, month: 6, day: 14, hour: 23, minute: 59, second: 59)))
+        #expect(!bounds.contains(previousDay))
+    }
+
+    @Test func dayBoundsNormalizeAnyTimeOfDayToTheSameWindow() throws {
+        let cal = Calendar.current
+        let morning = try #require(cal.date(from: DateComponents(year: 2026, month: 6, day: 15, hour: 6)))
+        let night = try #require(cal.date(from: DateComponents(year: 2026, month: 6, day: 15, hour: 23)))
+        #expect(HairAnalytics.dayBounds(for: morning, calendar: cal) == HairAnalytics.dayBounds(for: night, calendar: cal))
+    }
+
+    @Test func normalizedLogDateKeepsClockTimeTodayAndUsesNoonForPastDays() throws {
+        let cal = Calendar.current
+        let now = Date.now
+
+        // Today: keep the actual moment of logging.
+        #expect(HairAnalytics.normalizedLogDate(for: now, now: now, calendar: cal) == now)
+
+        // A backfilled day: pinned to noon of that day, stable inside the day window.
+        let pastDay = try #require(cal.date(byAdding: .day, value: -10, to: now))
+        let normalized = HairAnalytics.normalizedLogDate(for: pastDay, now: now, calendar: cal)
+        #expect(cal.isDate(normalized, inSameDayAs: pastDay))
+        #expect(cal.component(.hour, from: normalized) == 12)
+        #expect(cal.component(.minute, from: normalized) == 0)
+        #expect(HairAnalytics.dayBounds(for: pastDay, calendar: cal).contains(normalized))
+    }
+
     // MARK: - Streak
 
     @Test func loggingStreakCountsConsecutiveDays() {

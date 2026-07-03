@@ -10,8 +10,21 @@ struct LogSheet: View {
     let existing: DailyEntry?
     let condition: HairCondition
 
+    init(existing: DailyEntry?, condition: HairCondition) {
+        self.existing = existing
+        self.condition = condition
+        _logDate = State(initialValue: existing?.date ?? .now)
+    }
+
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+
+    /// The calendar day this log belongs to. Scrubbable (up to 60 days back) when creating a
+    /// new entry; fixed to the entry's own day when editing an existing one.
+    @State private var logDate: Date
+    /// When creating a new entry and the scrubbed day already has one, that entry — the form
+    /// shows its values and save() writes into it instead of inserting a duplicate.
+    @State private var matchedEntry: DailyEntry?
 
     @State private var shed: ShedLevel = .normal
     @State private var flakeI: CGFloat = 0
@@ -40,6 +53,21 @@ struct LogSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
+                    section("Day") {
+                        if existing == nil {
+                            DateStripPicker(selection: $logDate, range: backfillRange)
+                            if matchedEntry != nil {
+                                Text("This day already has an entry — you're editing it.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Clinical.tertiary)
+                            }
+                        } else {
+                            Text(logDate.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
+                                .font(Clinical.headline(17))
+                                .foregroundStyle(Clinical.ink)
+                        }
+                    }
+
                     section(variable: "shedding") {
                         ShedDialField(shed: $shed)
                     }
@@ -103,14 +131,14 @@ struct LogSheet: View {
                             )
                     }
 
-                    Button(existing == nil ? "Save entry" : "Update entry", action: save)
+                    Button(saveButtonTitle, action: save)
                         .buttonStyle(ClinicalButtonStyle())
                 }
                 .padding(20)
                 .padding(.bottom, 20)
             }
             .clinicalScreen()
-            .navigationTitle(existing == nil ? "Log today" : "Edit today")
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -118,7 +146,37 @@ struct LogSheet: View {
                 }
             }
             .onAppear(perform: loadExisting)
+            .onChange(of: logDate) { _, newDay in
+                guard existing == nil else { return }
+                syncForm(to: newDay)
+            }
         }
+    }
+
+    // MARK: Day selection
+
+    /// Backfill window: 60 days ago through today. Never the future.
+    private var backfillRange: ClosedRange<Date> {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let lower = calendar.date(byAdding: .day, value: -60, to: today) ?? today
+        return lower...today
+    }
+
+    private var dayLabel: String {
+        Calendar.current.isDateInToday(logDate)
+            ? "today"
+            : logDate.formatted(.dateTime.month(.abbreviated).day())
+    }
+
+    private var saveButtonTitle: String {
+        if existing != nil { return "Update entry" }
+        return matchedEntry == nil ? "Save \(dayLabel)" : "Update \(dayLabel)"
+    }
+
+    private var navigationTitle: String {
+        if existing != nil { return "Edit today" }
+        return Calendar.current.isDateInToday(logDate) ? "Log today" : "Log \(dayLabel)"
     }
 
     /// Live scalp-severity composite — recomputed from the current gauge intensities, so it
@@ -180,7 +238,16 @@ struct LogSheet: View {
     }
 
     private func loadExisting() {
-        guard let e = existing else { return }
+        if let e = existing {
+            load(from: e)
+        } else {
+            // New-entry flow: if the initial day (today) already has an entry, become an edit
+            // of it — the same live-load the date scrub does.
+            syncForm(to: logDate)
+        }
+    }
+
+    private func load(from e: DailyEntry) {
         shed = e.shed
         flakeI = CGFloat(min(max(e.flaking, 0), 3)) / 3
         redI = CGFloat(min(max(e.erythema, 0), 3)) / 3
@@ -193,12 +260,52 @@ struct LogSheet: View {
         note = e.note
     }
 
+    /// Live-load when the scrubbed day already has an entry, so the sheet becomes an edit of
+    /// that day. Leaving a matched day for an empty one resets the form to defaults so the
+    /// gauges never show another day's values against an empty day.
+    private func syncForm(to day: Date) {
+        let found = fetchEntry(on: day)
+        if let found {
+            load(from: found)
+        } else if matchedEntry != nil {
+            resetForm()
+        }
+        matchedEntry = found
+    }
+
+    private func resetForm() {
+        shed = .normal
+        flakeI = 0; redI = 0; itchI = 0; oilI = 0
+        sleepI = 0.5; stressI = 0.5
+        cigarettes = 0; alcoholDrinks = 0
+        note = ""
+    }
+
+    /// The one-entry-per-day guard: the first `DailyEntry` whose date falls inside the
+    /// calendar day, fetched with two captured Date constants (SwiftData predicates can't
+    /// call Calendar).
+    private func fetchEntry(on day: Date) -> DailyEntry? {
+        let bounds = HairAnalytics.dayBounds(for: day)
+        let lower = bounds.lowerBound
+        let upper = bounds.upperBound
+        var descriptor = FetchDescriptor<DailyEntry>(
+            predicate: #Predicate { $0.date >= lower && $0.date < upper },
+            sortBy: [SortDescriptor(\.date)]
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
     private func save() {
         let target: DailyEntry
         if let e = existing {
             target = e
+        } else if let sameDay = fetchEntry(on: logDate) {
+            // Upsert: a row for this calendar day already exists — write into it,
+            // never insert a duplicate.
+            target = sameDay
         } else {
-            target = DailyEntry(date: .now)
+            target = DailyEntry(date: HairAnalytics.normalizedLogDate(for: logDate))
             context.insert(target)
         }
         target.shed = shed

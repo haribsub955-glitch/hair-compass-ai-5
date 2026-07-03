@@ -15,6 +15,7 @@ struct TodayView: View {
     @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
 
     @State private var showLog = false
+    @State private var showBackfill = false
     @State private var insight: DailyInsight?
     @State private var showDeepAnalysis = false
     @State private var showLearn = false
@@ -84,10 +85,15 @@ struct TodayView: View {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_LEARN") { showLearn = true }
             if ProcessInfo.processInfo.arguments.contains("HC_LOG") { showLog = true }
+            if ProcessInfo.processInfo.arguments.contains("HC_BACKFILL") { showBackfill = true }
             #endif
         }
         .sheet(isPresented: $showLog) {
             LogSheet(existing: todayEntry, condition: profile?.condition ?? .unsure)
+        }
+        .sheet(isPresented: $showBackfill) {
+            // existing: nil shows the day strip, so any of the last 60 days can be backfilled.
+            LogSheet(existing: nil, condition: profile?.condition ?? .unsure)
         }
         .sheet(isPresented: $showDeepAnalysis) {
             DeepAnalysisSheet(context: buildContext(), images: analysisImages())
@@ -203,6 +209,9 @@ struct TodayView: View {
                     Button("Log today") { showLog = true }
                         .buttonStyle(ClinicalButtonStyle())
                 }
+                Button("Log a past day") { showBackfill = true }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Clinical.accent)
 
                 if !activeDaily.isEmpty {
                     Divider().overlay(Clinical.hairline).padding(.vertical, 2)

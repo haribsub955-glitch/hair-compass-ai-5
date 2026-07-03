@@ -119,6 +119,26 @@ enum HairAnalytics {
         return values.reduce(0, +) / Double(values.count)
     }
 
+    // MARK: - Calendar-day bounds (one-entry-per-day upsert window)
+
+    /// The half-open window covering one calendar day: startOfDay ..< start of the next day.
+    /// Used as the fetch window when upserting a `DailyEntry`, so 00:00:00 through 23:59:59
+    /// all belong to the day and the next midnight does not.
+    static func dayBounds(for day: Date, calendar: Calendar = .current) -> Range<Date> {
+        let start = calendar.startOfDay(for: day)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86_400)
+        return start..<end
+    }
+
+    /// Timestamp to store on a log entry for a chosen calendar day: the real clock time when
+    /// the day is today, otherwise noon of that day — a stable, unambiguous position inside
+    /// the day so backfilled entries sort predictably.
+    static func normalizedLogDate(for day: Date, now: Date = .now, calendar: Calendar = .current) -> Date {
+        if calendar.isDate(day, inSameDayAs: now) { return now }
+        let start = calendar.startOfDay(for: day)
+        return calendar.date(byAdding: .hour, value: 12, to: start) ?? start
+    }
+
     // MARK: - Streak
 
     /// Consecutive days (ending today or yesterday) that have a daily entry.
