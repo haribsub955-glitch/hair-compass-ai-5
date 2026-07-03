@@ -57,9 +57,7 @@ struct AddTreatmentSheet: View {
                     }
 
                     section("Start date") {
-                        DatePicker("", selection: $startDate, displayedComponents: .date)
-                            .labelsHidden()
-                            .datePickerStyle(.compact)
+                        DateStripPicker(selection: $startDate)
                         Text("Sets the 24-week assessment clock.")
                             .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
                     }

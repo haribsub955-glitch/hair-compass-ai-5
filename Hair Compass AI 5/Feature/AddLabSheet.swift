@@ -53,7 +53,7 @@ struct AddLabSheet: View {
                     }
 
                     section("Date") {
-                        DatePicker("", selection: $date, displayedComponents: .date).labelsHidden().datePickerStyle(.compact)
+                        DateStripPicker(selection: $date)
                     }
 
                     section("Note") {

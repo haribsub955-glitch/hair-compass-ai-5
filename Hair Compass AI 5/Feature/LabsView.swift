@@ -44,6 +44,11 @@ struct LabsView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddLabSheet() }
+        .onAppear {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("HC_ADDLAB") { showAdd = true }
+            #endif
+        }
     }
 
     /// Redesign v2: each result reads as a gauge — the value dotted along a 0→high axis with the
