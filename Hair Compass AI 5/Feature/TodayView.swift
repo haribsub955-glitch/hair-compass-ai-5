@@ -30,11 +30,44 @@ struct TodayView: View {
         HairAnalytics.loggingStreak(entryDates: entries.map(\.date))
     }
 
+    /// Today's HealthKit sleep hours, if the sync service has cached a snapshot for today.
+    private var todaySleepHours: Double? {
+        snapshots.first { calendar.isDateInToday($0.date) }?.sleepHours
+    }
+
+    /// Every daily (treatment, slot) step — the same universe treatmentRows renders.
+    private var dailySlots: [(Treatment, String)] {
+        activeDaily.flatMap { t in t.slots.map { (t, $0) } }
+    }
+    private var medsDone: Int {
+        dailySlots.filter { isLogged($0.0, slot: $0.1) }.count
+    }
+
+    /// Most recent trigger still inside the ~16-week telogen-effluvium watch period.
+    private var watchTriggerWeeks: Int? {
+        triggers.lazy.map { $0.weeksElapsed() }.first { (0...16).contains($0) }
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                heroHeader
+                ConditionsHero(
+                    shed: todayEntry?.shed,
+                    scalpTotal: todayEntry?.scalpTotal,
+                    scalpBand: todayEntry?.scalpBand,
+                    greeting: greeting,
+                    streak: streak,
+                    onOpenBaseline: onOpenBaseline,
+                    onLog: { showLog = true }
+                )
                 VStack(alignment: .leading, spacing: 16) {
+                    TodayTileGrid(
+                        entry: todayEntry,
+                        sleepHours: todaySleepHours,
+                        medsDone: medsDone,
+                        medsTotal: dailySlots.count,
+                        triggerWeeks: watchTriggerWeeks
+                    )
                     logCard
                     insightCard
                     learnStrip
@@ -147,48 +180,6 @@ struct TodayView: View {
         }
     }
 
-    /// Redesign v2: the greeting sits *inside* a full-bleed hero, with the profile button and the
-    /// streak chip floating over it — one block instead of a separate header + banner.
-    private var heroHeader: some View {
-        ZStack(alignment: .bottomLeading) {
-            Image(BrandArt.todayHero)
-                .resizable().aspectRatio(contentMode: .fill)
-                .frame(height: 224).frame(maxWidth: .infinity).clipped()
-            LinearGradient(
-                colors: [Clinical.canvas.opacity(0.06), Clinical.canvas.opacity(0.72), Clinical.canvas],
-                startPoint: .top, endPoint: .bottom
-            )
-            VStack {
-                HStack {
-                    Spacer()
-                    Button(action: onOpenBaseline) {
-                        Image(systemName: "person.circle.fill")
-                            .font(.system(size: 30))
-                            .foregroundStyle(Clinical.ink.opacity(0.85), Clinical.surface.opacity(0.9))
-                    }
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 20).padding(.top, 14)
-
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(Date.now.formatted(.dateTime.weekday(.wide).month().day()).uppercased())
-                        .font(Clinical.eyebrow(10)).tracking(1.4).foregroundStyle(Clinical.secondary)
-                    Text(greeting).font(Clinical.headline(31)).foregroundStyle(Clinical.ink)
-                }
-                Spacer()
-                Label("\(streak)-day streak", systemImage: "flame.fill")
-                    .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(Clinical.surface.opacity(0.85), in: Capsule())
-                    .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
-            }
-            .padding(.horizontal, 20).padding(.bottom, 10)
-        }
-        .frame(height: 224)
-    }
-
     private var greeting: String {
         let name = profile?.name.trimmingCharacters(in: .whitespaces) ?? ""
         let hour = calendar.component(.hour, from: .now)
@@ -196,19 +187,13 @@ struct TodayView: View {
         return name.isEmpty ? part : "\(part), \(name)"
     }
 
-    /// Redesign v2: log stats and today's routine live in ONE card, not two.
+    /// Redesign v3: the numbers moved up into the glance tiles, so this card slims down to the
+    /// action (edit/log) plus today's routine.
     private var logCard: some View {
         ClinicalCard {
             VStack(alignment: .leading, spacing: 14) {
                 Eyebrow(text: "Daily log")
-                if let entry = todayEntry {
-                    HStack(spacing: 18) {
-                        miniStat("\(entry.shed.title)", "Shedding")
-                        Divider().frame(height: 34)
-                        miniStat("\(entry.scalpTotal)/16", "Scalp")
-                        Divider().frame(height: 34)
-                        miniStat("\(entry.sleepQuality)/5", "Sleep")
-                    }
+                if todayEntry != nil {
                     Button("Edit today's log") { showLog = true }
                         .buttonStyle(ClinicalButtonStyle(filled: false))
                 } else {
@@ -233,19 +218,6 @@ struct TodayView: View {
                 }
             }
         }
-    }
-
-    private func miniStat(_ value: String, _ label: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(value)
-                .font(Clinical.number(18))
-                .foregroundStyle(Clinical.ink)
-            Text(label.uppercased())
-                .font(Clinical.eyebrow(9))
-                .tracking(1)
-                .foregroundStyle(Clinical.tertiary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func treatmentRow(_ treatment: Treatment, slot: String) -> some View {
