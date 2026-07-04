@@ -1,0 +1,352 @@
+import Foundation
+import SwiftData
+
+/// The canonical, versioned, machine-readable context every AI feature consumes — today the
+/// cloud deep analysis, next the chat feature. One JSON shape over all the SwiftData models,
+/// so a model never sees ad-hoc prose where structure will do.
+///
+/// Rules of the shape:
+/// - Versioned: `schemaVersion` bumps whenever a field changes meaning, so downstream prompts
+///   can say exactly what they were built against.
+/// - Pure: `build` takes `now`/`calendar` explicitly — no `Date.now` inside, so tests are
+///   deterministic and two builds over the same data are byte-identical.
+/// - No direct identifiers: the profile section deliberately has NO name field. Photo data is
+///   metadata only (count/regions/dates) — never image bytes.
+/// - All math is reused from the deterministic core (`HairAnalytics`, `ChartMath`,
+///   `BodySignalsMath`); nothing is recomputed here with different formulas.
+/// - Encoding uses `.sortedKeys`, so output is stable for tests and prompt caching.
+struct AIContext: Codable, Equatable, Sendable {
+
+    /// Bump on any change to field names or semantics. v1: the initial shape.
+    static let currentSchemaVersion = 1
+
+    var schemaVersion: Int = AIContext.currentSchemaVersion
+    /// ISO8601 (UTC, whole seconds) timestamp of the `now` the context was built against.
+    var generatedAt: String
+    var profile: ProfileFacts
+    var dailySeries: DailySeries
+    var treatments: [TreatmentFacts]
+    var labs: [LabFacts]
+    var triggers: [TriggerFacts]
+    var bodySignals: BodySignals
+    var meta: Meta
+
+    /// Days of daily-log history shipped to the model, and the cap on the series length.
+    static let dailyWindowDays = 120
+
+    // MARK: - Sections
+
+    /// Baseline context. Deliberately excludes the person's name — no direct identifiers
+    /// ever enter an AI payload.
+    struct ProfileFacts: Codable, Equatable, Sendable {
+        var condition: String        // HairCondition title, e.g. "Androgenetic"
+        var conditionCode: String    // short label, e.g. "AGA"
+        var sex: String?             // BiologicalSex rawValue; nil when no profile
+        var ageBand: String?         // nil when not recorded
+        var familyHistory: String?   // FamilyHistory rawValue; nil when no profile
+        var baselineStage: String?   // e.g. "Norwood 3"; nil when not recorded
+        var tractionRisk: Bool       // tight styles / heat / chemical treatment at baseline
+    }
+
+    /// The last `dailyWindowDays` of daily logs, oldest first, plus precomputed trend stats
+    /// so the model never has to do arithmetic.
+    struct DailySeries: Codable, Equatable, Sendable {
+        struct Day: Codable, Equatable, Sendable {
+            var date: String         // "yyyy-MM-dd"
+            var shed: Int?           // 0–3 (ShedLevel)
+            var scalpTotal: Int?     // 0–16 validated SD score
+            var sleepQuality: Int?   // 1–5 subjective
+            var stress: Int?         // 1–5
+            var oiliness: Int?       // 0–3
+        }
+        var days: [Day]
+        /// Endpoint of the 7-day rolling mean of shed (ChartMath.rollingMean); nil with no data.
+        var shed7d: Double?
+        /// HairAnalytics.direction over the windowed shed series (positive = rising);
+        /// nil when fewer than 3 days.
+        var shedDirection: Double?
+        var scalp7d: Double?
+        var scalpDirection: Double?
+    }
+
+    struct TreatmentFacts: Codable, Equatable, Sendable {
+        struct SideEffect: Codable, Equatable, Sendable {
+            var name: String         // SideEffectType title
+            var severity: Int        // 1 mild · 2 moderate · 3 severe
+        }
+        var name: String
+        var treatmentClass: String   // TreatmentClass rawValue, encoded as "class"
+        var dose: String?
+        var slots: [String]          // e.g. ["08:00", "21:00"]; empty = periodic
+        var isActive: Bool
+        var startDate: String        // "yyyy-MM-dd"
+        var weeksElapsed: Int
+        var outcomeReady: Bool       // past the 24-week judging point
+        var adherencePercent: Int?   // trailing-window %; nil for periodic classes
+        var refillBy: String?        // "yyyy-MM-dd" when supply tracking is on
+        var recentSideEffects: [SideEffect]   // last 30 days only
+
+        enum CodingKeys: String, CodingKey {
+            case name, dose, slots, isActive, startDate, weeksElapsed, outcomeReady
+            case adherencePercent, refillBy, recentSideEffects
+            case treatmentClass = "class"
+        }
+    }
+
+    struct LabFacts: Codable, Equatable, Sendable {
+        var test: String             // LabTest rawValue
+        var title: String
+        var value: Double
+        var unit: String
+        var flag: String             // "low" | "normal" | "high"
+        var collectedAt: String      // "yyyy-MM-dd"
+        var referenceLow: Double
+        var referenceHigh: Double
+    }
+
+    struct TriggerFacts: Codable, Equatable, Sendable {
+        var type: String             // TriggerType rawValue
+        var title: String
+        var date: String             // "yyyy-MM-dd"
+        var weeksAgo: Int
+    }
+
+    /// Latest reading + 30d-vs-previous-30d delta per HealthKit signal (BodySignalsMath).
+    /// A signal with no reading in the window is simply absent — never a fake zero.
+    struct BodySignals: Codable, Equatable, Sendable {
+        struct Signal: Codable, Equatable, Sendable {
+            var id: String           // BodySignal rawValue: sleep/hrv/restingHR/weight/protein
+            var latest: Double
+            var delta30d: Double?    // current 30d mean − previous 30d mean
+        }
+        var signals: [Signal]
+        /// Set only when the rapid-weight-loss rule (>5% in 90 days) fires — a TE trigger watch.
+        var rapidWeightLossPercent: Double?
+    }
+
+    struct Meta: Codable, Equatable, Sendable {
+        struct PhotoSummary: Codable, Equatable, Sendable {
+            var count: Int
+            var regions: [String]    // distinct PhotoRegion rawValues, sorted
+            var firstDate: String?   // "yyyy-MM-dd"
+            var lastDate: String?
+        }
+        var entryCount: Int
+        var streak: Int
+        var photos: PhotoSummary     // metadata only — image data never enters the context
+    }
+
+    // MARK: - Build (SwiftData models → pure context)
+
+    /// Snapshot the current SwiftData state into the versioned context. Same input shape as
+    /// `InsightContext.build`, plus labs, side effects, and photo metadata. `now`/`calendar`
+    /// are explicit so the result is fully deterministic.
+    @MainActor
+    static func build(
+        entries: [DailyEntry],
+        treatments: [Treatment],
+        doses: [TreatmentDose],
+        snapshots: [HealthSnapshot],
+        triggers: [TriggerEvent],
+        labs: [LabResult],
+        sideEffects: [SideEffectLog],
+        photos: [PhotoRecord],
+        profile: Profile?,
+        now: Date,
+        calendar: Calendar = .current
+    ) -> AIContext {
+
+        // Profile — condition/stage/risk context, never the name.
+        let condition = profile?.condition ?? .unsure
+        let profileFacts = ProfileFacts(
+            condition: condition.title,
+            conditionCode: condition.shortLabel,
+            sex: profile?.sex.rawValue,
+            ageBand: nonEmpty(profile?.ageBand),
+            familyHistory: profile?.familyHistory.rawValue,
+            baselineStage: nonEmpty(profile?.baselineStage),
+            tractionRisk: profile?.hasTractionRisk ?? false
+        )
+
+        // Daily series — ascending, within the horizon, hard-capped at dailyWindowDays points.
+        let horizonStart = calendar.date(
+            byAdding: .day, value: -(dailyWindowDays - 1), to: calendar.startOfDay(for: now)) ?? now
+        let windowed = Array(
+            entries.sorted { $0.date < $1.date }
+                .filter { $0.date >= horizonStart }
+                .suffix(dailyWindowDays)
+        )
+        let shedValues = windowed.map { Double($0.shed.rawValue) }
+        let scalpValues = windowed.map { Double($0.scalpTotal) }
+        let dailySeries = DailySeries(
+            days: windowed.map { e in
+                DailySeries.Day(
+                    date: dayString(e.date, calendar: calendar),
+                    shed: e.shed.rawValue,
+                    scalpTotal: e.scalpTotal,
+                    sleepQuality: e.sleepQuality,
+                    stress: e.stress,
+                    oiliness: e.oiliness
+                )
+            },
+            shed7d: ChartMath.rollingMean(shedValues, window: 7).last.map(round1),
+            shedDirection: windowed.count >= 3 ? round2(HairAnalytics.direction(shedValues)) : nil,
+            scalp7d: ChartMath.rollingMean(scalpValues, window: 7).last.map(round1),
+            scalpDirection: windowed.count >= 3 ? round2(HairAnalytics.direction(scalpValues)) : nil
+        )
+
+        // Treatments — all of them (isActive tells the model which are current), with the
+        // adherence and 24-week gate math from HairAnalytics and 30 days of tolerability.
+        let sideEffectCutoff = calendar.date(byAdding: .day, value: -30, to: now) ?? now
+        let treatmentFacts = treatments
+            .sorted { $0.startDate < $1.startDate }
+            .map { t -> TreatmentFacts in
+                let weeks = HairAnalytics.weeksElapsed(since: t.startDate, now: now, calendar: calendar)
+                let doseDates = doses
+                    .filter { $0.treatment?.persistentModelID == t.persistentModelID }
+                    .map(\.loggedAt)
+                let adherence = HairAnalytics.adherence(
+                    doseDates: doseDates, expectedPerDay: t.slots.count, now: now, calendar: calendar)
+                let recent = sideEffects
+                    .filter {
+                        $0.treatment?.persistentModelID == t.persistentModelID
+                            && $0.date >= sideEffectCutoff && $0.date <= now
+                    }
+                    .sorted { $0.date < $1.date }
+                    .map { TreatmentFacts.SideEffect(name: $0.type.title, severity: $0.severity) }
+                return TreatmentFacts(
+                    name: t.name.isEmpty ? t.treatmentClass.title : t.name,
+                    treatmentClass: t.treatmentClass.rawValue,
+                    dose: nonEmpty(t.dose),
+                    slots: t.slots,
+                    isActive: t.isActive,
+                    startDate: dayString(t.startDate, calendar: calendar),
+                    weeksElapsed: weeks,
+                    outcomeReady: HairAnalytics.outcomeReady(weeksElapsed: weeks),
+                    adherencePercent: adherence.map { Int(($0 * 100).rounded()) },
+                    refillBy: t.refillBy.map { dayString($0, calendar: calendar) },
+                    recentSideEffects: recent
+                )
+            }
+
+        // Labs — value + reference range + the HairAnalytics flag, date-only.
+        let labFacts = labs
+            .sorted { $0.collectedAt < $1.collectedAt }
+            .map { lab -> LabFacts in
+                let range = lab.test.referenceRange
+                return LabFacts(
+                    test: lab.test.rawValue,
+                    title: lab.test.title,
+                    value: round1(lab.value),
+                    unit: lab.test.unit,
+                    flag: flagCode(lab.flag),
+                    collectedAt: dayString(lab.collectedAt, calendar: calendar),
+                    referenceLow: range.lowerBound,
+                    referenceHigh: range.upperBound
+                )
+            }
+
+        // Triggers — dated TE context with the weeks-since math the lag rules key on.
+        let triggerFacts = triggers
+            .sorted { $0.date < $1.date }
+            .map { t in
+                TriggerFacts(
+                    type: t.type.rawValue,
+                    title: t.type.title,
+                    date: dayString(t.date, calendar: calendar),
+                    weeksAgo: t.weeksElapsed(now: now, calendar: calendar)
+                )
+            }
+
+        // Body signals — latest + 30d delta per signal via BodySignalsMath; absent = untracked.
+        var signalReadings: [BodySignals.Signal] = []
+        for signal in BodySignal.allCases {
+            let samples = snapshots.map { (date: $0.date, value: $0[keyPath: signal.keyPath]) }
+            let series = BodySignalsMath.windowedSeries(
+                samples, windowDays: dailyWindowDays, now: now, calendar: calendar)
+            guard let latest = series.last?.value else { continue }
+            let delta = BodySignalsMath.delta(samples, windowDays: 30, now: now, calendar: calendar)
+            signalReadings.append(BodySignals.Signal(
+                id: signal.rawValue, latest: round1(latest), delta30d: delta.map(round1)))
+        }
+        let massSamples = snapshots.compactMap { s in
+            s.bodyMassKg.map { (date: s.date, massKg: $0) }
+        }
+        let bodySignals = BodySignals(
+            signals: signalReadings,
+            rapidWeightLossPercent: HairAnalytics.rapidWeightLossPercent(
+                samples: massSamples, now: now, calendar: calendar).map(round1)
+        )
+
+        // Meta — logging volume plus photo METADATA (regions and dates, never pixels).
+        let photoDates = photos.map(\.createdAt)
+        let meta = Meta(
+            entryCount: entries.count,
+            streak: HairAnalytics.loggingStreak(
+                entryDates: entries.map(\.date), now: now, calendar: calendar),
+            photos: Meta.PhotoSummary(
+                count: photos.count,
+                regions: Set(photos.map(\.region.rawValue)).sorted(),
+                firstDate: photoDates.min().map { dayString($0, calendar: calendar) },
+                lastDate: photoDates.max().map { dayString($0, calendar: calendar) }
+            )
+        )
+
+        return AIContext(
+            generatedAt: iso8601(now),
+            profile: profileFacts,
+            dailySeries: dailySeries,
+            treatments: treatmentFacts,
+            labs: labFacts,
+            triggers: triggerFacts,
+            bodySignals: bodySignals,
+            meta: meta
+        )
+    }
+
+    // MARK: - Serialization
+
+    /// Stable JSON: `.sortedKeys` always, so two builds over the same data are byte-identical
+    /// (tests rely on it, and stable prefixes are what prompt caching wants).
+    func jsonString(pretty: Bool = false) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = pretty
+            ? [.sortedKeys, .prettyPrinted, .withoutEscapingSlashes]
+            : [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(self),
+              let json = String(data: data, encoding: .utf8) else { return "{}" }
+        return json
+    }
+
+    // MARK: - Pure helpers
+
+    /// "yyyy-MM-dd" in the given calendar — pure component math, no formatter state.
+    static func dayString(_ date: Date, calendar: Calendar) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    /// ISO8601 (UTC, whole seconds) — deterministic for a given `Date`.
+    static func iso8601(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter.string(from: date)
+    }
+
+    static func flagCode(_ flag: LabFlag) -> String {
+        switch flag {
+        case .low: return "low"
+        case .normal: return "normal"
+        case .high: return "high"
+        }
+    }
+
+    static func round1(_ value: Double) -> Double { (value * 10).rounded() / 10 }
+    static func round2(_ value: Double) -> Double { (value * 100).rounded() / 100 }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return value
+    }
+}

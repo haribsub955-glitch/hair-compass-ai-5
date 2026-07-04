@@ -126,8 +126,9 @@ struct PrivacyTests {
         // Consent never granted in this defaults suite → the service must refuse before any
         // network work (belt and braces under the UI gate).
         let service = CloudAnalysisService(defaults: defaults)
-        let context = InsightContext.build(
-            entries: [], treatments: [], doses: [], snapshots: [], triggers: [], profile: nil)
+        let context = AIContext.build(
+            entries: [], treatments: [], doses: [], snapshots: [], triggers: [],
+            labs: [], sideEffects: [], photos: [], profile: nil, now: .now)
         await service.analyze(context: context, images: [])
 
         #expect(service.result == nil)

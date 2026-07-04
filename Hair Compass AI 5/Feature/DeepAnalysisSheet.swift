@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 import UIKit
 
@@ -75,12 +76,26 @@ struct AIConsentSheet: View {
 /// Fable 5 call over the deterministic facts plus matched progress photos. Framed as
 /// record-keeping, never diagnosis.
 struct DeepAnalysisSheet: View {
+    /// The on-device insight context the caller was showing. The cloud payload itself is the
+    /// richer, versioned `AIContext` built below from the sheet's own queries.
     let context: InsightContext
     let images: [UIImage]
 
     @Environment(\.dismiss) private var dismiss
     @State private var service = CloudAnalysisService()
     @State private var consented = false
+
+    // The full record the AIContext snapshot is built from at run time — labs, tolerability
+    // and photo metadata included, which the on-device InsightContext doesn't carry.
+    @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
+    @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
+    @Query private var doses: [TreatmentDose]
+    @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
+    @Query(sort: \TriggerEvent.date) private var triggers: [TriggerEvent]
+    @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
+    @Query private var sideEffects: [SideEffectLog]
+    @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
+    @Query private var profiles: [Profile]
 
     var body: some View {
         NavigationStack {
@@ -131,7 +146,13 @@ struct DeepAnalysisSheet: View {
                     }
 
                     Button(service.isRunning ? "Analyzing…" : "Run deep analysis") {
-                        Task { await service.analyze(context: context, images: images) }
+                        let payload = AIContext.build(
+                            entries: entries, treatments: treatments, doses: doses,
+                            snapshots: snapshots, triggers: triggers,
+                            labs: labs, sideEffects: sideEffects, photos: photos,
+                            profile: profiles.first, now: .now
+                        )
+                        Task { await service.analyze(context: payload, images: images) }
                     }
                     .buttonStyle(ClinicalButtonStyle())
                     .disabled(!consented || !service.hasKey || service.isRunning)

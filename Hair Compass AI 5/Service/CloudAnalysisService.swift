@@ -25,7 +25,9 @@ final class CloudAnalysisService {
 
     struct AnalysisError: Error { let message: String }
 
-    func analyze(context: InsightContext, images: [UIImage]) async {
+    /// Runs one deep analysis over the canonical `AIContext` JSON (see AIContextBuilder.swift)
+    /// plus the matched progress photos.
+    func analyze(context: AIContext, images: [UIImage]) async {
         isRunning = true
         result = nil
         errorMessage = nil
@@ -41,7 +43,7 @@ final class CloudAnalysisService {
 
     // MARK: - Request
 
-    private func request(context: InsightContext, images: [UIImage]) async throws -> String {
+    private func request(context: AIContext, images: [UIImage]) async throws -> String {
         // Belt and braces: no code path may send photos off-device without explicit consent.
         // The UI gates the entry point (AIConsentSheet); this is the last line of defense.
         guard AIConsent.isGranted(defaults) else {
@@ -109,15 +111,15 @@ final class CloudAnalysisService {
         return text
     }
 
-    private func prompt(context: InsightContext, imageCount: Int) -> String {
+    private func prompt(context: AIContext, imageCount: Int) -> String {
         let photoNote = imageCount > 0
             ? "\n\nAttached are \(imageCount) progress photo(s) taken under matched conditions. Describe visible change between them in plain, non-diagnostic terms (density, coverage, hairline). Do not diagnose."
             : ""
         return """
         You are helping someone keep records of their hair. This is documentation, NOT diagnosis, and you must not diagnose or name a condition they didn't state. Only discuss whether a treatment is 'working' if it is past its 24-week judging point. Ground everything in the facts below and the attached photos; do not invent numbers. Write a short, warm, plainly-worded summary (about 4–6 sentences) that prioritizes what matters most and notes honest uncertainty. End with one gentle, evidence-aligned suggestion.
 
-        Facts:
-        \(RuleBasedInsight.facts(context))\(photoNote)
+        Facts: the JSON object below is this person's tracking record (schemaVersion \(context.schemaVersion) of the app's AI context — its field layout; dates are yyyy-MM-dd; all statistics are precomputed on-device). Absent fields were simply not tracked — never guess them.
+        \(context.jsonString())\(photoNote)
         """
     }
 
