@@ -100,6 +100,8 @@ enum BrandArt {
     // sitting in banner boxes (rendered by CornerSprig / StrandDivider below).
     static let sprig = "brand-sprig"        // botanical cluster, cascades from a top corner
     static let divider = "brand-divider"    // horizontal copper hair-strand flourish
+    static let meadow = "brand-meadow"      // wide botanical garland, art anchored to the bottom
+    static let medallion = "brand-medallion" // laurel wreath with a copper strand — milestone emblem
 }
 
 /// A rounded brand-art banner in the warm gouache style — reused across screens so imagery reads as

@@ -92,8 +92,18 @@ struct TodayView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
-                .padding(.bottom, 110)
+
+                // Ground flourish: the botanical garland grows out of the bottom of the page —
+                // full-bleed, unboxed; its transparent upper canvas is the breathing room. The
+                // 110pt clearance below keeps it above the floating tab bar.
+                Image(BrandArt.meadow)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
+            .padding(.bottom, 110)
         }
         .clinicalScreen()
         .task(id: insightFingerprint) { await refreshInsight() }

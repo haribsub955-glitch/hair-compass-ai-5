@@ -61,8 +61,18 @@ struct ProgressReportSheet: View {
                 .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Unboxed sprig bleeding from the sheet's top-right, behind the week headline.
-        .background(alignment: .topTrailing) { CornerSprig(width: 160, opacity: 0.4) }
+        // The report's crowning emblem: the laurel medallion sits whole in the header's open
+        // trailing space, like a crest on a letterhead — unboxed, behind any long period line.
+        // A background takes no layout space, so the headline never gets cramped.
+        .background(alignment: .trailing) {
+            Image(BrandArt.medallion)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 100, height: 100)
+                .opacity(0.9)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 
     private var milestoneBadge: some View {

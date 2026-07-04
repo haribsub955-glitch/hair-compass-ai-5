@@ -393,14 +393,23 @@ struct CareView: View {
 
     private var empty: some View {
         ClinicalCard {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 8) {
+                // The laurel medallion as the empty-state emblem — the 24-week journey this
+                // card invites you to start, in the brand's own hand rather than an SF Symbol.
+                Image(BrandArt.medallion)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 96, height: 96)
+                    .accessibilityHidden(true)
                 Eyebrow(text: "No treatments")
                 Text("Add minoxidil, finasteride, or a procedure to build your daily routine and track the 24-week window.")
                     .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                    .multilineTextAlignment(.center)
                 Button("Add treatment") { showAdd = true }
                     .buttonStyle(ClinicalButtonStyle())
                     .padding(.top, 4)
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
