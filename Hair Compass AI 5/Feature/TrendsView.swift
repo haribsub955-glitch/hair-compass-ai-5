@@ -41,9 +41,12 @@ struct TrendsView: View {
                                 .font(.system(size: 18)).foregroundStyle(Clinical.ink)
                         }
                     )
-                ).padding(.top, 8)
-
-                BrandBanner(art: BrandArt.trends, height: 108)
+                )
+                .padding(.top, 8)
+                // Unboxed brand accent: the sprig bleeds from the screen's top-right behind the
+                // header. Background views take no layout space (no horizontal scroll), and the
+                // share button stays tappable — the art never hit-tests.
+                .background(alignment: .topTrailing) { CornerSprig() }
 
                 ClinicalSegmented(options: Range.allCases, label: { $0.rawValue }, selection: $range)
 
@@ -64,6 +67,8 @@ struct TrendsView: View {
                     triggers: triggers,
                     showAllBadges: $showBadges
                 )
+
+                StrandDivider()
 
                 lifestyleCard
                 compareEntryCard

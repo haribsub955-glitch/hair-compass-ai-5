@@ -21,7 +21,11 @@ struct LabsView: View {
                                 .background(Clinical.ink, in: Circle())
                         }
                     )
-                ).padding(.top, 8)
+                )
+                .padding(.top, 8)
+                // Unboxed brand accent bleeding from the top-right — behind the header, so the
+                // add button stays tappable and no layout space is taken (no horizontal scroll).
+                .background(alignment: .topTrailing) { CornerSprig() }
 
                 ClinicalCard(padding: 14) {
                     HStack(alignment: .top, spacing: 10) {

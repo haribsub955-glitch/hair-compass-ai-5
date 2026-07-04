@@ -88,6 +88,8 @@ struct BaselineFlow: View {
 
                     privacySection
 
+                    StrandDivider()
+
                     BackupRestoreSection()
 
                     aboutFooter
@@ -271,6 +273,12 @@ struct BaselineFlow: View {
             }
         }
         .padding(.top, 8)
+        // A quiet mirrored sprig bleeding off the bottom-left behind the footer — pushed down
+        // so most of the foliage exits the screen edge rather than sitting behind the small print.
+        .background(alignment: .bottomLeading) {
+            CornerSprig(corner: .topLeading, width: 150, opacity: 0.35)
+                .offset(y: 56)
+        }
     }
 
     private func practiceToggle(_ title: String, isOn: Binding<Bool>) -> some View {

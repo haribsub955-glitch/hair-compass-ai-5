@@ -95,6 +95,11 @@ enum BrandArt {
     // Launch-ritual art (botanical backdrop + the comb that follows the finger).
     static let ritualBackdrop = "comb-bg"
     static let combTool = "comb-tool"
+
+    // Transparent overlay accents — unboxed art that bleeds from screen edges instead of
+    // sitting in banner boxes (rendered by CornerSprig / StrandDivider below).
+    static let sprig = "brand-sprig"        // botanical cluster, cascades from a top corner
+    static let divider = "brand-divider"    // horizontal copper hair-strand flourish
 }
 
 /// A rounded brand-art banner in the warm gouache style — reused across screens so imagery reads as
@@ -109,6 +114,58 @@ struct BrandBanner: View {
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
             .shadow(color: Clinical.cardShadow, radius: 12, y: 5)
+    }
+}
+
+/// An unboxed botanical accent that bleeds off a screen corner — the brand living in the
+/// interface itself rather than inside a banner rectangle. Attach it with
+/// `.background(alignment: .topTrailing) { CornerSprig() }` on a header block: background
+/// views take no layout space, so the off-screen bleed can never widen a ScrollView's
+/// content — the scroll view simply clips it at the screen edge. Purely decorative:
+/// never intercepts touches, invisible to accessibility, kept translucent so ink text
+/// in front stays fully legible. One sprig per screen, no more.
+struct CornerSprig: View {
+    enum Corner { case topTrailing, topLeading }
+    var corner: Corner = .topTrailing
+    var width: CGFloat = 210
+    var opacity: Double = 0.5
+
+    var body: some View {
+        let mirrored = corner == .topLeading
+        Image(BrandArt.sprig)
+            .resizable()
+            .scaledToFit()
+            .frame(width: width, height: width)
+            .scaleEffect(x: mirrored ? -1 : 1)
+            .opacity(opacity)
+            // Nudge partly past the corner so branches read as entering from off-screen.
+            .offset(x: (mirrored ? -1 : 1) * width * 0.16, y: -width * 0.12)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A flowing copper hair-strand flourish used between sections instead of a plain `Divider()`.
+/// The painted wave occupies the middle ~half of its canvas, so the image renders at twice the
+/// slot height inside a fixed-size overlay: the wave fills the slot while the transparent canvas
+/// margins overflow harmlessly — overlays take no layout space, so neighbors are unaffected.
+struct StrandDivider: View {
+    var height: CGFloat = 54
+    var opacity: Double = 0.6
+
+    var body: some View {
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .overlay(
+                Image(BrandArt.divider)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: height * 2)
+                    .opacity(opacity)
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

@@ -25,6 +25,7 @@ struct ProgressReportSheet: View {
                     if let adherence = report.adherence { adherenceCard(adherence) }
                     tolerabilityCard
                     if !report.labs.isEmpty { labsCard }
+                    StrandDivider()
                     honestReadCard
                     Text("A self-tracked record for your own clinician conversations — not medical advice.")
                         .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
@@ -59,6 +60,9 @@ struct ProgressReportSheet: View {
             Text("\(report.periodStart.formatted(date: .abbreviated, time: .omitted)) – \(report.periodEnd.formatted(date: .abbreviated, time: .omitted)) · \(report.entryCount) daily log\(report.entryCount == 1 ? "" : "s")")
                 .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Unboxed sprig bleeding from the sheet's top-right, behind the week headline.
+        .background(alignment: .topTrailing) { CornerSprig(width: 160, opacity: 0.4) }
     }
 
     private var milestoneBadge: some View {

@@ -82,6 +82,7 @@ struct TodayView: View {
                     )
                     logCard
                     insightCard
+                    StrandDivider()
                     learnStrip
                     statusCard
                 }

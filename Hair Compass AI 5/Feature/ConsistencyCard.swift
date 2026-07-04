@@ -193,6 +193,9 @@ struct AchievementsSheet: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.top, 20)
+                // Unboxed sprig bleeding from the sheet's top-right, behind the title —
+                // a background, so the dismiss button above it stays tappable.
+                .background(alignment: .topTrailing) { CornerSprig(width: 180, opacity: 0.45) }
 
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(Achievement.allCases) { badge in
