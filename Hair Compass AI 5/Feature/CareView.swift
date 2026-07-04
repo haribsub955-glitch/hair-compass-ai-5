@@ -12,12 +12,15 @@ struct CareView: View {
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     @Query private var sideEffectLogs: [SideEffectLog]
+    @Query private var labs: [LabResult]
+    @Query private var triggerEvents: [TriggerEvent]
 
     @State private var showAdd = false
     @State private var showRecommender = false
     @State private var remindersOn = false
     @State private var expandedSteps: Set<String> = []
     @State private var detailTreatment: Treatment?
+    @State private var showReport = false
 
     private var profile: Profile? { profiles.first }
 
@@ -50,6 +53,7 @@ struct CareView: View {
                 guidanceCard
                 remindersCard
                 gateExplainer
+                if let report = progressReport { progressReportCard(report) }
 
                 if treatments.isEmpty {
                     empty
@@ -66,6 +70,9 @@ struct CareView: View {
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
         .sheet(item: $detailTreatment) { TreatmentDetailSheet(treatment: $0) }
+        .sheet(isPresented: $showReport) {
+            if let report = progressReport { ProgressReportSheet(report: report) }
+        }
         .sheet(isPresented: $showRecommender) {
             NavigationStack {
                 RecommenderView(condition: profile?.condition ?? .unsure, sex: profile?.sex ?? .male)
@@ -83,6 +90,10 @@ struct CareView: View {
             if ProcessInfo.processInfo.arguments.contains("HC_TREATMENT_DETAIL") {
                 try? await Task.sleep(for: .milliseconds(250))
                 detailTreatment = treatments.first
+            }
+            if ProcessInfo.processInfo.arguments.contains("HC_REPORT") {
+                try? await Task.sleep(for: .milliseconds(250))
+                if progressReport != nil { showReport = true }
             }
             #endif
         }
@@ -112,6 +123,14 @@ struct CareView: View {
     private var streak: Int { HairAnalytics.loggingStreak(entryDates: entries.map(\.date)) }
     private var hasRecentSevereSideEffect: Bool {
         HairAnalytics.hasRecentSevereSideEffect(logs: sideEffectLogs.map { ($0.severity, $0.date) })
+    }
+
+    /// The periodic synthesis — nil until there's an active daily treatment or ≥ 8 weeks of logs.
+    private var progressReport: ProgressReport? {
+        ProgressReport.build(
+            entries: entries, treatments: treatments, doses: doses,
+            labs: labs, sideEffects: sideEffectLogs, triggers: triggerEvents
+        )
     }
 
     /// Today's routine grouped into blocks, carrying the Treatment so a tap can log the dose.
@@ -318,6 +337,54 @@ struct CareView: View {
                     .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
             }
         }
+    }
+
+    /// One card that opens the full week-N progress report, sitting next to the assessment
+    /// clock it serves. Gets an accent border when the current week IS a review milestone
+    /// (4 · 12 · 24, then every 12).
+    private func progressReportCard(_ report: ProgressReport) -> some View {
+        let milestone = report.isMilestoneWeek
+        return Button { showReport = true } label: {
+            ClinicalCard(padding: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 16))
+                        .foregroundStyle(milestone ? Clinical.surface : Clinical.accent)
+                        .frame(width: 38, height: 38)
+                        .background(milestone ? Clinical.accent : Clinical.accentSoft,
+                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text("Progress report")
+                                .font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                            if milestone {
+                                Text("MILESTONE")
+                                    .font(Clinical.eyebrow(8)).tracking(0.8)
+                                    .foregroundStyle(Clinical.gold)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Clinical.gold.opacity(0.14), in: Capsule())
+                            }
+                        }
+                        Text(milestone
+                             ? "Week \(report.weekNumber) is a review milestone — read the full picture."
+                             : "Week \(report.weekNumber) · next report at week \(report.nextMilestoneWeek).")
+                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    }
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Text("View report")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(Clinical.accent)
+                    }
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Clinical.accent.opacity(milestone ? 0.55 : 0), lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private var empty: some View {

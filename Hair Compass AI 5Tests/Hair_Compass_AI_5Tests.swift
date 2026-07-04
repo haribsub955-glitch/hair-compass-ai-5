@@ -259,6 +259,166 @@ struct Hair_Compass_AI_5Tests {
         #expect(Milestones.achieved(streak: 2, treatments: []).isEmpty)
     }
 
+    // MARK: - Progress report (the periodic synthesis)
+
+    @Test func progressReportMilestonesFollowTheReviewCadence() {
+        // Weeks 4, 12, 24, then every 12 (36, 48, …).
+        for week in [4, 12, 24, 36, 48, 60] { #expect(ProgressReport.isMilestone(week: week)) }
+        for week in [0, 1, 8, 20, 23, 25, 30, 47] { #expect(!ProgressReport.isMilestone(week: week)) }
+        #expect(ProgressReport.nextMilestone(after: 0) == 4)
+        #expect(ProgressReport.nextMilestone(after: 4) == 12)
+        #expect(ProgressReport.nextMilestone(after: 12) == 24)
+        #expect(ProgressReport.nextMilestone(after: 20) == 24)
+        #expect(ProgressReport.nextMilestone(after: 24) == 36)
+        #expect(ProgressReport.nextMilestone(after: 37) == 48)
+        #expect(ProgressReport.nextMilestone(after: 48) == 60)
+    }
+
+    @Test func trendVerdictUsesTheDocumentedDeadband() {
+        // Deadband 0.25 on the 0–3 shed scale: inside it is noise, at or beyond is a trend.
+        #expect(ProgressReport.verdict(delta: -0.3, deadband: 0.25) == .improving)
+        #expect(ProgressReport.verdict(delta: -0.25, deadband: 0.25) == .improving) // boundary counts
+        #expect(ProgressReport.verdict(delta: -0.2, deadband: 0.25) == .stable)
+        #expect(ProgressReport.verdict(delta: 0, deadband: 0.25) == .stable)
+        #expect(ProgressReport.verdict(delta: 0.24, deadband: 0.25) == .stable)
+        #expect(ProgressReport.verdict(delta: 0.25, deadband: 0.25) == .worsening)
+        // Scalp uses its own deadband (1.0 on the 0–16 scale).
+        #expect(ProgressReport.verdict(delta: -0.9, deadband: ProgressReport.scalpDeadband) == .stable)
+        #expect(ProgressReport.verdict(delta: -1.2, deadband: ProgressReport.scalpDeadband) == .improving)
+    }
+
+    @Test func progressReportNeedsATreatmentOrEightWeeksOfEntries() {
+        let cal = Calendar.current
+        let now = Date.now
+        // 3 weeks of entries, no active daily treatment → nothing to report on.
+        let thin = (0..<21).compactMap { offset in
+            cal.date(byAdding: .day, value: -offset, to: now).map { DailyEntry(date: $0) }
+        }
+        #expect(ProgressReport.build(entries: thin, treatments: [], doses: [], labs: [],
+                                     sideEffects: [], triggers: [], now: now) == nil)
+        // ≥ 8 weeks of entries → a baseline report keyed to the first entry, no adherence.
+        let long = (0..<63).compactMap { offset in
+            cal.date(byAdding: .day, value: -offset, to: now).map { DailyEntry(date: $0) }
+        }
+        let baseline = ProgressReport.build(entries: long, treatments: [], doses: [], labs: [],
+                                            sideEffects: [], triggers: [], now: now)
+        #expect(baseline?.weekNumber == 8)
+        #expect(baseline?.treatment == nil)
+        #expect(baseline?.adherence == nil)
+        // An active daily treatment alone is enough, even before entries accumulate.
+        let start = cal.date(byAdding: .day, value: -7, to: now)!
+        let t = Treatment(treatmentClass: .minoxidil, startDate: start)
+        #expect(ProgressReport.build(entries: [], treatments: [t], doses: [], labs: [],
+                                     sideEffects: [], triggers: [], now: now) != nil)
+    }
+
+    @Test func weakestStretchFindsTheLapseOnlyBelowThreshold() throws {
+        let cal = Calendar.current
+        let now = Date.now
+        let today = cal.startOfDay(for: now)
+        let start = cal.date(byAdding: .day, value: -70, to: today)!
+        // 2/day every day except a dead two weeks (offsets 28…41) → weakest window < 60%.
+        var doses: [Date] = []
+        for offset in 0...70 where !(28...41).contains(offset) {
+            let day = cal.date(byAdding: .day, value: -offset, to: today)!
+            doses.append(day); doses.append(day)
+        }
+        let weak = try #require(ProgressReport.weakestStretch(
+            doseDates: doses, expectedPerDay: 2, start: start, now: now, calendar: cal))
+        #expect(weak.rate < 0.6)
+        // A steady regimen (no lapse) reports no weak stretch at all.
+        var steady: [Date] = []
+        for offset in 0...70 {
+            let day = cal.date(byAdding: .day, value: -offset, to: today)!
+            steady.append(day); steady.append(day)
+        }
+        #expect(ProgressReport.weakestStretch(
+            doseDates: steady, expectedPerDay: 2, start: start, now: now, calendar: cal) == nil)
+    }
+
+    @Test func progressReportSynthesizesTheHonestRead() throws {
+        let cal = Calendar.current
+        let now = Date.now
+        let today = cal.startOfDay(for: now)
+        let start = cal.date(byAdding: .day, value: -140, to: today)!   // week 20 — pre-gate
+        let minox = Treatment(name: "Minoxidil 5%", treatmentClass: .minoxidil,
+                              scheduleTimes: "08:00,21:00", startDate: start)
+        var entries: [DailyEntry] = []
+        var doses: [TreatmentDose] = []
+        for offset in stride(from: 140, through: 0, by: -1) {
+            let day = cal.date(byAdding: .day, value: -offset, to: today)!
+            // Heavy shedding + inflamed scalp in the first half, settled in the second.
+            entries.append(DailyEntry(
+                date: day,
+                shed: offset > 70 ? .heavy : .normal,
+                flaking: offset > 70 ? 2 : 0,
+                erythema: offset > 70 ? 2 : 0
+            ))
+            // Fully adherent except a dead fortnight (offsets 60…73).
+            if !(60...73).contains(offset) {
+                doses.append(TreatmentDose(treatment: minox, loggedAt: day, slot: "08:00"))
+                doses.append(TreatmentDose(treatment: minox, loggedAt: day, slot: "21:00"))
+            }
+        }
+        let report = try #require(ProgressReport.build(
+            entries: entries, treatments: [minox], doses: doses,
+            labs: [LabResult(test: .vitaminD, value: 24, collectedAt: start)],
+            sideEffects: [SideEffectLog(treatment: minox, type: .scalpIrritation, severity: 2,
+                                        date: cal.date(byAdding: .day, value: -9, to: today)!)],
+            triggers: [], now: now
+        ))
+
+        #expect(report.weekNumber == 20)
+        #expect(!report.isMilestoneWeek)
+        #expect(report.nextMilestoneWeek == 24)
+        #expect(report.treatmentTitle == "Minoxidil 5%")
+        // Trajectories: 3 → 1 shed and 8 → 0 scalp both clear their deadbands.
+        #expect(report.shedTrend?.verdict == .improving)
+        #expect(report.scalpTrend?.verdict == .improving)
+        // Adherence: 126 of 140 dosed days = 90%, with the dead fortnight surfaced.
+        let adherence = try #require(report.adherence)
+        #expect(abs(adherence.overall - 0.9) < 0.01)
+        #expect(adherence.weakest != nil)
+        // Tolerability and labs carried through.
+        #expect(report.tolerability.moderate == 1)
+        #expect(report.tolerability.hasSevere == false)
+        #expect(report.labs.count == 1)
+        #expect(report.labs.first?.isFlagged == true)   // vitamin D 24 < 30
+
+        // The honest read: pre-24 framing, never a verdict on the treatment.
+        #expect(report.honestRead.contains("Week 20 of 24"))
+        #expect(report.honestRead.contains("too early to judge"))
+        #expect(!report.honestRead.lowercased().contains("it's working"))
+        #expect(!report.honestRead.lowercased().contains("stop taking"))
+
+        // plainText carries the key numbers for sharing.
+        let text = report.plainText()
+        #expect(text.contains("WEEK 20 PROGRESS REPORT"))
+        #expect(text.contains("Minoxidil 5%"))
+        #expect(text.contains("90% of expected doses"))
+        #expect(text.contains("3/3"))                    // first-4-weeks shed mean
+        #expect(text.contains("1/3"))                    // last-4-weeks shed mean
+        #expect(text.contains("improving"))
+        #expect(text.contains("1 moderate"))
+        #expect(text.contains("Vitamin D"))
+        #expect(text.contains("Week 20 of 24"))
+    }
+
+    @Test func progressReportOpensTheWindowAtTwentyFourWeeks() throws {
+        let cal = Calendar.current
+        let now = Date.now
+        let start = cal.date(byAdding: .day, value: -170, to: cal.startOfDay(for: now))!  // week 24+
+        let minox = Treatment(name: "Minoxidil 5%", treatmentClass: .minoxidil, startDate: start)
+        let report = try #require(ProgressReport.build(
+            entries: [], treatments: [minox], doses: [], labs: [],
+            sideEffects: [], triggers: [], now: now
+        ))
+        #expect(report.weekNumber == 24)
+        #expect(report.isMilestoneWeek)
+        #expect(report.honestRead.contains("the assessment window is open"))
+        #expect(report.honestRead.contains("clinician"))
+    }
+
     // MARK: - Learn library integrity
 
     @Test func learnLibraryCoversEveryCategoryWithUniqueIDs() {
