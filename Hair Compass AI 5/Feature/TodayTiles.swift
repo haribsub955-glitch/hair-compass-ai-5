@@ -14,6 +14,8 @@ struct ConditionsHero: View {
     var scalpBand: SeverityBand?
     let greeting: String
     let streak: Int
+    /// Optional gamification level name ("Sapling") appended to the streak chip — effort-only.
+    var levelName: String? = nil
     var onOpenBaseline: () -> Void
     var onLog: () -> Void
 
@@ -100,7 +102,10 @@ struct ConditionsHero: View {
     }
 
     private var streakChip: some View {
-        Label("\(streak)-day streak", systemImage: "flame.fill")
+        Label(
+            levelName.map { "\(streak)-day streak · \($0)" } ?? "\(streak)-day streak",
+            systemImage: "flame.fill"
+        )
             .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
             .padding(.horizontal, 12).padding(.vertical, 7)
             .background(Clinical.surface.opacity(0.85), in: Capsule())

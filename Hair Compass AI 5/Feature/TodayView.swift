@@ -13,6 +13,7 @@ struct TodayView: View {
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
     @Query(sort: \TriggerEvent.date, order: .reverse) private var triggers: [TriggerEvent]
     @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
+    @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
 
     @State private var showLog = false
     @State private var showBackfill = false
@@ -29,6 +30,13 @@ struct TodayView: View {
     }
     private var streak: Int {
         HairAnalytics.loggingStreak(entryDates: entries.map(\.date))
+    }
+
+    /// Effort-only gamification level ("Sapling") shown beside the streak in the hero.
+    private var levelName: String {
+        GamificationLevel.level(for: XP.total(
+            entries: entries, doses: doses, photos: photos, labs: labs, triggers: triggers
+        )).name
     }
 
     /// Today's HealthKit sleep hours, if the sync service has cached a snapshot for today.
@@ -58,6 +66,7 @@ struct TodayView: View {
                     scalpBand: todayEntry?.scalpBand,
                     greeting: greeting,
                     streak: streak,
+                    levelName: levelName,
                     onOpenBaseline: onOpenBaseline,
                     onLog: { showLog = true }
                 )

@@ -614,6 +614,129 @@ struct Hair_Compass_AI_5Tests {
         #expect(prp.slots.isEmpty)
     }
 
+    // MARK: - Gamification (effort-only XP, levels, badges)
+
+    @Test func xpTotalFoldsTheDocumentedAwards() {
+        let cal = Calendar.current
+        let now = Date.now
+        let yesterday = cal.date(byAdding: .day, value: -1, to: now)!
+        // Two consecutive daily logs: 2 × 10, plus a streak bonus of +2 on day 2 of the run.
+        let entries = [DailyEntry(date: yesterday), DailyEntry(date: now)]
+        // Three doses today, but only 2 per day count: 2 × 3 = 6.
+        let minox = Treatment(treatmentClass: .minoxidil)
+        let doses = [
+            TreatmentDose(treatment: minox, loggedAt: now, slot: "08:00"),
+            TreatmentDose(treatment: minox, loggedAt: now, slot: "21:00"),
+            TreatmentDose(treatment: minox, loggedAt: now, slot: "extra"),
+        ]
+        // Same region twice on one day counts once (15); a second region adds another 15.
+        let photos = [
+            PhotoRecord(region: .frontal, createdAt: now),
+            PhotoRecord(region: .frontal, createdAt: now),
+            PhotoRecord(region: .vertex, createdAt: now),
+        ]
+        let labs = [LabResult(test: .ferritin, value: 40, collectedAt: now)]
+        let triggers = [TriggerEvent(type: .illness, date: yesterday)]
+        let xp = XP.total(entries: entries, doses: doses, photos: photos,
+                          labs: labs, triggers: triggers, now: now)
+        // 20 logs + 2 streak + 6 doses + 30 photos + 20 lab + 5 trigger = 83.
+        #expect(xp == 83)
+    }
+
+    @Test func xpNeverReadsHairOutcomes() {
+        // The hard rule: a terrible hair day is worth exactly the same XP as a great one.
+        let now = Date.now
+        let goodDay = DailyEntry(date: now, shed: .minimal)
+        let badDay = DailyEntry(date: now, shed: .heavy, flaking: 3, erythema: 3, itch: 3)
+        let good = XP.total(entries: [goodDay], doses: [], photos: [], labs: [], triggers: [], now: now)
+        let bad = XP.total(entries: [badDay], doses: [], photos: [], labs: [], triggers: [], now: now)
+        #expect(good == bad)
+    }
+
+    @Test func levelLadderIsMonotonicAndMapsEdges() {
+        let ladder = GamificationLevel.ladder
+        for i in 1..<ladder.count {
+            #expect(ladder[i].threshold > ladder[i - 1].threshold)   // strictly rising
+            #expect(ladder[i].index == ladder[i - 1].index + 1)
+        }
+        #expect(GamificationLevel.level(for: 0).name == "Seed")
+        #expect(GamificationLevel.level(for: 149).name == "Seed")
+        #expect(GamificationLevel.level(for: 150).name == "Seedling")
+        #expect(GamificationLevel.level(for: 5000).name == "Evergreen")
+        #expect(GamificationLevel.level(for: 99_999).name == "Evergreen")
+
+        // Halfway from Seedling (150) to Sprout (400).
+        let mid = GamificationLevel.progressToNext(xp: 275)
+        #expect(mid.next?.name == "Sprout")
+        #expect(mid.remaining == 125)
+        #expect(abs(mid.fraction - 0.5) < 0.001)
+        // The top rung reads as complete, never as an unreachable next goal.
+        let top = GamificationLevel.progressToNext(xp: 6000)
+        #expect(top.next == nil)
+        #expect(top.fraction == 1)
+        #expect(top.remaining == 0)
+    }
+
+    @Test func achievementFirstLogAndStreakSeven() throws {
+        let cal = Calendar.current
+        let now = Date.now
+        // Seven consecutive logged days ending today.
+        let entries = (0..<7).compactMap { offset in
+            cal.date(byAdding: .day, value: -offset, to: now).map { DailyEntry(date: $0) }
+        }
+        let first = Achievement.firstLog.earnedDate(
+            entries: entries, treatments: [], doses: [], photos: [], labs: [], sideEffects: [], now: now)
+        #expect(first == entries.map(\.date).min())
+
+        let streak7 = try #require(Achievement.streak7.earnedDate(
+            entries: entries, treatments: [], doses: [], photos: [], labs: [], sideEffects: [], now: now))
+        #expect(cal.isDate(streak7, inSameDayAs: now))   // reached on the seventh day
+
+        // Six consecutive days is not enough.
+        #expect(Achievement.streak7.earnedDate(
+            entries: Array(entries.dropFirst()), treatments: [], doses: [],
+            photos: [], labs: [], sideEffects: [], now: now) == nil)
+    }
+
+    @Test func fullPhotoSetNeedsEveryRegion() throws {
+        let cal = Calendar.current
+        let now = Date.now
+        var photos: [PhotoRecord] = []
+        for (i, region) in PhotoRegion.allCases.dropLast().enumerated() {
+            photos.append(PhotoRecord(region: region, createdAt: cal.date(byAdding: .day, value: -7 - i, to: now)!))
+        }
+        // One region still missing → not earned.
+        #expect(Achievement.fullPhotoSet.earnedDate(
+            entries: [], treatments: [], doses: [], photos: photos, labs: [], sideEffects: [], now: now) == nil)
+        // The final region completes the set — earned on the completing photo's date.
+        let completion = cal.date(byAdding: .day, value: -1, to: now)!
+        photos.append(PhotoRecord(region: PhotoRegion.allCases.last!, createdAt: completion))
+        let earned = try #require(Achievement.fullPhotoSet.earnedDate(
+            entries: [], treatments: [], doses: [], photos: photos, labs: [], sideEffects: [], now: now))
+        #expect(earned == completion)
+    }
+
+    @Test func adherenceBadgeIsNilSafeAndEarnable() throws {
+        let cal = Calendar.current
+        let now = Date.now
+        // No treatments → the badge simply doesn't apply (never shown as "failed").
+        #expect(Achievement.adherence4w90.earnedDate(
+            entries: [], treatments: [], doses: [], photos: [], labs: [], sideEffects: [], now: now) == nil)
+        // A periodic treatment has no daily expectation → still nil.
+        let prp = Treatment(treatmentClass: .prp, startDate: cal.date(byAdding: .day, value: -60, to: now)!)
+        #expect(Achievement.adherence4w90.earnedDate(
+            entries: [], treatments: [prp], doses: [], photos: [], labs: [], sideEffects: [], now: now) == nil)
+        // 28 fully-logged days of a once-daily treatment earn it at the window's end.
+        let start = cal.date(byAdding: .day, value: -27, to: cal.startOfDay(for: now))!
+        let fin = Treatment(treatmentClass: .finasteride, startDate: start)
+        let doses = (0..<28).map { offset in
+            TreatmentDose(treatment: fin, loggedAt: cal.date(byAdding: .day, value: offset, to: start)!, slot: "21:00")
+        }
+        let earned = try #require(Achievement.adherence4w90.earnedDate(
+            entries: [], treatments: [fin], doses: doses, photos: [], labs: [], sideEffects: [], now: now))
+        #expect(cal.isDate(earned, inSameDayAs: now))
+    }
+
     // MARK: - Onboarding physics (falling-hair simulation)
 
     @Test func simIntensityScalesSpawnGravityAndSway() {

@@ -11,10 +11,13 @@ struct TrendsView: View {
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
     @Query(sort: \TriggerEvent.date, order: .reverse) private var triggers: [TriggerEvent]
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
+    @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
+    @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
 
     @State private var connecting = false
     @State private var showCompare = false
     @State private var showExport = false
+    @State private var showBadges = false
 
     enum Range: String, CaseIterable { case m1 = "1M", m3 = "3M", m6 = "6M"
         var days: Int { self == .m1 ? 30 : (self == .m3 ? 90 : 180) }
@@ -52,6 +55,16 @@ struct TrendsView: View {
                     windowDays: range.days
                 )
 
+                ConsistencyCard(
+                    entries: entries,
+                    treatments: treatments,
+                    doses: doses,
+                    photos: photos,
+                    labs: labs,
+                    triggers: triggers,
+                    showAllBadges: $showBadges
+                )
+
                 lifestyleCard
                 compareEntryCard
 
@@ -77,11 +90,18 @@ struct TrendsView: View {
             }
         }
         .sheet(isPresented: $showExport) { ExportSheet() }
+        .sheet(isPresented: $showBadges) {
+            AchievementsSheet(
+                entries: entries, treatments: treatments, doses: doses,
+                photos: photos, labs: labs
+            )
+        }
         .onAppear {
             #if DEBUG
             let args = ProcessInfo.processInfo.arguments
             if args.contains("HC_COMPARE") { showCompare = true }
             if args.contains("HC_EXPORT") { showExport = true }
+            if args.contains("HC_BADGES") { showBadges = true }
             #endif
         }
     }
