@@ -109,16 +109,16 @@ struct PhotosView: View {
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        thumbImage(last).frame(width: geo.size.width, height: 260)
+                        thumbImage(last).frame(width: geo.size.width, height: geo.size.height)
                         thumbImage(first)
-                            .frame(width: geo.size.width, height: 260)
+                            .frame(width: geo.size.width, height: geo.size.height)
                             .mask(alignment: .leading) { Rectangle().frame(width: geo.size.width * comparePosition) }
                         Rectangle().fill(Clinical.surface).frame(width: 2)
                             .offset(x: geo.size.width * comparePosition - 1)
                             .shadow(radius: 3)
                         Circle().fill(Clinical.surface).frame(width: 34, height: 34).shadow(radius: 3)
                             .overlay(Image(systemName: "arrow.left.and.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Clinical.accent))
-                            .position(x: geo.size.width * comparePosition, y: 130)
+                            .position(x: geo.size.width * comparePosition, y: geo.size.height / 2)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
@@ -129,7 +129,7 @@ struct PhotosView: View {
                         }
                     )
                 }
-                .frame(height: 260)
+                .aspectRatio(3.0 / 4.0, contentMode: .fit)
                 HStack {
                     Text("BASELINE · \(first.createdAt.formatted(.dateTime.month().day().year()))")
                         .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
@@ -156,7 +156,7 @@ struct PhotosView: View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             ForEach(regionPhotos.reversed()) { record in
                 VStack(alignment: .leading, spacing: 4) {
-                    thumb(record, height: 120)
+                    thumb(record)
                     Text(record.createdAt.formatted(.dateTime.month().day()))
                         .font(Clinical.number(11)).foregroundStyle(Clinical.secondary)
                 }
@@ -170,17 +170,19 @@ struct PhotosView: View {
         }
     }
 
-    private func thumb(_ record: PhotoRecord, height: CGFloat) -> some View {
-        Group {
-            if let image = PhotoStore.shared.load(record.imagePath) {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                Clinical.canvas.overlay(Image(systemName: "photo").foregroundStyle(Clinical.tertiary))
+    /// Portrait 3:4 tile — height derives from the grid column width so captures aren't
+    /// center-cropped into short landscape strips.
+    private func thumb(_ record: PhotoRecord) -> some View {
+        Color.clear
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
+            .overlay {
+                if let image = PhotoStore.shared.load(record.imagePath) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Clinical.canvas.overlay(Image(systemName: "photo").foregroundStyle(Clinical.tertiary))
+                }
             }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
     }
 }

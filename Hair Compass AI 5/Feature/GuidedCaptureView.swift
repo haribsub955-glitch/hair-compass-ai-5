@@ -79,7 +79,9 @@ struct GuidedCaptureView: View {
                 }
                 RegionOverlay(region: region).allowsHitTesting(false)
                 if showGhost, let ghost = ghostImage {
-                    Image(uiImage: ghost).resizable().scaledToFill()
+                    // Contained in a clear layer so an off-ratio ghost can't inflate the 3:4 box.
+                    Color.clear
+                        .overlay { Image(uiImage: ghost).resizable().scaledToFill() }
                         .opacity(0.3).allowsHitTesting(false)
                 }
                 VStack {
@@ -87,8 +89,10 @@ struct GuidedCaptureView: View {
                     Spacer()
                 }
             }
+            // Portrait 3:4 viewfinder — matches the captured photo's aspect so the ghost overlay
+            // and the review card line up with what actually gets saved.
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
             .frame(maxWidth: .infinity)
-            .frame(height: 380)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
             .padding(.horizontal, 20)
@@ -186,10 +190,15 @@ struct GuidedCaptureView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 20) {
                 if let captured {
-                    Image(uiImage: captured).resizable().scaledToFill()
-                        .frame(maxWidth: .infinity).frame(height: 300)
+                    // Portrait 3:4 card, lightly inset — matches the capture aspect instead of
+                    // center-cropping it into a full-width letterbox.
+                    Color.clear
+                        .aspectRatio(3.0 / 4.0, contentMode: .fit)
+                        .overlay { Image(uiImage: captured).resizable().scaledToFill() }
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                        .padding(.horizontal, 24)
+                        .frame(maxWidth: .infinity)
                 }
 
                 section("Region") {
