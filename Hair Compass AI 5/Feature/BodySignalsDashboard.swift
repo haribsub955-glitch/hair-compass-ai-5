@@ -1,0 +1,392 @@
+import Charts
+import SwiftData
+import SwiftUI
+
+// MARK: - The five signals
+
+/// The evidence-meaningful Health metrics — the only ones this dashboard will ever show.
+/// Order is display order. No steps, no calories: if it doesn't bear on hair, it isn't here.
+enum BodySignal: String, CaseIterable, Identifiable {
+    case sleep, hrv, restingHR, weight, protein
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sleep: return "Sleep"
+        case .hrv: return "HRV"
+        case .restingHR: return "Resting HR"
+        case .weight: return "Weight"
+        case .protein: return "Protein"
+        }
+    }
+
+    /// The one honest line on why this signal earns a place — the app's tiered voice, never
+    /// dressed up as a hair-loss predictor.
+    var why: String {
+        switch self {
+        case .sleep:
+            return "Short sleep raises stress load — an indirect but consistent shedding correlate."
+        case .hrv:
+            return "A recovery/stress proxy — chronic stress is a known telogen-effluvium trigger."
+        case .restingHR:
+            return "Trends with stress and overtraining; context for HRV, not a hair metric itself."
+        case .weight:
+            return "Rapid loss (>5% in 3 months) is a classic TE trigger — the app watches this for you."
+        case .protein:
+            return "Hair is protein — sustained low intake is a documented shedding factor."
+        }
+    }
+
+    var keyPath: KeyPath<HealthSnapshot, Double?> {
+        switch self {
+        case .sleep: return \.sleepHours
+        case .hrv: return \.hrvSDNN
+        case .restingHR: return \.restingHR
+        case .weight: return \.bodyMassKg
+        case .protein: return \.dietaryProteinG
+        }
+    }
+
+    /// One tint per metric so every sparkline is identifiable at a glance.
+    var tint: Color {
+        switch self {
+        case .sleep: return Clinical.ink
+        case .hrv: return Clinical.sage
+        case .restingHR: return Clinical.secondary
+        case .weight: return Clinical.accent
+        case .protein: return Clinical.gold
+        }
+    }
+
+    /// Sleep and weight read at one decimal; the rest as whole numbers.
+    var usesDecimal: Bool { self == .sleep || self == .weight }
+
+    /// The change below which a delta reads as "no change" — half the display precision,
+    /// so a chip never shows a tinted "+0.0".
+    var deltaEpsilon: Double { usesDecimal ? 0.05 : 0.5 }
+
+    /// "7.2h" · "48 ms" · "62 bpm" · "77.5 kg" · "112 g"
+    func format(_ value: Double) -> String {
+        switch self {
+        case .sleep: return String(format: "%.1fh", value)
+        case .hrv: return "\(Int(value.rounded())) ms"
+        case .restingHR: return "\(Int(value.rounded())) bpm"
+        case .weight: return String(format: "%.1f kg", value)
+        case .protein: return "\(Int(value.rounded())) g"
+        }
+    }
+
+    /// Signed delta in the same unit language: "+0.4h", "−3 ms".
+    func formatDelta(_ delta: Double) -> String {
+        let sign = delta < 0 ? "−" : "+"
+        let magnitude = abs(delta)
+        let number = usesDecimal ? String(format: "%.1f", magnitude) : "\(Int(magnitude.rounded()))"
+        let unit: String
+        switch self {
+        case .sleep: unit = "h"
+        case .hrv: unit = " ms"
+        case .restingHR: unit = " bpm"
+        case .weight: unit = " kg"
+        case .protein: unit = " g"
+        }
+        return sign + number + unit
+    }
+}
+
+// MARK: - Pure math (unit-tested)
+
+/// Series/delta math for the dashboard. Pure and deterministic — takes plain dated samples,
+/// never SwiftData models or views, so BodySignalsTests covers it directly.
+enum BodySignalsMath {
+
+    /// How a delta should be read for a given signal — drives the chip tint only.
+    enum DeltaTone { case favorable, unfavorable, neutral }
+
+    /// The dated non-nil readings inside the trailing `windowDays`, sorted ascending.
+    /// nil is "not available" and is skipped — never coerced to zero.
+    static func windowedSeries(
+        _ samples: [(date: Date, value: Double?)],
+        windowDays: Int,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> [MetricPoint] {
+        let cutoff = calendar.date(byAdding: .day, value: -windowDays, to: now) ?? now
+        return samples
+            .compactMap { sample in sample.value.map { MetricPoint(date: sample.date, value: $0) } }
+            .filter { $0.date >= cutoff }
+            .sorted { $0.date < $1.date }
+    }
+
+    /// Mean of the current window minus the mean of the previous same-length window.
+    /// nil when either side has no readings — no delta beats a fake zero.
+    static func delta(
+        _ samples: [(date: Date, value: Double?)],
+        windowDays: Int,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> Double? {
+        let cutoff = calendar.date(byAdding: .day, value: -windowDays, to: now) ?? now
+        let previousCutoff = calendar.date(byAdding: .day, value: -windowDays * 2, to: now) ?? now
+        let valued = samples.compactMap { sample in
+            sample.value.map { (date: sample.date, value: $0) }
+        }
+        let current = valued.filter { $0.date >= cutoff }.map(\.value)
+        let previous = valued.filter { $0.date >= previousCutoff && $0.date < cutoff }.map(\.value)
+        guard !current.isEmpty, !previous.isEmpty else { return nil }
+        return ChartMath.mean(current) - ChartMath.mean(previous)
+    }
+
+    /// Desirability of a delta: more sleep/HRV/protein is favorable, a rising resting HR is
+    /// unfavorable, and weight stays neutral — no diet-culture judgment — unless rapid loss
+    /// fires, which flips it to a warning. Sub-precision wiggle reads as no change.
+    static func tone(for signal: BodySignal, delta: Double, rapidLossActive: Bool = false) -> DeltaTone {
+        switch signal {
+        case .weight:
+            return rapidLossActive ? .unfavorable : .neutral
+        case .restingHR:
+            guard abs(delta) >= signal.deltaEpsilon else { return .neutral }
+            return delta > 0 ? .unfavorable : .favorable
+        case .sleep, .hrv, .protein:
+            guard abs(delta) >= signal.deltaEpsilon else { return .neutral }
+            return delta > 0 ? .favorable : .unfavorable
+        }
+    }
+
+    /// "−N% in 90d — TE watch" when the rapid-weight-loss rule (>5% in 90 days) fires, else nil.
+    static func rapidLossChip(
+        massSamples: [(date: Date, massKg: Double)],
+        now: Date = .now
+    ) -> String? {
+        guard let pct = HairAnalytics.rapidWeightLossPercent(samples: massSamples, now: now) else { return nil }
+        return "−\(Int(pct.rounded()))% in 90d — TE watch"
+    }
+}
+
+// MARK: - Dashboard
+
+/// "Body signals" — one card of the evidence-meaningful Apple Health metrics, each row with
+/// its latest value, a sparkline of the windowed trend, a delta against the previous
+/// same-length window, and one honest line on why it matters for hair.
+///
+/// A metric renders only when it has ≥2 readings in the window — no empty boxes. With no data
+/// at all: authorized shows a quiet one-liner, not-authorized keeps the Connect CTA. The
+/// traction-risk and trigger-lag context notes from the old lifestyle card live below the rows.
+struct BodySignalsDashboard: View {
+    let snapshots: [HealthSnapshot]
+    let windowDays: Int
+    var hasTractionRisk: Bool = false
+    var recentTrigger: TriggerEvent? = nil
+
+    @Environment(HealthKitService.self) private var healthKit
+    @Environment(\.modelContext) private var context
+    @State private var connecting = false
+
+    var body: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 12) {
+                header
+                signalContent
+                contextNotes
+            }
+        }
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Eyebrow(text: "Body signals")
+                Spacer()
+                if !visibleSignals.isEmpty || healthKit.authorization.isUsable {
+                    Label("from Apple Health", systemImage: "heart.text.square")
+                        .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
+                }
+            }
+            Text("What your body's saying")
+                .font(Clinical.headline(22)).foregroundStyle(Clinical.ink)
+        }
+    }
+
+    // MARK: Data plumbing
+
+    private func samples(for signal: BodySignal) -> [(date: Date, value: Double?)] {
+        snapshots.map { (date: $0.date, value: $0[keyPath: signal.keyPath]) }
+    }
+
+    private func series(for signal: BodySignal) -> [MetricPoint] {
+        BodySignalsMath.windowedSeries(samples(for: signal), windowDays: windowDays)
+    }
+
+    /// Only metrics with enough readings to draw a trend — the rest simply don't appear.
+    private var visibleSignals: [BodySignal] {
+        BodySignal.allCases.filter { series(for: $0).count >= 2 }
+    }
+
+    private var massSamples: [(date: Date, massKg: Double)] {
+        snapshots.compactMap { s in s.bodyMassKg.map { (date: s.date, massKg: $0) } }
+    }
+
+    // MARK: States — rows · quiet · unavailable · connect
+
+    @ViewBuilder
+    private var signalContent: some View {
+        let visible = visibleSignals
+        if !visible.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(visible) { signal in
+                    signalRow(signal)
+                    if signal != visible.last { Divider() }
+                }
+            }
+        } else {
+            switch healthKit.authorization {
+            case .authorized:
+                Text("Wearing a watch? Data appears within a day.")
+                    .font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+            case .unavailable:
+                Text("Apple Health isn't available on this device — lifestyle factors stay manual.")
+                    .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+            default:
+                connectPrompt
+            }
+        }
+    }
+
+    private var connectPrompt: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Connect Apple Health to auto-fill sleep, body weight, and a recovery (HRV) stress proxy — no manual entry.")
+                .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+            Button(connecting ? "Connecting…" : "Connect Apple Health") {
+                connecting = true
+                Task {
+                    await healthKit.requestAuthorization()
+                    await healthKit.refreshSnapshot(context: context)
+                    connecting = false
+                }
+            }
+            .buttonStyle(ClinicalButtonStyle(filled: false))
+            .disabled(connecting)
+        }
+    }
+
+    // MARK: Signal row
+
+    private func signalRow(_ signal: BodySignal) -> some View {
+        let series = series(for: signal)
+        let latest = series.last?.value
+        let delta = BodySignalsMath.delta(samples(for: signal), windowDays: windowDays)
+        let rapidChip = signal == .weight ? BodySignalsMath.rapidLossChip(massSamples: massSamples) : nil
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(signal.title.uppercased())
+                        .font(Clinical.eyebrow(10)).tracking(1.2)
+                        .foregroundStyle(Clinical.tertiary)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(latest.map(signal.format) ?? "—")
+                            .font(Clinical.number(22)).foregroundStyle(Clinical.ink)
+                        if let delta {
+                            deltaChip(signal: signal, delta: delta, rapidLossActive: rapidChip != nil)
+                        }
+                    }
+                }
+                Spacer(minLength: 8)
+                SignalSparkline(series: series, tint: signal.tint)
+                    .frame(width: 116, height: 44)
+            }
+            if let rapidChip { warningChip(rapidChip) }
+            Text(signal.why)
+                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func deltaChip(signal: BodySignal, delta: Double, rapidLossActive: Bool) -> some View {
+        let tone = BodySignalsMath.tone(for: signal, delta: delta, rapidLossActive: rapidLossActive)
+        let color: Color
+        switch tone {
+        case .favorable: color = Clinical.positive
+        case .unfavorable: color = Clinical.warning
+        case .neutral: color = Clinical.tertiary
+        }
+        return Text(signal.formatDelta(delta))
+            .font(Clinical.number(12))
+            .foregroundStyle(color)
+    }
+
+    private func warningChip(_ text: String) -> some View {
+        Label(text, systemImage: "arrow.down.right.circle")
+            .font(Clinical.eyebrow(10)).tracking(0.4)
+            .foregroundStyle(Clinical.warning)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(Clinical.warning.opacity(0.12), in: Capsule())
+    }
+
+    // MARK: Preserved context notes (traction risk + trigger lag)
+
+    @ViewBuilder
+    private var contextNotes: some View {
+        if hasTractionRisk {
+            contextNote(
+                icon: "exclamationmark.triangle",
+                color: Clinical.warning,
+                text: "Your baseline notes tight styling, heat or chemical treatment. Sustained tension is a preventable cause of traction loss."
+            )
+        }
+        if let recentTrigger {
+            contextNote(
+                icon: recentTrigger.type.symbol,
+                color: Clinical.tertiary,
+                text: "\(recentTrigger.type.title), \(recentTrigger.weeksElapsed()) weeks ago. Diffuse shedding often follows a trigger by 2–3 months."
+            )
+        }
+    }
+
+    private func contextNote(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon).font(.system(size: 13)).foregroundStyle(color)
+            Text(text).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+        }
+        .padding(.top, 2)
+    }
+}
+
+// MARK: - Sparkline
+
+/// A tiny single-tint trend: faint raw points under a 7-point smoothed line, axes hidden,
+/// y-domain fit to the observed range so weekly-density data still shows its shape.
+private struct SignalSparkline: View {
+    let series: [MetricPoint]
+    let tint: Color
+
+    var body: some View {
+        let values = series.map(\.value)
+        let smoothed = zip(series, ChartMath.rollingMean(values, window: 7))
+            .map { pair in MetricPoint(date: pair.0.date, value: pair.1) }
+        let lo = values.min() ?? 0
+        let hi = values.max() ?? 1
+        let pad = max((hi - lo) * 0.15, 0.001)
+        Chart {
+            ForEach(series) { point in
+                PointMark(x: .value("Date", point.date), y: .value("Value", point.value))
+                    .symbolSize(8)
+                    .foregroundStyle(tint.opacity(0.25))
+            }
+            ForEach(smoothed) { point in
+                LineMark(x: .value("Date", point.date), y: .value("Value", point.value))
+                    .interpolationMethod(.monotone)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .foregroundStyle(tint)
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartYScale(domain: (lo - pad)...(hi + pad))
+        .accessibilityHidden(true)
+    }
+}

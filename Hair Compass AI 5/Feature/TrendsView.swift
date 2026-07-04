@@ -3,8 +3,6 @@ import SwiftData
 import SwiftUI
 
 struct TrendsView: View {
-    @Environment(\.modelContext) private var context
-    @Environment(HealthKitService.self) private var healthKit
     @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
@@ -14,7 +12,6 @@ struct TrendsView: View {
     @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
     @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
 
-    @State private var connecting = false
     @State private var showCompare = false
     @State private var showExport = false
     @State private var showBadges = false
@@ -30,6 +27,12 @@ struct TrendsView: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
+            scrollContent(proxy: proxy)
+        }
+    }
+
+    private func scrollContent(proxy: ScrollViewProxy) -> some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenHeader(
@@ -70,7 +73,13 @@ struct TrendsView: View {
 
                 StrandDivider()
 
-                lifestyleCard
+                BodySignalsDashboard(
+                    snapshots: snapshots,
+                    windowDays: range.days,
+                    hasTractionRisk: profile?.hasTractionRisk == true,
+                    recentTrigger: triggers.first
+                )
+                .id("body-signals")
                 compareEntryCard
 
                 if windowEntries.count < 2 {
@@ -107,6 +116,12 @@ struct TrendsView: View {
             if args.contains("HC_COMPARE") { showCompare = true }
             if args.contains("HC_EXPORT") { showExport = true }
             if args.contains("HC_BADGES") { showBadges = true }
+            if args.contains("HC_BODY") {
+                // Give the lazy scroll content one beat to lay out before jumping.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    withAnimation { proxy.scrollTo("body-signals", anchor: .top) }
+                }
+            }
             #endif
         }
     }
@@ -142,121 +157,9 @@ struct TrendsView: View {
         }
     }
 
-    // MARK: Lifestyle signals (auto-fetched from Health) + context
+    // MARK: Baseline context
 
-    private var latestSnapshot: HealthSnapshot? { snapshots.last }
     private var profile: Profile? { profiles.first }
-
-    private var rapidWeightLossPercent: Double? {
-        let samples = snapshots.compactMap { s -> (date: Date, massKg: Double)? in
-            guard let m = s.bodyMassKg else { return nil }
-            return (s.date, m)
-        }
-        return HairAnalytics.rapidWeightLossPercent(samples: samples)
-    }
-
-    private var lifestyleCard: some View {
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Eyebrow(text: "Lifestyle signals")
-                    Spacer()
-                    if healthKit.authorization.isUsable {
-                        Label("Auto from Health", systemImage: "heart.text.square")
-                            .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
-                    }
-                }
-
-                switch healthKit.authorization {
-                case .unavailable:
-                    Text("Apple Health isn't available on this device — lifestyle factors stay manual.")
-                        .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
-                case .authorized:
-                    healthMetrics
-                default:
-                    connectPrompt
-                }
-
-                if let pct = rapidWeightLossPercent {
-                    contextNote(
-                        icon: "arrow.down.right.circle",
-                        color: Clinical.warning,
-                        text: "Body weight is down about \(Int(pct.rounded()))% recently. Rapid loss can trigger shedding ~2–3 months later — worth watching."
-                    )
-                }
-                if profile?.hasTractionRisk == true {
-                    contextNote(
-                        icon: "exclamationmark.triangle",
-                        color: Clinical.warning,
-                        text: "Your baseline notes tight styling, heat or chemical treatment. Sustained tension is a preventable cause of traction loss."
-                    )
-                }
-                if let recent = triggers.first {
-                    contextNote(
-                        icon: recent.type.symbol,
-                        color: Clinical.tertiary,
-                        text: "\(recent.type.title), \(recent.weeksElapsed()) weeks ago. Diffuse shedding often follows a trigger by 2–3 months."
-                    )
-                }
-            }
-        }
-    }
-
-    private var connectPrompt: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Connect Apple Health to auto-fill sleep, body weight, and a recovery (HRV) stress proxy — no manual entry.")
-                .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
-            Button(connecting ? "Connecting…" : "Connect Apple Health") {
-                connecting = true
-                Task {
-                    await healthKit.requestAuthorization()
-                    await healthKit.refreshSnapshot(context: context)
-                    connecting = false
-                }
-            }
-            .buttonStyle(ClinicalButtonStyle(filled: false))
-            .disabled(connecting)
-        }
-    }
-
-    private var healthMetrics: some View {
-        let s = latestSnapshot
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
-                metric(s?.sleepHours.map { String(format: "%.1f h", $0) }, "Sleep")
-                Divider().frame(height: 34)
-                metric(s?.hrvSDNN.map { "\(Int($0.rounded())) ms" }, "HRV")
-                Divider().frame(height: 34)
-                metric(s?.bodyMassKg.map { String(format: "%.1f kg", $0) }, "Weight")
-            }
-            if s?.hasAnyValue != true {
-                Text("Connected — no readings yet. Values appear once Health has data for today.")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
-            } else {
-                Text("HRV is shown as a stress/recovery proxy — there's no evidence it predicts hair loss directly.")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
-            }
-        }
-    }
-
-    private func metric(_ value: String?, _ label: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(value ?? "—")
-                .font(Clinical.number(16))
-                .foregroundStyle(value == nil ? Clinical.tertiary : Clinical.ink)
-            Text(label.uppercased())
-                .font(Clinical.eyebrow(9)).tracking(1).foregroundStyle(Clinical.tertiary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func contextNote(icon: String, color: Color, text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: icon).font(.system(size: 13)).foregroundStyle(color)
-            Text(text).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-        }
-        .padding(.top, 2)
-    }
 
     // MARK: Explicitly-not-tracked (honesty made visible)
 
