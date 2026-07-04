@@ -108,6 +108,9 @@ struct RootView: View {
         .task(id: widgetFingerprint) {
             WidgetBridge.write(WidgetSnapshotBuilder.build(entries: entries, treatments: treatments, doses: doses))
         }
+        // Owner-controlled affiliate links: pull the remote catalog once per launch. A no-op
+        // while RemoteConfig.catalogURLString is unset; failures are silent (bundled links serve).
+        .task { await affiliates.refresh() }
         .fullScreenCover(isPresented: $showOnboarding) {
             if let profile {
                 OnboardingFlow(profile: profile, onFinish: { showOnboarding = false })

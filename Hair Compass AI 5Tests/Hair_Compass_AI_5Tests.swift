@@ -448,17 +448,6 @@ struct Hair_Compass_AI_5Tests {
         #expect(ScienceCatalog["vitamind"]?.evidence == .conditional)
     }
 
-    @Test @MainActor func affiliateStoreRoundTripsAndHidesEmpty() {
-        let store = AffiliateStore()
-        let id = "rosemary"
-        store.setLink("", for: id)
-        #expect(store.hasLink(for: id) == false)                   // empty → no buy button
-        store.setLink("https://iherb.com/pr/rosemary", for: id)
-        #expect(store.hasLink(for: id) == true)
-        #expect(store.url(for: id)?.absoluteString == "https://iherb.com/pr/rosemary")
-        store.setLink("", for: id)                                 // clean up
-    }
-
     // MARK: - Compare (chart math)
 
     @Test func chartAssociationReadsSignAndClarity() {

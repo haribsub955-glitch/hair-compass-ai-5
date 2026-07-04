@@ -47,7 +47,7 @@ struct ScienceProduct: Identifiable {
     let industryFunded: Bool    // disclose when the key trials were manufacturer-funded
     let deficiencyGated: Bool   // only relevant with a low blood test
 
-    /// The iHerb search term used to prefill the manage-links screen — never a live link in the repo.
+    /// The iHerb search term shown in the DEBUG owner-links tool — never a live link in the repo.
     var searchHint: String { name }
 }
 

@@ -2,12 +2,16 @@ import SwiftUI
 
 /// The "Science-backed options" section shown on the Plan tab. Every product wears its honest
 /// evidence tier, funding is disclosed, deficiency items are gated behind "test first", and the
-/// affiliate relationship is stated up front. The buy button appears only once the owner has set
-/// that product's link in Manage links.
+/// affiliate relationship is stated up front. Links are owner-controlled (bundled JSON + remote
+/// catalog, see AffiliateStore) — a product's buy button appears only once its link resolves.
+/// Users never manage links; the owner tool is DEBUG-only behind the HC_LINKS launch flag.
 struct ScienceProductsSection: View {
     @Environment(AffiliateStore.self) private var affiliates
     @Environment(\.openURL) private var openURL
+    #if DEBUG
     @State private var showManage = false
+    private var showOwnerTools: Bool { ProcessInfo.processInfo.arguments.contains("HC_LINKS") }
+    #endif
 
     private var grouped: [(evidence: ProductEvidence, items: [ScienceProduct])] {
         ProductEvidence.allCases.compactMap { e in
@@ -26,10 +30,14 @@ struct ScienceProductsSection: View {
                 HStack {
                     Eyebrow(text: "Science-backed options")
                     Spacer()
-                    Button { showManage = true } label: {
-                        Label("Manage links", systemImage: "link")
-                            .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+                    #if DEBUG
+                    if showOwnerTools {
+                        Button { showManage = true } label: {
+                            Label("Owner links", systemImage: "link")
+                                .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+                        }
                     }
+                    #endif
                 }
                 Text("Substances with real evidence — each shown with how strong that evidence actually is. None of these rival minoxidil or finasteride.")
                     .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
@@ -54,7 +62,9 @@ struct ScienceProductsSection: View {
                     .padding(.top, 4)
             }
         }
+        #if DEBUG
         .sheet(isPresented: $showManage) { ManageLinksSheet() }
+        #endif
     }
 }
 
@@ -105,7 +115,11 @@ private struct ProductRow: View {
     }
 }
 
-/// Where the owner pastes an iHerb affiliate URL for each product — on-device, no rebuild needed.
+#if DEBUG
+/// Owner tool, debug builds only (opened via the HC_LINKS launch flag): paste an iHerb URL to
+/// try a product's buy flow before shipping it. Writes to the `affiliate.debugOverride.<id>`
+/// layer, which takes top precedence in DEBUG resolution and is compiled out of release —
+/// shipping links live in the bundled AffiliateLinks.json / remote catalog instead.
 struct ManageLinksSheet: View {
     @Environment(AffiliateStore.self) private var affiliates
     @Environment(\.dismiss) private var dismiss
@@ -117,8 +131,8 @@ struct ManageLinksSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 6) {
-                            Eyebrow(text: "Affiliate links")
-                            Text("Paste your iHerb affiliate URL for any product. Links stay on this device; a product's buy button appears only once its link is set. Leave blank to hide it.")
+                            Eyebrow(text: "Owner link overrides (debug)")
+                            Text("Debug-only overrides that beat the bundled and remote catalogs on this device. Use them to preview a product's buy flow; ship real links via AffiliateLinks.json or the remote catalog. Leave blank to fall back.")
                                 .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
                         }
                     }
@@ -128,7 +142,7 @@ struct ManageLinksSheet: View {
                                 Text(product.name).font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
                                 ProductBadge(evidence: product.evidence)
                                 Spacer()
-                                if affiliates.hasLink(for: product.id) {
+                                if affiliates.debugOverride(for: product.id) != nil {
                                     Image(systemName: "checkmark.circle.fill").font(.system(size: 14)).foregroundStyle(Clinical.positive)
                                 }
                             }
@@ -141,14 +155,14 @@ struct ManageLinksSheet: View {
                                 .background(Clinical.surface)
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
-                                .onSubmit { affiliates.setLink(drafts[product.id] ?? "", for: product.id) }
+                                .onSubmit { affiliates.setDebugOverride(drafts[product.id] ?? "", for: product.id) }
                         }
                     }
                 }
                 .padding(20)
             }
             .clinicalScreen()
-            .navigationTitle("Manage links")
+            .navigationTitle("Owner links (debug)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -156,7 +170,7 @@ struct ManageLinksSheet: View {
             }
             .onAppear {
                 for product in ScienceCatalog.products {
-                    drafts[product.id] = affiliates.link(for: product.id) ?? ""
+                    drafts[product.id] = affiliates.debugOverride(for: product.id) ?? ""
                 }
             }
         }
@@ -167,6 +181,7 @@ struct ManageLinksSheet: View {
     }
 
     private func saveAll() {
-        for (id, value) in drafts { affiliates.setLink(value, for: id) }
+        for (id, value) in drafts { affiliates.setDebugOverride(value, for: id) }
     }
 }
+#endif
