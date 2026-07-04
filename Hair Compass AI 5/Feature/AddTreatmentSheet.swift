@@ -22,11 +22,7 @@ struct AddTreatmentSheet: View {
                                 ForEach(TreatmentClass.allCases) { c in
                                     let on = c == treatmentClass
                                     Button {
-                                        treatmentClass = c
-                                        if name.isEmpty || TreatmentClass.allCases.map(\.title).contains(name) {
-                                            name = c.title
-                                        }
-                                        times = defaultTimes(for: c)
+                                        selectClass(c)
                                     } label: {
                                         Label(c.title, systemImage: c.symbol)
                                             .font(.system(size: 14, weight: on ? .semibold : .regular))
@@ -39,6 +35,17 @@ struct AddTreatmentSheet: View {
                                     .buttonStyle(.plain)
                                 }
                             }
+                        }
+                    }
+
+                    let presets = TreatmentGuide.presets(for: treatmentClass)
+                    if !presets.isEmpty {
+                        section("Common regimen") {
+                            HStack(alignment: .top, spacing: 8) {
+                                ForEach(presets) { p in presetChip(p) }
+                            }
+                            Text("A common regimen — confirm what's right for you with your prescriber.")
+                                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
                         }
                     }
 
@@ -112,6 +119,64 @@ struct AddTreatmentSheet: View {
         case 1: return "21:00"
         default: return ""
         }
+    }
+
+    /// Switching class resets any placeholder or preset-filled fields, but never hand-typed ones.
+    private func selectClass(_ c: TreatmentClass) {
+        let previousPresets = TreatmentGuide.presets(for: treatmentClass)
+        treatmentClass = c
+        if name.isEmpty
+            || TreatmentClass.allCases.map(\.title).contains(name)
+            || previousPresets.map(\.name).contains(name) {
+            name = c.title
+        }
+        if previousPresets.map(\.dose).contains(dose) { dose = "" }
+        times = defaultTimes(for: c)
+    }
+
+    // MARK: Common-regimen presets (one explicit tap — never auto-applied)
+
+    private func isApplied(_ p: DosePreset) -> Bool {
+        name == p.name && dose == p.dose && (!treatmentClass.isDaily || times == p.scheduleTimes)
+    }
+
+    private func apply(_ p: DosePreset) {
+        name = p.name
+        dose = p.dose
+        times = p.scheduleTimes.isEmpty ? defaultTimes(for: treatmentClass) : p.scheduleTimes
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private func presetChip(_ p: DosePreset) -> some View {
+        let applied = isApplied(p)
+        return Button {
+            apply(p)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    Image(systemName: applied ? "checkmark.circle.fill" : "sparkles")
+                        .font(.system(size: 11))
+                        .foregroundStyle(applied ? Clinical.accent : Clinical.gold)
+                    Text(p.label)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Clinical.ink)
+                }
+                Text(p.summary)
+                    .font(.system(size: 11)).foregroundStyle(Clinical.secondary)
+                Text(p.note)
+                    .font(.system(size: 10)).foregroundStyle(Clinical.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(applied ? Clinical.accentSoft : Clinical.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(applied ? Clinical.accent.opacity(0.5) : Clinical.hairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

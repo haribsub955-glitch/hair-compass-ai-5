@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// The science-backed product catalog. Curated, code-defined, and honest: every product carries the
 /// tier of its actual human evidence, and the catalog CANNOT hold a myth (biotin, hair/skin/nails
@@ -47,8 +48,45 @@ struct ScienceProduct: Identifiable {
     let industryFunded: Bool    // disclose when the key trials were manufacturer-funded
     let deficiencyGated: Bool   // only relevant with a low blood test
 
+    /// One honest, freely-editable prefill used by "Add to plan" — how the product is commonly
+    /// used (trial dose where one exists, label-level otherwise). A record aid, never advice.
+    let suggestedDose: String
+    /// Comma-separated daily slots ("08:00,21:00") parsed by `Treatment.slots`, or "" for items
+    /// used a few times a week / as directed — those land in the Periodic routine block instead
+    /// of accruing false daily-adherence math.
+    let suggestedSchedule: String
+
     /// The iHerb search term shown in the DEBUG owner-links tool — never a live link in the repo.
     var searchHint: String { name }
+}
+
+// MARK: - "Add to plan" mapping
+
+extension ScienceProduct {
+    /// Case- and whitespace-insensitive key for matching a product against treatment names.
+    static func planKey(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// The Treatment created by "Add to plan". Class is `.other` — a supplement is never dressed
+    /// up as a drug — and the routine/adherence/export/AI surfaces all key off name + slots.
+    func makePlanTreatment(startDate: Date = .now) -> Treatment {
+        Treatment(
+            name: name,
+            treatmentClass: .other,
+            dose: suggestedDose,
+            scheduleTimes: suggestedSchedule,
+            startDate: startDate,
+            isActive: true
+        )
+    }
+
+    /// The dedupe guard: true when an active treatment already carries this product's name,
+    /// so a second "Add to plan" tap is a no-op instead of a duplicate.
+    func isInPlan(activeTreatmentNames: [String]) -> Bool {
+        let key = Self.planKey(name)
+        return activeTreatmentNames.contains { Self.planKey($0) == key }
+    }
 }
 
 enum ScienceCatalog {
@@ -57,69 +95,84 @@ enum ScienceCatalog {
         .init(id: "rosemary", name: "Rosemary oil", route: .topical, evidence: .moderate,
               summary: "The strongest natural topical — a 6-month trial matched minoxidil 2% for regrowth, with less itch.",
               detail: "A single randomized trial (Panahi 2015) found rosemary oil comparable to 2% minoxidil over 6 months. It rests on one study and is an active-comparator (not placebo) — promising, not proven. Dilute in a carrier oil.",
-              industryFunded: false, deficiencyGated: false),
+              industryFunded: false, deficiencyGated: false,
+              suggestedDose: "A few drops in a carrier oil, massaged in", suggestedSchedule: "21:00"),
         .init(id: "ketoconazole", name: "Ketoconazole shampoo", route: .topical, evidence: .moderate,
               summary: "A medicated shampoo that improves density as an anti-inflammatory adjunct; best evidence is for 2%.",
               detail: "Controlled studies show improved hair density and thickness, likely by calming scalp inflammation and local DHT. Use as an add-on, not a standalone. The OTC strength (1%) is less studied than 2%.",
-              industryFunded: false, deficiencyGated: false),
+              industryFunded: false, deficiencyGated: false,
+              suggestedDose: "Lather 2–3×/week, leave on 3–5 min", suggestedSchedule: ""),
         .init(id: "sawpalmetto", name: "Saw palmetto", route: .oral, evidence: .moderate,
               summary: "A plant DHT-blocker with several positive trials — real, but clearly milder than finasteride.",
               detail: "A systematic review found mostly positive trials (~27% count improvement), but head-to-head it's weaker than finasteride and brand potency varies. A reasonable natural option, not a replacement.",
-              industryFunded: false, deficiencyGated: false),
+              industryFunded: false, deficiencyGated: false,
+              suggestedDose: "320 mg (the commonly studied dose)", suggestedSchedule: "08:00"),
 
         // MARK: Limited — weak but real
         .init(id: "pumpkin", name: "Pumpkin seed oil", route: .oral, evidence: .limited,
               summary: "One trial showed a large count gain — but the capsule was a blend, so it can't all be pinned on pumpkin oil.",
               detail: "A 24-week RCT (Cho 2014) reported +40% hair count vs +10% placebo, but the test capsule contained several ingredients and the trial was industry-adjacent. Encouraging, single-study.",
-              industryFunded: true, deficiencyGated: false),
+              industryFunded: true, deficiencyGated: false,
+              suggestedDose: "400 mg (the trial dose)", suggestedSchedule: "08:00"),
         .init(id: "melatonin", name: "Melatonin (topical)", route: .topical, evidence: .limited,
               summary: "A positive pilot trial plus many open-label reports; promising but not yet high-quality evidence.",
               detail: "A small placebo-controlled pilot (Fischer 2004) increased anagen (growing) hairs; most other supporting studies are uncontrolled. Well tolerated.",
-              industryFunded: false, deficiencyGated: false),
+              industryFunded: false, deficiencyGated: false,
+              suggestedDose: "1 mL of a 0.1% solution (the pilot dose)", suggestedSchedule: "21:00"),
         .init(id: "marineprotein", name: "Marine protein complex", route: .oral, evidence: .limited,
               summary: "Viviscal/Nourkrin-type complexes have real placebo-controlled trials — but all are manufacturer-funded.",
               detail: "Several double-blind RCTs report more terminal hairs and less shedding, yet every key trial was funded by the maker and used self-perceived-thinning groups. Contains shellfish.",
-              industryFunded: true, deficiencyGated: false),
+              industryFunded: true, deficiencyGated: false,
+              suggestedDose: "1 tablet (trials used two a day)", suggestedSchedule: "08:00,21:00"),
         .init(id: "caffeine", name: "Caffeine (topical)", route: .topical, evidence: .limited,
               summary: "Broadly positive but low-quality trials; safe to use as a supporting active.",
               detail: "A review of nine studies leaned positive (one found 0.2% comparable to minoxidil on anagen fraction), but the evidence was graded low quality with inconsistent dosing.",
-              industryFunded: false, deficiencyGated: false),
+              industryFunded: false, deficiencyGated: false,
+              suggestedDose: "A few drops of a 0.2% leave-on", suggestedSchedule: "08:00"),
         .init(id: "procapil", name: "Procapil / Redensyl", route: .topical, evidence: .limited,
               summary: "Cosmeceutical actives with some controlled data — but on soft, bias-prone endpoints.",
               detail: "A comparison vs 5% minoxidil scored higher on global photos, but endpoints were subjective and the data industry-sourced. A plausible add-on, weakly evidenced.",
-              industryFunded: true, deficiencyGated: false),
+              industryFunded: true, deficiencyGated: false,
+              suggestedDose: "Per label (usually a dropperful)", suggestedSchedule: "21:00"),
 
         // MARK: Early — lab / animal / wrong-indication signal only
         .init(id: "greentea", name: "Green tea / EGCG", route: .topical, evidence: .early,
               summary: "Only lab-dish evidence for hair growth so far — no controlled human trial.",
               detail: "EGCG stimulates dermal-papilla cells in vitro, plus a tiny 4-day test in 3 people. Interesting mechanism, not a treatment yet.",
-              industryFunded: false, deficiencyGated: false),
+              industryFunded: false, deficiencyGated: false,
+              suggestedDose: "Per product label", suggestedSchedule: "21:00"),
         .init(id: "peppermint", name: "Peppermint oil", route: .topical, evidence: .early,
               summary: "Promising in mice, but there are zero human hair-loss trials.",
               detail: "A mouse study found peppermint oil outperformed minoxidil, which hasn't been tested in people. Undiluted menthol can irritate — dilute well.",
-              industryFunded: false, deficiencyGated: false),
+              industryFunded: false, deficiencyGated: false,
+              suggestedDose: "Well diluted in a carrier oil", suggestedSchedule: "21:00"),
         .init(id: "onion", name: "Onion juice", route: .topical, evidence: .early,
               summary: "A small trial showed regrowth — but for patchy alopecia areata, not pattern hair loss.",
               detail: "An unblinded RCT (Sharquie 2002) found high regrowth in alopecia areata, a condition that often remits on its own. No evidence for male/female pattern loss.",
-              industryFunded: false, deficiencyGated: false),
+              industryFunded: false, deficiencyGated: false,
+              suggestedDose: "Fresh juice massaged in (the trial used 2×/day)", suggestedSchedule: "08:00,21:00"),
         .init(id: "omega3", name: "Omega-3 (fish oil)", route: .oral, evidence: .early,
               summary: "One density trial exists, but it tested a fish-oil-plus-antioxidant blend — benefit can't be pinned on omega-3.",
               detail: "A controlled trial (Le Floc'h 2015) showed gains, but combined omega-3 with antioxidants and used self-assessment. Good general-health fat; hair benefit unproven alone.",
-              industryFunded: true, deficiencyGated: false),
+              industryFunded: true, deficiencyGated: false,
+              suggestedDose: "~1 g fish oil", suggestedSchedule: "08:00"),
         .init(id: "ashwagandha", name: "Ashwagandha", route: .oral, evidence: .early,
               summary: "Lowers stress hormones, but no study has measured a hair outcome — the link is mechanism-only.",
               detail: "Ashwagandha reliably reduces cortisol, and stress can drive temporary shedding, but no trial connects it to hair. Speculative for hair specifically.",
-              industryFunded: false, deficiencyGated: false),
+              industryFunded: false, deficiencyGated: false,
+              suggestedDose: "300–600 mg root extract", suggestedSchedule: "21:00"),
 
         // MARK: Conditional — deficiency-gated (test first)
         .init(id: "iron", name: "Iron (ferritin support)", route: .oral, evidence: .conditional,
               summary: "Helps shedding only if a blood test shows low ferritin — blanket dosing risks iron overload.",
               detail: "Low iron stores are linked to shedding, and correcting a confirmed deficiency is standard care. Supplementing without a low ferritin result does nothing and can be harmful. Test first.",
-              industryFunded: false, deficiencyGated: true),
+              industryFunded: false, deficiencyGated: true,
+              suggestedDose: "Dose per your clinician after a low ferritin", suggestedSchedule: "08:00"),
         .init(id: "vitamind", name: "Vitamin D", route: .oral, evidence: .conditional,
               summary: "Worth correcting only if measured low — there's no proof it regrows hair in people who aren't deficient.",
               detail: "Low vitamin D is associated with several hair problems, but supplementation hasn't been shown to regrow hair when levels are normal, and megadoses are toxic. Test first.",
-              industryFunded: false, deficiencyGated: true),
+              industryFunded: false, deficiencyGated: true,
+              suggestedDose: "1,000–2,000 IU if tested low", suggestedSchedule: "08:00"),
     ]
 
     static subscript(_ id: String) -> ScienceProduct? { products.first { $0.id == id } }

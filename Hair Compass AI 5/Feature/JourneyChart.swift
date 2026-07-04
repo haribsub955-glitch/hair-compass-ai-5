@@ -329,7 +329,7 @@ private struct JourneyData {
         // Event markers: procedures, daily-med starts, and TE triggers inside the window.
         var built: [Marker] = []
         for t in treatments where t.startDate >= start && t.startDate <= end {
-            if t.treatmentClass.isDaily {
+            if !t.slots.isEmpty {   // schedule-driven: `.other` daily items get a "Started …" marker too
                 let name = t.name.isEmpty ? t.treatmentClass.title : t.name
                 built.append(Marker(
                     id: "start-\(t.classRaw)-\(t.startDate.timeIntervalSinceReferenceDate)",

@@ -95,6 +95,10 @@ struct CareView: View {
                 try? await Task.sleep(for: .milliseconds(250))
                 if progressReport != nil { showReport = true }
             }
+            if ProcessInfo.processInfo.arguments.contains("HC_ADDTREATMENT") {
+                try? await Task.sleep(for: .milliseconds(250))
+                showAdd = true
+            }
             #endif
         }
         .task(id: treatmentFingerprint) {
@@ -405,7 +409,9 @@ struct CareView: View {
         let progress = HairAnalytics.outcomeProgress(weeksElapsed: weeks)
         let ready = HairAnalytics.outcomeReady(weeksElapsed: weeks)
         let dates = doses.filter { $0.treatment?.persistentModelID == t.persistentModelID }.map(\.loggedAt)
-        let adherence = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.treatmentClass.defaultDailyCount)
+        // Expected-per-day comes from the actual schedule, so `.other`-class daily items
+        // (e.g. products added from the science list) accrue adherence like any medication.
+        let adherence = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.slots.count)
 
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 14) {

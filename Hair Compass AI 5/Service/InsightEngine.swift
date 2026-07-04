@@ -60,7 +60,7 @@ struct InsightContext: Sendable {
             .map { t in
                 let weeks = HairAnalytics.weeksElapsed(since: t.startDate)
                 let dates = doses.filter { $0.treatment?.persistentModelID == t.persistentModelID }.map(\.loggedAt)
-                let adherence = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.treatmentClass.defaultDailyCount)
+                let adherence = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.slots.count)
                 return TreatmentSummary(
                     name: t.name.isEmpty ? t.treatmentClass.title : t.name,
                     weeksElapsed: weeks,

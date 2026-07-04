@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// The "Science-backed options" section shown on the Plan tab. Every product wears its honest
@@ -5,9 +6,13 @@ import SwiftUI
 /// affiliate relationship is stated up front. Links are owner-controlled (bundled JSON + remote
 /// catalog, see AffiliateStore) — a product's buy button appears only once its link resolves.
 /// Users never manage links; the owner tool is DEBUG-only behind the HC_LINKS launch flag.
+/// "Add to plan" turns a product into a plain `.other` Treatment, so the routine, adherence,
+/// export and AI surfaces pick it up like anything else the user tracks.
 struct ScienceProductsSection: View {
     @Environment(AffiliateStore.self) private var affiliates
     @Environment(\.openURL) private var openURL
+    @Environment(\.modelContext) private var context
+    @Query private var treatments: [Treatment]
     #if DEBUG
     @State private var showManage = false
     private var showOwnerTools: Bool { ProcessInfo.processInfo.arguments.contains("HC_LINKS") }
@@ -49,7 +54,11 @@ struct ScienceProductsSection: View {
                             .foregroundStyle(Clinical.productColor(group.evidence))
                             .padding(.top, 4)
                         ForEach(group.items) { product in
-                            ProductRow(product: product)
+                            ProductRow(
+                                product: product,
+                                inPlan: product.isInPlan(activeTreatmentNames: activeTreatmentNames),
+                                onAdd: { addToPlan(product) }
+                            )
                             if product.id != group.items.last?.id {
                                 Divider().overlay(Clinical.hairline)
                             }
@@ -66,10 +75,24 @@ struct ScienceProductsSection: View {
         .sheet(isPresented: $showManage) { ManageLinksSheet() }
         #endif
     }
+
+    private var activeTreatmentNames: [String] {
+        treatments.filter(\.isActive).map(\.name)
+    }
+
+    /// One tap → one `.other`-class Treatment with the product's suggested regimen prefilled.
+    /// The name-match guard makes a second tap a no-op instead of a duplicate.
+    private func addToPlan(_ product: ScienceProduct) {
+        guard !product.isInPlan(activeTreatmentNames: activeTreatmentNames) else { return }
+        context.insert(product.makePlanTreatment())
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
 }
 
 private struct ProductRow: View {
     let product: ScienceProduct
+    let inPlan: Bool
+    let onAdd: () -> Void
     @Environment(AffiliateStore.self) private var affiliates
     @Environment(\.openURL) private var openURL
 
@@ -93,16 +116,30 @@ private struct ProductRow: View {
 
             WhyDisclosure(text: product.detail)
 
-            if let url = affiliates.url(for: product.id) {
-                Button {
-                    openURL(url)
-                } label: {
-                    Label("View on iHerb", systemImage: "arrow.up.right.square")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+            // Actions on their own line so nothing crowds the name row's tier badge.
+            HStack(spacing: 12) {
+                if inPlan {
+                    Label("In your plan", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.positive)
+                } else {
+                    Button(action: onAdd) {
+                        Label("Add to plan", systemImage: "plus.circle")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .padding(.top, 2)
+                Spacer()
+                if let url = affiliates.url(for: product.id) {
+                    Button {
+                        openURL(url)
+                    } label: {
+                        Label("View on iHerb", systemImage: "arrow.up.right.square")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
+            .padding(.top, 2)
         }
         .padding(.vertical, 2)
     }

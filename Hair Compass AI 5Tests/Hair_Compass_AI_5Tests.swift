@@ -769,4 +769,89 @@ struct Hair_Compass_AI_5Tests {
         #expect(SheddingDial.shedLevel(0.0) == .minimal)
         #expect(SheddingDial.shedLevel(1.0) == .heavy)
     }
+
+    // MARK: - Common-regimen dose presets
+
+    @Test func everyClassExceptOtherHasADosePreset() {
+        for c in TreatmentClass.allCases {
+            let presets = TreatmentGuide.presets(for: c)
+            if c == .other {
+                #expect(presets.isEmpty)   // nothing honest to suggest for an unknown treatment
+            } else {
+                #expect(!presets.isEmpty)
+            }
+        }
+        // Minoxidil offers both routes, in the documented order.
+        #expect(TreatmentGuide.presets(for: .minoxidil).map(\.label) == ["Topical 5%", "Oral low-dose"])
+    }
+
+    @Test func dosePresetSchedulesParseThroughTreatmentSlots() {
+        for c in TreatmentClass.allCases {
+            for p in TreatmentGuide.presets(for: c) {
+                let t = Treatment(name: p.name, treatmentClass: c, dose: p.dose, scheduleTimes: p.scheduleTimes)
+                if c.isDaily {
+                    // Daily classes: explicit non-empty slots that land in real time blocks.
+                    #expect(!p.scheduleTimes.isEmpty)
+                    #expect(!t.slots.isEmpty)
+                    #expect(t.slots == p.slots)
+                    for slot in t.slots { #expect(RoutineBlock.block(for: slot) != .periodic) }
+                } else {
+                    // Periodic classes: empty schedule → the Periodic block, no daily-adherence math.
+                    #expect(p.scheduleTimes.isEmpty)
+                    #expect(t.slots.isEmpty)
+                }
+                // Every preset carries the honest one-line caveat.
+                #expect(!p.note.isEmpty)
+            }
+        }
+    }
+
+    // MARK: - Science products → plan ("Add to plan")
+
+    @Test func addToPlanMapsToAnEditableOtherTreatment() throws {
+        let rosemary = try #require(ScienceCatalog["rosemary"])
+        let t = rosemary.makePlanTreatment()
+        #expect(t.treatmentClass == .other)          // a supplement is never dressed up as a drug
+        #expect(t.name == rosemary.name)
+        #expect(t.dose == rosemary.suggestedDose)
+        #expect(t.scheduleTimes == rosemary.suggestedSchedule)
+        #expect(t.isActive)
+    }
+
+    @Test func addToPlanNameGuardPreventsDuplicates() throws {
+        let rosemary = try #require(ScienceCatalog["rosemary"])
+        var activeNames: [String] = []
+        #expect(!rosemary.isInPlan(activeTreatmentNames: activeNames))     // first tap inserts
+        activeNames.append(rosemary.makePlanTreatment().name)
+        #expect(rosemary.isInPlan(activeTreatmentNames: activeNames))      // second tap is a no-op
+        // The match is case- and whitespace-insensitive, so a lightly edited name still counts…
+        #expect(rosemary.isInPlan(activeTreatmentNames: ["  ROSEMARY OIL "]))
+        // …but a different product is not blocked.
+        let keto = try #require(ScienceCatalog["ketoconazole"])
+        #expect(!keto.isInPlan(activeTreatmentNames: activeNames))
+    }
+
+    @Test func everyProductScheduleParsesThroughTreatmentSlots() {
+        for product in ScienceCatalog.products {
+            #expect(!product.suggestedDose.isEmpty)
+            let t = product.makePlanTreatment()
+            if product.suggestedSchedule.isEmpty {
+                #expect(t.slots.isEmpty)   // periodic: Periodic block, no false adherence math
+            } else {
+                #expect(!t.slots.isEmpty)
+                for slot in t.slots { #expect(RoutineBlock.block(for: slot) != .periodic) }
+            }
+        }
+    }
+
+    @Test func otherClassDailyTreatmentCountsInAdherence() throws {
+        // The slots-based expected-per-day is what lets an added product accrue adherence.
+        let t = Treatment(name: "Rosemary oil", treatmentClass: .other, scheduleTimes: "21:00")
+        #expect(t.slots == ["21:00"])
+        let cal = Calendar.current
+        let dates = (0..<14).compactMap { cal.date(byAdding: .day, value: -$0, to: .now) }
+        let pct = try #require(HairAnalytics.adherence(
+            doseDates: dates, expectedPerDay: t.slots.count, windowDays: 14))
+        #expect(abs(pct - 1.0) < 0.001)
+    }
 }

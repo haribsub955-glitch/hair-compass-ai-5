@@ -151,7 +151,7 @@ struct ProgressReport {
         calendar: Calendar = .current
     ) -> ProgressReport? {
         let primary = treatments
-            .filter { $0.isActive && $0.treatmentClass.isDaily }
+            .filter { $0.isActive && !$0.slots.isEmpty }   // schedule-driven, so `.other` daily items count
             .min { $0.startDate < $1.startDate }
         let sorted = entries.sorted { $0.date < $1.date }
         let entryWeeks = sorted.first.map {
@@ -178,7 +178,7 @@ struct ProgressReport {
         // Adherence since treatment start (existing helper; windowDays = weeks × 7).
         var adherenceSummary: AdherenceSummary?
         if let primary {
-            let expectedPerDay = primary.treatmentClass.defaultDailyCount
+            let expectedPerDay = primary.slots.count
             let primaryDoses = doses
                 .filter { $0.treatment?.persistentModelID == primary.persistentModelID }
                 .map(\.loggedAt)

@@ -29,6 +29,84 @@ enum TreatmentGuide {
     }
 }
 
+// MARK: - Common regimen presets (one-tap prefill, never auto-applied)
+
+/// A common, evidence-based regimen for a treatment class, offered as a one-tap prefill in the
+/// Add Treatment sheet. Strictly descriptive — "a common regimen", never a prescription: the UI
+/// always says to confirm with the prescriber, applying one takes an explicit tap, and every
+/// prefilled field stays freely editable afterwards.
+struct DosePreset: Identifiable, Sendable, Equatable {
+    let label: String          // chip title, e.g. "Topical 5%"
+    let name: String           // prefills the treatment name
+    let dose: String           // prefills the dose field
+    let scheduleTimes: String  // "08:00,21:00" comma-separated; "" = periodic
+    let note: String           // one short honest caveat, e.g. "once daily is common for women"
+
+    var id: String { "\(label)|\(name)" }
+
+    /// Slots parsed with the same rule as `Treatment.slots`' explicit parse.
+    var slots: [String] {
+        scheduleTimes
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Short chip subtitle, e.g. "1 mL · 2×/day" or "per clinic protocol · periodic".
+    var summary: String {
+        let cadence: String
+        switch slots.count {
+        case 0: cadence = "periodic"
+        case 1: cadence = "1×/day"
+        default: cadence = "\(slots.count)×/day"
+        }
+        return dose.isEmpty ? cadence : "\(dose) · \(cadence)"
+    }
+}
+
+extension TreatmentGuide {
+    /// Common regimens per class — the doses/cadences the trials actually used. `.other`
+    /// deliberately has none: there is nothing honest to suggest for an unknown treatment.
+    static func presets(for c: TreatmentClass) -> [DosePreset] {
+        switch c {
+        case .minoxidil: return [
+            DosePreset(label: "Topical 5%", name: "Minoxidil 5%", dose: "1 mL",
+                       scheduleTimes: "08:00,21:00",
+                       note: "Twice daily; once daily is common for women."),
+            DosePreset(label: "Oral low-dose", name: "Minoxidil (oral, low-dose)", dose: "2.5 mg",
+                       scheduleTimes: "21:00",
+                       note: "Prescription-only route, taken once nightly."),
+        ]
+        case .finasteride: return [
+            DosePreset(label: "Standard 1 mg", name: "Finasteride", dose: "1 mg",
+                       scheduleTimes: "21:00",
+                       note: "Once daily, same time each day."),
+        ]
+        case .dutasteride: return [
+            DosePreset(label: "Standard 0.5 mg", name: "Dutasteride", dose: "0.5 mg",
+                       scheduleTimes: "21:00",
+                       note: "Once daily, same time each day."),
+        ]
+        case .microneedling: return [
+            DosePreset(label: "Weekly session", name: "Microneedling", dose: "0.5–1.5 mm",
+                       scheduleTimes: "",
+                       note: "Weekly is the studied cadence."),
+        ]
+        case .prp: return [
+            DosePreset(label: "Clinic series", name: "PRP", dose: "per clinic protocol",
+                       scheduleTimes: "",
+                       note: "Typically monthly ×3, then maintenance."),
+        ]
+        case .lllt: return [
+            DosePreset(label: "Home device", name: "Low-level laser", dose: "10–20 min session",
+                       scheduleTimes: "",
+                       note: "3×/week in studies."),
+        ]
+        case .other: return []
+        }
+    }
+}
+
 // MARK: - Daily routine
 
 struct RoutineStep: Identifiable, Sendable, Equatable {

@@ -366,7 +366,8 @@ struct TrendsView: View {
     // MARK: Adherence
 
     private var adherenceCard: some View {
-        let daily = treatments.filter { $0.treatmentClass.isDaily && $0.isActive }
+        // "Daily" is schedule-driven (not class-driven), so `.other`-class items with slots count.
+        let daily = treatments.filter { !$0.slots.isEmpty && $0.isActive }
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
                 Eyebrow(text: "14-day adherence")
@@ -376,7 +377,7 @@ struct TrendsView: View {
                 } else {
                     ForEach(daily) { t in
                         let dates = doses.filter { $0.treatment?.persistentModelID == t.persistentModelID }.map(\.loggedAt)
-                        let pct = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.treatmentClass.defaultDailyCount) ?? 0
+                        let pct = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.slots.count) ?? 0
                         adherenceRow(t.name, pct: pct)
                     }
                 }

@@ -335,11 +335,11 @@ enum Achievement: String, CaseIterable, Identifiable {
         calendar: Calendar = .current
     ) -> Date? {
         guard let primary = treatments
-            .filter({ $0.isActive && $0.treatmentClass.isDaily })
+            .filter({ $0.isActive && !$0.slots.isEmpty })
             .min(by: { $0.startDate < $1.startDate })
         else { return nil }
 
-        let expectedPerDay = primary.treatmentClass.defaultDailyCount
+        let expectedPerDay = primary.slots.count
         guard expectedPerDay > 0 else { return nil }
         let expected = Double(expectedPerDay * windowDays)
 

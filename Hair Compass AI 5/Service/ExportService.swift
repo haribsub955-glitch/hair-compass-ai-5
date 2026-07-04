@@ -64,7 +64,7 @@ enum ExportService {
                 let weeks = HairAnalytics.weeksElapsed(since: t.startDate)
                 let ready = HairAnalytics.outcomeReady(weeksElapsed: weeks) ? "assessable" : "pre-24-week"
                 let dates = doses.filter { $0.treatment?.persistentModelID == t.persistentModelID }.map(\.loggedAt)
-                let adh = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.treatmentClass.defaultDailyCount)
+                let adh = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.slots.count)
                 let adhStr = adh.map { " · \(Int(($0 * 100).rounded()))% adherence" } ?? ""
                 out += "• \(t.name.isEmpty ? t.treatmentClass.title : t.name): week \(weeks)/24 (\(ready))\(adhStr)\(t.isActive ? "" : " [inactive]")\n"
             }
