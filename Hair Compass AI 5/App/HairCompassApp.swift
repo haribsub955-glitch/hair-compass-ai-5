@@ -18,6 +18,20 @@ struct HairCompassApp: App {
             HealthSnapshot.self,
             TriggerEvent.self
         ])
+        // CloudKit readiness — the schema already satisfies CloudKit's model rules:
+        // every attribute has a default value or is optional, every relationship is
+        // optional (or an array defaulting to []) with a declared inverse, and no
+        // @Attribute(.unique) constraints are used. Turning sync on is a manual Xcode
+        // signing step that cannot be done in code:
+        //   1. Target "Hair Compass AI 5" → Signing & Capabilities → + Capability → iCloud.
+        //   2. Check "CloudKit" and add a container (e.g. iCloud.harib.Hair-Compass-AI-5).
+        //   3. + Capability → Background Modes → check "Remote notifications".
+        //   4. Replace the line below with:
+        //        ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)
+        //   5. Photos live outside SwiftData (Documents/ScalpPhotos, path-only records) —
+        //      they will NOT sync via CloudKit; keep the JSON backup for them or move the
+        //      bytes into an @Attribute(.externalStorage) Data property first.
+        // Until then, the full-backup file (Profile sheet → "Your data") is the durability story.
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
             container = try ModelContainer(for: schema, configurations: [config])

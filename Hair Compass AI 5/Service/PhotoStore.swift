@@ -39,4 +39,24 @@ final class PhotoStore {
         guard !path.isEmpty else { return }
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(path))
     }
+
+    // MARK: - Raw bytes (backup / restore)
+
+    /// The stored JPEG bytes exactly as written — used by backup so no lossy re-encode occurs.
+    func loadData(_ path: String) -> Data? {
+        guard !path.isEmpty else { return nil }
+        return try? Data(contentsOf: directory.appendingPathComponent(path))
+    }
+
+    /// Writes raw image bytes from a restore as a new stored file. Returns the relative path.
+    func saveData(_ data: Data) -> String? {
+        guard !data.isEmpty else { return nil }
+        let name = "\(UUID().uuidString).jpg"
+        do {
+            try data.write(to: directory.appendingPathComponent(name), options: .atomic)
+            return name
+        } catch {
+            return nil
+        }
+    }
 }

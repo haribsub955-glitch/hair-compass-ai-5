@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One-time baseline capture — the highest-value fields (family history, condition) up front.
 /// Also reused as the editable profile from the Today header.
@@ -86,6 +87,8 @@ struct BaselineFlow: View {
                         .accessibilityIdentifier("baselineSave")
 
                     privacySection
+
+                    BackupRestoreSection()
 
                     aboutFooter
                 }
@@ -280,6 +283,148 @@ struct BaselineFlow: View {
     private func complete() {
         profile.hasOnboarded = true
         dismiss()
+    }
+}
+
+/// "Your data": a full backup (every record + photos, one JSON file) and a merge-safe
+/// restore. The store is local-only, so this file is the durability story until iCloud
+/// sync is switched on.
+private struct BackupRestoreSection: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Profile.createdAt) private var profiles: [Profile]
+    @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
+    @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
+    @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
+    @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
+    @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
+    @Query(sort: \TriggerEvent.date) private var triggers: [TriggerEvent]
+
+    @State private var backupURL: URL?
+    @State private var isBackingUp = false
+    @State private var showImporter = false
+    @State private var pendingRestoreURL: URL?
+    @State private var showRestoreConfirm = false
+    @State private var restoreSummary: BackupService.RestoreSummary?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(text: "Your data")
+
+            VStack(alignment: .leading, spacing: 12) {
+                if let backupURL {
+                    ShareLink(item: backupURL) {
+                        Label("Share \(backupURL.lastPathComponent)\(backupSizeSuffix(backupURL))",
+                              systemImage: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Clinical.surface)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Clinical.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .accessibilityIdentifier("backupShare")
+                } else {
+                    Button(action: generateBackup) {
+                        Label(isBackingUp ? "Preparing backup…" : "Back up everything",
+                              systemImage: "arrow.down.doc")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Clinical.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isBackingUp)
+                    .accessibilityIdentifier("backupCreate")
+                }
+
+                Button {
+                    showImporter = true
+                } label: {
+                    Label("Restore from backup", systemImage: "arrow.counterclockwise")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Clinical.ink)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("backupRestore")
+
+                Text("Backups include your photos. Store the file somewhere safe (Files/iCloud Drive). Automatic iCloud sync isn't on yet.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Clinical.secondary)
+            }
+            .padding(14)
+            .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+        }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+            switch result {
+            case .success(let url):
+                pendingRestoreURL = url
+                showRestoreConfirm = true
+            case .failure(let error):
+                errorMessage = error.localizedDescription
+            }
+        }
+        .confirmationDialog("Restore from backup?", isPresented: $showRestoreConfirm, titleVisibility: .visible) {
+            Button("Restore") { runRestore() }
+            Button("Cancel", role: .cancel) { pendingRestoreURL = nil }
+        } message: {
+            Text("Merges with what's on this phone — nothing is deleted.")
+        }
+        .alert("Restore complete", isPresented: Binding(
+            get: { restoreSummary != nil },
+            set: { if !$0 { restoreSummary = nil } }
+        )) {
+            Button("OK") { restoreSummary = nil }
+        } message: {
+            if let s = restoreSummary {
+                Text("\(s.inserted) records added, \(s.skipped) already on this phone, \(s.photosRestored) photos restored.")
+            }
+        }
+        .alert("Couldn't restore", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            if let errorMessage { Text(errorMessage) }
+        }
+    }
+
+    private func generateBackup() {
+        isBackingUp = true
+        do {
+            backupURL = try BackupService.exportBackup(
+                profile: profiles.first, entries: entries, treatments: treatments,
+                labs: labs, photos: photos, snapshots: snapshots, triggers: triggers
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isBackingUp = false
+    }
+
+    private func runRestore() {
+        guard let url = pendingRestoreURL else { return }
+        pendingRestoreURL = nil
+        do {
+            restoreSummary = try BackupService.restore(from: url, into: modelContext)
+            backupURL = nil   // the store changed — a shared backup should be regenerated
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    private func backupSizeSuffix(_ url: URL) -> String {
+        guard let bytes = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64 else {
+            return ""
+        }
+        return " (\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)))"
     }
 }
 
