@@ -1,6 +1,76 @@
 import SwiftUI
 import UIKit
 
+/// One-time, plain-language consent shown before the FIRST deep analysis — scalp photos leave the
+/// device, so that has to be an explicit, informed yes. "Not now" sends nothing. Granting persists
+/// (see `AIConsent`) and is revocable anytime from Baseline → Privacy.
+struct AIConsentSheet: View {
+    /// Called after consent is recorded — the caller proceeds to the analysis sheet.
+    var onAllow: () -> Void
+    /// Called on decline — dismiss, nothing sent.
+    var onNotNow: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    BrandBanner(art: BrandArt.analysis, height: 130)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Eyebrow(text: "Before your first deep analysis")
+                        Text("Your photos would leave this device")
+                            .font(Clinical.headline(24))
+                            .foregroundStyle(Clinical.ink)
+                    }
+
+                    ClinicalCard {
+                        VStack(alignment: .leading, spacing: 16) {
+                            consentRow("photo.on.rectangle.angled", "What is sent",
+                                       "Your scalp photos and a short summary of your tracking (shedding, scalp scores, treatments).")
+                            consentRow("cloud", "Where it goes",
+                                       "To Anthropic, the cloud AI provider that runs the analysis. This data leaves your device for that one request.")
+                            consentRow("doc.text", "Why",
+                                       "To write a plain-language, record-keeping summary of what's visible. It is not a diagnosis.")
+                            consentRow("hand.raised", "Your control",
+                                       "Nothing is sent until you allow it, and you can turn this off later in your profile's Privacy section.")
+                        }
+                    }
+
+                    Button("Allow and continue") {
+                        AIConsent.grant()
+                        onAllow()
+                    }
+                    .buttonStyle(ClinicalButtonStyle())
+                    .accessibilityIdentifier("aiConsentAllow")
+
+                    Button("Not now") { onNotNow() }
+                        .buttonStyle(ClinicalButtonStyle(filled: false))
+                        .accessibilityIdentifier("aiConsentNotNow")
+                }
+                .padding(20)
+            }
+            .clinicalScreen()
+            .navigationTitle("Deep analysis")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func consentRow(_ symbol: String, _ title: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 16))
+                .foregroundStyle(Clinical.accent)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Clinical.ink)
+                Text(text)
+                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+            }
+        }
+    }
+}
+
 /// Opt-in cloud "deep analysis". Explicit off-device-data consent up front, then a single Claude
 /// Fable 5 call over the deterministic facts plus matched progress photos. Framed as
 /// record-keeping, never diagnosis.

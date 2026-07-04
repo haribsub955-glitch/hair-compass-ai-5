@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 enum AppTab: String, CaseIterable, Identifiable {
     case today, trends, care, labs, photos
@@ -39,6 +40,8 @@ struct RootView: View {
     @State private var healthKit = HealthKitService()
     @State private var notifications = NotificationService()
     @State private var affiliates = AffiliateStore()
+    @State private var appLock = AppLockService()
+    @State private var lockPresenter = LockWindowPresenter()
     @StateObject private var ritualCoordinator = LaunchRitualCoordinator()
     @State private var ritualKind: RitualKind?
 
@@ -93,7 +96,8 @@ struct RootView: View {
             #if DEBUG
             suppressRitual = ProcessInfo.processInfo.arguments.contains("HC_NORITUAL")
             #endif
-            if !showOnboarding && !suppressRitual {
+            // Lock wins: a locked app never rolls a ritual — the lock screen is the only surface.
+            if !showOnboarding && !suppressRitual && !appLock.isLocked {
                 ritualKind = ritualCoordinator.rollOnLaunch(hasOnboarded: profile?.hasOnboarded == true)
             }
             // If the user has already granted Health access, refresh today's snapshot on launch.
@@ -120,10 +124,17 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background:
+                // Both do their own bookkeeping: the lock relocks (if enabled), the ritual
+                // coordinator just timestamps for the >4h re-roll.
+                appLock.markBackgrounded()
                 ritualCoordinator.markBackgrounded()
             case .active:
-                // Foreground after >4h in the background → re-roll (never over onboarding/another cover).
-                if !showOnboarding, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
+                if appLock.isEnabled && appLock.isLocked {
+                    // Lock wins: never roll a ritual over the lock screen — go straight to Face ID.
+                    lockPresenter.present(appLock)
+                    Task { await appLock.unlock() }
+                } else if !showOnboarding, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
+                    // Foreground after >4h in the background → re-roll (never over onboarding/another cover).
                     ritualKind = ritualCoordinator.rollOnForeground(hasOnboarded: profile?.hasOnboarded == true)
                     ritualCoordinator.clearBackgrounded()
                 }
@@ -131,7 +142,89 @@ struct RootView: View {
                 break
             }
         }
+        // The lock screen lives in its own window above every sheet and cover — a locked app must
+        // never show content, no matter what was on screen when it left.
+        .onChange(of: appLock.isEnabled && appLock.isLocked, initial: true) { _, locked in
+            if locked {
+                ritualKind = nil   // lock wins over an in-flight ritual too
+                lockPresenter.present(appLock)
+            } else {
+                lockPresenter.dismiss()
+            }
+        }
         .tint(Clinical.accent)
+        .environment(appLock)
+    }
+}
+
+// MARK: - App Lock overlay
+
+/// Hosts the lock screen in its own UIWindow at `.alert + 1`, which sits above the main window's
+/// entire presentation stack (sheets, full-screen covers, popovers). A plain `.overlay` or a
+/// `fullScreenCover` can be out-presented by an open sheet; a higher window can't.
+@MainActor
+private final class LockWindowPresenter {
+    private var window: UIWindow?
+
+    func present(_ lock: AppLockService) {
+        guard window == nil else { return }
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState != .unattached }) else { return }
+        let window = UIWindow(windowScene: scene)
+        window.windowLevel = .alert + 1
+        window.rootViewController = UIHostingController(rootView: LockScreenView(lock: lock))
+        window.isHidden = false
+        self.window = window
+    }
+
+    func dismiss() {
+        window?.isHidden = true
+        window = nil
+    }
+}
+
+/// The warm gouache lock screen: ivory canvas, serif app name, one copper unlock button.
+/// Auto-attempts Face ID once when it appears in the foreground.
+private struct LockScreenView: View {
+    let lock: AppLockService
+
+    var body: some View {
+        ZStack {
+            Clinical.canvas.ignoresSafeArea()
+            VStack(spacing: 0) {
+                Spacer()
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 32, weight: .medium))
+                    .foregroundStyle(Clinical.accent)
+                    .frame(width: 88, height: 88)
+                    .background(Clinical.accentSoft, in: Circle())
+                    .overlay(Circle().strokeBorder(Clinical.hairline, lineWidth: 1))
+                Text("Hair Compass")
+                    .font(Clinical.headline(30))
+                    .foregroundStyle(Clinical.ink)
+                    .padding(.top, 22)
+                Text("Your hair records are locked.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Clinical.secondary)
+                    .padding(.top, 6)
+                Spacer()
+                Button("Unlock with Face ID") {
+                    Task { await lock.unlock() }
+                }
+                .buttonStyle(ClinicalButtonStyle())
+                .accessibilityIdentifier("appLockUnlock")
+                .padding(.horizontal, 24)
+                .padding(.bottom, 28)
+            }
+        }
+        .task {
+            // One automatic attempt on appear — but only in the foreground (locking happens on
+            // backgrounding, and Face ID can't run from the background).
+            if UIApplication.shared.applicationState == .active {
+                await lock.unlock()
+            }
+        }
     }
 }
 

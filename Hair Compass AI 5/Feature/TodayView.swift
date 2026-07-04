@@ -19,6 +19,8 @@ struct TodayView: View {
     @State private var showBackfill = false
     @State private var insight: DailyInsight?
     @State private var showDeepAnalysis = false
+    @State private var showAIConsent = false
+    @State private var aiConsentJustGranted = false
     @State private var showLearn = false
 
     private var calendar: Calendar { .current }
@@ -107,6 +109,22 @@ struct TodayView: View {
         .sheet(isPresented: $showDeepAnalysis) {
             DeepAnalysisSheet(context: buildContext(), images: analysisImages())
         }
+        // One-time consent before the first deep analysis (photos leave the device). Presenting the
+        // analysis sheet from onDismiss avoids racing two sheet presentations.
+        .sheet(isPresented: $showAIConsent, onDismiss: {
+            if aiConsentJustGranted {
+                aiConsentJustGranted = false
+                showDeepAnalysis = true
+            }
+        }) {
+            AIConsentSheet(
+                onAllow: {
+                    aiConsentJustGranted = true
+                    showAIConsent = false
+                },
+                onNotNow: { showAIConsent = false }
+            )
+        }
         .sheet(isPresented: $showLearn) {
             NavigationStack {
                 LearnView()
@@ -187,7 +205,15 @@ struct TodayView: View {
                     .foregroundStyle(insight == nil ? Clinical.tertiary : Clinical.ink)
                 Text("For record-keeping, not diagnosis.")
                     .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
-                Button("Deep analysis with photos") { showDeepAnalysis = true }
+                Button("Deep analysis with photos") {
+                    // Consent gate: the deep analysis sends scalp photos off-device, so the first
+                    // tap asks in plain language. Once granted (revocable in Privacy), straight in.
+                    if AIConsent.isGranted() {
+                        showDeepAnalysis = true
+                    } else {
+                        showAIConsent = true
+                    }
+                }
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Clinical.accent)
                     .padding(.top, 2)

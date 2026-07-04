@@ -6,7 +6,9 @@ import SwiftUI
 struct BaselineFlow: View {
     @Bindable var profile: Profile
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppLockService.self) private var appLock
     @State private var replayOnboarding = false
+    @State private var aiConsentGranted = AIConsent.isGranted()
 
     private let ageBands = ["Under 25", "26–35", "36–45", "46–55", "56+"]
 
@@ -82,6 +84,8 @@ struct BaselineFlow: View {
                         .disabled(profile.name.trimmingCharacters(in: .whitespaces).count < 2)
                         .opacity(profile.name.trimmingCharacters(in: .whitespaces).count < 2 ? 0.5 : 1)
                         .accessibilityIdentifier("baselineSave")
+
+                    privacySection
 
                     aboutFooter
                 }
@@ -187,6 +191,64 @@ struct BaselineFlow: View {
 
     private func chips(_ items: [String], selected: String, onPick: @escaping (String) -> Void) -> some View {
         FlowChips(items: items, selected: selected, onPick: onPick)
+    }
+
+    /// Privacy controls: App Lock (Face ID / passcode) and the off-device AI-analysis consent.
+    private var privacySection: some View {
+        @Bindable var appLock = appLock
+        return VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(text: "Privacy")
+
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle(isOn: $appLock.isEnabled) {
+                    Text("Require Face ID to open")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(appLock.canUseLock ? Clinical.ink : Clinical.tertiary)
+                }
+                .tint(Clinical.accent)
+                .disabled(!appLock.canUseLock)
+                .accessibilityIdentifier("appLockToggle")
+                Text(appLock.canUseLock
+                     ? "Locks Hair Compass when you leave it. Uses your device's Face ID or passcode."
+                     : "Unavailable — this device has no Face ID, Touch ID or passcode set up.")
+                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+
+                Divider().overlay(Clinical.hairline)
+
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Cloud photo analysis")
+                            .font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                        Text(aiConsentStatusLine)
+                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    }
+                    Spacer()
+                    if aiConsentGranted {
+                        Button("Revoke") {
+                            AIConsent.revoke()
+                            aiConsentGranted = false
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Clinical.critical)
+                        .accessibilityIdentifier("aiConsentRevoke")
+                    }
+                }
+            }
+            .padding(14)
+            .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+        }
+        .onAppear { aiConsentGranted = AIConsent.isGranted() }
+    }
+
+    private var aiConsentStatusLine: String {
+        guard aiConsentGranted else {
+            return "Off — you'll be asked before any photo leaves this device."
+        }
+        if let date = AIConsent.grantedDate() {
+            return "Allowed \(date.formatted(date: .abbreviated, time: .omitted)) — photos may be sent when you run a deep analysis."
+        }
+        return "Allowed — photos may be sent when you run a deep analysis."
     }
 
     private var aboutFooter: some View {

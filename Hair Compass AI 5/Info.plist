@@ -17,6 +17,8 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Hair Compass uses the camera to capture standardized scalp and hair photos for check-ins, progress comparisons, and procedure follow-up tracking.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Hair Compass reads selected Health data like sleep, exercise, protein, and water intake to help you compare routine and lifestyle patterns with hair logs.</string>
 	<key>NSHealthUpdateUsageDescription</key>

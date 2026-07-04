@@ -14,6 +14,12 @@ final class CloudAnalysisService {
     private(set) var result: String?
     private(set) var errorMessage: String?
 
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
     /// True when an API key is configured (env var → UserDefaults; never committed to the repo).
     var hasKey: Bool { AIConfig.claudeKey?.isEmpty == false }
 
@@ -36,6 +42,11 @@ final class CloudAnalysisService {
     // MARK: - Request
 
     private func request(context: InsightContext, images: [UIImage]) async throws -> String {
+        // Belt and braces: no code path may send photos off-device without explicit consent.
+        // The UI gates the entry point (AIConsentSheet); this is the last line of defense.
+        guard AIConsent.isGranted(defaults) else {
+            throw AnalysisError(message: "Deep analysis is off: sending photos off-device needs your consent first. You'll be asked when you start a deep analysis, and you can manage it in your profile's Privacy section.")
+        }
         guard let key = AIConfig.claudeKey, !key.isEmpty else {
             throw AnalysisError(message: "No API key configured. Deep analysis needs a Claude API key (set OPENAI/ANTHROPIC key in the run scheme).")
         }
@@ -120,6 +131,35 @@ final class CloudAnalysisService {
         let renderer = UIGraphicsImageRenderer(size: target)
         let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: target)) }
         return resized.jpegData(compressionQuality: quality)?.base64EncodedString()
+    }
+}
+
+/// One-time, revocable consent for sending scalp photos (and the tracking summary) off-device to
+/// the cloud AI provider. Granted in plain language via `AIConsentSheet` before the first deep
+/// analysis; revocable from the profile's Privacy section. `CloudAnalysisService` refuses to send
+/// anything while this is false.
+enum AIConsent {
+    static let grantedKey = "aiConsentGranted"
+    static let dateKey = "aiConsentDate"
+
+    static func isGranted(_ defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: grantedKey)
+    }
+
+    /// When consent was given, for the Privacy section's status line.
+    static func grantedDate(_ defaults: UserDefaults = .standard) -> Date? {
+        defaults.object(forKey: dateKey) as? Date
+    }
+
+    static func grant(_ defaults: UserDefaults = .standard, now: Date = .now) {
+        defaults.set(true, forKey: grantedKey)
+        defaults.set(now, forKey: dateKey)
+    }
+
+    /// Revoking means the next deep-analysis tap re-asks in plain language.
+    static func revoke(_ defaults: UserDefaults = .standard) {
+        defaults.set(false, forKey: grantedKey)
+        defaults.removeObject(forKey: dateKey)
     }
 }
 
