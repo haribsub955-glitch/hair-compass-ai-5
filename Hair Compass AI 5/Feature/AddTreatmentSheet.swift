@@ -11,6 +11,9 @@ struct AddTreatmentSheet: View {
     @State private var startDate = Date.now
     @State private var times = "08:00,21:00"
     @State private var refillBy: Date? = nil
+    /// Non-nil while the prescription confirmation card is up — set by `save()` when the
+    /// final field values describe a usually-prescription-only medication.
+    @State private var rxRequirement: RxGate.Requirement? = nil
 
     var body: some View {
         NavigationStack {
@@ -103,7 +106,35 @@ struct AddTreatmentSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
-            .onAppear { if name.isEmpty { name = treatmentClass.title } }
+            .onAppear {
+                if name.isEmpty { name = treatmentClass.title }
+                #if DEBUG
+                // HC_RXCONFIRM (launched with HC_ADDTREATMENT): preselect finasteride, apply its
+                // standard regimen, and run the real save path so the prescription confirmation
+                // card presents itself — same delayed-trigger pattern as CareView's HC_ flags.
+                if ProcessInfo.processInfo.arguments.contains("HC_RXCONFIRM") {
+                    selectClass(.finasteride)
+                    if let preset = TreatmentGuide.presets(for: .finasteride).first { apply(preset) }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(400))
+                        save()
+                    }
+                }
+                #endif
+            }
+            // Sheet-over-sheet (the app's whole flow is sheet-based): the card floats over the
+            // form at a medium detent, so "Go back" lands on the untouched form underneath.
+            .sheet(item: $rxRequirement) { requirement in
+                RxConfirmSheet(
+                    name: name.trimmingCharacters(in: .whitespaces),
+                    dose: dose.trimmingCharacters(in: .whitespaces),
+                    schedule: treatmentClass.isDaily ? times : "",
+                    requirement: requirement
+                ) {
+                    rxRequirement = nil
+                    insertAndDismiss()
+                }
+            }
         }
     }
 
@@ -194,6 +225,23 @@ struct AddTreatmentSheet: View {
     }
 
     private func save() {
+        // Usually-prescription-only medications pause on a friendly confirmation instead of
+        // saving silently. The gate reads the final field values — never a preset's identity —
+        // so hand-edited names/doses are what get judged.
+        if let requirement = RxGate.requirement(
+            treatmentClass: treatmentClass,
+            name: name.trimmingCharacters(in: .whitespaces),
+            dose: dose.trimmingCharacters(in: .whitespaces)
+        ) {
+            rxRequirement = requirement
+            return
+        }
+        insertAndDismiss()
+    }
+
+    /// The unchanged save path — run directly for non-prescription treatments, or as the
+    /// confirmed action after the Rx card.
+    private func insertAndDismiss() {
         let t = Treatment(
             name: name.trimmingCharacters(in: .whitespaces),
             treatmentClass: treatmentClass,

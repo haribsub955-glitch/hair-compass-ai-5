@@ -13,6 +13,8 @@ struct ScienceProductsSection: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var context
     @Query private var treatments: [Treatment]
+    /// Non-nil while a prescription-only product waits on the Rx confirmation card.
+    @State private var rxConfirmProduct: ScienceProduct? = nil
     #if DEBUG
     @State private var showManage = false
     private var showOwnerTools: Bool { ProcessInfo.processInfo.arguments.contains("HC_LINKS") }
@@ -71,6 +73,21 @@ struct ScienceProductsSection: View {
                     .padding(.top, 4)
             }
         }
+        // Same confirmation card as the Add-Treatment form: a prescription-only product's
+        // one-tap add pauses here, and Confirm runs the exact insert the tap always did.
+        .sheet(item: $rxConfirmProduct) { product in
+            if let requirement = rxRequirement(for: product) {
+                RxConfirmSheet(
+                    name: product.name,
+                    dose: product.suggestedDose,
+                    schedule: product.suggestedSchedule,
+                    requirement: requirement
+                ) {
+                    rxConfirmProduct = nil
+                    insertPlanTreatment(product)
+                }
+            }
+        }
         #if DEBUG
         .sheet(isPresented: $showManage) { ManageLinksSheet() }
         #endif
@@ -80,10 +97,27 @@ struct ScienceProductsSection: View {
         treatments.filter(\.isActive).map(\.name)
     }
 
+    /// "Add to plan" creates an `.other`-class Treatment, so the gate judges the product's
+    /// name and suggested dose (e.g. a future finasteride/dutasteride/oral-minoxidil listing).
+    private func rxRequirement(for product: ScienceProduct) -> RxGate.Requirement? {
+        RxGate.requirement(treatmentClass: .other, name: product.name, dose: product.suggestedDose)
+    }
+
     /// One tap → one `.other`-class Treatment with the product's suggested regimen prefilled.
-    /// The name-match guard makes a second tap a no-op instead of a duplicate.
+    /// The name-match guard makes a second tap a no-op instead of a duplicate; prescription-only
+    /// products detour through the Rx confirmation card first.
     private func addToPlan(_ product: ScienceProduct) {
         guard !product.isInPlan(activeTreatmentNames: activeTreatmentNames) else { return }
+        if rxRequirement(for: product) != nil {
+            rxConfirmProduct = product
+            return
+        }
+        insertPlanTreatment(product)
+    }
+
+    /// The unchanged insert — run directly for everything over-the-counter, or as the
+    /// confirmed action after the Rx card.
+    private func insertPlanTreatment(_ product: ScienceProduct) {
         context.insert(product.makePlanTreatment())
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }

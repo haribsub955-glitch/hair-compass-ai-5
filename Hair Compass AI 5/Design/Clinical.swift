@@ -102,6 +102,10 @@ enum BrandArt {
     static let divider = "brand-divider"    // horizontal copper hair-strand flourish
     static let meadow = "brand-meadow"      // wide botanical garland, art anchored to the bottom
     static let medallion = "brand-medallion" // laurel wreath with a copper strand — milestone emblem
+
+    // Medication emblems (transparent gouache) — the Rx confirmation card's centered art.
+    static let remedy = "brand-remedy"      // amber pill bottle + tablets (oral)
+    static let dropper = "brand-dropper"    // amber dropper bottle (topical liquids)
 }
 
 /// A rounded brand-art banner in the warm gouache style — reused across screens so imagery reads as
