@@ -15,7 +15,9 @@ struct ConsistencyCard: View {
     /// Titles of badges newly earned since the user last saw this card (quiet celebration).
     @State private var freshBadges: [Achievement] = []
 
-    private static let seenKey = "seenAchievements"
+    /// UserDefaults key for badge ids the user has already been shown. Shared with
+    /// CheckInCelebration, which marks badges it celebrates so they aren't re-celebrated here.
+    static let seenKey = "seenAchievements"
 
     private var sideEffects: [SideEffectLog] { treatments.flatMap(\.sideEffects) }
 

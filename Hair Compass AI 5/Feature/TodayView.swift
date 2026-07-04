@@ -17,6 +17,10 @@ struct TodayView: View {
 
     @State private var showLog = false
     @State private var showBackfill = false
+    /// Reward handed back by LogSheet.save; held until the log sheet finishes dismissing.
+    @State private var pendingReward: CheckInReward?
+    /// Drives the celebration sheet — set only from the log sheets' onDismiss (see below).
+    @State private var celebrationReward: CheckInReward?
     @State private var insight: DailyInsight?
     @State private var showDeepAnalysis = false
     @State private var showAIConsent = false
@@ -98,14 +102,34 @@ struct TodayView: View {
             if ProcessInfo.processInfo.arguments.contains("HC_LEARN") { showLearn = true }
             if ProcessInfo.processInfo.arguments.contains("HC_LOG") { showLog = true }
             if ProcessInfo.processInfo.arguments.contains("HC_BACKFILL") { showBackfill = true }
+            if ProcessInfo.processInfo.arguments.contains("HC_CELEBRATE") {
+                // Representative fixture for screenshots: +22 XP, 6-day streak, no level-up.
+                celebrationReward = CheckInReward(
+                    xpGained: 22,
+                    totalXP: 240,
+                    level: GamificationLevel.level(for: 240),
+                    progressToNext: GamificationLevel.progressToNext(xp: 240),
+                    leveledUp: false,
+                    streak: 6,
+                    newBadges: []
+                )
+            }
             #endif
         }
-        .sheet(isPresented: $showLog) {
-            LogSheet(existing: todayEntry, condition: profile?.condition ?? .unsure)
+        // Celebration presentation uses the same onDismiss chain as the AI-consent →
+        // deep-analysis pair: the log sheet stores the reward, and only its onDismiss
+        // promotes it to the presented sheet — never two sheet presentations racing.
+        .sheet(isPresented: $showLog, onDismiss: presentPendingReward) {
+            LogSheet(existing: todayEntry, condition: profile?.condition ?? .unsure,
+                     onSaved: { pendingReward = $0 })
         }
-        .sheet(isPresented: $showBackfill) {
+        .sheet(isPresented: $showBackfill, onDismiss: presentPendingReward) {
             // existing: nil shows the day strip, so any of the last 60 days can be backfilled.
-            LogSheet(existing: nil, condition: profile?.condition ?? .unsure)
+            LogSheet(existing: nil, condition: profile?.condition ?? .unsure,
+                     onSaved: { pendingReward = $0 })
+        }
+        .sheet(item: $celebrationReward) { reward in
+            CheckInCelebration(reward: reward)
         }
         .sheet(isPresented: $showDeepAnalysis) {
             DeepAnalysisSheet(context: buildContext(), images: analysisImages())
@@ -132,6 +156,14 @@ struct TodayView: View {
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showLearn = false } } }
             }
         }
+    }
+
+    /// Promotes a saved reward to the presented celebration once the log sheet has fully
+    /// dismissed — presenting from onDismiss avoids racing two sheet presentations.
+    private func presentPendingReward() {
+        guard let reward = pendingReward else { return }
+        pendingReward = nil
+        celebrationReward = reward
     }
 
     // MARK: - Learn strip (flash cards)

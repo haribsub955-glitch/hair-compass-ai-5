@@ -9,10 +9,15 @@ import SwiftUI
 struct LogSheet: View {
     let existing: DailyEntry?
     let condition: HairCondition
+    /// Called (after dismiss) when a save actually earned something — a new logged day or a
+    /// fresh badge — so the presenter can show the check-in celebration. Never called for
+    /// pure edits of an already-logged day: those have no XP delta and stay quiet.
+    var onSaved: ((CheckInReward) -> Void)?
 
-    init(existing: DailyEntry?, condition: HairCondition) {
+    init(existing: DailyEntry?, condition: HairCondition, onSaved: ((CheckInReward) -> Void)? = nil) {
         self.existing = existing
         self.condition = condition
+        self.onSaved = onSaved
         _logDate = State(initialValue: existing?.date ?? .now)
     }
 
@@ -297,6 +302,11 @@ struct LogSheet: View {
     }
 
     private func save() {
+        // Reward diff: capture the record before the upsert. The snapshots hold model
+        // references, which is safe here — the engines only read fields this save never
+        // mutates (dates/timestamps), and a newly inserted entry isn't in the before arrays.
+        let before = CheckInReward.Snapshot(context: context)
+
         let target: DailyEntry
         if let e = existing {
             target = e
@@ -318,7 +328,18 @@ struct LogSheet: View {
         target.alcoholDrinks = alcoholDrinks
         target.oiliness = oiliness
         target.note = note
+
+        let after = CheckInReward.Snapshot(context: context)
+        let reward = CheckInReward.build(before: before, after: after)
+
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
+
+        // The no-celebrate-on-pure-edit rule: only a save that earned something (a new
+        // logged day's XP, or a badge) triggers the celebration. Editing an existing
+        // entry's values yields xpGained == 0 and no new badges → no celebration.
+        if reward.isWorthCelebrating {
+            onSaved?(reward)
+        }
     }
 }
