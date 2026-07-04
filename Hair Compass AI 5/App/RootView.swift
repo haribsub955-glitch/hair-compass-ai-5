@@ -215,7 +215,18 @@ private struct LockScreenView: View {
                 .buttonStyle(ClinicalButtonStyle())
                 .accessibilityIdentifier("appLockUnlock")
                 .padding(.horizontal, 24)
-                .padding(.bottom, 28)
+                .padding(.bottom, 12)
+                #if DEBUG
+                // Debug builds only — simulators without enrolled Face ID would otherwise strand
+                // a test run behind the lock. Compiled out of release.
+                Button("Skip (debug build)") { lock.debugBypass() }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Clinical.tertiary)
+                    .accessibilityIdentifier("appLockDebugSkip")
+                    .padding(.bottom, 16)
+                #else
+                Spacer().frame(height: 16)
+                #endif
             }
         }
         .task {

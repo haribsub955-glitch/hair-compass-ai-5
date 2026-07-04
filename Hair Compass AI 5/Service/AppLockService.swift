@@ -51,6 +51,14 @@ final class AppLockService {
             canCheck = { true }
             auth = { _ in false }
         }
+        // HC_NOLOCK is the opposite escape hatch: never let the lock block a debug run (simulators
+        // without enrolled Face ID can otherwise strand you). Also persists the preference off so
+        // subsequent launches stay unlocked.
+        if ProcessInfo.processInfo.arguments.contains("HC_NOLOCK") {
+            enabled = false
+            locked = false
+            defaults.set(false, forKey: Self.enabledKey)
+        }
         #endif
         self.defaults = defaults
         self.canEvaluate = canCheck
@@ -70,6 +78,14 @@ final class AppLockService {
     func markBackgrounded() {
         lockIfEnabled()
     }
+
+    #if DEBUG
+    /// Debug builds only: an explicit bypass for the lock screen's "Skip" button, so an unenrolled
+    /// simulator can never strand a test run. Compiled out of release entirely.
+    func debugBypass() {
+        isLocked = false
+    }
+    #endif
 
     /// Try to unlock with Face ID / Touch ID / passcode. If the device can't authenticate at all,
     /// auto-unlock rather than locking the user out of their own data.
