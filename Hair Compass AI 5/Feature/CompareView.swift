@@ -9,10 +9,24 @@ struct CompareView: View {
     @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
 
+    // The rest of the record, queried only to build the chat's AIContext snapshot on demand
+    // (same pattern as DeepAnalysisSheet).
+    @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
+    @Query private var doses: [TreatmentDose]
+    @Query(sort: \TriggerEvent.date) private var triggers: [TriggerEvent]
+    @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
+    @Query private var sideEffects: [SideEffectLog]
+    @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
+    @Query private var profiles: [Profile]
+
     @State private var hairID = "shed"
     @State private var overlayID = "sleepQuality"
     @State private var window: Window = .m3
     @State private var lag: Lag = .none
+
+    @State private var showChat = false
+    @State private var chatDetent: PresentationDetent = .large
+    @State private var chatContext = ""
 
     enum Window: String, CaseIterable { case m1 = "1M", m3 = "3M", m6 = "6M"
         var days: Int { self == .m1 ? 30 : (self == .m3 ? 90 : 180) }
@@ -43,6 +57,15 @@ struct CompareView: View {
             .padding(.bottom, 110)
         }
         .clinicalScreen()
+        .sheet(isPresented: $showChat) {
+            HairChatSheet(contextJSON: chatContext, focus: focusLine)
+                .presentationDetents([.medium, .large], selection: $chatDetent)
+        }
+        .onAppear {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("HC_CHAT") { openChat() }
+            #endif
+        }
     }
 
     // MARK: Selection
@@ -185,12 +208,50 @@ struct CompareView: View {
         let paired = ChartMath.pairWithLag(hair: series(for: hairID), lifestyle: series(for: overlayID), lagDays: lag.days)
         let assoc = ChartMath.association(hair: paired.hair, lifestyle: paired.lifestyle)
         return ClinicalCard {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "sparkle.magnifyingglass").font(.system(size: 15)).foregroundStyle(Clinical.accent)
-                Text(ChartMath.phrasing(assoc, hairTitle: hair.title, lifestyleTitle: overlay.title, lagDays: lag.days))
-                    .font(.system(size: 14)).foregroundStyle(Clinical.ink)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "sparkle.magnifyingglass").font(.system(size: 15)).foregroundStyle(Clinical.accent)
+                    Text(ChartMath.phrasing(assoc, hairTitle: hair.title, lifestyleTitle: overlay.title, lagDays: lag.days))
+                        .font(.system(size: 14)).foregroundStyle(Clinical.ink)
+                }
+                askAIChip
             }
         }
+    }
+
+    // MARK: Chat entry point
+
+    /// Same chip language as the presets above: a capsule action that opens the restricted
+    /// hair-science chat over the comparison on screen.
+    private var askAIChip: some View {
+        Button { openChat() } label: {
+            Label("Ask AI about this", systemImage: "bubble.left.and.text.bubble.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Clinical.accent)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(Clinical.accentSoft)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Ask AI about this comparison")
+    }
+
+    /// One line telling the chat what's on screen, so answers land on it.
+    private var focusLine: String {
+        let lagText = lag == .none ? "no time lag" : "lifestyle shifted \(lag.rawValue) earlier"
+        return "User is currently comparing: \(hair.title) (hair fall) vs \(overlay.title) (lifestyle), \(window.rawValue) window, \(lagText)."
+    }
+
+    /// Snapshot the canonical AIContext at open time — the chat consumes the same versioned
+    /// JSON record as the deep analysis. Text only; photo METADATA in the context, never pixels.
+    private func openChat() {
+        chatContext = AIContext.build(
+            entries: entries, treatments: treatments, doses: doses,
+            snapshots: snapshots, triggers: triggers,
+            labs: labs, sideEffects: sideEffects, photos: photos,
+            profile: profiles.first, now: .now
+        ).jsonString()
+        showChat = true
     }
 
     // MARK: Data
