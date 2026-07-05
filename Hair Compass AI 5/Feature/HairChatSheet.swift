@@ -11,6 +11,7 @@ struct HairChatSheet: View {
     let focus: String
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var service = HairChatService()
     @State private var draft = ""
     @State private var consented = AIConsent.isGranted()
@@ -83,6 +84,13 @@ struct HairChatSheet: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 14)
+                // Drive the bubble insertion transitions: a soft spring as a message lands
+                // (Reduce Motion: a plain ease, and the transition itself is opacity-only).
+                .animation(
+                    reduceMotion ? .easeOut(duration: 0.22) : .spring(response: 0.35, dampingFraction: 0.8),
+                    value: service.messages.count
+                )
+                .animation(.easeOut(duration: 0.2), value: service.isRunning)
             }
             .onChange(of: service.messages.count) {
                 guard let last = service.messages.last else { return }
@@ -113,6 +121,11 @@ struct HairChatSheet: View {
             if !isUser { Spacer(minLength: 44) }
         }
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
+        .transition(
+            reduceMotion
+                ? .opacity
+                : .asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity)
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(isUser ? "You" : "Assistant"): \(message.text)")
         .id(message.id)
@@ -120,9 +133,18 @@ struct HairChatSheet: View {
 
     private var thinkingRow: some View {
         HStack(spacing: 8) {
-            ProgressView().controlSize(.small).tint(Clinical.tertiary)
-            Text("Thinking…").font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+            if reduceMotion {
+                // Reduce Motion: no looping animation — a static ellipsis.
+                Text("…")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Clinical.tertiary)
+                    .accessibilityHidden(true)
+            } else {
+                ThinkingDots()
+            }
+            Text("Thinking").font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
         }
+        .transition(.opacity)
         .accessibilityLabel("Assistant is thinking")
     }
 
@@ -148,7 +170,7 @@ struct HairChatSheet: View {
                 .font(.system(size: 13))
                 .foregroundStyle(Clinical.secondary)
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(HairChatPrompt.starters(focus: focus), id: \.self) { starter in
+                ForEach(Array(HairChatPrompt.starters(focus: focus).enumerated()), id: \.element) { index, starter in
                     Button { submit(starter) } label: {
                         Text(starter)
                             .font(.system(size: 13, weight: .medium))
@@ -158,7 +180,8 @@ struct HairChatSheet: View {
                             .background(Clinical.accentSoft)
                             .clipShape(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.clinicalPressable)
+                    .staggeredEntrance(index: min(index, 2))
                 }
             }
         }
@@ -192,7 +215,7 @@ struct HairChatSheet: View {
                     .background(Clinical.accent)
                     .clipShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.clinicalPressable)
             .disabled(sendDisabled)
             .opacity(sendDisabled ? 0.4 : 1)
             .accessibilityLabel("Send message")
@@ -209,6 +232,7 @@ struct HairChatSheet: View {
     private func submit(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !service.isRunning else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         draft = ""
         Task { await service.send(trimmed, context: contextJSON, focus: focus) }
     }
@@ -271,5 +295,32 @@ struct HairChatSheet: View {
                     .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
             }
         }
+    }
+}
+
+/// Three dots pulsing in sequence while the assistant is thinking — the app's only repeating
+/// animation, alive only while the thinking row is on screen (it's torn down with the row when
+/// `isRunning` flips off). Callers must swap this for static text under Reduce Motion.
+private struct ThinkingDots: View {
+    @State private var pulsing = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(Clinical.tertiary)
+                    .frame(width: 6, height: 6)
+                    .opacity(pulsing ? 1 : 0.3)
+                    .animation(
+                        .easeInOut(duration: 0.5)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.16),
+                        value: pulsing
+                    )
+            }
+        }
+        .onAppear { pulsing = true }
+        .onDisappear { pulsing = false }
+        .accessibilityHidden(true)
     }
 }

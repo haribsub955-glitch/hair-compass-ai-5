@@ -6,6 +6,7 @@ import SwiftUI
 /// control (shedding follows lifestyle by weeks) and an honest, hedged read — never a coefficient,
 /// never a causal claim. Ephemeral: pick and view, nothing saved.
 struct CompareView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
 
@@ -44,13 +45,19 @@ struct CompareView: View {
                 ScreenHeader(eyebrow: "Build a chart", title: "Compare").padding(.top, 8)
 
                 presets
+                    .staggeredEntrance(index: 0)
                 pickers
+                    .staggeredEntrance(index: 1)
 
                 ClinicalSegmented(options: Window.allCases, label: { $0.rawValue }, selection: $window)
+                    .staggeredEntrance(index: 2)
 
                 chartCard
+                    .staggeredEntrance(index: 3)
                 lagCard
+                    .staggeredEntrance(index: 4)
                 readCard
+                    .staggeredEntrance(index: 5)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -94,7 +101,7 @@ struct CompareView: View {
                 .clipShape(Capsule())
                 .overlay(Capsule().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.clinicalPressable)
     }
 
     /// Two stacked scrub-strips — drag across a strip and the sparkline preview (and the chart
@@ -200,6 +207,12 @@ struct CompareView: View {
                 Text("Lifestyle affects shedding weeks later — shift the comparison to line them up.")
                     .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
                 ClinicalSegmented(options: Lag.allCases, label: { $0.rawValue }, selection: $lag)
+                    // Spring the copper pill between lag options; Reduce Motion keeps the
+                    // segmented control's stock quick ease.
+                    .animation(
+                        reduceMotion ? .easeOut(duration: 0.18) : .spring(response: 0.3, dampingFraction: 0.75),
+                        value: lag
+                    )
             }
         }
     }
@@ -232,7 +245,7 @@ struct CompareView: View {
                 .background(Clinical.accentSoft)
                 .clipShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.clinicalPressable)
         .accessibilityLabel("Ask AI about this comparison")
     }
 

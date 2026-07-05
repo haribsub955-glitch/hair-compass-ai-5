@@ -4,6 +4,7 @@ import SwiftUI
 
 struct PhotosView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
 
     @State private var region: PhotoRegion = .frontal
@@ -28,6 +29,7 @@ struct PhotosView: View {
                                 .frame(width: 34, height: 34)
                                 .background(Clinical.ink, in: Circle())
                         }
+                        .buttonStyle(.clinicalPressable)
                     )
                 ).padding(.top, 8)
 
@@ -38,20 +40,20 @@ struct PhotosView: View {
                             .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
                     }
                 }
+                .staggeredEntrance(index: 0)
 
                 regionPicker
+                    .staggeredEntrance(index: 1)
 
                 if regionPhotos.count >= 2 {
                     compareCard
+                        .staggeredEntrance(index: 2)
                 }
 
                 if regionPhotos.isEmpty {
                     ClinicalCard {
                         VStack(spacing: 14) {
-                            Image(BrandArt.photosEmpty)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 140, height: 140)
+                            EmptyStateArt()
                             Eyebrow(text: "No \(region.title.lowercased()) photos")
                             Text("Capture this region to start a comparable series.")
                                 .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
@@ -90,9 +92,15 @@ struct PhotosView: View {
                             .clipShape(Capsule())
                             .overlay(Capsule().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.clinicalPressable)
                 }
             }
+            // Spring the ink pill from chip to chip on selection; Reduce Motion keeps the
+            // original quick ease instead.
+            .animation(
+                reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.3, dampingFraction: 0.75),
+                value: region
+            )
         }
     }
 
@@ -154,7 +162,7 @@ struct PhotosView: View {
 
     private var grid: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            ForEach(regionPhotos.reversed()) { record in
+            ForEach(Array(regionPhotos.reversed().enumerated()), id: \.element.id) { index, record in
                 VStack(alignment: .leading, spacing: 4) {
                     thumb(record)
                     Text(record.createdAt.formatted(.dateTime.month().day()))
@@ -166,6 +174,9 @@ struct PhotosView: View {
                         context.delete(record)
                     }
                 }
+                // Tiles continue the stack's stagger; capped so a long grid doesn't
+                // keep staggering forever.
+                .staggeredEntrance(index: min(3 + index, 8))
             }
         }
     }
@@ -184,5 +195,23 @@ struct PhotosView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+    }
+}
+
+/// One-shot slow fade for the empty-state gouache art. Opacity only — inherently
+/// Reduce-Motion-safe — and guarded so a revisit of a live view never re-runs it.
+private struct EmptyStateArt: View {
+    @State private var shown = false
+
+    var body: some View {
+        Image(BrandArt.photosEmpty)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 140, height: 140)
+            .opacity(shown ? 1 : 0)
+            .onAppear {
+                guard !shown else { return }
+                withAnimation(.easeOut(duration: 0.5)) { shown = true }
+            }
     }
 }

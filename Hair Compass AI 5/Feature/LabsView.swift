@@ -20,6 +20,7 @@ struct LabsView: View {
                                 .frame(width: 34, height: 34)
                                 .background(Clinical.ink, in: Circle())
                         }
+                        .buttonStyle(.clinicalPressable)
                     )
                 )
                 .padding(.top, 8)
@@ -34,12 +35,18 @@ struct LabsView: View {
                             .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
                     }
                 }
+                .staggeredEntrance(index: 0)
 
                 if labs.isEmpty {
                     reference
+                        .staggeredEntrance(index: 1)
                 } else {
-                    ForEach(labs) { lab in labRow(lab) }
+                    ForEach(Array(labs.enumerated()), id: \.element.id) { index, lab in
+                        labRow(lab)
+                            .staggeredEntrance(index: min(index + 1, 8))
+                    }
                     reference
+                        .staggeredEntrance(index: min(labs.count + 1, 9))
                 }
             }
             .padding(.horizontal, 20)
@@ -92,6 +99,14 @@ struct LabsView: View {
                         Circle().fill(Clinical.flagColor(lab.flag))
                             .frame(width: 14, height: 14)
                             .overlay(Circle().stroke(Clinical.surface, lineWidth: 2.5))
+                            // Soft halo behind the reading — the same flag color at whisper
+                            // opacity, drawn as a background so it takes no layout space and
+                            // the gauge math above is untouched.
+                            .background(
+                                Circle()
+                                    .fill(Clinical.flagColor(lab.flag).opacity(0.18))
+                                    .frame(width: 26, height: 26)
+                            )
                             .offset(x: min(geo.size.width - 14, max(0, geo.size.width * pct - 7)))
                     }
                 }
