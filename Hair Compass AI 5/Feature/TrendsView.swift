@@ -60,6 +60,7 @@ struct TrendsView: View {
                     triggers: triggers,
                     windowDays: range.days
                 )
+                .staggeredEntrance(index: 0)
 
                 ConsistencyCard(
                     entries: entries,
@@ -70,6 +71,7 @@ struct TrendsView: View {
                     triggers: triggers,
                     showAllBadges: $showBadges
                 )
+                .staggeredEntrance(index: 1)
 
                 StrandDivider()
 
@@ -80,17 +82,24 @@ struct TrendsView: View {
                     recentTrigger: triggers.first
                 )
                 .id("body-signals")
+                .staggeredEntrance(index: 2)
                 compareEntryCard
+                    .staggeredEntrance(index: 3)
 
                 if windowEntries.count < 2 {
                     emptyState
+                        .staggeredEntrance(index: 4)
                 } else {
                     sheddingCard
+                        .staggeredEntrance(index: 4)
                     scalpCard
+                        .staggeredEntrance(index: 5)
                     adherenceCard
+                        .staggeredEntrance(index: 6)
                 }
 
                 excludedCard
+                    .staggeredEntrance(index: 7)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)

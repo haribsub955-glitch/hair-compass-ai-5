@@ -72,7 +72,7 @@ struct RootView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            TabBar(selection: $tab)
+            FloatingTabBar(selection: $tab)
         }
         .environment(healthKit)
         .environment(notifications)
@@ -239,41 +239,5 @@ private struct LockScreenView: View {
                 await lock.unlock()
             }
         }
-    }
-}
-
-/// Flat bottom tab bar: a hairline top rule, no glass, no gradient.
-private struct TabBar: View {
-    @Binding var selection: AppTab
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(AppTab.allCases) { tab in
-                let on = tab == selection
-                Button {
-                    selection = tab
-                    UISelectionFeedbackGenerator().selectionChanged()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: on ? tab.symbol + ".fill" : tab.symbol)
-                            .font(.system(size: 19, weight: on ? .semibold : .regular))
-                            .symbolRenderingMode(.monochrome)
-                        Text(tab.title)
-                            .font(.system(size: 10, weight: on ? .semibold : .regular))
-                    }
-                    .foregroundStyle(on ? Clinical.ink : Clinical.tertiary)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.top, 10)
-        .padding(.bottom, 4)
-        .background(
-            Clinical.surface
-                .overlay(alignment: .top) { Clinical.hairline.frame(height: 1) }
-                .ignoresSafeArea(edges: .bottom)
-        )
     }
 }

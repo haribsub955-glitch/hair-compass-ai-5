@@ -25,6 +25,18 @@ enum Clinical {
 
     static let cardShadow = Color(red: 0.353, green: 0.220, blue: 0.106).opacity(0.10) // warm espresso shadow
 
+    // MARK: Depth — layered warm shadows and paper washes (never grey/black).
+    /// Base warm espresso-brown for layered shadows — always pass through `.opacity(...)` per layer.
+    static let shadowWarm = Color(red: 0.353, green: 0.220, blue: 0.106)
+    /// `surface` nudged ~3% toward copper — the bottom stop of the card wash.
+    static let surfaceWarm = Color(red: 0.987, green: 0.969, blue: 0.952)
+    /// Warm paper-white for top-edge inner catchlights (the paper-lift highlight).
+    static let paperLight = Color(red: 1.0, green: 0.992, blue: 0.972)
+    /// Barely-there vertical wash: card white settling into a copper-warmed bottom edge.
+    static var surfaceWash: LinearGradient {
+        LinearGradient(colors: [surface, surfaceWarm], startPoint: .top, endPoint: .bottom)
+    }
+
     static func bandColor(_ band: SeverityBand) -> Color {
         switch band {
         case .mild: return positive
@@ -177,8 +189,11 @@ struct StrandDivider: View {
 
 // MARK: - Reusable structure
 
-/// A warm card with soft tactile depth. Depth comes from a diffuse warm shadow, not a shadow-free
-/// hairline — this is the opposite instinct from a clinical instrument, on purpose.
+/// A warm card with soft tactile depth. Depth comes from three layered cues, not one flat drop:
+/// a barely-there vertical wash (surface warming toward copper at the bottom), a dual warm shadow
+/// (tight contact + soft ambient), and a 0.5pt warm-white catchlight along the top inner edge —
+/// paper lifted off the ivory canvas. This is the opposite instinct from a clinical instrument,
+/// on purpose.
 struct ClinicalCard<Content: View>: View {
     var padding: CGFloat = 18
     @ViewBuilder var content: Content
@@ -187,13 +202,83 @@ struct ClinicalCard<Content: View>: View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Clinical.surface)
+            .background(Clinical.surfaceWash)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .strokeBorder(Clinical.hairline, lineWidth: 1)
             )
-            .shadow(color: Clinical.cardShadow, radius: 14, y: 6)
+            .overlay(
+                // Top-edge catchlight: a 0.5pt warm-white inner hairline that fades out by a
+                // quarter of the way down — the subtle paper-lift cue.
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .inset(by: 1)
+                    .strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Clinical.paperLight.opacity(0.9), location: 0),
+                                .init(color: Clinical.paperLight.opacity(0), location: 0.25),
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        ),
+                        lineWidth: 0.5
+                    )
+            )
+            .shadow(color: Clinical.shadowWarm.opacity(0.10), radius: 2, y: 1)   // contact
+            .shadow(color: Clinical.shadowWarm.opacity(0.07), radius: 16, y: 6)  // ambient
+    }
+}
+
+/// Press treatment for tappable cards: a soft dip to 0.98 scale with a quick spring while
+/// pressed. Under Reduce Motion the scale is dropped and the press reads as a gentle dim
+/// instead. Opt-in only — apply `.buttonStyle(.clinicalPressable)` at call sites.
+struct ClinicalPressableStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(!reduceMotion && configuration.isPressed ? 0.98 : 1)
+            .opacity(reduceMotion && configuration.isPressed ? 0.85 : 1)
+            .animation(
+                reduceMotion ? .easeInOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.7),
+                value: configuration.isPressed
+            )
+    }
+}
+
+extension ButtonStyle where Self == ClinicalPressableStyle {
+    static var clinicalPressable: ClinicalPressableStyle { .init() }
+}
+
+/// One-shot entrance: fade from 0 and rise ~10pt, staggered by `index` (50ms per step), with a
+/// soft spring settle. Runs once per appearance (guarded by @State — a revisit of a live view
+/// never re-triggers). Under Reduce Motion it becomes a plain fade. Cheap by design: no
+/// TimelineView, no repeating animation.
+private struct StaggeredEntrance: ViewModifier {
+    let index: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown || reduceMotion ? 0 : 10)
+            .onAppear {
+                guard !shown else { return }
+                let delay = Double(index) * 0.05
+                if reduceMotion {
+                    withAnimation(.easeOut(duration: 0.28).delay(delay)) { shown = true }
+                } else {
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.8).delay(delay)) { shown = true }
+                }
+            }
+    }
+}
+
+extension View {
+    /// Staggered card entrance — pass the card's position in its stack (0, 1, 2, …).
+    func staggeredEntrance(index: Int) -> some View {
+        modifier(StaggeredEntrance(index: index))
     }
 }
 
