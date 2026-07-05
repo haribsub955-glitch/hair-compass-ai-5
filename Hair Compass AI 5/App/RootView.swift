@@ -63,7 +63,9 @@ struct RootView: View {
         ZStack(alignment: .bottom) {
             Group {
                 switch tab {
-                case .today: TodayView(profile: profile, onOpenBaseline: { showProfileEdit = true })
+                case .today: TodayView(profile: profile,
+                                       onOpenBaseline: { showProfileEdit = true },
+                                       onOpenPlan: { tab = .care })
                 case .trends: TrendsView()
                 case .care: CareView()
                 case .labs: LabsView()

@@ -122,11 +122,27 @@ struct GlanceTile<Motif: View>: View {
     let value: String
     var caption: String? = nil
     var valueColor: Color = Clinical.ink
+    /// Whisper of identity: a barely-there wash keyed to the tile's metric, settling toward the
+    /// bottom edge like `Clinical.surfaceWash`. Peaks at 0.06 opacity — the tile must still read
+    /// ivory; this is a whisper, not a paint job.
+    var tint: Color? = nil
     var motifOpacity: Double = 0.5
     var motifHeight: CGFloat = 62
+    /// When set, the whole tile is a Button (a shortcut into the log sheet / plan) with the
+    /// clinical spring press style.
+    var action: (() -> Void)? = nil
     @ViewBuilder var motif: Motif
 
     var body: some View {
+        if let action {
+            Button(action: action) { card }
+                .buttonStyle(.clinicalPressable)
+        } else {
+            card
+        }
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title.uppercased())
                 .font(Clinical.eyebrow(10)).tracking(1.2)
@@ -150,6 +166,14 @@ struct GlanceTile<Motif: View>: View {
                 .opacity(motifOpacity)
                 .allowsHitTesting(false)
         }
+        .background {
+            // Identity wash sits between the motif and the ivory surface — over the paper,
+            // under the ink.
+            if let tint {
+                LinearGradient(colors: [tint.opacity(0.02), tint.opacity(0.06)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+        }
         .background(Clinical.surface)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
@@ -172,19 +196,31 @@ struct TodayTileGrid: View {
     var medsDone: Int
     var medsTotal: Int
     var triggerWeeks: Int?
+    /// The four self-report tiles are shortcuts into the daily log sheet.
+    var onLogTap: () -> Void = {}
+    /// The meds tile jumps to the Plan tab's full routine; nil leaves it a plain readout.
+    var onOpenPlan: (() -> Void)? = nil
 
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
+        // Entrance sequence continues from the hero (index 0); TodayView's cards pick up at 7.
         LazyVGrid(columns: columns, spacing: 12) {
-            scalpTile
-            sleepTile
-            stressTile
-            oilTile
-            if medsTotal > 0 { medsTile }
-            if let triggerWeeks { triggerTile(weeks: triggerWeeks) }
+            scalpTile.staggeredEntrance(index: 1)
+            sleepTile.staggeredEntrance(index: 2)
+            stressTile.staggeredEntrance(index: 3)
+            oilTile.staggeredEntrance(index: 4)
+            if medsTotal > 0 { medsTile.staggeredEntrance(index: 5) }
+            if let triggerWeeks {
+                triggerTile(weeks: triggerWeeks)
+                    .staggeredEntrance(index: medsTotal > 0 ? 6 : 5)
+            }
         }
     }
+
+    // Whisper tints — every wash is an existing Clinical token (or a blend of two), peaking at
+    // 0.06 opacity inside GlanceTile so the grid still reads ivory at a glance.
+    private static let roseGrey = Clinical.critical.mix(with: Clinical.secondary, by: 0.55)
 
     // Individual tiles — unlogged days show "—" in tertiary with the motif idling at zero.
 
@@ -194,7 +230,9 @@ struct TodayTileGrid: View {
             title: "Scalp",
             value: total.map { "\($0)/16" } ?? "—",
             caption: entry?.scalpBand.title ?? "Not logged",
-            valueColor: entry.map { Clinical.bandColor($0.scalpBand) } ?? Clinical.tertiary
+            valueColor: entry.map { Clinical.bandColor($0.scalpBand) } ?? Clinical.tertiary,
+            tint: Clinical.critical,   // the redness/rose family
+            action: onLogTap
         ) {
             RednessMotif(intensity: CGFloat(total ?? 0) / 16)
         }
@@ -222,7 +260,9 @@ struct TodayTileGrid: View {
             title: "Sleep",
             value: value,
             caption: caption,
-            valueColor: (sleepHours != nil || quality != nil) ? Clinical.ink : Clinical.tertiary
+            valueColor: (sleepHours != nil || quality != nil) ? Clinical.ink : Clinical.tertiary,
+            tint: Clinical.sage,
+            action: onLogTap
         ) {
             SleepMotif(intensity: intensity)
         }
@@ -234,7 +274,9 @@ struct TodayTileGrid: View {
             title: "Stress",
             value: stress.map { "\($0)/5" } ?? "—",
             caption: stress.map(Self.stressWord) ?? "Not logged",
-            valueColor: stress == nil ? Clinical.tertiary : Clinical.ink
+            valueColor: stress == nil ? Clinical.tertiary : Clinical.ink,
+            tint: Self.roseGrey,
+            action: onLogTap
         ) {
             StressMotif(intensity: stress.map { CGFloat($0 - 1) / 4 } ?? 0)
         }
@@ -246,7 +288,9 @@ struct TodayTileGrid: View {
             title: "Oil",
             value: oil.map { "\($0)/3" } ?? "—",
             caption: oil.map(Self.oilWord) ?? "Not logged",
-            valueColor: oil == nil ? Clinical.tertiary : Clinical.ink
+            valueColor: oil == nil ? Clinical.tertiary : Clinical.ink,
+            tint: Clinical.gold,
+            action: onLogTap
         ) {
             OilMotif(intensity: oil.map { CGFloat($0) / 3 } ?? 0)
         }
@@ -259,7 +303,9 @@ struct TodayTileGrid: View {
             value: "\(medsDone)/\(medsTotal)",
             caption: medsDone >= medsTotal ? "Routine done" : "\(medsTotal - medsDone) left today",
             valueColor: medsDone >= medsTotal ? Clinical.positive : Clinical.ink,
-            motifOpacity: 1
+            tint: Clinical.accent,
+            motifOpacity: 1,
+            action: onOpenPlan
         ) {
             HStack {
                 Spacer()
@@ -279,6 +325,7 @@ struct TodayTileGrid: View {
             value: "Wk \(weeks)",
             caption: "Shedding window 8–12 wk",
             valueColor: Clinical.warning,
+            tint: Clinical.gold,
             motifOpacity: 1
         ) {
             TriggerWindowBar(weeks: weeks)
@@ -307,21 +354,36 @@ struct TodayTileGrid: View {
 
 // MARK: - Tile accessories
 
-/// Small copper progress arc, the same ring language as CareView's coach ring.
+/// Small copper progress arc, the same ring language as CareView's coach ring: full-strength
+/// copper over an accent-0.15 track (a hairline track read as washed beige). The fill draws once
+/// with a spring on appear — under Reduce Motion it renders instantly — and later dose toggles
+/// spring to the new value.
 private struct MedsArcRing: View {
     let done: Int
     let total: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
 
     var body: some View {
         let progress = total == 0 ? 0 : Double(done) / Double(total)
         ZStack {
-            Circle().stroke(Clinical.hairline, lineWidth: 5)
+            Circle().stroke(Clinical.accent.opacity(0.15), lineWidth: 5)
             Circle()
-                .trim(from: 0, to: progress)
+                .trim(from: 0, to: shown ? progress : 0)
                 .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
         .frame(width: 42, height: 42)
+        .animation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.8), value: progress)
+        .onAppear {
+            guard !shown else { return }
+            if reduceMotion {
+                shown = true
+            } else {
+                // Delayed past the tile's own entrance so the ring draws after the card lands.
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.8).delay(0.4)) { shown = true }
+            }
+        }
     }
 }
 

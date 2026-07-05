@@ -5,6 +5,8 @@ import UIKit
 struct TodayView: View {
     let profile: Profile?
     var onOpenBaseline: () -> Void
+    /// Switches the root tab to Plan — the meds tile is a shortcut to the full routine.
+    var onOpenPlan: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
@@ -76,19 +78,23 @@ struct TodayView: View {
                     onOpenBaseline: onOpenBaseline,
                     onLog: { showLog = true }
                 )
+                .staggeredEntrance(index: 0)
                 VStack(alignment: .leading, spacing: 16) {
+                    // Entrance sequence: hero 0, tiles 1…6 (inside the grid), cards continue.
                     TodayTileGrid(
                         entry: todayEntry,
                         sleepHours: todaySleepHours,
                         medsDone: medsDone,
                         medsTotal: dailySlots.count,
-                        triggerWeeks: watchTriggerWeeks
+                        triggerWeeks: watchTriggerWeeks,
+                        onLogTap: { showLog = true },
+                        onOpenPlan: onOpenPlan
                     )
-                    logCard
-                    insightCard
+                    logCard.staggeredEntrance(index: 7)
+                    insightCard.staggeredEntrance(index: 8)
                     StrandDivider()
-                    learnStrip
-                    statusCard
+                    learnStrip.staggeredEntrance(index: 9)
+                    statusCard.staggeredEntrance(index: 10)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)

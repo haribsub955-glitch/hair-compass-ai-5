@@ -43,24 +43,32 @@ struct CareView: View {
                         }
                     )
                 ).padding(.top, 8)
+                    .staggeredEntrance(index: 0)
 
-                if hasRecentSevereSideEffect { severeSideEffectBanner }
-                coachCard
+                // One entrance sequence down the card stack; indices are fixed positions, so a
+                // missing conditional card just leaves an invisible 50ms gap.
+                if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 1) }
+                coachCard.staggeredEntrance(index: 2)
                 if let milestone = Milestones.achieved(streak: streak, treatments: treatmentWeeks).first {
-                    milestoneCard(milestone)
+                    milestoneCard(milestone).staggeredEntrance(index: 3)
                 }
-                if !routine.isEmpty { routineCard }
-                guidanceCard
-                remindersCard
-                gateExplainer
-                if let report = progressReport { progressReportCard(report) }
+                if !routine.isEmpty { routineCard.staggeredEntrance(index: 4) }
+                guidanceCard.staggeredEntrance(index: 5)
+                remindersCard.staggeredEntrance(index: 6)
+                gateExplainer.staggeredEntrance(index: 7)
+                if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 8) }
 
                 if treatments.isEmpty {
-                    empty
+                    empty.staggeredEntrance(index: 9)
                 } else {
-                    ForEach(treatments) { t in treatmentCard(t) }
+                    ForEach(Array(treatments.enumerated()), id: \.element.id) { i, t in
+                        // Capped: everything past here is below the fold at load anyway.
+                        treatmentCard(t).staggeredEntrance(index: min(9 + i, 13))
+                    }
                 }
 
+                // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
+                // straight to it and must never catch a mid-fade frame.
                 ScienceProductsSection().id("science")
             }
             .padding(.horizontal, 20)
@@ -175,18 +183,7 @@ struct CareView: View {
                 }
                 Spacer(minLength: 8)
                 if dailySteps.count > 0 {
-                    ZStack {
-                        Circle().stroke(Clinical.hairline, lineWidth: 7)
-                        Circle()
-                            .trim(from: 0, to: progress)
-                            .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                        VStack(spacing: 1) {
-                            Text("\(doneToday)").font(Clinical.headline(17)).foregroundStyle(Clinical.ink)
-                            Text("OF \(dailySteps.count)").font(Clinical.eyebrow(8)).foregroundStyle(Clinical.tertiary)
-                        }
-                    }
-                    .frame(width: 60, height: 60)
+                    CoachProgressRing(done: doneToday, total: dailySteps.count, progress: progress)
                 }
             }
         }
@@ -251,8 +248,13 @@ struct CareView: View {
                 Eyebrow(text: "Today's routine")
                 ForEach(routine, id: \.block.id) { entry in
                     VStack(alignment: .leading, spacing: 10) {
-                        Label(entry.block.title, systemImage: entry.block.symbol)
-                            .font(Clinical.eyebrow(11)).foregroundStyle(Clinical.tertiary)
+                        Label {
+                            Text(entry.block.title)
+                        } icon: {
+                            Image(systemName: entry.block.symbol)
+                                .foregroundStyle(Self.blockTint(entry.block))
+                        }
+                        .font(Clinical.eyebrow(11)).foregroundStyle(Clinical.tertiary)
                         ForEach(Array(entry.steps.enumerated()), id: \.offset) { _, step in
                             routineRow(step.treatment, slot: step.slot, periodic: entry.block == .periodic)
                         }
@@ -262,41 +264,28 @@ struct CareView: View {
         }
     }
 
+    /// Morning sunrise reads gold, evening moon reads sage; the periodic calendar stays quiet.
+    private static func blockTint(_ block: RoutineBlock) -> Color {
+        switch block {
+        case .morning: return Clinical.gold
+        case .evening: return Clinical.sage
+        case .periodic: return Clinical.tertiary
+        }
+    }
+
     private func routineRow(_ t: Treatment, slot: String, periodic: Bool) -> some View {
         let key = "\(t.persistentModelID.hashValue)|\(slot)"
-        let done = isLogged(t, slot: slot)
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Button {
-                    toggle(t, slot: slot, currentlyDone: done)
-                } label: {
-                    ZStack {
-                        Circle().strokeBorder(done ? Clinical.accent : Clinical.hairline, lineWidth: 1.5).frame(width: 24, height: 24)
-                        if done { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Clinical.accent) }
-                    }
-                }
-                .buttonStyle(.plain)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(t.name.isEmpty ? t.treatmentClass.title : t.name)
-                        .font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
-                        .strikethrough(done, color: Clinical.tertiary)
-                    Text(periodic ? "As scheduled · \(t.treatmentClass.title)" : "\(slot) · \(t.treatmentClass.title)")
-                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                }
-                Spacer()
-                Button {
-                    if expandedSteps.contains(key) { expandedSteps.remove(key) } else { expandedSteps.insert(key) }
-                } label: {
-                    Image(systemName: "info.circle").font(.system(size: 15)).foregroundStyle(Clinical.tertiary)
-                }
-                .buttonStyle(.plain)
+        return RoutineStepRow(
+            treatment: t,
+            slot: slot,
+            periodic: periodic,
+            done: isLogged(t, slot: slot),
+            expanded: expandedSteps.contains(key),
+            onToggle: { toggle(t, slot: slot, currentlyDone: isLogged(t, slot: slot)) },
+            onInfo: {
+                if expandedSteps.contains(key) { expandedSteps.remove(key) } else { expandedSteps.insert(key) }
             }
-            if expandedSteps.contains(key) {
-                Text(TreatmentGuide.instruction(for: t.treatmentClass))
-                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                    .padding(.leading, 36)
-            }
-        }
+        )
     }
 
     // MARK: Reminders
@@ -531,7 +520,144 @@ struct CareView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } else {
             context.insert(TreatmentDose(treatment: treatment, loggedAt: .now, slot: slot))
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // Light impact, paired with the check circle's spring pop — one quiet tap, not a fanfare.
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+    }
+}
+
+/// One routine step: a class-tinted symbol chip leading, the step text, the info affordance, and
+/// a trailing check circle that fills copper with a white checkmark and a spring pop when logged.
+/// The tap/log behavior and the info button's action are unchanged from the old row.
+private struct RoutineStepRow: View {
+    let treatment: Treatment
+    let slot: String
+    let periodic: Bool
+    let done: Bool
+    let expanded: Bool
+    let onToggle: () -> Void
+    let onInfo: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pop = false
+
+    /// Meds read copper, device/in-office work reads sage — both straight from the palette.
+    private var classTint: Color {
+        switch treatment.treatmentClass {
+        case .microneedling, .prp, .lllt: return Clinical.sage
+        default: return Clinical.accent
+        }
+    }
+
+    private var name: String {
+        treatment.name.isEmpty ? treatment.treatmentClass.title : treatment.name
+    }
+
+    /// "08:00 · Minoxidil" collapses to "08:00" when the class title is already in the name.
+    private var subtitle: String {
+        let lead = periodic ? "As scheduled" : slot
+        let cls = treatment.treatmentClass.title
+        return name.localizedCaseInsensitiveContains(cls) ? lead : "\(lead) · \(cls)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Image(systemName: treatment.treatmentClass.symbol)
+                    .font(.system(size: 14))
+                    .foregroundStyle(classTint)
+                    .frame(width: 31, height: 31)
+                    .background(classTint.opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
+                        .strikethrough(done, color: Clinical.tertiary)
+                    Text(subtitle)
+                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                }
+                Spacer()
+                Button(action: onInfo) {
+                    Image(systemName: "info.circle").font(.system(size: 15)).foregroundStyle(Clinical.tertiary)
+                }
+                .buttonStyle(.plain)
+                checkButton
+            }
+            if expanded {
+                Text(TreatmentGuide.instruction(for: treatment.treatmentClass))
+                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    .padding(.leading, 43)   // aligns under the text column (31pt chip + 12 gap)
+            }
+        }
+    }
+
+    private var checkButton: some View {
+        Button {
+            let willCheck = !done
+            onToggle()
+            guard willCheck, !reduceMotion else { return }
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
+                pop = true
+            } completion: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pop = false }
+            }
+        } label: {
+            ZStack {
+                Circle().fill(done ? Clinical.accent : Color.clear)
+                Circle().strokeBorder(done ? Clinical.accent : Clinical.hairline, lineWidth: 1.5)
+                if done {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Clinical.surface)
+                }
+            }
+            .frame(width: 24, height: 24)
+            .scaleEffect(pop ? 1.15 : 1)
+            // Reduce Motion: the fill lands instantly and the pop above never fires.
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: done)
+            .frame(width: 36, height: 36)   // generous hit target around the 24pt circle
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(name)
+        .accessibilityValue(done ? "Logged" : "Not logged")
+    }
+}
+
+/// The coach's adherence ring: full-strength copper over an accent-0.15 track — the same recipe
+/// as the Today MEDS tile. Draws once with a spring on appear (Reduce Motion renders instantly);
+/// checking a step springs the fill to the new value.
+private struct CoachProgressRing: View {
+    let done: Int
+    let total: Int
+    let progress: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Clinical.accent.opacity(0.15), lineWidth: 7)
+            Circle()
+                .trim(from: 0, to: shown ? progress : 0)
+                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 1) {
+                Text("\(done)").font(Clinical.headline(17)).foregroundStyle(Clinical.ink)
+                Text("OF \(total)").font(Clinical.eyebrow(8)).foregroundStyle(Clinical.tertiary)
+            }
+        }
+        .frame(width: 60, height: 60)
+        .animation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.8), value: progress)
+        .onAppear {
+            guard !shown else { return }
+            if reduceMotion {
+                shown = true
+            } else {
+                // Delayed past the coach card's own entrance so the ring draws after it lands.
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.8).delay(0.3)) { shown = true }
+            }
         }
     }
 }
