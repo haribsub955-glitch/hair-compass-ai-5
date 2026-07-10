@@ -181,12 +181,14 @@ struct BodySignalsDashboard: View {
     @Environment(HealthKitService.self) private var healthKit
     @Environment(\.modelContext) private var context
     @State private var connecting = false
+    @State private var refreshing = false
 
     var body: some View {
         ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
                 header
                 signalContent
+                refreshRow
                 contextNotes
             }
         }
@@ -269,12 +271,40 @@ struct BodySignalsDashboard: View {
                 connecting = true
                 Task {
                     await healthKit.requestAuthorization()
+                    // Refresh immediately on grant so Trends has data without waiting for the
+                    // next launch. A no-op when authorization didn't succeed.
                     await healthKit.refreshSnapshot(context: context)
                     connecting = false
                 }
             }
             .buttonStyle(ClinicalButtonStyle(filled: false))
             .disabled(connecting)
+        }
+    }
+
+    /// A quiet manual-refresh affordance shown once Health is authorized — last-updated
+    /// timestamp plus a one-tap "Update from Health", so data doesn't only ever arrive passively.
+    @ViewBuilder
+    private var refreshRow: some View {
+        if healthKit.authorization == .authorized {
+            HStack(spacing: 10) {
+                Text(healthKit.lastRefresh.map {
+                    "Updated \($0.formatted(.relative(presentation: .named)))"
+                } ?? "Not yet refreshed")
+                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                Spacer(minLength: 8)
+                Button(refreshing ? "Updating…" : "Update from Health") {
+                    refreshing = true
+                    Task {
+                        await healthKit.refreshSnapshot(context: context)
+                        refreshing = false
+                    }
+                }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Clinical.accent)
+                .disabled(refreshing)
+                .accessibilityIdentifier("trendsHealthRefresh")
+            }
         }
     }
 

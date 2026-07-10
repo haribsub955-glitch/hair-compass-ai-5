@@ -45,6 +45,9 @@ struct RootView: View {
     @State private var lockPresenter = LockWindowPresenter()
     @StateObject private var ritualCoordinator = LaunchRitualCoordinator()
     @State private var ritualKind: RitualKind?
+    @State private var purchases = PurchaseService()
+    @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
+    @State private var showTutorial = false
 
     private var profile: Profile? { profiles.first }
     private var widgetFingerprint: String {
@@ -79,6 +82,18 @@ struct RootView: View {
         // carries spatial continuity. Reduce Motion keeps only the short fade.
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.22), value: tab)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // First-launch tutorial: a card-above-the-tab-bar coach sequence that drives `tab`
+        // itself. Placed BEFORE `.safeAreaInset` below so the tab bar (zIndex 100) composites
+        // above the overlay's scrim and stays interactive-looking while the tour is active.
+        .overlay {
+            if showTutorial {
+                TutorialOverlay(tab: $tab) {
+                    hasSeenTutorial = true
+                    showTutorial = false
+                }
+                .transition(.opacity)
+            }
+        }
         // Reserve real layout space for navigation. The previous overlay obscured the final
         // card on every tab and made users scroll content underneath an active control.
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -104,6 +119,7 @@ struct RootView: View {
         .environment(healthKit)
         .environment(notifications)
         .environment(affiliates)
+        .environment(purchases)
         .task {
             guard !didBootstrap else { return }
             didBootstrap = true
@@ -118,13 +134,18 @@ struct RootView: View {
             if ProcessInfo.processInfo.arguments.contains("HC_ONBOARD") { showOnboarding = true }
             if ProcessInfo.processInfo.arguments.contains("HC_PROFILE") { showProfileEdit = true }
             #endif
+            // Cover the "onboarded but never toured" relaunch — the user killed the app mid-tutorial.
+            if !showOnboarding, profile?.hasOnboarded == true, !hasSeenTutorial {
+                showTutorial = true
+            }
             // Launch-ritual roll — only once onboarding is resolved, and never over onboarding.
             var suppressRitual = false
             #if DEBUG
             suppressRitual = ProcessInfo.processInfo.arguments.contains("HC_NORITUAL")
             #endif
             // Lock wins: a locked app never rolls a ritual — the lock screen is the only surface.
-            if !showOnboarding && !suppressRitual && !appLock.isLocked {
+            // A pending tutorial also suppresses the roll so the two covers never contend.
+            if !showOnboarding && !showTutorial && !suppressRitual && !appLock.isLocked {
                 ritualKind = ritualCoordinator.rollOnLaunch(hasOnboarded: profile?.hasOnboarded == true)
             }
             // If the user has already granted Health access, refresh today's snapshot on launch.
@@ -140,7 +161,16 @@ struct RootView: View {
         .task { await affiliates.refresh() }
         .fullScreenCover(isPresented: $showOnboarding) {
             if let profile {
-                OnboardingFlow(profile: profile, onFinish: { showOnboarding = false })
+                // Presented covers inherit the environment from where `.fullScreenCover` is
+                // attached — here, OUTSIDE the `.environment(healthKit)` / `.environment(purchases)`
+                // modifiers below. Without re-injecting directly on the cover's content, onboarding's
+                // health step and paywall step would crash reading their `@Environment(...)`.
+                OnboardingFlow(profile: profile, onFinish: {
+                    showOnboarding = false
+                    if !hasSeenTutorial { showTutorial = true }
+                })
+                .environment(healthKit)
+                .environment(purchases)
             }
         }
         // Onboarding wins: we only ever set `ritualKind` when not onboarding, so the two covers
@@ -149,7 +179,14 @@ struct RootView: View {
             RitualView(kind: kind) { ritualKind = nil }
         }
         .sheet(isPresented: $showProfileEdit) {
-            if let profile { BaselineFlow(profile: profile) }
+            if let profile {
+                // BaselineFlow can replay onboarding from its own cover; inject here so that
+                // cover's health + paywall steps can read their services (presented content
+                // only inherits the environment of its attachment point).
+                BaselineFlow(profile: profile)
+                    .environment(healthKit)
+                    .environment(purchases)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -163,7 +200,7 @@ struct RootView: View {
                     // Lock wins: never roll a ritual over the lock screen — go straight to Face ID.
                     lockPresenter.present(appLock)
                     Task { await appLock.unlock() }
-                } else if !showOnboarding, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
+                } else if !showOnboarding, !showTutorial, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
                     // Foreground after >4h in the background → re-roll (never over onboarding/another cover).
                     ritualKind = ritualCoordinator.rollOnForeground(hasOnboarded: profile?.hasOnboarded == true)
                     ritualCoordinator.clearBackgrounded()
