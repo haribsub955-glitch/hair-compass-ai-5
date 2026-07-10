@@ -168,8 +168,11 @@ struct TreatmentDetailSheet: View {
             } label: {
                 Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundStyle(Clinical.tertiary)
                     .frame(width: 24, height: 24)
+                    .frame(minWidth: 32, minHeight: 32)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Delete this entry")
         }
     }
 

@@ -133,6 +133,7 @@ struct GuidedCaptureView: View {
                     Image(systemName: showGhost ? "square.on.square.dashed" : "square.dashed")
                         .font(.system(size: 15)).foregroundStyle(.white)
                 }
+                .accessibilityLabel(showGhost ? "Hide previous photo guide" : "Show previous photo guide")
             }
         }
         .padding(10)
@@ -146,6 +147,7 @@ struct GuidedCaptureView: View {
                 Image(systemName: "photo.on.rectangle").font(.system(size: 22)).foregroundStyle(Clinical.ink)
                     .frame(width: 48, height: 48)
             }
+            .accessibilityLabel("Choose from library")
             Button {
                 Task { if let image = await camera.capture() { captured = image } }
             } label: {
@@ -156,6 +158,7 @@ struct GuidedCaptureView: View {
             }
             .disabled(!(camera.hasCamera && camera.isRunning))
             .opacity(camera.hasCamera && camera.isRunning ? 1 : 0.4)
+            .accessibilityLabel("Take photo")
 
             Button { camera.flip() } label: {
                 Image(systemName: "arrow.triangle.2.circlepath.camera").font(.system(size: 22)).foregroundStyle(Clinical.ink)
@@ -163,6 +166,7 @@ struct GuidedCaptureView: View {
             }
             .disabled(!camera.hasCamera)
             .opacity(camera.hasCamera ? 1 : 0.4)
+            .accessibilityLabel("Switch camera")
         }
     }
 
@@ -185,6 +189,7 @@ struct GuidedCaptureView: View {
             }
             .padding(.horizontal, 20)
         }
+        .trailingFade()
     }
 
     // MARK: Review mode

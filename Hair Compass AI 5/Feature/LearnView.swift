@@ -45,6 +45,7 @@ struct LearnView: View {
                 }
             }
         }
+        .trailingFade()
     }
 
     private func chip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
@@ -67,15 +68,30 @@ struct FlashCardView: View {
     let card: FlashCard
     var featured: Bool = false
     @State private var flipped = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
-            front.opacity(flipped ? 0 : 1)
-            back.rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0)).opacity(flipped ? 1 : 0)
+            // Reduce Motion: swap faces with a plain opacity cross-fade instead of the 3D flip —
+            // same information, no simulated rotation.
+            if reduceMotion {
+                if flipped {
+                    back.transition(.opacity)
+                } else {
+                    front.transition(.opacity)
+                }
+            } else {
+                ZStack {
+                    front.opacity(flipped ? 0 : 1)
+                    back.rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0)).opacity(flipped ? 1 : 0)
+                }
+                .rotation3DEffect(.degrees(flipped ? 180 : 0), axis: (x: 0, y: 1, z: 0))
+            }
         }
-        .rotation3DEffect(.degrees(flipped ? 180 : 0), axis: (x: 0, y: 1, z: 0))
         .onTapGesture {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { flipped.toggle() }
+            withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.5, dampingFraction: 0.82)) {
+                flipped.toggle()
+            }
             UISelectionFeedbackGenerator().selectionChanged()
         }
     }

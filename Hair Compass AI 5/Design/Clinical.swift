@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Warm & premium design system — ivory surfaces, a signature copper accent, sage and
 /// antique-gold supporting tones, serif headlines, soft tactile depth. Built around the
@@ -10,7 +11,11 @@ enum Clinical {
     static let surface = Color(red: 0.996, green: 0.988, blue: 0.976)  // #FEFCF9 warm card white
     static let ink = Color(red: 0.169, green: 0.129, blue: 0.102)      // #2B211A espresso
     static let secondary = Color(red: 0.478, green: 0.420, blue: 0.365) // #7A6B5D warm taupe
-    static let tertiary = Color(red: 0.651, green: 0.588, blue: 0.529)  // #A69687 muted warm gray
+    // #7C6D5F — darkened from #A69687 for legibility (UX audit #1). WCAG relative-luminance
+    // contrast against canvas #FBF6EF, computed with python3: 4.639:1 (was 2.663:1), clearing
+    // the 4.5:1 body-text threshold. Hue held at ~29° (warm umber), only lightness/saturation
+    // moved (L 0.59→0.43, S 0.148→0.132) — same family, still reads as decorative/muted.
+    static let tertiary = Color(red: 0.486, green: 0.427, blue: 0.373)  // #7C6D5F muted warm umber
     static let hairline = Color(red: 0.929, green: 0.882, blue: 0.827)  // #EDE1D3 soft warm tan
 
     static let accent = Color(red: 0.694, green: 0.349, blue: 0.180)    // #B1592E copper/terracotta
@@ -74,14 +79,20 @@ enum Clinical {
     }
 
     // MARK: Type — serif headlines for warmth, SF body/data with tabular figures.
+    //
+    // Dynamic Type step 1: sizes route through `UIFontMetrics(forTextStyle:).scaledValue(for:)`
+    // so the system text-size setting finally affects the app, while every existing call site's
+    // output is byte-identical at the default (.large) content size category — at that category
+    // UIFontMetrics' scale factor is exactly 1.0, so `scaledValue(for: s) == s`. Signatures,
+    // weights and designs are unchanged.
     static func eyebrow(_ size: CGFloat = 11) -> Font {
-        .system(size: size, weight: .semibold).monospaced()
+        .system(size: UIFontMetrics(forTextStyle: .caption2).scaledValue(for: size), weight: .semibold).monospaced()
     }
     static func number(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight).monospacedDigit()
+        .system(size: UIFontMetrics(forTextStyle: .body).scaledValue(for: size), weight: weight).monospacedDigit()
     }
     static func headline(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight, design: .serif)
+        .system(size: UIFontMetrics(forTextStyle: .title2).scaledValue(for: size), weight: weight, design: .serif)
     }
 }
 
@@ -380,7 +391,10 @@ extension View {
 /// Small uppercase tracked label used as a section eyebrow.
 struct Eyebrow: View {
     let text: String
-    var color: Color = Clinical.tertiary
+    // Default darkened from `tertiary` to `secondary` (UX audit #1) — eyebrows are read as
+    // text, not decoration, and `secondary` measures 4.78:1 on canvas #FBF6EF vs `tertiary`'s
+    // pre-fix 2.66:1. Call sites that intentionally want the fainter tone still pass `tertiary`.
+    var color: Color = Clinical.secondary
     var body: some View {
         Text(text.uppercased())
             .font(Clinical.eyebrow())
@@ -639,5 +653,22 @@ extension View {
     func clinicalScreen() -> some View {
         self
             .background(Clinical.canvas.ignoresSafeArea())
+    }
+
+    /// Fades the trailing edge of a horizontally scrolling row (chip rows, region pickers) to
+    /// clear over `width` points — a soft cue that there's more to scroll to, instead of a hard
+    /// cut-off at the container edge. Apply as the last modifier on the `ScrollView` itself so
+    /// the fade stays pinned to the viewport regardless of scroll offset.
+    func trailingFade(width: CGFloat = 24) -> some View {
+        mask(
+            HStack(spacing: 0) {
+                Rectangle().fill(.black)
+                LinearGradient(
+                    colors: [.black, .black.opacity(0)],
+                    startPoint: .leading, endPoint: .trailing
+                )
+                .frame(width: width)
+            }
+        )
     }
 }

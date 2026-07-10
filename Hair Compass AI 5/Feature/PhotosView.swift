@@ -102,6 +102,7 @@ struct PhotosView: View {
                 value: region
             )
         }
+        .trailingFade()
     }
 
     /// A draggable before/after slider in place of two side-by-side thumbnails.

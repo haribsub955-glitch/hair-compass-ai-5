@@ -61,6 +61,13 @@ struct ExportSheet: View {
                         }
                     }
 
+                    Image("export-seal")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 150)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityHidden(true)
+
                     Text("This is a self-tracked record for documentation, not a diagnosis.")
                         .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
                 }

@@ -419,6 +419,18 @@ struct OnboardingFlow: View {
     private var habitsStep: some View {
         VStack(spacing: 0) {
             head("Habits", "How do you treat\nyour hair?", "Watch what each does to a single strand.")
+            // UX audit #8: fills the dead lower half between the headline and the toggles with
+            // the gouache habits vignette — the trailing Spacer (before "Continue") shrinks to
+            // absorb the added height on its own since it only ever claims leftover space.
+            Image("onboard-habits")
+                .resizable()
+                .scaledToFit()
+                .frame(maxHeight: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .accessibilityHidden(true)
             StressStrandView(tight: profile.wearsTightStyles, heat: profile.usesHeat, chemical: profile.usesChemicalTreatments)
                 .frame(height: 170)
                 .padding(.top, 8)

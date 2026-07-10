@@ -165,6 +165,15 @@ struct TrendsView: View {
     private var emptyState: some View {
         ClinicalCard {
             VStack(alignment: .leading, spacing: 8) {
+                // UX audit #9: the fresh-install "no trends yet" card gets the compass-trail
+                // vignette instead of reading as bare, unfinished chrome.
+                Image("trends-journey-empty")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .frame(maxHeight: 140)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .accessibilityHidden(true)
                 Eyebrow(text: "Not enough data")
                 Text("Trends appear after two or more daily logs in this window.")
                     .font(.system(size: 14)).foregroundStyle(Clinical.secondary)

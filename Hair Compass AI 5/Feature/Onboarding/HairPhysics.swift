@@ -23,7 +23,16 @@ struct HairSim {
     private var spawnAcc: CGFloat = 0
 
     static let maxStrands = 220
-    static func spawnRate(_ i: CGFloat) -> CGFloat { 1.1 + i * i * 22 }   // strands/sec
+    // Low/mid intensity raised (UX audit #7 — onboarding step 5 opens at the default
+    // intensity 0.34 and previously read as empty/broken). Blending a sqrt term into the
+    // original quadratic curve keeps both endpoints exactly pinned — i=0 stays ~1.1
+    // strands/sec (still sparse for "Minimal"), i=1 stays exactly 23.1 (top end unchanged,
+    // per spec) — while lifting the low/mid range substantially: i=0.34 goes from ~3.6 to
+    // ~11.8 strands/sec. Verified with a python3 replay of the spawn/fall/removal loop across
+    // small-to-large device heights (500–850pt): concurrent strands alive at i=0.34 land
+    // between ~15.7 and ~21.2 (was ~4.9–6.6), comfortably past the "~15+" target, and
+    // concurrent count at i=1 is numerically identical to the original curve.
+    static func spawnRate(_ i: CGFloat) -> CGFloat { 1.1 + (0.6 * i.squareRoot() + 0.4 * i) * 22 }   // strands/sec
     static func gravity(_ i: CGFloat) -> CGFloat { 620 + i * 640 }        // pt/s²
     static func sway(_ i: CGFloat) -> CGFloat { 46 + i * 95 }             // lateral amplitude
 
