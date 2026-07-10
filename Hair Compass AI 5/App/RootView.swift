@@ -51,7 +51,9 @@ struct RootView: View {
 
     private var profile: Profile? { profiles.first }
     private var widgetFingerprint: String {
-        "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)"
+        let latestEntry = entries.first.map { "\($0.shedRaw)-\($0.flaking)-\($0.erythema)-\($0.itch)" } ?? "none"
+        let activeTreatments = treatments.filter(\.isActive).count
+        return "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)"
     }
 
     private static var initialTab: AppTab {

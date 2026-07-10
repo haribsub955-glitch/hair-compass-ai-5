@@ -77,7 +77,7 @@ final class HealthKitService: SignalSource {
         snapshot.dietaryProteinG = await protein
         snapshot.updatedAt = .now
         lastRefresh = .now
-        return snapshot.hasAnyValue ? snapshot : snapshot
+        return snapshot.hasAnyValue ? snapshot : nil
         #else
         return nil
         #endif
@@ -86,9 +86,11 @@ final class HealthKitService: SignalSource {
     // MARK: - Persistence
 
     private func upsertToday(context: ModelContext) -> HealthSnapshot {
-        let start = Calendar.current.startOfDay(for: .now)
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: .now)
+        let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: start) ?? start
         let descriptor = FetchDescriptor<HealthSnapshot>(
-            predicate: #Predicate { $0.date >= start },
+            predicate: #Predicate { $0.date >= start && $0.date < startOfTomorrow },
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
         if let existing = try? context.fetch(descriptor).first {

@@ -55,9 +55,11 @@ final class CameraCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
 
     // MARK: Capture
 
-    /// Captures a single still and returns it upright, or nil on failure.
+    /// Captures a single still and returns it upright, or nil on failure. Guarded against
+    /// re-entrant calls — a second `capture()` while one is already in flight would otherwise
+    /// clobber the stored continuation and leak the first caller's `await` forever.
     func capture() async -> UIImage? {
-        guard hasCamera, isRunning else { return nil }
+        guard hasCamera, isRunning, captureContinuation == nil else { return nil }
         return await withCheckedContinuation { continuation in
             self.captureContinuation = continuation
             let settings = AVCapturePhotoSettings()
@@ -72,8 +74,9 @@ final class CameraCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
                                  error: Error?) {
         let image = photo.fileDataRepresentation().flatMap { UIImage(data: $0) }
         Task { @MainActor in
-            self.captureContinuation?.resume(returning: image)
+            let continuation = self.captureContinuation
             self.captureContinuation = nil
+            continuation?.resume(returning: image)
         }
     }
 

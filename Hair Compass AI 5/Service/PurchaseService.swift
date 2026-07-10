@@ -75,12 +75,12 @@ extension Product {
     /// non-subscription products or periods StoreKit reports as zero-length.
     var monthlyEquivalentDisplay: String? {
         guard let period = subscription?.subscriptionPeriod else { return nil }
-        let months: Int
+        let months: Double
         switch period.unit {
-        case .year: months = period.value * 12
-        case .month: months = period.value
-        case .week: months = max(1, period.value / 4)
-        case .day: months = max(1, period.value / 30)
+        case .year: months = Double(period.value) * 12
+        case .month: months = Double(period.value)
+        case .week: months = Double(period.value) * 7 / 30.44
+        case .day: months = Double(period.value) / 30.44
         @unknown default: return nil
         }
         guard months > 0 else { return nil }
