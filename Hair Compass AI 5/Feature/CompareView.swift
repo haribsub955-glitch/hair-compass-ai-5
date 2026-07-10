@@ -271,9 +271,17 @@ struct CompareView: View {
 
     private var cutoff: Date { Calendar.current.date(byAdding: .day, value: -window.days, to: .now) ?? .now }
 
+    private var windowedEntries: [DailyEntry] {
+        entries.filter { $0.date >= cutoff }
+    }
+
+    private var windowedSnapshots: [HealthSnapshot] {
+        snapshots.filter { $0.date >= cutoff }
+    }
+
     private func series(for id: String) -> [(day: Date, value: Double)] {
-        let e = entries.filter { $0.date >= cutoff }
-        let s = snapshots.filter { $0.date >= cutoff }
+        let e = windowedEntries
+        let s = windowedSnapshots
         let pairs: [(Date, Double)]
         switch id {
         case "shed": pairs = e.map { ($0.date, Double($0.shed.rawValue)) }

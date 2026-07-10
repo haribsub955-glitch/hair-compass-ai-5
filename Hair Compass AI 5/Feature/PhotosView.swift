@@ -151,7 +151,7 @@ struct PhotosView: View {
 
     private func thumbImage(_ record: PhotoRecord) -> some View {
         Group {
-            if let image = PhotoStore.shared.load(record.imagePath) {
+            if let image = PhotoStore.shared.loadThumbnail(record.imagePath, maxPixel: 960) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Clinical.canvas.overlay(Image(systemName: "photo").foregroundStyle(Clinical.tertiary))
@@ -187,7 +187,7 @@ struct PhotosView: View {
         Color.clear
             .aspectRatio(3.0 / 4.0, contentMode: .fit)
             .overlay {
-                if let image = PhotoStore.shared.load(record.imagePath) {
+                if let image = PhotoStore.shared.loadThumbnail(record.imagePath, maxPixel: 540) {
                     Image(uiImage: image).resizable().scaledToFill()
                 } else {
                     Clinical.canvas.overlay(Image(systemName: "photo").foregroundStyle(Clinical.tertiary))

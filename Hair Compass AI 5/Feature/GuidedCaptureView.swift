@@ -36,7 +36,7 @@ struct GuidedCaptureView: View {
     }
 
     private var lastForRegion: PhotoRecord? { allPhotos.first { $0.region == region } }
-    private var ghostImage: UIImage? { lastForRegion.flatMap { PhotoStore.shared.load($0.imagePath) } }
+    private var ghostImage: UIImage? { lastForRegion.flatMap { PhotoStore.shared.loadThumbnail($0.imagePath, maxPixel: 900) } }
 
     var body: some View {
         NavigationStack {

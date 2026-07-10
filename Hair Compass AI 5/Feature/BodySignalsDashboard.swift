@@ -219,9 +219,16 @@ struct BodySignalsDashboard: View {
         BodySignalsMath.windowedSeries(samples(for: signal), windowDays: windowDays)
     }
 
+    private var seriesCache: [BodySignal: [MetricPoint]] {
+        Dictionary(uniqueKeysWithValues: BodySignal.allCases.map { signal in
+            (signal, series(for: signal))
+        })
+    }
+
     /// Only metrics with enough readings to draw a trend — the rest simply don't appear.
     private var visibleSignals: [BodySignal] {
-        BodySignal.allCases.filter { series(for: $0).count >= 2 }
+        let cache = seriesCache
+        return BodySignal.allCases.filter { (cache[$0]?.count ?? 0) >= 2 }
     }
 
     private var massSamples: [(date: Date, massKg: Double)] {
@@ -274,7 +281,7 @@ struct BodySignalsDashboard: View {
     // MARK: Signal row
 
     private func signalRow(_ signal: BodySignal) -> some View {
-        let series = series(for: signal)
+        let series = seriesCache[signal] ?? []
         let latest = series.last?.value
         let delta = BodySignalsMath.delta(samples(for: signal), windowDays: windowDays)
         let rapidChip = signal == .weight ? BodySignalsMath.rapidLossChip(massSamples: massSamples) : nil

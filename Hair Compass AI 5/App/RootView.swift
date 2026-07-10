@@ -73,7 +73,6 @@ struct RootView: View {
                 case .photos: PhotosView()
                 }
             }
-            .id(tab)
             .transition(tabTransition)
         }
         // Design V2: a quiet crossfade/settle connects destinations while the matched tab pill

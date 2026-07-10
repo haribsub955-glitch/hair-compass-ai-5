@@ -1,3 +1,4 @@
+import ImageIO
 import UIKit
 
 /// Saves JPEGs to the app's Documents directory and returns a relative path.
@@ -5,6 +6,8 @@ import UIKit
 final class PhotoStore {
     static let shared = PhotoStore()
     private init() {}
+
+    private let cache = NSCache<NSString, UIImage>()
 
     private var directory: URL {
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -33,6 +36,36 @@ final class PhotoStore {
         let url = directory.appendingPathComponent(path)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return UIImage(data: data)
+    }
+
+    /// Loads a downsampled thumbnail for list/grid display without decoding the full source image.
+    func loadThumbnail(_ path: String, maxPixel: CGFloat = 640) -> UIImage? {
+        guard !path.isEmpty else { return nil }
+        let key = "\(path)-\(Int(maxPixel))" as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+
+        let url = directory.appendingPathComponent(path)
+        let options: [CFString: Any] = [
+            kCGImageSourceShouldCache: false
+        ]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, options as CFDictionary) else {
+            return load(path)
+        }
+
+        let thumbOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(1, maxPixel)
+        ]
+
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) else {
+            return load(path)
+        }
+
+        let image = UIImage(cgImage: cgImage)
+        cache.setObject(image, forKey: key)
+        return image
     }
 
     func delete(_ path: String) {

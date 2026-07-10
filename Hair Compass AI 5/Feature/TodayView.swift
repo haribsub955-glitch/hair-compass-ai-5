@@ -231,7 +231,7 @@ struct TodayView: View {
         var seen = Set<PhotoRegion>()
         var images: [UIImage] = []
         for record in photos where !seen.contains(record.region) {
-            if let image = PhotoStore.shared.load(record.imagePath) {
+            if let image = PhotoStore.shared.loadThumbnail(record.imagePath, maxPixel: 1024) {
                 images.append(image)
                 seen.insert(record.region)
             }
