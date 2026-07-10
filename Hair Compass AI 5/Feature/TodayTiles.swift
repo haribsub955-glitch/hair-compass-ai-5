@@ -7,7 +7,8 @@ import SwiftUI
 // MARK: - Conditions hero
 
 /// Full-bleed living hero: canvas→surface wash, the falling-hair simulation as backdrop, and a
-/// big serif band word as the "temperature". Greeting/date/streak stay small around it.
+/// big serif band word as the "temperature". Greeting/date/streak stay small around it. The
+/// scene doubles as a drag-to-set input when `onShedSet` is supplied (see `sceneLayer`).
 struct ConditionsHero: View {
     var shed: ShedLevel?
     var scalpTotal: Int?
@@ -15,10 +16,24 @@ struct ConditionsHero: View {
     var hasLoggedToday = false
     let greeting: String
     let streak: Int
-    /// Optional gamification level name ("Sapling") appended to the streak chip — effort-only.
+    /// Optional gamification level name ("Sapling") shown in the XP chip — effort-only.
     var levelName: String? = nil
     var onOpenBaseline: () -> Void
     var onLog: () -> Void
+    /// Total XP — display only; this view never awards points, it only reflects them.
+    var xp: Int
+    /// Fraction (0…1) of the way to the next level (`GamificationLevel.progressToNext(xp:).fraction`).
+    var levelProgress: Double
+    /// Drag-to-set callback. When nil, the scene stays passive — no gesture, no accessibility
+    /// adjustable action, no rail-chip affordance (used by previews and any non-interactive host).
+    var onShedSet: ((ShedLevel) -> Void)? = nil
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Transient live value while a finger is on the scene — overrides the entry-driven
+    /// intensity so the falling-hair simulation and band word track the drag in real time.
+    /// Cleared on release, at which point the display falls back to `heroIntensity`, which by
+    /// then reflects the just-saved value.
+    @State private var dragIntensity: CGFloat?
 
     /// Raw categorical intensity. `SheddingStatusScene` owns the small visual floor and adds a
     /// deterministic resting collection, so the saved status feels identical to the one chosen
@@ -27,26 +42,17 @@ struct ConditionsHero: View {
         CGFloat(shed?.rawValue ?? 0) / 3
     }
 
+    /// What the scene and band word actually display: the live drag value while a finger is
+    /// down, otherwise whatever today's entry says.
+    private var displayIntensity: CGFloat {
+        dragIntensity ?? heroIntensity
+    }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             LinearGradient(colors: [Clinical.canvas, Clinical.surface],
                            startPoint: .top, endPoint: .bottom)
-            SheddingStatusScene(intensity: heroIntensity, showsCollection: shed != nil)
-                // Keep motion out of the greeting/profile zone. The simulation becomes visible
-                // below the header, so decorative strands never cross the user's name.
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .clear, location: 0.20),
-                            .init(color: .black, location: 0.36),
-                            .init(color: .black, location: 1),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .allowsHitTesting(false)
+            sceneLayer
             // Legibility scrim: soft at the top (greeting), stronger at the bottom (band word),
             // clear through the middle so the simulation stays the hero.
             LinearGradient(stops: [
@@ -57,12 +63,122 @@ struct ConditionsHero: View {
             ], startPoint: .top, endPoint: .bottom)
             .allowsHitTesting(false)
             content
+            if onShedSet != nil {
+                // Decorative only — allowsHitTesting(false) so it never competes with the
+                // scene's own drag gesture underneath it.
+                dragRailChip
+                    .padding(.top, 74)
+                    .padding(.trailing, 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .allowsHitTesting(false)
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 304, alignment: .topLeading)
         .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 28, bottomTrailingRadius: 28,
                                           style: .continuous))
         .shadow(color: Clinical.cardShadow, radius: 14, y: 6)
     }
+
+    // MARK: - Scene (backdrop + drag-to-set)
+
+    /// The falling-hair backdrop. Passive (`allowsHitTesting(false)`, no gesture) when
+    /// `onShedSet` is nil. Otherwise this exact subview — which sits entirely inside the hero's
+    /// own bounds at the very top of the page — is the drag-to-set surface: a vertical
+    /// `DragGesture` attached only here, never to the outer hero container or the ScrollView, so
+    /// page scrolling initiated anywhere else (i.e. almost the whole screen, since the hero is a
+    /// fixed ~304pt band) is completely unaffected. See ConditionsHero doc + Task C5 in the plan.
+    private var sceneLayer: some View {
+        Group {
+            if let onShedSet {
+                GeometryReader { geo in
+                    SheddingStatusScene(
+                        intensity: displayIntensity,
+                        showsCollection: dragIntensity != nil || shed != nil
+                    )
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .contentShape(Rectangle())
+                    .gesture(dragGesture(height: geo.size.height, set: onShedSet))
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Today's shedding")
+                .accessibilityValue(shed?.title ?? "Not logged")
+                .accessibilityAdjustableAction { direction in
+                    let current = shed?.rawValue ?? ShedLevel.normal.rawValue
+                    switch direction {
+                    case .increment: setBand(current + 1, set: onShedSet)
+                    case .decrement: setBand(current - 1, set: onShedSet)
+                    @unknown default: break
+                    }
+                }
+            } else {
+                SheddingStatusScene(intensity: displayIntensity, showsCollection: shed != nil)
+                    .allowsHitTesting(false)
+            }
+        }
+        // Keep motion out of the greeting/profile zone. The simulation becomes visible
+        // below the header, so decorative strands never cross the user's name. (This is a
+        // rendering-only mask — SwiftUI does not restrict hit-testing to the opaque region —
+        // so the drag gesture above still recognizes touches anywhere in the full frame.)
+        .mask(
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .clear, location: 0.20),
+                    .init(color: .black, location: 0.36),
+                    .init(color: .black, location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+
+    private func dragGesture(height: CGFloat, set: @escaping (ShedLevel) -> Void) -> some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { value in
+                guard height > 0 else { return }
+                let previousBand = SheddingDial.band(dragIntensity ?? heroIntensity)
+                let clamped = min(1, max(0, 1 - value.location.y / height))
+                dragIntensity = clamped
+                if SheddingDial.band(clamped) != previousBand {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                }
+            }
+            .onEnded { value in
+                let clamped = dragIntensity ?? min(1, max(0, 1 - value.location.y / height))
+                set(SheddingDial.shedLevel(clamped))
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                dragIntensity = nil
+            }
+    }
+
+    /// VoiceOver adjustable-action path — a discrete step rather than a continuous drag, mirrors
+    /// `ShedDialField.setBand`'s band mutation (minus the local-state animation, since this view
+    /// has no authoritative intensity of its own outside a live drag).
+    private func setBand(_ band: Int, set: (ShedLevel) -> Void) {
+        let clamped = min(3, max(0, band))
+        guard let level = ShedLevel(rawValue: clamped) else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+        set(level)
+    }
+
+    /// Trailing vertical "drag rail" affordance — chevron/SET/chevron — so the gesture is
+    /// discoverable. Mirrors ShedDialField's "Live portrait" chip styling.
+    private var dragRailChip: some View {
+        VStack(spacing: 5) {
+            Image(systemName: "chevron.up").font(.system(size: 10, weight: .semibold))
+            Text("SET").font(Clinical.eyebrow(9)).tracking(1.0)
+            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(Clinical.tertiary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 10)
+        .background(Clinical.surface.opacity(0.82), in: Capsule())
+        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+        .accessibilityHidden(true)
+    }
+
+    // MARK: - Foreground content
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -86,41 +202,72 @@ struct ConditionsHero: View {
             Spacer(minLength: 12)
             VStack(alignment: .leading, spacing: 8) {
                 Eyebrow(text: "Today's shedding")
-                if let shed {
+                if let shed, dragIntensity == nil {
                     let reflection = SheddingReflection.make(band: shed.rawValue)
-                    Text(shed.title)
-                        .font(Clinical.headline(50)).foregroundStyle(Clinical.ink)
-                        .lineLimit(1).minimumScaleFactor(0.55)
-                        .contentTransition(.opacity)
-                        .animation(.easeOut(duration: 0.25), value: shed)
-                    Text(reflection.detail)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Clinical.secondary)
-                        .lineLimit(2)
-                        .contentTransition(.opacity)
-                        .animation(.easeOut(duration: 0.25), value: shed)
-                    if let scalpTotal, let scalpBand {
-                        Text("Scalp \(scalpTotal)/16 · \(scalpBand.title)")
-                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-                    }
-                    HStack(spacing: 8) {
-                        streakChip
-                        Spacer(minLength: 0)
-                        logButton
-                    }
+                    bandWordText(shed.title)
+                    subtitleText(reflection.detail)
+                    scalpLine
+                    chipRow
+                } else if let dragIntensity {
+                    // Live preview while the finger is down — same slot the saved band word
+                    // occupies, so nothing reflows when the drag ends.
+                    let caption = SheddingDial.bandCaption(dragIntensity)
+                    bandWordText(caption.0)
+                    subtitleText(caption.1.prefix(1).uppercased() + caption.1.dropFirst())
+                    scalpLine
+                    chipRow
                 } else {
-                    Text("Not logged")
+                    Text(onShedSet != nil ? "Not logged — drag to set" : "Not logged")
                         .font(Clinical.headline(44)).foregroundStyle(Clinical.tertiary)
-                        .lineLimit(1).minimumScaleFactor(0.55)
-                    HStack(spacing: 8) {
-                        streakChip
-                        Spacer(minLength: 0)
-                        logButton
-                    }
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                    chipRow
                 }
             }
         }
         .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 20)
+    }
+
+    /// Drives the band-word crossfade — the live drag band while dragging (so crossing a
+    /// threshold mid-drag still gets ShedDialField's characteristic eased swap), otherwise the
+    /// saved band. Mirrors ShedDialField's `previewPanel`, whose `.animation(value: band)` fires
+    /// on both live drags and settled taps for the same reason.
+    private var currentBand: Int {
+        if let dragIntensity { return SheddingDial.band(dragIntensity) }
+        return shed?.rawValue ?? -1
+    }
+
+    private func bandWordText(_ text: String) -> some View {
+        Text(text)
+            .font(Clinical.headline(50)).foregroundStyle(Clinical.ink)
+            .lineLimit(1).minimumScaleFactor(0.55)
+            .contentTransition(.opacity)
+            .animation(.easeOut(duration: 0.25), value: currentBand)
+    }
+
+    private func subtitleText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(Clinical.secondary)
+            .lineLimit(2)
+            .contentTransition(.opacity)
+            .animation(.easeOut(duration: 0.25), value: currentBand)
+    }
+
+    @ViewBuilder
+    private var scalpLine: some View {
+        if let scalpTotal, let scalpBand {
+            Text("Scalp \(scalpTotal)/16 · \(scalpBand.title)")
+                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+        }
+    }
+
+    private var chipRow: some View {
+        HStack(spacing: 8) {
+            streakChip
+            xpChip
+            Spacer(minLength: 0)
+            logButton
+        }
     }
 
     private var logButton: some View {
@@ -139,14 +286,66 @@ struct ConditionsHero: View {
     }
 
     private var streakChip: some View {
-        Label(
-            levelName.map { "\(streak)-day streak · \($0)" } ?? "\(streak)-day streak",
-            systemImage: "flame.fill"
-        )
+        Label("\(streak)-day streak", systemImage: "flame.fill")
             .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
             .padding(.horizontal, 12).padding(.vertical, 7)
             .background(Clinical.surface.opacity(0.85), in: Capsule())
             .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+    }
+
+    /// Ring (progress to next level) + XP total + level name, all in one chip so the row stays
+    /// to one line. `.numericText()` only wraps the number itself, so a level-up's longer name
+    /// doesn't fight the digit-roll transition.
+    private var xpChip: some View {
+        HStack(spacing: 6) {
+            XPProgressRing(progress: levelProgress)
+            HStack(spacing: 2) {
+                Text("\(xp)")
+                    .contentTransition(.numericText())
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: xp)
+                Text("XP" + (levelName.map { " · \($0)" } ?? ""))
+            }
+            .font(Clinical.eyebrow(10))
+            .foregroundStyle(Clinical.accent)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(Clinical.surface.opacity(0.85), in: Capsule())
+        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(levelName.map { "\(xp) XP, \($0) level" } ?? "\(xp) XP")
+    }
+}
+
+/// Small copper progress ring — accent fill on an accentSoft track, same language as
+/// `MedsArcRing` below but sized for an inline chip. Draws once with a spring on appear (instant
+/// under Reduce Motion); later XP changes spring to the new fraction.
+private struct XPProgressRing: View {
+    let progress: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    var body: some View {
+        let clamped = max(0, min(1, progress))
+        ZStack {
+            Circle().stroke(Clinical.accentSoft, lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: shown ? clamped : 0)
+                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 16, height: 16)
+        .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.8), value: clamped)
+        .onAppear {
+            guard !shown else { return }
+            if reduceMotion {
+                shown = true
+            } else {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { shown = true }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

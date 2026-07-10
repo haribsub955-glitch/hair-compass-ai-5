@@ -40,11 +40,15 @@ struct TodayView: View {
         HairAnalytics.loggingStreak(entryDates: entries.map(\.date))
     }
 
-    /// Effort-only gamification level ("Sapling") shown beside the streak in the hero.
+    /// Total XP — a pure fold over the tracking data, hoisted so the hero's level name and its
+    /// XP chip (with progress-to-next ring) share one computation.
+    private var xpTotal: Int {
+        XP.total(entries: entries, doses: doses, photos: photos, labs: labs, triggers: triggers)
+    }
+
+    /// Effort-only gamification level ("Sapling") shown in the hero's XP chip.
     private var levelName: String {
-        GamificationLevel.level(for: XP.total(
-            entries: entries, doses: doses, photos: photos, labs: labs, triggers: triggers
-        )).name
+        GamificationLevel.level(for: xpTotal).name
     }
 
     /// Today's HealthKit sleep hours, if the sync service has cached a snapshot for today.
@@ -77,7 +81,18 @@ struct TodayView: View {
                     streak: streak,
                     levelName: levelName,
                     onOpenBaseline: onOpenBaseline,
-                    onLog: { showLog = true }
+                    onLog: { showLog = true },
+                    xp: xpTotal,
+                    levelProgress: GamificationLevel.progressToNext(xp: xpTotal).fraction,
+                    onShedSet: { level in
+                        // Quiet by design — a drag-set upserts today's entry directly, with no
+                        // celebration sheet. Streak/XP queries refresh naturally from the write.
+                        if let entry = todayEntry {
+                            entry.shed = level
+                        } else {
+                            context.insert(DailyEntry(date: .now, shed: level))
+                        }
+                    }
                 )
                 .staggeredEntrance(index: 0)
                 VStack(alignment: .leading, spacing: 16) {
