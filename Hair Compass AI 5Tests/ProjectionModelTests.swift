@@ -38,3 +38,45 @@ import Testing
         }
     }
 }
+
+@Test func everyConditionAndSexGetsASevenPointDifferenceCurve() {
+    for c in HairCondition.allCases {
+        for s in BiologicalSex.allCases {
+            let p = ProjectionModel.make(condition: c, sex: s)
+            #expect(p.differenceCurve.count == 7)
+        }
+    }
+}
+
+@Test func differenceCurveTrackingRisesMonotonicallyToOne() {
+    for c in HairCondition.allCases {
+        for s in BiologicalSex.allCases {
+            let curve = ProjectionModel.make(condition: c, sex: s).differenceCurve
+            let tracking = curve.map(\.withTracking)
+            #expect(tracking == tracking.sorted())  // monotonic non-decreasing
+            #expect(abs((tracking.last ?? 0) - 1.0) < 0.001)
+        }
+    }
+}
+
+@Test func differenceCurveWithoutStaysLowFlatAndNeverNegative() {
+    for c in HairCondition.allCases {
+        for s in BiologicalSex.allCases {
+            let curve = ProjectionModel.make(condition: c, sex: s).differenceCurve
+            for point in curve {
+                #expect(point.without >= 0)
+                #expect(point.without <= 0.15)
+            }
+        }
+    }
+}
+
+@Test func differenceCurveSpansZeroToTwentyFourWeeks() {
+    for c in HairCondition.allCases {
+        for s in BiologicalSex.allCases {
+            let curve = ProjectionModel.make(condition: c, sex: s).differenceCurve
+            #expect(curve.first?.week == 0)
+            #expect(curve.last?.week == 24)
+        }
+    }
+}

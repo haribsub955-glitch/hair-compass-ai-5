@@ -65,6 +65,7 @@ struct OnboardingPlanStep: View {
     private var projectionCard: some View {
         ClinicalCard {
             VStack(alignment: .leading, spacing: 14) {
+                projectionBanner
                 Eyebrow(text: "Projection")
                 Text(model.headline)
                     .font(Clinical.headline(19))
@@ -75,6 +76,8 @@ struct OnboardingPlanStep: View {
                 } else {
                     milestoneTimeline(model.milestones)
                 }
+
+                differenceChart(model.differenceCurve)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(model.citation)
@@ -87,6 +90,22 @@ struct OnboardingPlanStep: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    /// Full-bleed gouache banner across the card's top edge — decorative and honest (no
+    /// hair-regrowth or before/after imagery). Negative padding cancels the card's own 18pt inset
+    /// for just this child so it reaches all three top edges; `ClinicalCard`'s outer 22pt corner
+    /// clip then rounds the banner's top corners to match the card.
+    private var projectionBanner: some View {
+        Image("onboard-difference")
+            .resizable()
+            .scaledToFill()
+            .frame(height: 132)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .padding(.horizontal, -18)
+            .padding(.top, -18)
+            .accessibilityHidden(true)
     }
 
     private func evidenceChart(_ curve: [ProjectionModel.CurvePoint]) -> some View {
@@ -134,6 +153,76 @@ struct OnboardingPlanStep: View {
             }
         }
         .accessibilityLabel("Projected hair density change through 24 weeks, from published averages, not a prediction of your results")
+    }
+
+    /// The universal "tracking vs guessing" illustration — shown for EVERY profile, unlike
+    /// `evidenceChart` which only exists for male AGA. Honesty rule: the y-axis is explicitly
+    /// "signal clarity", never hair count — tracking doesn't grow hair, it's how you see whether
+    /// a plan is working. Fixed to a 0…1 domain so the copper "tracking" line visibly rises while
+    /// the dashed grey "guessing" line reads as flat and low, never negative.
+    private func differenceChart(_ curve: [ProjectionModel.DifferencePoint]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Signal clarity (illustrative)")
+                .font(.system(size: 11))
+                .foregroundStyle(Clinical.tertiary)
+
+            Chart {
+                // Explicit `series:` on both mark groups — LineMarks without it merge into ONE
+                // series and draw a single zigzag line in one color (see docs/DesignSystem.md
+                // Swift Charts note; this bit the CheckIns chart before the rebuild too).
+                ForEach(curve, id: \.week) { p in
+                    LineMark(x: .value("Week", p.week), y: .value("Tracking daily", p.withTracking),
+                             series: .value("Series", "tracking"))
+                        .interpolationMethod(.monotone)
+                        .lineStyle(StrokeStyle(lineWidth: 2.5))
+                        .foregroundStyle(Clinical.accent)
+                }
+                ForEach(curve, id: \.week) { p in
+                    LineMark(x: .value("Week", p.week), y: .value("Guessing", p.without),
+                             series: .value("Series", "guessing"))
+                        .interpolationMethod(.monotone)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [4, 4]))
+                        .foregroundStyle(Clinical.tertiary)
+                }
+            }
+            .frame(height: 140)
+            .chartYScale(domain: 0...1)
+            .chartYAxis(.hidden)
+            .chartXAxis {
+                AxisMarks(values: [0, 12, 24]) { value in
+                    AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
+                    AxisValueLabel {
+                        if let w = value.as(Int.self) {
+                            Text("W\(w)").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                        }
+                    }
+                }
+            }
+            .accessibilityLabel("Illustrative signal clarity: rises steadily while tracking daily, stays low and flat while guessing. Not a prediction of hair count or results.")
+
+            HStack(spacing: 14) {
+                differenceLegendKey(color: Clinical.accent, dashed: false, label: "Tracking daily")
+                differenceLegendKey(color: Clinical.tertiary, dashed: true, label: "Guessing")
+            }
+        }
+    }
+
+    /// A small inline swatch + label — deliberately not `.chartLegend()`, so the two rows read as
+    /// plain body content rather than a chart-owned legend.
+    private func differenceLegendKey(color: Color, dashed: Bool, label: String) -> some View {
+        HStack(spacing: 5) {
+            if dashed {
+                HStack(spacing: 2) {
+                    Capsule().fill(color).frame(width: 5, height: 2)
+                    Capsule().fill(color).frame(width: 5, height: 2)
+                }
+            } else {
+                Capsule().fill(color).frame(width: 14, height: 3)
+            }
+            Text(label)
+                .font(Clinical.eyebrow(9))
+                .foregroundStyle(Clinical.secondary)
+        }
     }
 
     private func milestoneTimeline(_ milestones: [ProjectionModel.Milestone]) -> some View {
