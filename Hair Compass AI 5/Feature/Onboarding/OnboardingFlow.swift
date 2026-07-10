@@ -1,9 +1,10 @@
 import SwiftData
 import SwiftUI
 
-/// The cinematic first-run. Nine screens that demonstrate rather than ask; each writes the same
-/// `Profile` fields as the plain BaselineFlow (which stays as the editable profile). The answer
-/// drives the physics — the shedding dial *is* the falling-hair simulation.
+/// The cinematic first-run. 14 screens that demonstrate rather than ask; each writes the same
+/// `Profile`/`DailyEntry`/`TriggerEvent` fields as the plain BaselineFlow (which stays as the
+/// editable profile). The answer drives the physics — the shedding dial *is* the falling-hair
+/// simulation.
 struct OnboardingFlow: View {
     @Bindable var profile: Profile
     var onFinish: () -> Void
@@ -12,15 +13,26 @@ struct OnboardingFlow: View {
     var onDismiss: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
+    @Environment(HealthKitService.self) private var healthKit
     @State private var step = OnboardingFlow.initialStep
     @State private var shedIntensity: CGFloat = 0.34
 
-    private let total = 9   // 0 welcome … 8 finale
+    // Status questions (steps 6–8) — feed the day-one seed and the paywall's personalized line.
+    @State private var oiliness = 0      // 0–3
+    @State private var flaking = 0       // 0–3
+    @State private var itch = 0          // 0–3
+    @State private var stress = 3        // 1–5
+    @State private var sleepQuality = 3  // 1–5
+    @State private var selectedTriggers = Set<TriggerType>()
+
+    @FocusState private var nameFocused: Bool
+
+    private let total = 14   // 0 welcome … 13 finale
 
     private static var initialStep: Int {
         #if DEBUG
         let a = ProcessInfo.processInfo.arguments
-        if let i = a.firstIndex(of: "HC_ONBOARD_STEP"), i + 1 < a.count, let n = Int(a[i + 1]) { return max(0, min(8, n)) }
+        if let i = a.firstIndex(of: "HC_ONBOARD_STEP"), i + 1 < a.count, let n = Int(a[i + 1]) { return max(0, min(13, n)) }
         #endif
         return 0
     }
@@ -42,7 +54,9 @@ struct OnboardingFlow: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            if step > 0 && step < total - 1 {
+            // The paywall (12) is a forward-or-through screen — no back button, "Continue free"
+            // is the honest exit.
+            if step > 0 && step < total - 1 && step != 12 {
                 Button { back() } label: {
                     Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold)).foregroundStyle(Clinical.ink)
                 }
@@ -74,8 +88,13 @@ struct OnboardingFlow: View {
         case 3: ageStep
         case 4: concernStep
         case 5: sheddingStep
-        case 6: familyStep
-        case 7: habitsStep
+        case 6: scalpFeelStep
+        case 7: stressSleepStep
+        case 8: triggersStep
+        case 9: familyStep
+        case 10: habitsStep
+        case 11: healthConnectStep
+        case 12: OnboardingPlanStep(profile: profile) { next() }
         default: finale
         }
     }
@@ -84,16 +103,28 @@ struct OnboardingFlow: View {
 
     private func next() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        nameFocused = false
         withAnimation(.easeInOut(duration: 0.35)) { step = min(total - 1, step + 1) }
     }
-    private func back() { withAnimation(.easeInOut(duration: 0.3)) { step = max(0, step - 1) } }
+    private func back() {
+        nameFocused = false
+        withAnimation(.easeInOut(duration: 0.3)) { step = max(0, step - 1) }
+    }
 
     private func finish() {
-        // Seed today's shedding from the dial so day one has data.
+        // Seed today's full status (shedding + scalp + stress/sleep) so day one has data, plus
+        // one TriggerEvent per recent trigger the user flagged.
         let today = Calendar.current.startOfDay(for: .now)
         let hasToday = (try? context.fetch(FetchDescriptor<DailyEntry>(predicate: #Predicate { $0.date >= today })))?.isEmpty == false
         if !hasToday {
-            context.insert(DailyEntry(date: .now, shed: SheddingDial.shedLevel(shedIntensity)))
+            context.insert(OnboardingSeed.dayOneEntry(
+                shedIntensity: shedIntensity,
+                oiliness: oiliness, flaking: flaking, itch: itch,
+                stress: stress, sleepQuality: sleepQuality
+            ))
+        }
+        for event in OnboardingSeed.triggerEvents(selectedTriggers) {
+            context.insert(event)
         }
         profile.hasOnboarded = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -135,6 +166,8 @@ struct OnboardingFlow: View {
         }
     }
 
+    private var nameValid: Bool { profile.name.trimmingCharacters(in: .whitespaces).count >= 2 }
+
     private var nameStep: some View {
         VStack(spacing: 0) {
             head("About you", "What should we call you?")
@@ -142,15 +175,22 @@ struct OnboardingFlow: View {
             TextField("Your name", text: $profile.name)
                 .textFieldStyle(.plain).font(Clinical.headline(26)).foregroundStyle(Clinical.ink)
                 .multilineTextAlignment(.center).padding(.horizontal, 20)
+                .focused($nameFocused)
+                .submitLabel(.continue)
+                .onSubmit { if nameValid { next() } }
                 .accessibilityIdentifier("onboardName")
             Spacer(); Spacer()
-            primary("Continue", enabled: profile.name.trimmingCharacters(in: .whitespaces).count >= 2) { next() }
+            primary("Continue", enabled: nameValid) { next() }
+        }
+        .onAppear {
+            // Delay lets the step transition settle before the keyboard animates in.
+            Task { try? await Task.sleep(for: .milliseconds(450)); nameFocused = true }
         }
     }
 
     private var sexStep: some View {
         VStack(spacing: 0) {
-            head("About you", "Your biological sex", "It sets the staging scale we compare against.")
+            head("About you", "Your biological sex", "Men and women thin in different patterns — this picks the right map for yours.")
             StagingScalePreview(sex: profile.sex)
                 .padding(.horizontal, 20).padding(.top, 8)
             Spacer()
@@ -198,21 +238,27 @@ struct OnboardingFlow: View {
 
     private var concernStep: some View {
         VStack(spacing: 0) {
-            head("What are you noticing?", "Tell us what you see")
+            head("What are you noticing?", "Pick the closest match", "Plain words — the clinical name is underneath. You can change this anytime.")
             ConditionDemo(condition: profile.condition)
                 .frame(height: 190).frame(maxWidth: .infinity)
                 .background(Clinical.surface).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
                 .padding(.horizontal, 20).padding(.top, 12)
+            Text(profile.condition.demoCaption)
+                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                .contentTransition(.opacity)
+                .padding(.horizontal, 20).padding(.top, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 8) {
                     ForEach(HairCondition.allCases) { c in
                         let on = profile.condition == c
                         Button { withAnimation(.easeInOut(duration: 0.3)) { profile.condition = c }; UISelectionFeedbackGenerator().selectionChanged() } label: {
                             HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(c.title).font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
-                                    Text(c.summary).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(c.plainTitle).font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                                    Text(c.title.uppercased()).font(Clinical.eyebrow(10)).tracking(1.0).foregroundStyle(Clinical.tertiary)
+                                    Text(c.plainSummary).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
                                 }
                                 Spacer()
                                 Image(systemName: on ? "largecircle.fill.circle" : "circle").foregroundStyle(on ? Clinical.accent : Clinical.tertiary)
@@ -247,6 +293,83 @@ struct OnboardingFlow: View {
                     .frame(width: 74).frame(maxHeight: 380)
                     .padding(.trailing, 18)
             }
+        }
+    }
+
+    private var scalpFeelStep: some View {
+        VStack(spacing: 0) {
+            head("Your scalp", "How does your scalp feel?", "Day to day, on average.")
+            Spacer()
+            VStack(spacing: 22) {
+                BandChipRow(title: "Oiliness", bands: ["Dry", "Balanced", "Oily", "Very oily"], value: $oiliness)
+                BandChipRow(title: "Flaking", bands: ["None", "A little", "Visible", "Heavy"], value: $flaking)
+                BandChipRow(title: "Itch", bands: ["None", "Mild", "Comes and goes", "Constant"], value: $itch)
+            }.padding(.horizontal, 20)
+            Spacer()
+            primary("Continue") { next() }
+        }
+    }
+
+    private var stressSleepStep: some View {
+        VStack(spacing: 0) {
+            head("Lifestyle", "Stress and sleep lately?", "Both can show up in your hair 2–3 months later.")
+            Spacer()
+            VStack(spacing: 22) {
+                BandChipRow(
+                    title: "Stress",
+                    bands: ["Very low", "Low", "Medium", "High", "Very high"],
+                    value: Binding(get: { stress - 1 }, set: { stress = $0 + 1 })
+                )
+                BandChipRow(
+                    title: "Sleep",
+                    bands: ["Poor", "Fair", "OK", "Good", "Great"],
+                    value: Binding(get: { sleepQuality - 1 }, set: { sleepQuality = $0 + 1 })
+                )
+            }.padding(.horizontal, 20)
+            Spacer()
+            primary("Continue") { next() }
+        }
+    }
+
+    private var triggersStep: some View {
+        VStack(spacing: 0) {
+            head("The last 3 months", "Did any of these happen?", "Shedding often follows a trigger by 2–3 months. Knowing the date makes your chart make sense.")
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 8) {
+                    ForEach(TriggerType.allCases) { t in
+                        let on = selectedTriggers.contains(t)
+                        Button {
+                            if on { selectedTriggers.remove(t) } else { selectedTriggers.insert(t) }
+                            UISelectionFeedbackGenerator().selectionChanged()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: t.symbol).font(.system(size: 16)).foregroundStyle(on ? Clinical.accent : Clinical.secondary).frame(width: 22)
+                                Text(t.title).font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                                Spacer()
+                                Image(systemName: on ? "checkmark.circle.fill" : "circle").foregroundStyle(on ? Clinical.accent : Clinical.tertiary)
+                            }
+                            .padding(14)
+                            .background(on ? Clinical.accentSoft : Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(on ? Clinical.accent.opacity(0.4) : Clinical.hairline, lineWidth: 1))
+                        }.buttonStyle(.plain)
+                    }
+                    Button {
+                        selectedTriggers.removeAll()
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        HStack {
+                            Text("None of these").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                            Spacer()
+                            Image(systemName: selectedTriggers.isEmpty ? "largecircle.fill.circle" : "circle")
+                                .foregroundStyle(selectedTriggers.isEmpty ? Clinical.accent : Clinical.tertiary)
+                        }
+                        .padding(14)
+                        .background(selectedTriggers.isEmpty ? Clinical.accentSoft : Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(selectedTriggers.isEmpty ? Clinical.accent.opacity(0.4) : Clinical.hairline, lineWidth: 1))
+                    }.buttonStyle(.plain)
+                }.padding(.horizontal, 20).padding(.top, 12)
+            }
+            primary("Continue") { next() }
         }
     }
 
@@ -297,6 +420,60 @@ struct OnboardingFlow: View {
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
     }
 
+    private var healthConnectStep: some View {
+        VStack(spacing: 0) {
+            head("Automatic signals", "Connect Apple Health?", "Sleep, body weight, and recovery fill in automatically — no typing. You control exactly what's shared, and you can change it anytime in Settings.")
+            Spacer()
+            VStack(spacing: 10) {
+                healthBenefitRow(symbol: "bed.double.fill", text: "Sleep hours, every night")
+                healthBenefitRow(symbol: "figure", text: "Body weight and BMI")
+                healthBenefitRow(symbol: "heart.fill", text: "Recovery (HRV) as a stress signal")
+            }.padding(.horizontal, 20)
+            Spacer()
+            healthConnectCTA
+        }
+    }
+
+    @ViewBuilder private var healthConnectCTA: some View {
+        switch healthKit.authorization {
+        case .authorized:
+            Text("Health is connected ✓")
+                .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.sage)
+                .padding(.bottom, 8)
+            primary("Continue") { next() }
+                .accessibilityIdentifier("onboardHealthConnect")
+        case .unavailable:
+            Text("Health isn't available on this device")
+                .font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+                .padding(.bottom, 8)
+            primary("Continue") { next() }
+                .accessibilityIdentifier("onboardHealthConnect")
+        default:
+            primary("Connect Apple Health") {
+                Task {
+                    await healthKit.requestAuthorization()
+                    if healthKit.authorization.isUsable { await healthKit.refreshSnapshot(context: context) }
+                    next()
+                }
+            }
+            .accessibilityIdentifier("onboardHealthConnect")
+            Button("Not now") { next() }
+                .font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+                .padding(.bottom, 24)
+        }
+    }
+
+    private func healthBenefitRow(symbol: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).font(.system(size: 16)).foregroundStyle(Clinical.accent).frame(width: 28)
+            Text(text).font(.system(size: 14)).foregroundStyle(Clinical.ink)
+            Spacer()
+        }
+        .padding(14)
+        .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+    }
+
     private var finale: some View {
         ZStack {
             FallingHairView(intensity: 0.25)
@@ -306,7 +483,7 @@ struct OnboardingFlow: View {
                     .padding(.bottom, 16)
                 Text(profile.name.isEmpty ? "You're all set" : "You're all set, \(profile.name)")
                     .font(Clinical.headline(30)).foregroundStyle(Clinical.ink).multilineTextAlignment(.center)
-                Text("Your compass is calibrated. Log your first day and the trends begin.")
+                Text("Your compass is calibrated. A quick tour starts when you close this.")
                     .font(.system(size: 15)).foregroundStyle(Clinical.secondary).multilineTextAlignment(.center)
                     .padding(.horizontal, 40).padding(.top, 8)
                 Spacer()

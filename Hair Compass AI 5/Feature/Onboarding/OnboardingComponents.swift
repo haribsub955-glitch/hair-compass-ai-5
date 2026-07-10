@@ -76,26 +76,20 @@ struct RiskArc: View {
 
 // MARK: - Per-condition demos
 
-/// The "what are you noticing?" preview. Diffuse shedding gets the full falling-hair physics; pattern
-/// loss gets a density fade; the rest get a calm animated motif.
+/// The "what are you noticing?" preview. Each condition gets a dedicated, honest demo of what its
+/// pattern actually looks like — no generic pulsing icon.
 struct ConditionDemo: View {
     let condition: HairCondition
     var body: some View {
         switch condition {
         case .telogenEffluvium: FallingHairView(intensity: 0.5)
         case .androgenetic: DensityFadeView()
-        default: MotifView(symbol: symbol, tint: tint)
+        case .alopeciaAreata: PatchDemoView()
+        case .traction: TractionDemoView()
+        case .seborrheicDermatitis: FlakeDemoView()
+        case .unsure: CompassDemoView()
         }
     }
-    private var symbol: String {
-        switch condition {
-        case .alopeciaAreata: return "circle.dashed"
-        case .traction: return "arrow.up.and.down.and.arrow.left.and.right"
-        case .seborrheicDermatitis: return "snowflake"
-        default: return "sparkles"
-        }
-    }
-    private var tint: Color { condition == .seborrheicDermatitis ? Clinical.sage : Clinical.accent }
 }
 
 /// A soft grid of rooted strands whose centre thins over time — reads as gradual pattern loss.
@@ -129,20 +123,208 @@ struct DensityFadeView: View {
     }
 }
 
-/// A calm breathing motif for the remaining options.
-struct MotifView: View {
-    let symbol: String
-    var tint: Color = Clinical.accent
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var on = false
+/// A field of short rooted strands (mirrors `DensityFadeView`'s grid) with an off-centre circular
+/// patch that fades out and regrows on a slow ~6s cycle — appear → hold → regrow. Reads as smooth
+/// alopecia-areata patches without claiming a diagnosis.
+struct PatchDemoView: View {
     var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: 64, weight: .light))
-            .foregroundStyle(tint)
-            .scaleEffect(on ? 1.06 : 0.94)
-            .opacity(on ? 1 : 0.75)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: on)
-            .onAppear { on = true }
+        MotionTimeline(cadence: .ambient) { tl, reduceMotion in
+            Canvas { ctx, size in
+                let seconds = tl.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 3600)
+                let cycle = 6.0
+                let phase = reduceMotion ? 0.5 : (seconds.truncatingRemainder(dividingBy: cycle)) / cycle
+                // 0–0.4 the patch fades out (loss), 0.4–0.6 holds bald, 0.6–1 regrows.
+                let loss: Double
+                if phase < 0.4 { loss = phase / 0.4 }
+                else if phase < 0.6 { loss = 1 }
+                else { loss = max(0, 1 - (phase - 0.6) / 0.4) }
+
+                let cols = 16, rows = 10
+                let patchCenter = CGPoint(x: size.width * 0.62, y: size.height * 0.42)
+                let patchR = min(size.width, size.height) * 0.24
+                for r in 0..<rows {
+                    for c in 0..<cols {
+                        let x = size.width * (CGFloat(c) + 0.5) / CGFloat(cols)
+                        let y = size.height * (CGFloat(r) + 0.5) / CGFloat(rows)
+                        let d = ((x - patchCenter.x) * (x - patchCenter.x) + (y - patchCenter.y) * (y - patchCenter.y)).squareRoot()
+                        let inPatch = max(0, 1 - d / patchR)
+                        let alpha = max(0.05, 1 - inPatch * loss)
+                        var p = Path()
+                        p.move(to: CGPoint(x: x, y: y))
+                        p.addQuadCurve(to: CGPoint(x: x + 2, y: y + 12), control: CGPoint(x: x - 2, y: y + 6))
+                        ctx.stroke(p, with: .color(Clinical.ink.opacity(0.7 * alpha)), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                    }
+                }
+                if loss > 0.15 {
+                    let ring = Path(ellipseIn: CGRect(x: patchCenter.x - patchR, y: patchCenter.y - patchR, width: patchR * 2, height: patchR * 2))
+                    ctx.stroke(ring, with: .color(Clinical.accent.opacity(0.25 * loss)), style: StrokeStyle(lineWidth: 1))
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// 5–6 strands anchored along a hairline arc; the outermost strands angle and straighten toward a
+/// pull direction on a ~3s cycle, with tiny stress ticks at the anchor of the most-strained strand
+/// while taut — the traction-alopecia mechanism made visible.
+struct TractionDemoView: View {
+    var body: some View {
+        MotionTimeline(cadence: .interactive) { tl, reduceMotion in
+            Canvas { ctx, size in
+                let seconds = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 3600)
+                // 0 = relaxed, 1 = fully taut.
+                let phase = reduceMotion ? 1.0 : (sin(seconds / 3.0 * 2 * .pi) * 0.5 + 0.5)
+
+                let n = 6
+                let arcY = size.height * 0.86
+                let arcWidth = size.width * 0.7
+                let startX = size.width * 0.15
+                let strandLen = size.height * 0.62
+                let pullX = size.width * 0.5
+
+                for i in 0..<n {
+                    let f = CGFloat(i) / CGFloat(n - 1)
+                    let anchor = CGPoint(x: startX + arcWidth * f, y: arcY)
+                    // Outermost strands (near the temples) feel the most pull.
+                    let strain = phase * (0.35 + 0.65 * Double(abs(f - 0.5) * 2))
+                    let restTipX = anchor.x + (f - 0.5) * 26
+                    let tautTipX = pullX + (f - 0.5) * 6
+                    let tipX = restTipX + (tautTipX - restTipX) * CGFloat(strain)
+                    let tip = CGPoint(x: tipX, y: anchor.y - strandLen)
+
+                    var strand = Path()
+                    strand.move(to: anchor)
+                    strand.addQuadCurve(to: tip, control: CGPoint(x: (anchor.x + tipX) / 2, y: anchor.y - strandLen * 0.55))
+                    ctx.stroke(strand, with: .color(Clinical.ink.opacity(0.75)), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+
+                    if strain > 0.55 {
+                        for k in 0..<3 {
+                            let a = Double(k) / 3 * .pi - .pi / 2
+                            let tickStart = CGPoint(x: anchor.x + CGFloat(cos(a)) * 5, y: anchor.y + CGFloat(sin(a)) * 5)
+                            let tickEnd = CGPoint(x: anchor.x + CGFloat(cos(a)) * 11, y: anchor.y + CGFloat(sin(a)) * 11)
+                            var tick = Path()
+                            tick.move(to: tickStart); tick.addLine(to: tickEnd)
+                            ctx.stroke(tick, with: .color(Clinical.accent.opacity((strain - 0.55) * 2)), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// A scalp arc across the top third; small rounded flakes detach and drift down with a slight sway,
+/// while a soft warm blush pulses under the arc for the itch/redness.
+struct FlakeDemoView: View {
+    var body: some View {
+        MotionTimeline(cadence: .ambient) { tl, reduceMotion in
+            Canvas { ctx, size in
+                let seconds = tl.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 3600)
+                let arcRect = CGRect(x: size.width * 0.1, y: -size.height * 0.35, width: size.width * 0.8, height: size.height * 0.7)
+                let pulse = reduceMotion ? 0.6 : (sin(seconds * 1.4) * 0.5 + 0.5)
+                ctx.fill(Path(ellipseIn: arcRect.insetBy(dx: -8, dy: -8)), with: .color(Clinical.warning.opacity(0.12 * pulse)))
+                ctx.stroke(Path(ellipseIn: arcRect), with: .color(Clinical.ink.opacity(0.35)), style: StrokeStyle(lineWidth: 1.4))
+
+                let count = 14
+                for i in 0..<count {
+                    let speedFactor = 0.55 + onboardHashUnit(i, salt: 5) * 0.5
+                    let cycle = 2.6 / speedFactor
+                    let t: CGFloat
+                    if reduceMotion {
+                        t = onboardHashUnit(i, salt: 9)
+                    } else {
+                        let raw = seconds / Double(cycle) + Double(onboardHashUnit(i, salt: 3))
+                        t = CGFloat(raw - raw.rounded(.down))
+                    }
+                    let sway = sin(Double(t) * .pi * 2 + Double(i)) * 6
+                    let x = size.width * (0.15 + onboardHashUnit(i, salt: 7) * 0.7) + CGFloat(sway)
+                    let y = size.height * 0.18 + t * size.height * 0.75
+                    let r: CGFloat = 2 + onboardHashUnit(i, salt: 11) * 2
+                    let alpha = min(1, t * 4) * min(1, (1 - t) * 4)
+                    ctx.fill(Path(ellipseIn: CGRect(x: x - r / 2, y: y - r / 2, width: r, height: r)),
+                             with: .color(Clinical.tertiary.opacity(0.6 * alpha)))
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// A thin circle with a copper needle that gently swings and settles — the brand's compass motif,
+/// used for "not sure yet" so the app itself models "we'll find the pattern together."
+struct CompassDemoView: View {
+    var body: some View {
+        MotionTimeline(cadence: .ambient) { tl, reduceMotion in
+            Canvas { ctx, size in
+                let seconds = tl.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 3600)
+                let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                let radius = min(size.width, size.height) * 0.32
+
+                ctx.stroke(Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)),
+                           with: .color(Clinical.hairline), style: StrokeStyle(lineWidth: 1.5))
+                for i in 0..<12 {
+                    let a = Double(i) / 12 * 2 * .pi
+                    let inner = CGPoint(x: center.x + CGFloat(cos(a)) * radius * 0.88, y: center.y + CGFloat(sin(a)) * radius * 0.88)
+                    let outer = CGPoint(x: center.x + CGFloat(cos(a)) * radius, y: center.y + CGFloat(sin(a)) * radius)
+                    var tick = Path()
+                    tick.move(to: inner); tick.addLine(to: outer)
+                    ctx.stroke(tick, with: .color(Clinical.tertiary.opacity(0.5)), style: StrokeStyle(lineWidth: 1))
+                }
+
+                // A gentle decaying swing that settles every ~8s, then swings again.
+                let restAngle = -Double.pi / 2
+                let swing = reduceMotion ? 0 : sin(seconds * 1.1) * 0.35 * exp(-(seconds.truncatingRemainder(dividingBy: 8)) / 8)
+                let angle = restAngle + swing
+                let tip = CGPoint(x: center.x + CGFloat(cos(angle)) * radius * 0.82, y: center.y + CGFloat(sin(angle)) * radius * 0.82)
+                let tail = CGPoint(x: center.x - CGFloat(cos(angle)) * radius * 0.42, y: center.y - CGFloat(sin(angle)) * radius * 0.42)
+                var needle = Path()
+                needle.move(to: tail); needle.addLine(to: tip)
+                ctx.stroke(needle, with: .color(Clinical.accent), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                ctx.fill(Path(ellipseIn: CGRect(x: center.x - 4, y: center.y - 4, width: 8, height: 8)), with: .color(Clinical.accent))
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private func onboardHashUnit(_ index: Int, salt: Int) -> CGFloat {
+    let value = sin(CGFloat((index + 1) * 127 + salt * 313)) * 43_758.5453
+    return value - value.rounded(.down)
+}
+
+/// A labeled row of tappable band chips (e.g. None/Mild/Moderate/Severe). Selection binds to the
+/// chip's index — callers offset the binding for scales that don't start at 0 (see the
+/// stress/sleep step, which maps 1–5 through an offset `Binding`).
+struct BandChipRow: View {
+    let title: String
+    let bands: [String]
+    @Binding var value: Int
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+            HStack(spacing: 8) {
+                ForEach(Array(bands.enumerated()), id: \.offset) { i, band in
+                    let on = value == i
+                    Button {
+                        value = i
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        Text(band)
+                            .font(.system(size: 13, weight: on ? .semibold : .regular))
+                            .foregroundStyle(on ? Clinical.surface : Clinical.ink)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                            .background(on ? Clinical.accent : Clinical.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
 

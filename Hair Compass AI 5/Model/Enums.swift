@@ -47,6 +47,43 @@ enum HairCondition: String, Codable, CaseIterable, Identifiable {
 
     /// Whether the seborrheic-dermatitis 16-point scalp scale is the headline metric.
     var usesScalpScale: Bool { self == .seborrheicDermatitis }
+
+    /// Plain-language title for onboarding's "what are you noticing?" step — the clinical
+    /// `title` stays the source of truth for charts and Care and is shown demoted alongside this.
+    var plainTitle: String {
+        switch self {
+        case .androgenetic: return "Gradual thinning in a pattern"
+        case .alopeciaAreata: return "Smooth round patches"
+        case .telogenEffluvium: return "Sudden shedding all over"
+        case .traction: return "Loss where hair is pulled tight"
+        case .seborrheicDermatitis: return "Flaky, itchy scalp"
+        case .unsure: return "Not sure yet"
+        }
+    }
+
+    /// Plain-language summary shown under `plainTitle` in onboarding.
+    var plainSummary: String {
+        switch self {
+        case .androgenetic: return "Slow thinning at the hairline, crown, or part. The most common kind — driven by genes and hormones."
+        case .alopeciaAreata: return "Coin-sized smooth patches that can appear quickly — an immune response."
+        case .telogenEffluvium: return "Lots of extra hairs everywhere, often 2–3 months after stress, illness, or a diet change."
+        case .traction: return "Thinning at the hairline or part from tight braids, buns, or ponytails."
+        case .seborrheicDermatitis: return "Dandruff-like flaking with redness and itch."
+        case .unsure: return "No problem — we'll track broadly until a pattern shows."
+        }
+    }
+
+    /// One plain line describing what the demo animation is showing.
+    var demoCaption: String {
+        switch self {
+        case .androgenetic: return "What you're seeing: strands thinning gradually at the crown."
+        case .alopeciaAreata: return "What you're seeing: a smooth patch appearing, then regrowing."
+        case .telogenEffluvium: return "What you're seeing: extra hairs falling all over."
+        case .traction: return "What you're seeing: a strand strained where it's pulled tight."
+        case .seborrheicDermatitis: return "What you're seeing: flakes shedding from an itchy scalp."
+        case .unsure: return "We'll help you find your pattern as you track."
+        }
+    }
 }
 
 enum FamilyHistory: String, Codable, CaseIterable, Identifiable {
