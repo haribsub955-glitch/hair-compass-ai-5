@@ -99,71 +99,81 @@ struct DeepAnalysisSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
-                    BrandBanner(art: BrandArt.analysis, height: 130)
-                    ClinicalCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Eyebrow(text: "Deep analysis · Claude Fable 5")
-                            Text("This sends your recent readings and \(images.count) matched progress photo\(images.count == 1 ? "" : "s") to Anthropic's cloud model for a one-time review. It's record-keeping, not diagnosis, and nothing is stored there beyond the request.")
-                                .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
-                            Toggle(isOn: $consented) {
-                                Text("Send this data off-device for analysis")
-                                    .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-                            }
-                            .tint(Clinical.accent)
-                        }
-                    }
-
-                    if !service.hasKey {
-                        ClinicalCard {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "key").font(.system(size: 14)).foregroundStyle(Clinical.warning)
-                                Text("No API key is configured, so deep analysis is unavailable. On-device insight on the Today screen still works fully and privately.")
-                                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-                            }
-                        }
-                    }
-
-                    if let result = service.result {
-                        ClinicalCard {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Eyebrow(text: "Summary")
-                                Text(result).font(.system(size: 15)).foregroundStyle(Clinical.ink)
-                                Text("For record-keeping, not diagnosis.")
-                                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
-                            }
-                        }
-                    }
-
-                    if let error = service.errorMessage {
-                        ClinicalCard {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle").font(.system(size: 14)).foregroundStyle(Clinical.critical)
-                                Text(error).font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-                            }
-                        }
-                    }
-
-                    Button(service.isRunning ? "Analyzing…" : "Run deep analysis") {
-                        let payload = AIContext.build(
-                            entries: entries, treatments: treatments, doses: doses,
-                            snapshots: snapshots, triggers: triggers,
-                            labs: labs, sideEffects: sideEffects, photos: photos,
-                            profile: profiles.first, now: .now
-                        )
-                        Task { await service.analyze(context: payload, images: images) }
-                    }
-                    .buttonStyle(ClinicalButtonStyle())
-                    .disabled(!consented || !service.hasKey || service.isRunning)
-                    .opacity((!consented || !service.hasKey || service.isRunning) ? 0.5 : 1)
-                }
-                .padding(20)
+            ProGate(
+                feature: "AI deep photo analysis",
+                symbol: "photo.on.rectangle.angled",
+                description: "A one-time, standardized read of your matched progress photos — record-keeping, not diagnosis."
+            ) {
+                analysisContent
             }
             .clinicalScreen()
             .navigationTitle("Deep analysis")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+        }
+    }
+
+    private var analysisContent: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 18) {
+                BrandBanner(art: BrandArt.analysis, height: 130)
+                ClinicalCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Eyebrow(text: "Deep analysis · Claude Fable 5")
+                        Text("This sends your recent readings and \(images.count) matched progress photo\(images.count == 1 ? "" : "s") to Anthropic's cloud model for a one-time review. It's record-keeping, not diagnosis, and nothing is stored there beyond the request.")
+                            .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                        Toggle(isOn: $consented) {
+                            Text("Send this data off-device for analysis")
+                                .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                        }
+                        .tint(Clinical.accent)
+                    }
+                }
+
+                if !service.hasKey {
+                    ClinicalCard {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "key").font(.system(size: 14)).foregroundStyle(Clinical.warning)
+                            Text("No API key is configured, so deep analysis is unavailable. On-device insight on the Today screen still works fully and privately.")
+                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                        }
+                    }
+                }
+
+                if let result = service.result {
+                    ClinicalCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Eyebrow(text: "Summary")
+                            Text(result).font(.system(size: 15)).foregroundStyle(Clinical.ink)
+                            Text("For record-keeping, not diagnosis.")
+                                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        }
+                    }
+                }
+
+                if let error = service.errorMessage {
+                    ClinicalCard {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle").font(.system(size: 14)).foregroundStyle(Clinical.critical)
+                            Text(error).font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                        }
+                    }
+                }
+
+                Button(service.isRunning ? "Analyzing…" : "Run deep analysis") {
+                    let payload = AIContext.build(
+                        entries: entries, treatments: treatments, doses: doses,
+                        snapshots: snapshots, triggers: triggers,
+                        labs: labs, sideEffects: sideEffects, photos: photos,
+                        profile: profiles.first, now: .now
+                    )
+                    Task { await service.analyze(context: payload, images: images) }
+                }
+                .buttonStyle(ClinicalButtonStyle())
+                .disabled(!consented || !service.hasKey || service.isRunning)
+                .opacity((!consented || !service.hasKey || service.isRunning) ? 0.5 : 1)
+            }
+            .padding(20)
         }
     }
 }

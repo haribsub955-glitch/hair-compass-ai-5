@@ -20,22 +20,33 @@ struct HairChatSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if consented {
-                conversation
-                if service.hasKey {
-                    inputBar
-                } else {
-                    noKeyNotice
-                }
-            } else {
-                ScrollView(showsIndicators: false) {
-                    consentCard
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 14)
-                }
+            ProGate(
+                feature: "AI hair chat",
+                symbol: "bubble.left.and.text.bubble.right",
+                description: "Ask anything about your tracked data — grounded in your own numbers, never a diagnosis."
+            ) {
+                gatedContent
             }
         }
         .clinicalScreen()
+    }
+
+    @ViewBuilder
+    private var gatedContent: some View {
+        if consented {
+            conversation
+            if service.hasKey {
+                inputBar
+            } else {
+                noKeyNotice
+            }
+        } else {
+            ScrollView(showsIndicators: false) {
+                consentCard
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+            }
+        }
     }
 
     // MARK: Header
