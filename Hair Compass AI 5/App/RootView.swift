@@ -27,6 +27,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
@@ -60,7 +61,7 @@ struct RootView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             Group {
                 switch tab {
                 case .today: TodayView(profile: profile,
@@ -72,10 +73,35 @@ struct RootView: View {
                 case .photos: PhotosView()
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            FloatingTabBar(selection: $tab)
+            .id(tab)
+            .transition(tabTransition)
         }
+        // Design V2: a quiet crossfade/settle connects destinations while the matched tab pill
+        // carries spatial continuity. Reduce Motion keeps only the short fade.
+        .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.22), value: tab)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Reserve real layout space for navigation. The previous overlay obscured the final
+        // card on every tab and made users scroll content underneath an active control.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            FloatingTabBar(selection: $tab)
+                .background {
+                    // Fade scrolling content into the canvas before it reaches navigation. This
+                    // keeps the capsule floating without letting card copy show through its
+                    // transparent outer margins.
+                    LinearGradient(
+                        colors: [Clinical.canvas.opacity(0), Clinical.canvas, Clinical.canvas],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .padding(.top, -16)
+                    .ignoresSafeArea(edges: .bottom)
+                }
+                // Charts can establish their own compositing layers. Flatten the complete bar
+                // above them so no tab item is painted underneath a scrolling chart card.
+                .compositingGroup()
+                .zIndex(100)
+        }
+        .background(Clinical.canvas.ignoresSafeArea())
         .environment(healthKit)
         .environment(notifications)
         .environment(affiliates)
@@ -159,6 +185,11 @@ struct RootView: View {
         }
         .tint(Clinical.accent)
         .environment(appLock)
+    }
+
+    private var tabTransition: AnyTransition {
+        if reduceMotion { return .opacity }
+        return .opacity.combined(with: .scale(scale: 0.985, anchor: .center))
     }
 }
 

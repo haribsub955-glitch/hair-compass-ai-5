@@ -39,9 +39,12 @@ struct TrendsView: View {
                     eyebrow: "Longitudinal",
                     title: "Trends",
                     trailing: AnyView(
-                        Button { showExport = true } label: {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 18)).foregroundStyle(Clinical.ink)
+                        HeaderActionButton(
+                            systemName: "square.and.arrow.up",
+                            accessibilityLabel: "Export trends",
+                            prominent: false
+                        ) {
+                            showExport = true
                         }
                     )
                 )
@@ -53,6 +56,9 @@ struct TrendsView: View {
 
                 ClinicalSegmented(options: Range.allCases, label: { $0.rawValue }, selection: $range)
 
+                trajectoryCard
+                    .staggeredEntrance(index: 0)
+
                 JourneyChart(
                     entries: entries,
                     treatments: treatments,
@@ -60,7 +66,7 @@ struct TrendsView: View {
                     triggers: triggers,
                     windowDays: range.days
                 )
-                .staggeredEntrance(index: 0)
+                .staggeredEntrance(index: 1)
 
                 ConsistencyCard(
                     entries: entries,
@@ -71,7 +77,7 @@ struct TrendsView: View {
                     triggers: triggers,
                     showAllBadges: $showBadges
                 )
-                .staggeredEntrance(index: 1)
+                .staggeredEntrance(index: 2)
 
                 StrandDivider()
 
@@ -82,28 +88,28 @@ struct TrendsView: View {
                     recentTrigger: triggers.first
                 )
                 .id("body-signals")
-                .staggeredEntrance(index: 2)
+                .staggeredEntrance(index: 3)
                 compareEntryCard
-                    .staggeredEntrance(index: 3)
+                    .staggeredEntrance(index: 4)
 
                 if windowEntries.count < 2 {
                     emptyState
-                        .staggeredEntrance(index: 4)
+                        .staggeredEntrance(index: 5)
                 } else {
                     sheddingCard
-                        .staggeredEntrance(index: 4)
-                    scalpCard
                         .staggeredEntrance(index: 5)
-                    adherenceCard
+                    scalpCard
                         .staggeredEntrance(index: 6)
+                    adherenceCard
+                        .staggeredEntrance(index: 7)
                 }
 
                 excludedCard
-                    .staggeredEntrance(index: 7)
+                    .staggeredEntrance(index: 8)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .padding(.bottom, 110)
+            .padding(.bottom, 24)
         }
         .clinicalScreen()
         .sheet(isPresented: $showCompare) {
@@ -169,6 +175,67 @@ struct TrendsView: View {
     // MARK: Baseline context
 
     private var profile: Profile? { profiles.first }
+
+    // MARK: At-a-glance trajectory
+
+    /// Plain-language orientation before the denser timeline. The chart remains the evidence
+    /// surface; this card makes direction and data coverage understandable in a few seconds.
+    private var trajectoryCard: some View {
+        let summary = TrajectorySummary(entries: windowEntries)
+        return ClinicalCard(padding: 16) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: summary.symbol)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(summary.tint)
+                        .frame(width: 42, height: 42)
+                        .background(
+                            summary.tint.opacity(0.11),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Eyebrow(text: "At a glance")
+                        Text(summary.headline)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Clinical.ink)
+                        Text(summary.detail)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Clinical.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    if let average = summary.currentAverage {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(average.formatted(.number.precision(.fractionLength(1))))
+                                .font(Clinical.number(22))
+                                .foregroundStyle(Clinical.ink)
+                                .contentTransition(.numericText())
+                            Text("7D AVG")
+                                .font(Clinical.eyebrow(8))
+                                .foregroundStyle(Clinical.tertiary)
+                        }
+                    }
+                }
+
+                Divider()
+                    .overlay(Clinical.hairline)
+                    .padding(.vertical, 11)
+
+                HStack(spacing: 14) {
+                    Label(summary.coverageLabel, systemImage: "calendar.badge.checkmark")
+                    Spacer(minLength: 4)
+                    Label(summary.confidenceLabel, systemImage: "waveform.path.ecg")
+                }
+                .font(Clinical.eyebrow(9))
+                .foregroundStyle(Clinical.tertiary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(summary.accessibilityLabel)
+    }
 
     // MARK: Explicitly-not-tracked (honesty made visible)
 
@@ -350,5 +417,92 @@ struct TrendsView: View {
                 }
             }
         }
+    }
+}
+
+/// A small, deterministic interpretation of recent self-reported shedding. It compares two
+/// adjacent seven-day calendar windows and keeps thin-data language explicit.
+private struct TrajectorySummary {
+    let currentAverage: Double?
+    let currentCount: Int
+    let previousCount: Int
+    let delta: Double?
+
+    init(entries: [DailyEntry], now: Date = .now, calendar: Calendar = .current) {
+        let today = calendar.startOfDay(for: now)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? now
+        let currentStart = calendar.date(byAdding: .day, value: -6, to: today) ?? today
+        let previousStart = calendar.date(byAdding: .day, value: -13, to: today) ?? today
+
+        let current = entries.filter { $0.date >= currentStart && $0.date < tomorrow }
+        let previous = entries.filter { $0.date >= previousStart && $0.date < currentStart }
+
+        currentCount = current.count
+        previousCount = previous.count
+        currentAverage = Self.average(current)
+        if let currentAverage, let previousAverage = Self.average(previous) {
+            delta = currentAverage - previousAverage
+        } else {
+            delta = nil
+        }
+    }
+
+    var headline: String {
+        guard currentAverage != nil else { return "No recent check-ins yet" }
+        guard let delta, currentCount >= 2, previousCount >= 2 else {
+            return "Your recent baseline is forming"
+        }
+        if delta <= -0.15 { return "Shedding has been lower this week" }
+        if delta >= 0.15 { return "Shedding has been higher this week" }
+        return "Shedding has been steady this week"
+    }
+
+    var detail: String {
+        guard currentAverage != nil else {
+            return "Log today to start a seven-day view of your pattern."
+        }
+        guard let delta, currentCount >= 2, previousCount >= 2 else {
+            return "Keep logging to compare this week with the seven days before it."
+        }
+        let magnitude = abs(delta).formatted(.number.precision(.fractionLength(1)))
+        if abs(delta) < 0.15 {
+            return "The seven-day average is very close to the prior week."
+        }
+        return "A \(magnitude)-band change versus the previous seven-day average."
+    }
+
+    var symbol: String {
+        guard let delta, currentCount >= 2, previousCount >= 2 else {
+            return "chart.line.uptrend.xyaxis"
+        }
+        if delta <= -0.15 { return "arrow.down.right" }
+        if delta >= 0.15 { return "arrow.up.right" }
+        return "arrow.right"
+    }
+
+    var tint: Color {
+        guard let delta, currentCount >= 2, previousCount >= 2 else { return Clinical.accent }
+        if delta <= -0.15 { return Clinical.positive }
+        if delta >= 0.15 { return Clinical.warning }
+        return Clinical.sage
+    }
+
+    var coverageLabel: String { "\(min(currentCount, 7)) of 7 days logged" }
+
+    var confidenceLabel: String {
+        switch currentCount {
+        case 5...: return "Good coverage"
+        case 3...4: return "Building coverage"
+        default: return "Limited coverage"
+        }
+    }
+
+    var accessibilityLabel: String {
+        "At a glance. \(headline). \(detail) \(coverageLabel). \(confidenceLabel)."
+    }
+
+    private static func average(_ entries: [DailyEntry]) -> Double? {
+        guard !entries.isEmpty else { return nil }
+        return entries.reduce(0) { $0 + Double($1.shed.rawValue) } / Double(entries.count)
     }
 }

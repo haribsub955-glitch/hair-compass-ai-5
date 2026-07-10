@@ -12,6 +12,7 @@ struct ConditionsHero: View {
     var shed: ShedLevel?
     var scalpTotal: Int?
     var scalpBand: SeverityBand?
+    var hasLoggedToday = false
     let greeting: String
     let streak: Int
     /// Optional gamification level name ("Sapling") appended to the streak chip — effort-only.
@@ -19,19 +20,32 @@ struct ConditionsHero: View {
     var onOpenBaseline: () -> Void
     var onLog: () -> Void
 
-    /// Same visual floor as ShedDialField's preview: a panel-sized sim at true 0 looks dead, so
-    /// the *display* intensity is floored while the stored data stays honest. Unlogged days get
-    /// the gentlest ambient drizzle.
+    /// Raw categorical intensity. `SheddingStatusScene` owns the small visual floor and adds a
+    /// deterministic resting collection, so the saved status feels identical to the one chosen
+    /// in the log sheet without pretending to be an exact strand count.
     private var heroIntensity: CGFloat {
-        let raw = CGFloat(shed?.rawValue ?? 0) / 3
-        return 0.22 + raw * 0.78
+        CGFloat(shed?.rawValue ?? 0) / 3
     }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             LinearGradient(colors: [Clinical.canvas, Clinical.surface],
                            startPoint: .top, endPoint: .bottom)
-            FallingHairView(intensity: heroIntensity)
+            SheddingStatusScene(intensity: heroIntensity, showsCollection: shed != nil)
+                // Keep motion out of the greeting/profile zone. The simulation becomes visible
+                // below the header, so decorative strands never cross the user's name.
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .clear, location: 0.20),
+                            .init(color: .black, location: 0.36),
+                            .init(color: .black, location: 1),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
                 .allowsHitTesting(false)
             // Legibility scrim: soft at the top (greeting), stronger at the bottom (band word),
             // clear through the middle so the simulation stays the hero.
@@ -44,7 +58,7 @@ struct ConditionsHero: View {
             .allowsHitTesting(false)
             content
         }
-        .frame(maxWidth: .infinity, minHeight: 320, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 304, alignment: .topLeading)
         .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 28, bottomTrailingRadius: 28,
                                           style: .continuous))
         .shadow(color: Clinical.cardShadow, radius: 14, y: 6)
@@ -63,42 +77,65 @@ struct ConditionsHero: View {
                     Image(systemName: "person.circle.fill")
                         .font(.system(size: 30))
                         .foregroundStyle(Clinical.ink.opacity(0.85), Clinical.surface.opacity(0.9))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit profile and baseline")
             }
-            Spacer(minLength: 24)
+            Spacer(minLength: 12)
             VStack(alignment: .leading, spacing: 8) {
                 Eyebrow(text: "Today's shedding")
                 if let shed {
+                    let reflection = SheddingReflection.make(band: shed.rawValue)
                     Text(shed.title)
-                        .font(Clinical.headline(56)).foregroundStyle(Clinical.ink)
+                        .font(Clinical.headline(50)).foregroundStyle(Clinical.ink)
                         .lineLimit(1).minimumScaleFactor(0.55)
-                    HStack(spacing: 10) {
-                        if let scalpTotal, let scalpBand {
-                            Text("Scalp \(scalpTotal)/16 · \(scalpBand.title)")
-                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-                        }
+                        .contentTransition(.opacity)
+                        .animation(.easeOut(duration: 0.25), value: shed)
+                    Text(reflection.detail)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Clinical.secondary)
+                        .lineLimit(2)
+                        .contentTransition(.opacity)
+                        .animation(.easeOut(duration: 0.25), value: shed)
+                    if let scalpTotal, let scalpBand {
+                        Text("Scalp \(scalpTotal)/16 · \(scalpBand.title)")
+                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                    }
+                    HStack(spacing: 8) {
                         streakChip
+                        Spacer(minLength: 0)
+                        logButton
                     }
                 } else {
                     Text("Not logged")
-                        .font(Clinical.headline(48)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.headline(44)).foregroundStyle(Clinical.tertiary)
                         .lineLimit(1).minimumScaleFactor(0.55)
-                    HStack(spacing: 10) {
-                        Button(action: onLog) {
-                            Label("Log today", systemImage: "plus.circle.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Clinical.surface)
-                                .padding(.horizontal, 14).padding(.vertical, 8)
-                                .background(Clinical.accent, in: Capsule())
-                                .shadow(color: Clinical.accent.opacity(0.28), radius: 8, y: 3)
-                        }
-                        .buttonStyle(.plain)
+                    HStack(spacing: 8) {
                         streakChip
+                        Spacer(minLength: 0)
+                        logButton
                     }
                 }
             }
         }
         .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 20)
+    }
+
+    private var logButton: some View {
+        Button(action: onLog) {
+            Label(hasLoggedToday ? "Edit log" : "Log today",
+                  systemImage: hasLoggedToday ? "pencil" : "plus")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Clinical.surface)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 34)
+                .background(Clinical.accent, in: Capsule())
+                .shadow(color: Clinical.accent.opacity(0.24), radius: 8, y: 3)
+        }
+        .buttonStyle(.clinicalPressable)
+        .accessibilityHint(hasLoggedToday ? "Edits today's check-in" : "Opens today's check-in")
     }
 
     private var streakChip: some View {
@@ -126,17 +163,19 @@ struct GlanceTile<Motif: View>: View {
     /// bottom edge like `Clinical.surfaceWash`. Peaks at 0.06 opacity — the tile must still read
     /// ivory; this is a whisper, not a paint job.
     var tint: Color? = nil
-    var motifOpacity: Double = 0.5
+    var motifOpacity: Double = 0.38
     var motifHeight: CGFloat = 62
     /// When set, the whole tile is a Button (a shortcut into the log sheet / plan) with the
     /// clinical spring press style.
     var action: (() -> Void)? = nil
+    var actionHint: String? = nil
     @ViewBuilder var motif: Motif
 
     var body: some View {
         if let action {
             Button(action: action) { card }
                 .buttonStyle(.clinicalPressable)
+                .accessibilityHint(actionHint ?? "Opens this item")
         } else {
             card
         }
@@ -144,9 +183,18 @@ struct GlanceTile<Motif: View>: View {
 
     private var card: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased())
-                .font(Clinical.eyebrow(10)).tracking(1.2)
-                .foregroundStyle(Clinical.tertiary)
+            HStack(spacing: 6) {
+                Text(title.uppercased())
+                    .font(Clinical.eyebrow(10)).tracking(1.2)
+                    .foregroundStyle(Clinical.tertiary)
+                Spacer(minLength: 0)
+                if action != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Clinical.accent.opacity(0.75))
+                        .accessibilityHidden(true)
+                }
+            }
             Spacer(minLength: 10)
             Text(value)
                 .font(Clinical.number(24))
@@ -232,7 +280,8 @@ struct TodayTileGrid: View {
             caption: entry?.scalpBand.title ?? "Not logged",
             valueColor: entry.map { Clinical.bandColor($0.scalpBand) } ?? Clinical.tertiary,
             tint: Clinical.critical,   // the redness/rose family
-            action: onLogTap
+            action: onLogTap,
+            actionHint: "Edits today's scalp check-in"
         ) {
             RednessMotif(intensity: CGFloat(total ?? 0) / 16)
         }
@@ -262,7 +311,8 @@ struct TodayTileGrid: View {
             caption: caption,
             valueColor: (sleepHours != nil || quality != nil) ? Clinical.ink : Clinical.tertiary,
             tint: Clinical.sage,
-            action: onLogTap
+            action: onLogTap,
+            actionHint: "Edits today's sleep check-in"
         ) {
             SleepMotif(intensity: intensity)
         }
@@ -276,7 +326,8 @@ struct TodayTileGrid: View {
             caption: stress.map(Self.stressWord) ?? "Not logged",
             valueColor: stress == nil ? Clinical.tertiary : Clinical.ink,
             tint: Self.roseGrey,
-            action: onLogTap
+            action: onLogTap,
+            actionHint: "Edits today's stress check-in"
         ) {
             StressMotif(intensity: stress.map { CGFloat($0 - 1) / 4 } ?? 0)
         }
@@ -290,7 +341,8 @@ struct TodayTileGrid: View {
             caption: oil.map(Self.oilWord) ?? "Not logged",
             valueColor: oil == nil ? Clinical.tertiary : Clinical.ink,
             tint: Clinical.gold,
-            action: onLogTap
+            action: onLogTap,
+            actionHint: "Edits today's oiliness check-in"
         ) {
             OilMotif(intensity: oil.map { CGFloat($0) / 3 } ?? 0)
         }
@@ -305,7 +357,8 @@ struct TodayTileGrid: View {
             valueColor: medsDone >= medsTotal ? Clinical.positive : Clinical.ink,
             tint: Clinical.accent,
             motifOpacity: 1,
-            action: onOpenPlan
+            action: onOpenPlan,
+            actionHint: "Opens today's treatment plan"
         ) {
             HStack {
                 Spacer()
@@ -332,7 +385,7 @@ struct TodayTileGrid: View {
         }
     }
 
-    private static func stressWord(_ s: Int) -> String {
+    nonisolated private static func stressWord(_ s: Int) -> String {
         switch s {
         case ...1: return "Very calm"
         case 2: return "Calm"
@@ -342,7 +395,7 @@ struct TodayTileGrid: View {
         }
     }
 
-    private static func oilWord(_ o: Int) -> String {
+    nonisolated private static func oilWord(_ o: Int) -> String {
         switch o {
         case ...0: return "Balanced"
         case 1: return "Slightly oily"

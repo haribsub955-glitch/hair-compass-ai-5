@@ -216,8 +216,15 @@ struct AddTreatmentSheet: View {
     }
 
     private func textField(_ placeholder: String, text: Binding<String>) -> some View {
-        TextField(placeholder, text: text)
+        TextField(
+            "",
+            text: text,
+            prompt: Text(placeholder).foregroundStyle(Clinical.secondary.opacity(0.78))
+        )
             .font(.system(size: 16))
+            .foregroundStyle(Clinical.ink)
+            .tint(Clinical.accent)
+            .textFieldStyle(.plain)
             .padding(12)
             .background(Clinical.surface)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))

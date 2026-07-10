@@ -124,7 +124,7 @@ struct CountScrubber: View {
     // MARK: Physical motif (quiet accent, never the focus)
 
     private func motifLayer(fillWidth: CGFloat) -> some View {
-        TimelineView(.animation(paused: reduceMotion || value == range.lowerBound)) { timeline in
+        MotionTimeline(cadence: .ambient, paused: value == range.lowerBound) { timeline, reduceMotion in
             Canvas { ctx, size in
                 guard value > range.lowerBound else { return }
                 // Modulo keeps Double precision over long sessions; Reduce Motion gets one

@@ -13,14 +13,9 @@ struct LabsView: View {
                     eyebrow: "Bloodwork",
                     title: "Labs",
                     trailing: AnyView(
-                        Button { showAdd = true } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Clinical.surface)
-                                .frame(width: 34, height: 34)
-                                .background(Clinical.ink, in: Circle())
+                        HeaderActionButton(systemName: "plus", accessibilityLabel: "Add lab result") {
+                            showAdd = true
                         }
-                        .buttonStyle(.clinicalPressable)
                     )
                 )
                 .padding(.top, 8)
@@ -28,11 +23,33 @@ struct LabsView: View {
                 // add button stays tappable and no layout space is taken (no horizontal scroll).
                 .background(alignment: .topTrailing) { CornerSprig() }
 
-                ClinicalCard(padding: 14) {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "info.circle").font(.system(size: 15)).foregroundStyle(Clinical.accent)
-                        Text("Order tests individually with a clinician, not as a blanket panel. Ranges shown for context only — not a diagnosis.")
-                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                ClinicalCard(padding: 0) {
+                    ZStack {
+                        LivingArtwork(art: BrandArt.labsContextV2, travel: 3.5, zoom: 0.012, phase: 1.7)
+                            .frame(maxWidth: .infinity, minHeight: 140)
+                            .clipped()
+                            .opacity(0.50)
+                        LinearGradient(
+                            stops: [
+                                .init(color: Clinical.surface.opacity(0.99), location: 0),
+                                .init(color: Clinical.surface.opacity(0.94), location: 0.58),
+                                .init(color: Clinical.surface.opacity(0.42), location: 1),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        VStack(alignment: .leading, spacing: 7) {
+                            Label("Lab context", systemImage: "testtube.2")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Clinical.ink)
+                            Text("Use reference ranges as context—not a diagnosis. Choose tests with a clinician rather than ordering a blanket panel.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Clinical.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: 245, alignment: .leading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
                     }
                 }
                 .staggeredEntrance(index: 0)
@@ -51,7 +68,7 @@ struct LabsView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .padding(.bottom, 110)
+            .padding(.bottom, 24)
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddLabSheet() }
@@ -62,7 +79,7 @@ struct LabsView: View {
         }
     }
 
-    /// Redesign v2: each result reads as a gauge — the value dotted along a 0→high axis with the
+    /// Each result reads as a gauge — the value dotted along a 0→high axis with the
     /// healthy reference band shaded, so "in / below / above range" is visible at a glance.
     private func labRow(_ lab: LabResult) -> some View {
         let lo = lab.test.referenceRange.lowerBound

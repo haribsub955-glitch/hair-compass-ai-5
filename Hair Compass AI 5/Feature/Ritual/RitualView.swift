@@ -111,7 +111,7 @@ struct RitualView: View {
     // MARK: Canvas
 
     private var ritualCanvas: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        MotionTimeline(cadence: .interactive) { timeline, reduceMotion in
             Canvas { ctx, size in
                 if box.ritual == nil { box.ritual = RitualKind.make(kind) }
                 var context = ctx
@@ -207,7 +207,7 @@ private struct SerumBurst: View {
     @State private var box = BurstBox()
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        MotionTimeline(cadence: .interactive) { timeline, _ in
             Canvas { ctx, size in
                 if !box.started { box.start(size: size); box.started = true }
                 let now = timeline.date

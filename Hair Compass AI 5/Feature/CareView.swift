@@ -34,12 +34,8 @@ struct CareView: View {
                     eyebrow: "Your plan",
                     title: "Plan",
                     trailing: AnyView(
-                        Button { showAdd = true } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Clinical.surface)
-                                .frame(width: 34, height: 34)
-                                .background(Clinical.ink, in: Circle())
+                        HeaderActionButton(systemName: "plus", accessibilityLabel: "Add treatment") {
+                            showAdd = true
                         }
                     )
                 ).padding(.top, 8)
@@ -73,7 +69,7 @@ struct CareView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .padding(.bottom, 110)
+            .padding(.bottom, 24)
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
@@ -166,25 +162,44 @@ struct CareView: View {
     private var coachCard: some View {
         let msg = AdherenceCoach.message(doneToday: doneToday, totalToday: dailySteps.count, streak: streak, weeklyAdherence: nil)
         let progress = dailySteps.isEmpty ? 0 : Double(doneToday) / Double(dailySteps.count)
-        return ClinicalCard {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Eyebrow(text: "Coach")
-                        if streak > 0 {
-                            Label("\(streak)d", systemImage: "flame")
-                                .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+        return ClinicalCard(padding: 0) {
+            ZStack {
+                LivingArtwork(art: BrandArt.planRitualV2, travel: 4, zoom: 0.014, phase: 0.4)
+                    .frame(maxWidth: .infinity, minHeight: 178)
+                    .clipped()
+                    .opacity(0.52)
+
+                LinearGradient(
+                    stops: [
+                        .init(color: Clinical.surface.opacity(0.99), location: 0),
+                        .init(color: Clinical.surface.opacity(0.94), location: 0.52),
+                        .init(color: Clinical.surface.opacity(0.48), location: 1),
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Eyebrow(text: "Coach")
+                            if streak > 0 {
+                                Label("\(streak)d", systemImage: "flame")
+                                    .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+                            }
                         }
+                        Text(msg.headline).font(Clinical.headline(21)).foregroundStyle(Clinical.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(msg.detail).font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 220, alignment: .leading)
                     }
-                    Text(msg.headline).font(Clinical.headline(21)).foregroundStyle(Clinical.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(msg.detail).font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    if dailySteps.count > 0 {
+                        CoachProgressRing(done: doneToday, total: dailySteps.count, progress: progress)
+                    }
                 }
-                Spacer(minLength: 8)
-                if dailySteps.count > 0 {
-                    CoachProgressRing(done: doneToday, total: dailySteps.count, progress: progress)
-                }
+                .padding(18)
             }
         }
     }

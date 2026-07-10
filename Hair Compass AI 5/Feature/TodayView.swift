@@ -72,6 +72,7 @@ struct TodayView: View {
                     shed: todayEntry?.shed,
                     scalpTotal: todayEntry?.scalpTotal,
                     scalpBand: todayEntry?.scalpBand,
+                    hasLoggedToday: todayEntry != nil,
                     greeting: greeting,
                     streak: streak,
                     levelName: levelName,
@@ -109,7 +110,7 @@ struct TodayView: View {
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
-            .padding(.bottom, 110)
+            .padding(.bottom, 24)
         }
         .clinicalScreen()
         .task(id: insightFingerprint) { await refreshInsight() }
@@ -277,25 +278,46 @@ struct TodayView: View {
         return name.isEmpty ? part : "\(part), \(name)"
     }
 
-    /// Redesign v3: the numbers moved up into the glance tiles, so this card slims down to the
-    /// action (edit/log) plus today's routine.
+    /// A compact checklist: check-in and routine steps share one scannable surface. The primary
+    /// log action also lives in the hero, so this row confirms state without another full CTA.
     private var logCard: some View {
         ClinicalCard {
             VStack(alignment: .leading, spacing: 14) {
-                Eyebrow(text: "Daily log")
-                if todayEntry != nil {
-                    Button("Edit today's log") { showLog = true }
-                        .buttonStyle(ClinicalButtonStyle(filled: false))
-                } else {
-                    Text("Log shedding, scalp signs, sleep and stress. It takes about 20 seconds.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Clinical.secondary)
-                    Button("Log today") { showLog = true }
-                        .buttonStyle(ClinicalButtonStyle())
+                HStack {
+                    Eyebrow(text: "Today's checklist")
+                    Spacer()
+                    Button("Past day") { showBackfill = true }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Clinical.accent)
                 }
-                Button("Log a past day") { showBackfill = true }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Clinical.accent)
+
+                Button { showLog = true } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: todayEntry == nil ? "circle.dashed" : "checkmark.circle.fill")
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundStyle(todayEntry == nil ? Clinical.tertiary : Clinical.positive)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Daily check-in")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Clinical.ink)
+                            Text(todayEntry == nil ? "About 20 seconds" : "Completed today")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Clinical.secondary)
+                        }
+                        Spacer()
+                        Text(todayEntry == nil ? "Log" : "Edit")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Clinical.accent)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Clinical.tertiary)
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(todayEntry == nil ? "Opens today's check-in" : "Edits today's check-in")
 
                 if !activeDaily.isEmpty {
                     Divider().overlay(Clinical.hairline).padding(.vertical, 2)

@@ -20,8 +20,17 @@ struct CheckInCelebration: View {
             LeafFallBackdrop()
                 .ignoresSafeArea()
 
-            VStack(spacing: 18) {
+            VStack(spacing: 14) {
                 Spacer(minLength: 0)
+
+                LivingArtwork(
+                    art: BrandArt.medallion,
+                    contentMode: .fit,
+                    travel: 2,
+                    zoom: 0.025,
+                    phase: 0.8
+                )
+                .frame(width: 72, height: 72)
 
                 if reward.leveledUp {
                     levelUpHeadline
@@ -158,10 +167,9 @@ extension CheckInReward: Identifiable {
 /// and the flecks hold a static hash-fixed scatter.
 private struct LeafFallBackdrop: View {
     var fleckCount: Int = 14
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        MotionTimeline(cadence: .ambient) { timeline, reduceMotion in
             Canvas { ctx, size in
                 let t: CGFloat = reduceMotion
                     ? 0

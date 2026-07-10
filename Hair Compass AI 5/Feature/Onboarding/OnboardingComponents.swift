@@ -100,11 +100,12 @@ struct ConditionDemo: View {
 
 /// A soft grid of rooted strands whose centre thins over time — reads as gradual pattern loss.
 struct DensityFadeView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { tl in
+        MotionTimeline(cadence: .ambient) { tl, reduceMotion in
             Canvas { ctx, size in
-                let t = reduceMotion ? 1.0 : (sin(tl.date.timeIntervalSinceReferenceDate * 0.7) * 0.5 + 0.5)
+                let seconds = tl.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 3600)
+                let t = reduceMotion ? 1.0 : (sin(seconds * 0.7) * 0.5 + 0.5)
                 let cols = 16, rows = 10
                 let cx = size.width / 2, cy = size.height * 0.45
                 let maxR = min(size.width, size.height) * 0.42
@@ -153,12 +154,14 @@ struct StressStrandView: View {
     var tight: Bool
     var heat: Bool
     var chemical: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { tl in
+        MotionTimeline(cadence: .interactive) { tl, reduceMotion in
             Canvas { ctx, size in
-                let t = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
+                let t = reduceMotion
+                    ? 0
+                    : tl.date.timeIntervalSinceReferenceDate
+                        .truncatingRemainder(dividingBy: 3600)
                 let x = size.width / 2
                 let top = size.height * 0.12, bottom = size.height * 0.82
                 let n = 14

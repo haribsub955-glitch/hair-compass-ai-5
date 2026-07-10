@@ -22,14 +22,9 @@ struct PhotosView: View {
                     eyebrow: "Documentation",
                     title: "Photos",
                     trailing: AnyView(
-                        Button { showAdd = true } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Clinical.surface)
-                                .frame(width: 34, height: 34)
-                                .background(Clinical.ink, in: Circle())
+                        HeaderActionButton(systemName: "plus", accessibilityLabel: "Capture progress photo") {
+                            showAdd = true
                         }
-                        .buttonStyle(.clinicalPressable)
                     )
                 ).padding(.top, 8)
 
@@ -58,6 +53,9 @@ struct PhotosView: View {
                             Text("Capture this region to start a comparable series.")
                                 .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
                                 .multilineTextAlignment(.center)
+                            Button("Capture \(region.title.lowercased())") { showAdd = true }
+                                .buttonStyle(ClinicalButtonStyle())
+                                .padding(.top, 2)
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -67,7 +65,7 @@ struct PhotosView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .padding(.bottom, 110)
+            .padding(.bottom, 24)
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { GuidedCaptureView(defaultRegion: region) }
@@ -93,6 +91,8 @@ struct PhotosView: View {
                             .overlay(Capsule().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
                     }
                     .buttonStyle(.clinicalPressable)
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                    .accessibilityHint(on ? "Selected region" : "Shows \(r.title.lowercased()) progress photos")
                 }
             }
             // Spring the ink pill from chip to chip on selection; Reduce Motion keeps the
@@ -104,7 +104,7 @@ struct PhotosView: View {
         }
     }
 
-    /// Redesign v2: a draggable before/after slider in place of two side-by-side thumbnails.
+    /// A draggable before/after slider in place of two side-by-side thumbnails.
     private var compareCard: some View {
         let first = regionPhotos.first!
         let last = regionPhotos.last!
@@ -198,20 +198,17 @@ struct PhotosView: View {
     }
 }
 
-/// One-shot slow fade for the empty-state gouache art. Opacity only — inherently
-/// Reduce-Motion-safe — and guarded so a revisit of a live view never re-runs it.
+/// Design V2 capture guidance: the new phone-and-mirror artwork drifts on the shared low-cost
+/// decorative cadence and freezes automatically under Reduce Motion.
 private struct EmptyStateArt: View {
-    @State private var shown = false
-
     var body: some View {
-        Image(BrandArt.photosEmpty)
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(width: 140, height: 140)
-            .opacity(shown ? 1 : 0)
-            .onAppear {
-                guard !shown else { return }
-                withAnimation(.easeOut(duration: 0.5)) { shown = true }
-            }
+        LivingArtwork(
+            art: BrandArt.photoCaptureV2,
+            contentMode: .fit,
+            travel: 3,
+            zoom: 0.015,
+            phase: 2.4
+        )
+        .frame(width: 178, height: 178)
     }
 }

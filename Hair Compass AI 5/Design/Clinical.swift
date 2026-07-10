@@ -104,6 +104,12 @@ enum BrandArt {
     static let analysis = "art-analysis"    // Deep analysis
     static let trends = "art-trends"        // Trends header
 
+    // Design V2 — screen-specific narrative art. These stay data-adjacent: Plan explains the
+    // routine, Labs frames context, Photos teaches repeatable capture.
+    static let planRitualV2 = "v2-plan-ritual"
+    static let labsContextV2 = "v2-labs-context"
+    static let photoCaptureV2 = "v2-photo-capture"
+
     // Launch-ritual art (botanical backdrop + the comb that follows the finger).
     static let ritualBackdrop = "comb-bg"
     static let combTool = "comb-tool"
@@ -132,6 +138,39 @@ struct BrandBanner: View {
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
             .shadow(color: Clinical.cardShadow, radius: 12, y: 5)
+    }
+}
+
+/// Design V2's low-cost living-art treatment. A project illustration receives a few points of
+/// slow drift and a 1–2% breath—enough to feel tactile, never enough to distract from data. The
+/// shared scheduler caps this at 15 fps and pauses it off-screen/inactive/under Reduce Motion.
+struct LivingArtwork: View {
+    let art: String
+    var contentMode: ContentMode = .fill
+    var travel: CGFloat = 5
+    var zoom: CGFloat = 0.018
+    var phase: Double = 0
+
+    var body: some View {
+        MotionTimeline(cadence: .decorative) { timeline, reduceMotion in
+            let t = reduceMotion
+                ? 0
+                : timeline.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 3600)
+            let wave = sin(t * 0.28 + phase)
+            let crossWave = cos(t * 0.22 + phase)
+
+            Image(art)
+                .resizable()
+                .aspectRatio(contentMode: contentMode)
+                .scaleEffect(reduceMotion ? 1 : 1 + zoom * (0.55 + 0.45 * wave))
+                .offset(
+                    x: reduceMotion ? 0 : CGFloat(crossWave) * travel,
+                    y: reduceMotion ? 0 : CGFloat(wave) * travel * 0.45
+                )
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -250,6 +289,62 @@ extension ButtonStyle where Self == ClinicalPressableStyle {
     static var clinicalPressable: ClinicalPressableStyle { .init() }
 }
 
+// MARK: - Motion scheduling
+
+/// Shared frame budgets for procedural Canvas animation. Interactive simulations stay fluid at
+/// 60 fps, while ambient card motifs use 30 fps—their movement is intentionally slow and gains no
+/// visible fidelity from ProMotion's 120 updates per second.
+enum MotionCadence {
+    case interactive
+    case ambient
+    case decorative
+
+    var minimumInterval: Double {
+        switch self {
+        case .interactive: return 1.0 / 60.0
+        case .ambient: return 1.0 / 30.0
+        case .decorative: return 1.0 / 15.0
+        }
+    }
+}
+
+/// Lifecycle-aware replacement for a raw `TimelineView(.animation)`. It prevents procedural
+/// Canvas views from consuming frames when clipped out of a scroll view, while the app is not
+/// active, or when Reduce Motion requests a static representative frame.
+struct MotionTimeline<Content: View>: View {
+    let cadence: MotionCadence
+    let explicitlyPaused: Bool
+    private let content: (TimelineViewDefaultContext, Bool) -> Content
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isVisible = true
+
+    init(
+        cadence: MotionCadence,
+        paused: Bool = false,
+        @ViewBuilder content: @escaping (TimelineViewDefaultContext, Bool) -> Content
+    ) {
+        self.cadence = cadence
+        self.explicitlyPaused = paused
+        self.content = content
+    }
+
+    private var isPaused: Bool {
+        explicitlyPaused || reduceMotion || scenePhase != .active || !isVisible
+    }
+
+    var body: some View {
+        TimelineView(
+            .animation(minimumInterval: cadence.minimumInterval, paused: isPaused)
+        ) { timeline in
+            content(timeline, reduceMotion)
+        }
+        .onAppear { isVisible = true }
+        .onScrollVisibilityChange(threshold: 0.02) { isVisible = $0 }
+    }
+}
+
 /// One-shot entrance: fade from 0 and rise ~10pt, staggered by `index` (50ms per step), with a
 /// soft spring settle. Runs once per appearance (guarded by @State — a revisit of a live view
 /// never re-triggers). Under Reduce Motion it becomes a plain fade. Cheap by design: no
@@ -311,6 +406,34 @@ struct ScreenHeader: View {
             Spacer()
             if let trailing { trailing }
         }
+    }
+}
+
+/// A consistent 44pt header action. The visible circle remains compact, while the full control
+/// meets the platform's comfortable touch-target guidance and carries an explicit spoken label.
+struct HeaderActionButton: View {
+    let systemName: String
+    let accessibilityLabel: String
+    var prominent = true
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                if prominent {
+                    Circle()
+                        .fill(Clinical.ink)
+                        .frame(width: 40, height: 40)
+                }
+                Image(systemName: systemName)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(prominent ? Clinical.surface : Clinical.ink)
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.clinicalPressable)
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 
@@ -441,11 +564,12 @@ struct PipStepper: View {
 struct TierBadge: View {
     let tier: EvidenceTier
     var body: some View {
-        Text(tier.short.uppercased())
-            .font(Clinical.eyebrow(9)).tracking(0.8)
+        Text("EVIDENCE · \(tier.short.uppercased())")
+            .font(Clinical.eyebrow(8)).tracking(0.65)
             .foregroundStyle(Clinical.tierColor(tier))
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background(Clinical.tierColor(tier).opacity(0.12), in: Capsule())
+            .accessibilityLabel("Evidence strength: \(tier.short)")
     }
 }
 
@@ -480,9 +604,9 @@ struct WhyDisclosure: View {
     }
 }
 
-/// A section header driven by the tracked-variable catalog: title + evidence tier + capture badge
-/// + a why-this-matters disclosure, all from one source of truth. `trailing` is an optional live
-/// readout on the right of the title row (e.g. the scalp-severity composite in the log sheet).
+/// A section header driven by the tracked-variable catalog. Status and evidence intentionally live
+/// on separate rows so an evidence label can never be mistaken for the user's selected severity.
+/// `trailing` is an optional live readout (e.g. the scalp composite in the log sheet).
 struct VariableSectionHeader: View {
     let variableID: String
     var trailing: AnyView? = nil
@@ -491,13 +615,16 @@ struct VariableSectionHeader: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     Eyebrow(text: v.title)
+                    Spacer(minLength: 0)
+                    if let trailing { trailing }
+                }
+                HStack(spacing: 8) {
                     TierBadge(tier: v.tier)
                     if v.capture == .auto {
                         Label(v.capture.badge, systemImage: v.capture.symbol)
                             .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                     }
                     Spacer(minLength: 0)
-                    if let trailing { trailing }
                 }
                 WhyDisclosure(text: v.why)
             }

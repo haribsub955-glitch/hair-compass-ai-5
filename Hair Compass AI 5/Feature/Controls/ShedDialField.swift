@@ -11,6 +11,7 @@ struct ShedDialField: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let bands = ["Minimal", "Normal", "Elevated", "Heavy"]
+    private var band: Int { SheddingDial.band(intensity) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -39,36 +40,49 @@ struct ShedDialField: View {
 
     // MARK: Live preview
 
-    /// A 140pt panel can't carry a 0-intensity sim the way the full-screen onboarding can, so the
-    /// PREVIEW gets a visual floor: even "minimal" shows a gentle, slow drizzle. The stored `shed`
-    /// stays honest — it's derived from the true raw drag intensity; only this display value is
-    /// floored, and the strand count still visibly rises across the whole drag.
-    private var previewIntensity: CGFloat { 0.22 + intensity * 0.78 }
-
     private var previewPanel: some View {
         ZStack(alignment: .bottomLeading) {
-            FallingHairView(intensity: previewIntensity)
+            SheddingStatusScene(intensity: intensity)
+            Label("Live portrait", systemImage: "waveform.path")
+                .font(Clinical.eyebrow(9))
+                .tracking(0.7)
+                .foregroundStyle(Clinical.accent)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .background(Clinical.surface.opacity(0.82), in: Capsule())
+                .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+                .padding(10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             caption.padding(10)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 140)
+        .frame(height: 164)
         .background(Clinical.surface)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Clinical.hairline, lineWidth: 1)
         )
+        .animation(.easeOut(duration: 0.22), value: band)
     }
 
     private var caption: some View {
         let (title, subtitle) = SheddingDial.bandCaption(intensity)
-        return VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(Clinical.headline(15))
-                .foregroundStyle(Clinical.ink)
-            Text(subtitle)
-                .font(.system(size: 11))
-                .foregroundStyle(Clinical.secondary)
+        let reflection = SheddingReflection.make(band: band)
+        return HStack(alignment: .bottom, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(Clinical.headline(16))
+                    .foregroundStyle(Clinical.ink)
+                    .contentTransition(.opacity)
+                Text("\(reflection.title) · \(subtitle)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Clinical.secondary)
+                    .contentTransition(.opacity)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            SheddingBandMeter(band: band)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -172,5 +186,24 @@ struct ShedDialField: View {
             shed = ShedLevel(rawValue: clamped) ?? .normal
             UISelectionFeedbackGenerator().selectionChanged()
         }
+    }
+}
+
+/// A compact magnitude cue that animates with the categorical selection. It reinforces the scene
+/// without implying an exact strand count.
+private struct SheddingBandMeter: View {
+    let band: Int
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 3) {
+            ForEach(0..<4, id: \.self) { index in
+                Capsule()
+                    .fill(index <= band ? Clinical.accent : Clinical.hairline)
+                    .frame(width: 4, height: 7 + CGFloat(index) * 4)
+            }
+        }
+        .frame(height: 20, alignment: .bottom)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: band)
+        .accessibilityHidden(true)
     }
 }

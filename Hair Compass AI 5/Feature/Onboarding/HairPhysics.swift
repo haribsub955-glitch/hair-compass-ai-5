@@ -90,17 +90,18 @@ struct HairSim {
     var sim = HairSim()
     var last: Date?
     var staticStrands: [HairStrand] = []
+    var staticBand = -1
+    var staticSize: CGSize = .zero
 }
 
 struct FallingHairView: View {
     var intensity: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var box = HairSimBox()
 
     private static let palette: [Color] = [Clinical.accent, Clinical.ink, Clinical.secondary, Clinical.sage, Clinical.gold]
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        MotionTimeline(cadence: .interactive) { timeline, reduceMotion in
             Canvas { ctx, size in
                 box.sim.size = size
                 if reduceMotion {
@@ -109,7 +110,12 @@ struct FallingHairView: View {
                     let now = timeline.date
                     let dt = box.last.map { min(CGFloat(now.timeIntervalSince($0)), 0.05) } ?? 0
                     box.last = now
-                    box.sim.step(dt: dt, time: CGFloat(now.timeIntervalSinceReferenceDate), intensity: intensity)
+                    // Keep the trigonometry input small during long sessions; visually identical,
+                    // but avoids doing sine reduction on an ever-growing reference-date value.
+                    let time = CGFloat(
+                        now.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3600)
+                    )
+                    box.sim.step(dt: dt, time: time, intensity: intensity)
                     for s in box.sim.strands { drawStrand(ctx, s, height: size.height) }
                 }
             }
@@ -128,7 +134,11 @@ struct FallingHairView: View {
     }
 
     private func drawStatic(_ ctx: GraphicsContext, size: CGSize) {
-        if box.staticStrands.isEmpty {
+        let band = min(3, max(0, Int((intensity * 3).rounded())))
+        if box.staticStrands.isEmpty || box.staticBand != band || box.staticSize != size {
+            box.staticStrands.removeAll(keepingCapacity: true)
+            box.staticBand = band
+            box.staticSize = size
             var seed: UInt64 = 42
             func rnd() -> CGFloat { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return CGFloat(seed >> 33) / CGFloat(UInt32.max) }
             let n = Int(8 + intensity * 60)
@@ -142,4 +152,215 @@ struct FallingHairView: View {
         }
         for s in box.staticStrands { drawStrand(ctx, s, height: size.height + 100) }
     }
+}
+
+// MARK: - Semantic shedding scene
+
+/// A small, testable description of how the categorical shedding answer becomes a visual scene.
+/// The log never pretends to count individual hairs: the stored value remains the four-band
+/// self-report, while density, speed and the resting collection make the *difference between
+/// bands* immediately legible.
+struct SheddingSceneProfile: Equatable {
+    let band: Int
+    let displayIntensity: CGFloat
+    let restingStrandCount: Int
+    let clusterCount: Int
+    let washOpacity: Double
+
+    static func make(intensity: CGFloat) -> SheddingSceneProfile {
+        let clamped = min(1, max(0, intensity))
+        let band = min(3, max(0, Int((clamped * 3).rounded())))
+        return SheddingSceneProfile(
+            band: band,
+            // Keep a single occasional strand alive at minimal without flattening the strong
+            // density difference between minimal and heavy.
+            displayIntensity: 0.08 + clamped * 0.92,
+            restingStrandCount: [1, 4, 9, 16][band],
+            // Elevated and heavy self-reports often feel clustered rather than merely faster.
+            // These are illustrative events, never a claimed measurement.
+            clusterCount: [0, 0, 1, 2][band],
+            washOpacity: [0.025, 0.04, 0.065, 0.095][band]
+        )
+    }
+}
+
+struct SheddingReflection: Equatable {
+    let title: String
+    let detail: String
+
+    static func make(band: Int) -> SheddingReflection {
+        let clamped = min(3, max(0, band))
+        return [
+            SheddingReflection(
+                title: "Quiet today",
+                detail: "Occasional strands; a light moment in the pattern."
+            ),
+            SheddingReflection(
+                title: "Steady turnover",
+                detail: "A familiar daily rhythm."
+            ),
+            SheddingReflection(
+                title: "More active",
+                detail: "Above your usual pattern—worth tracking over time."
+            ),
+            SheddingReflection(
+                title: "A heavier day",
+                detail: "Frequent strands or clusters. One day is context, not a conclusion."
+            ),
+        ][clamped]
+    }
+}
+
+/// The shared emotional portrait used while logging and after a log is saved on Today. Falling
+/// strands communicate frequency; the quiet collection at the lower edge communicates what that
+/// frequency can feel like over a day. Higher levels become denser and warmer, never faster by
+/// arbitrary decorative motion alone. Reduce Motion keeps the same information in a static frame.
+struct SheddingStatusScene: View {
+    var intensity: CGFloat
+    var showsCollection = true
+
+    private var profile: SheddingSceneProfile { .make(intensity: intensity) }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Clinical.sage.opacity(profile.band == 0 ? 0.045 : 0.015),
+                    Clinical.accent.opacity(profile.washOpacity),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            FallingHairView(intensity: profile.displayIntensity)
+
+            if profile.clusterCount > 0 {
+                SheddingClusterLayer(profile: profile)
+                    .transition(.opacity)
+            }
+
+            if showsCollection {
+                RestingHairCollection(profile: profile)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.35), value: profile.band)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Elevated bands gain occasional grouped strands. This gives "more than usual" a distinct
+/// rhythm instead of communicating it only by increasing particle count.
+private struct SheddingClusterLayer: View {
+    let profile: SheddingSceneProfile
+
+    var body: some View {
+        MotionTimeline(cadence: .ambient) { timeline, reduceMotion in
+            Canvas { ctx, size in
+                let seconds = timeline.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 60)
+                let duration = 3.7 - Double(profile.band) * 0.42
+
+                for cluster in 0..<profile.clusterCount {
+                    let phase: CGFloat
+                    if reduceMotion {
+                        phase = 0.40 + CGFloat(cluster) * 0.24
+                    } else {
+                        let raw = (seconds / duration) + Double(cluster) * 0.53
+                        phase = CGFloat(raw - raw.rounded(.down))
+                    }
+
+                    let baseX = size.width * (0.22 + sheddingHashUnit(cluster, salt: 41) * 0.56)
+                    let sway = sin(phase * .pi * 2 + CGFloat(cluster)) * (8 + CGFloat(profile.band) * 4)
+                    let y = -34 + phase * (size.height + 64)
+                    let edgeFade = min(1, phase * 9) * min(1, (1 - phase) * 6)
+                    let strandCount = profile.band == 2 ? 3 : 5
+
+                    for strand in 0..<strandCount {
+                        let offset = (CGFloat(strand) - CGFloat(strandCount - 1) / 2) * 3.8
+                        let curl = sheddingHashUnit(strand + cluster * 7, salt: 53) * 9
+                        var path = Path()
+                        path.move(to: CGPoint(x: baseX + sway + offset, y: y))
+                        path.addCurve(
+                            to: CGPoint(x: baseX + sway - offset * 0.45, y: y + 30 + curl),
+                            control1: CGPoint(x: baseX + sway + 11 + curl, y: y + 8),
+                            control2: CGPoint(x: baseX + sway - 12 - curl, y: y + 20)
+                        )
+                        ctx.stroke(
+                            path,
+                            with: .color(
+                                (strand.isMultiple(of: 2) ? Clinical.accent : Clinical.ink)
+                                    .opacity(Double(edgeFade) * (profile.band == 3 ? 0.72 : 0.58))
+                            ),
+                            style: StrokeStyle(lineWidth: 1.45, lineCap: .round, lineJoin: .round)
+                        )
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// A restrained tangle rather than a literal numeric hair count. The number of paths is fixed per
+/// band, so the visual reads consistently whenever the user returns to the same answer.
+private struct RestingHairCollection: View {
+    let profile: SheddingSceneProfile
+
+    var body: some View {
+        Canvas { ctx, size in
+            let count = profile.restingStrandCount
+            let spread = min(size.width * 0.56, 86 + CGFloat(profile.band) * 20)
+            let centerX = size.width * 0.70
+            let baseline = size.height - 13
+
+            // A soft grounded shadow makes the resting strands feel collected, not suspended.
+            let shadowRect = CGRect(
+                x: centerX - spread * 0.56,
+                y: baseline - 3,
+                width: spread * 1.12,
+                height: 10
+            )
+            ctx.fill(
+                Path(ellipseIn: shadowRect),
+                with: .color(Clinical.ink.opacity(0.025 + Double(profile.band) * 0.012))
+            )
+
+            for index in 0..<count {
+                let a = sheddingHashUnit(index, salt: 3)
+                let b = sheddingHashUnit(index, salt: 7)
+                let c = sheddingHashUnit(index, salt: 11)
+                let startX = centerX - spread * 0.48 + a * spread * 0.76
+                let endX = centerX - spread * 0.34 + b * spread * 0.76
+                let y = baseline - c * (4 + CGFloat(profile.band) * 2.2)
+                let lift = 4 + b * (8 + CGFloat(profile.band) * 3)
+
+                var path = Path()
+                path.move(to: CGPoint(x: startX, y: y))
+                path.addCurve(
+                    to: CGPoint(x: endX, y: y + (a - 0.5) * 4),
+                    control1: CGPoint(x: startX + spread * (0.18 + c * 0.14), y: y - lift),
+                    control2: CGPoint(x: endX - spread * (0.16 + a * 0.13), y: y + lift * 0.72)
+                )
+                let palette: [Color] = [Clinical.ink, Clinical.accent, Clinical.secondary, Clinical.gold]
+                ctx.stroke(
+                    path,
+                    with: .color(palette[index % palette.count].opacity(0.42 + Double(profile.band) * 0.08)),
+                    style: StrokeStyle(
+                        lineWidth: 1.1 + c * 0.9,
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+}
+
+private func sheddingHashUnit(_ index: Int, salt: Int) -> CGFloat {
+    let value = sin(CGFloat((index + 1) * 127 + salt * 313)) * 43_758.5453
+    return value - value.rounded(.down)
 }

@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// The app's floating tab bar: an ivory capsule hovering ~10pt above the home indicator on
+/// The app's floating tab bar: an ivory capsule sitting inside the bottom safe-area inset on
 /// layered warm shadows (tight contact + soft ambient — warm espresso, never grey). The
 /// selected item sits on a copper pill that slides between items with a snappy spring
 /// (`matchedGeometryEffect`); the tapped symbol gives a light haptic and a small bounce.
@@ -46,10 +46,12 @@ struct FloatingTabBar: View {
             VStack(spacing: 3) {
                 Image(systemName: tab.symbol)
                     .symbolVariant(on ? .fill : .none)
-                    .font(.system(size: 17, weight: on ? .semibold : .regular))
+                    .font(.system(size: 18, weight: on ? .semibold : .regular))
                     .symbolEffect(.bounce, value: bounceCounts[tab, default: 0])
                 Text(tab.title)
-                    .font(.system(size: 10, weight: on ? .semibold : .medium))
+                    .font(.system(size: 11, weight: on ? .semibold : .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
             .foregroundStyle(on ? Clinical.surface : Clinical.secondary)
             .frame(maxWidth: .infinity)
@@ -65,6 +67,7 @@ struct FloatingTabBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.title)
+        .accessibilityValue(on ? "Selected" : "")
         .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
     }
 }

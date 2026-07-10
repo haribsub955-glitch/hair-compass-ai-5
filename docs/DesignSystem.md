@@ -67,6 +67,13 @@ daily-log + routine into one card (readout/baseline cards dropped); **Plan**'s c
 copper progress ring; **Labs** results became reference-range gauges; **Photos** gained an inline
 drag-to-compare slider (the separate full-screen compare view was removed).
 
+## Warm Premium Design V2 (2026-07-10) — functional art + bounded motion
+
+[Design V2](DesignV2.md) adds screen-specific narrative art to Plan, Labs, and Photos while
+deliberately keeping Today and Trends data-led. It also standardizes every display-driven Canvas
+animation through lifecycle-aware 60/30/15 fps budgets, introduces a subtle tab transition, and
+fixes sheet field/capture-title contrast discovered during the full-flow audit.
+
 ## What changed from clinical-minimal
 - No more hairline-only depth — soft shadows are back, deliberately.
 - No more flat blue accent — copper/terracotta carries the same job.

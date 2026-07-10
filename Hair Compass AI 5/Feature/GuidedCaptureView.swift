@@ -46,6 +46,9 @@ struct GuidedCaptureView: View {
             .clinicalScreen()
             .navigationTitle(captured == nil ? "Capture · \(region.title)" : "Review")
             .navigationBarTitleDisplayMode(.inline)
+            // Camera content can make the system infer a dark toolbar, which turned the title
+            // white against the warm sheet in the no-camera/import fallback. V2 keeps it legible.
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }

@@ -69,17 +69,23 @@ struct LivingGauge<Motif: View>: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Clinical.hairline, lineWidth: 1)
         )
+        .animation(.easeOut(duration: 0.22), value: band)
     }
 
     private var captionChip: some View {
         let (title, subtitle) = caption(intensity)
-        return VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(Clinical.headline(15))
-                .foregroundStyle(Clinical.ink)
-            Text(subtitle)
-                .font(.system(size: 11))
-                .foregroundStyle(Clinical.secondary)
+        return HStack(alignment: .bottom, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(Clinical.headline(15))
+                    .foregroundStyle(Clinical.ink)
+                    .contentTransition(.opacity)
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Clinical.secondary)
+                    .contentTransition(.opacity)
+            }
+            GaugeBandMeter(band: band, count: bandCount, tint: tint)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -194,5 +200,26 @@ struct LivingGauge<Motif: View>: View {
         if changed {
             UISelectionFeedbackGenerator().selectionChanged()
         }
+    }
+}
+
+/// Animated, non-numeric magnitude cue shared by scalp and wellbeing states. The live Canvas
+/// remains the primary explanation; these bars make the selected band readable at a glance.
+private struct GaugeBandMeter: View {
+    let band: Int
+    let count: Int
+    let tint: Color
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 2.5) {
+            ForEach(0..<count, id: \.self) { index in
+                Capsule()
+                    .fill(index <= band ? tint : Clinical.hairline)
+                    .frame(width: 3.5, height: 6 + CGFloat(index) * 2.5)
+            }
+        }
+        .frame(height: 18, alignment: .bottom)
+        .animation(.spring(response: 0.32, dampingFraction: 0.8), value: band)
+        .accessibilityHidden(true)
     }
 }

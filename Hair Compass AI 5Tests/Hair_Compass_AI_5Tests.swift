@@ -242,6 +242,8 @@ struct Hair_Compass_AI_5Tests {
     @Test func coachReflectsRemainingSteps() {
         let done = AdherenceCoach.message(doneToday: 2, totalToday: 2, streak: 5, weeklyAdherence: nil)
         #expect(done.headline == "Today's routine is done")
+        let doneWithoutStreak = AdherenceCoach.message(doneToday: 2, totalToday: 2, streak: 1, weeklyAdherence: nil)
+        #expect(doneWithoutStreak.detail == "All 2 steps are complete. Your plan is set for today.")
         let left = AdherenceCoach.message(doneToday: 1, totalToday: 3, streak: 0, weeklyAdherence: nil)
         #expect(left.headline == "2 steps left today")
         let one = AdherenceCoach.message(doneToday: 2, totalToday: 3, streak: 0, weeklyAdherence: nil)
@@ -736,6 +738,37 @@ struct Hair_Compass_AI_5Tests {
         #expect(HairSim.spawnRate(1) > HairSim.spawnRate(0))
         #expect(HairSim.gravity(1) > HairSim.gravity(0))
         #expect(HairSim.sway(1) > HairSim.sway(0))
+    }
+
+    @Test func sheddingSceneMakesEachStatusVisuallyDistinctWithoutClaimingACount() {
+        let minimal = SheddingSceneProfile.make(intensity: 0)
+        let normal = SheddingSceneProfile.make(intensity: 1.0 / 3.0)
+        let elevated = SheddingSceneProfile.make(intensity: 2.0 / 3.0)
+        let heavy = SheddingSceneProfile.make(intensity: 1)
+
+        #expect(minimal.band == 0)
+        #expect(normal.band == 1)
+        #expect(elevated.band == 2)
+        #expect(heavy.band == 3)
+        #expect(minimal.displayIntensity < normal.displayIntensity)
+        #expect(normal.displayIntensity < elevated.displayIntensity)
+        #expect(elevated.displayIntensity < heavy.displayIntensity)
+        #expect(minimal.restingStrandCount < normal.restingStrandCount)
+        #expect(normal.restingStrandCount < elevated.restingStrandCount)
+        #expect(elevated.restingStrandCount < heavy.restingStrandCount)
+        #expect(minimal.clusterCount == 0)
+        #expect(normal.clusterCount == 0)
+        #expect(elevated.clusterCount == 1)
+        #expect(heavy.clusterCount == 2)
+        #expect(minimal.washOpacity < heavy.washOpacity)
+    }
+
+    @Test func proceduralMotionUsesBoundedFrameBudgets() {
+        #expect(abs(MotionCadence.interactive.minimumInterval - 1.0 / 60.0) < 0.000_001)
+        #expect(abs(MotionCadence.ambient.minimumInterval - 1.0 / 30.0) < 0.000_001)
+        #expect(abs(MotionCadence.decorative.minimumInterval - 1.0 / 15.0) < 0.000_001)
+        #expect(MotionCadence.ambient.minimumInterval > MotionCadence.interactive.minimumInterval)
+        #expect(MotionCadence.decorative.minimumInterval > MotionCadence.ambient.minimumInterval)
     }
 
     @Test func simSpawnsStrandsAndNeverExceedsMax() {

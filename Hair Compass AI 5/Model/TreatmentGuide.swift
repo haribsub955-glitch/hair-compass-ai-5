@@ -200,6 +200,8 @@ enum AdherenceCoach {
             detail = "\(streak)-day streak — consistency is the single biggest thing you control."
         } else if let w = weeklyAdherence, totalToday > 0 {
             detail = "\(Int((w * 100).rounded()))% of this week's steps done. Keep it steady."
+        } else if totalToday > 0, doneToday >= totalToday {
+            detail = "All \(totalToday) step\(totalToday == 1 ? " is" : "s are") complete. Your plan is set for today."
         } else if totalToday > 0 {
             detail = "Small daily reps beat perfect occasional effort. Check them off as you go."
         } else {

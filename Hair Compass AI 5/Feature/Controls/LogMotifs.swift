@@ -1,10 +1,11 @@
 import SwiftUI
 
 /// The six Canvas motif renderers behind the daily-log `LivingGauge`s. Each is a
-/// `TimelineView(.animation) { Canvas }` exactly like `FallingHairView` / `CountScrubber`'s
-/// motif layer; `intensity` (0…1) drives everything, and Reduce Motion draws one static
-/// representative frame. Constants are ported 1:1 from the design prototype's `draw*`
-/// functions (Daily Log — Living Inputs); colours map onto `Clinical` tokens.
+/// `MotionTimeline { Canvas }` exactly like `FallingHairView` / `CountScrubber`'s motif layer;
+/// `intensity` (0…1) drives everything, and Reduce Motion draws one static representative frame.
+/// Ambient motifs are capped at 30 fps and pause when off-screen or inactive. Constants are
+/// ported 1:1 from the design prototype's `draw*` functions (Daily Log — Living Inputs); colours
+/// map onto `Clinical` tokens.
 
 // MARK: - Shared deterministic randomness (same hash as CountScrubber & the prototype)
 
@@ -48,11 +49,10 @@ private struct Fleck {
 /// `(0.5 + i·0.9)`, sinusoidal drift, radius `1…1+i·2.4` (bigger = clumps), α `0.55·fade`.
 struct FlakeMotif: View {
     var intensity: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var box = FleckSimBox()
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        MotionTimeline(cadence: .ambient) { timeline, reduceMotion in
             Canvas { ctx, size in
                 if reduceMotion {
                     drawStatic(ctx, size: size)
@@ -128,10 +128,9 @@ struct FlakeMotif: View {
 /// Bloom hex #B44A34 has no token → `Clinical.critical`. Zero intensity draws nothing: calm.
 struct RednessMotif: View {
     var intensity: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        MotionTimeline(cadence: .ambient, paused: intensity <= 0.001) { timeline, reduceMotion in
             Canvas { ctx, size in
                 guard intensity > 0.001 else { return }
                 let t: CGFloat = reduceMotion ? 0 : timelineSeconds(timeline.date)
@@ -176,11 +175,10 @@ private struct ItchRipple {
 /// with a small centre prick at α ×1.3.
 struct ItchMotif: View {
     var intensity: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var box = ItchSimBox()
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        MotionTimeline(cadence: .ambient) { timeline, reduceMotion in
             Canvas { ctx, size in
                 if reduceMotion {
                     drawStatic(ctx, size: size)
@@ -241,10 +239,9 @@ struct ItchMotif: View {
 /// α `0.14 + i·0.4`. Highlight hexes #FCF3DF/#FFFDF6 → nearest token `Clinical.surface`.
 struct OilMotif: View {
     var intensity: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        MotionTimeline(cadence: .ambient, paused: intensity <= 0.001) { timeline, reduceMotion in
             Canvas { ctx, size in
                 guard intensity > 0.001 else { return }
                 let t: CGFloat = reduceMotion ? 0 : timelineSeconds(timeline.date)
@@ -289,10 +286,9 @@ struct OilMotif: View {
 /// cut out with the panel colour (`Clinical.surface`).
 struct SleepMotif: View {
     var intensity: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        MotionTimeline(cadence: .ambient) { timeline, reduceMotion in
             Canvas { ctx, size in
                 let t: CGFloat = reduceMotion ? 0 : timelineSeconds(timeline.date)
                 let q = intensity
@@ -341,10 +337,9 @@ struct SleepMotif: View {
 /// dot sits at the right edge.
 struct StressMotif: View {
     var intensity: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        MotionTimeline(cadence: .ambient) { timeline, reduceMotion in
             Canvas { ctx, size in
                 let t: CGFloat = reduceMotion ? 0 : timelineSeconds(timeline.date)
                 let s = intensity

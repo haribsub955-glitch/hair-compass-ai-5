@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A visual, body-neutral guide to how under-eating, unbalanced eating, and balanced meals can affect energy and wellbeing.">
+  <meta name="theme-color" content="#173f3b">
+  <link rel="icon" href="data:,">
+  <title>Fuel the Body — A Balanced Eating Guide</title>
+  <style>
+    :root {
+      --ink: #173f3b;
+      --ink-soft: #47645f;
+      --paper: #fbf6ea;
+      --paper-deep: #f4ead7;
+      --card: rgba(255, 253, 247, 0.92);
+      --teal: #2c6860;
+      --teal-pale: #dcebe6;
+      --clay: #c86e4d;
+      --clay-pale: #f4dfd4;
+      --mustard: #d89d31;
+      --mustard-pale: #f6e8bc;
+      --line: rgba(23, 63, 59, 0.14);
+      --shadow: 0 24px 70px rgba(61, 52, 32, 0.12);
+      --radius-lg: 32px;
+      --radius-md: 22px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--paper);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 8% 5%, rgba(200, 110, 77, 0.12), transparent 25rem),
+        radial-gradient(circle at 93% 18%, rgba(216, 157, 49, 0.12), transparent 24rem),
+        linear-gradient(180deg, #fffaf0 0%, var(--paper) 46%, #f7efdf 100%);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    img { display: block; max-width: 100%; }
+
+    a { color: inherit; }
+
+    button, a { -webkit-tap-highlight-color: transparent; }
+
+    .skip-link {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 100;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--ink);
+      color: white;
+      transform: translateY(-150%);
+      transition: transform 160ms ease;
+    }
+
+    .skip-link:focus { transform: translateY(0); }
+
+    .shell {
+      width: min(1180px, calc(100% - 36px));
+      margin: 0 auto;
+    }
+
+    .site-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 22px 0;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      text-decoration: none;
+      font-weight: 850;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      place-items: center;
+      border-radius: 50% 50% 44% 56%;
+      color: white;
+      background: var(--teal);
+      box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.08);
+      font-size: 20px;
+    }
+
+    .top-nav {
+      display: flex;
+      gap: 8px;
+      padding: 5px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.56);
+      backdrop-filter: blur(12px);
+    }
+
+    .top-nav a {
+      padding: 8px 13px;
+      border-radius: 999px;
+      color: var(--ink-soft);
+      font-size: 0.84rem;
+      font-weight: 750;
+      text-decoration: none;
+    }
+
+    .top-nav a:hover,
+    .top-nav a:focus-visible {
+      background: white;
+      color: var(--ink);
+      outline: none;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 0.92fr 1.08fr;
+      min-height: 650px;
+      align-items: center;
+      gap: clamp(36px, 6vw, 78px);
+      padding: 52px 0 78px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+      padding: 7px 11px;
+      border: 1px solid rgba(44, 104, 96, 0.18);
+      border-radius: 999px;
+      color: var(--teal);
+      background: rgba(220, 235, 230, 0.72);
+      font-size: 0.75rem;
+      font-weight: 850;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--mustard);
+      box-shadow: 0 0 0 4px rgba(216, 157, 49, 0.18);
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    h1, h2 {
+      font-family: Georgia, "Times New Roman", serif;
+      font-weight: 700;
+      letter-spacing: -0.045em;
+      text-wrap: balance;
+    }
+
+    h1 {
+      max-width: 750px;
+      margin-bottom: 24px;
+      font-size: clamp(3.15rem, 7vw, 6.5rem);
+      line-height: 0.93;
+    }
+
+    h1 span { color: var(--clay); }
+
+    .hero-copy > p {
+      max-width: 590px;
+      margin-bottom: 30px;
+      color: var(--ink-soft);
+      font-size: clamp(1.05rem, 1.7vw, 1.28rem);
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .button {
+      display: inline-flex;
+      min-height: 49px;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      padding: 12px 18px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 820;
+      transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }
+
+    .button:hover { transform: translateY(-2px); }
+
+    .button:focus-visible {
+      outline: 3px solid rgba(44, 104, 96, 0.28);
+      outline-offset: 3px;
+    }
+
+    .button-primary {
+      color: white;
+      background: var(--ink);
+      box-shadow: 0 12px 24px rgba(23, 63, 59, 0.18);
+    }
+
+    .button-secondary {
+      border-color: var(--line);
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .hero-visual {
+      position: relative;
+      isolation: isolate;
+    }
+
+    .hero-visual::before {
+      content: "";
+      position: absolute;
+      inset: 9% -4% -5% 12%;
+      z-index: -1;
+      border-radius: 44% 56% 58% 42% / 44% 38% 62% 56%;
+      background: var(--teal-pale);
+      transform: rotate(3deg);
+    }
+
+    .hero-image {
+      overflow: hidden;
+      border: 9px solid rgba(255, 253, 247, 0.92);
+      border-radius: 48% 52% 28% 72% / 42% 38% 62% 58%;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-image img {
+      width: 100%;
+      aspect-ratio: 3 / 2;
+      object-fit: cover;
+    }
+
+    .hero-note {
+      position: absolute;
+      right: -14px;
+      bottom: 2%;
+      width: min(245px, 48%);
+      padding: 15px 16px;
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      border-radius: 18px;
+      background: rgba(255, 253, 247, 0.92);
+      box-shadow: 0 16px 38px rgba(61, 52, 32, 0.15);
+      backdrop-filter: blur(14px);
+      font-size: 0.86rem;
+      font-weight: 760;
+    }
+
+    .hero-note strong {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--clay);
+      font-size: 0.72rem;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .body-note {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 15px;
+      align-items: center;
+      margin-bottom: 74px;
+      padding: 20px 22px;
+      border: 1px solid rgba(44, 104, 96, 0.16);
+      border-radius: var(--radius-md);
+      background: rgba(220, 235, 230, 0.62);
+    }
+
+    .body-note-icon {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border-radius: 15px;
+      color: white;
+      background: var(--teal);
+      font-size: 1.2rem;
+    }
+
+    .body-note p { margin: 0; color: var(--ink-soft); }
+
+    .body-note strong { color: var(--ink); }
+
+    .section-heading {
+      display: grid;
+      grid-template-columns: 1fr minmax(260px, 0.48fr);
+      gap: 40px;
+      align-items: end;
+      margin-bottom: 32px;
+    }
+
+    .section-heading h2 {
+      max-width: 700px;
+      margin-bottom: 0;
+      font-size: clamp(2.35rem, 5vw, 4.6rem);
+      line-height: 0.98;
+    }
+
+    .section-heading p {
+      margin-bottom: 4px;
+      color: var(--ink-soft);
+    }
+
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 22px;
+      margin-bottom: 96px;
+    }
+
+    .state-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: var(--card);
+      box-shadow: 0 18px 48px rgba(61, 52, 32, 0.08);
+      transition: transform 220ms ease, box-shadow 220ms ease;
+    }
+
+    .state-card:hover {
+      transform: translateY(-5px);
+      box-shadow: var(--shadow);
+    }
+
+    .state-card[data-tone="clay"] { --tone: var(--clay); --tone-pale: var(--clay-pale); }
+    .state-card[data-tone="mustard"] { --tone: #a66d07; --tone-pale: var(--mustard-pale); }
+
+    .state-media {
+      position: relative;
+      overflow: hidden;
+      margin: 10px;
+      border-radius: 24px;
+      background: var(--tone-pale);
+    }
+
+    .state-media img {
+      width: 100%;
+      height: min(550px, 53vw);
+      object-fit: cover;
+      object-position: center top;
+      transition: transform 700ms cubic-bezier(.2,.8,.2,1);
+    }
+
+    .state-card:hover .state-media img { transform: scale(1.025); }
+
+    .state-badge {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 11px;
+      border-radius: 999px;
+      color: var(--ink);
+      background: rgba(255, 253, 247, 0.9);
+      box-shadow: 0 8px 24px rgba(61, 52, 32, 0.12);
+      backdrop-filter: blur(10px);
+      font-size: 0.76rem;
+      font-weight: 850;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .meter {
+      display: inline-grid;
+      grid-template-columns: repeat(4, 8px);
+      gap: 3px;
+    }
+
+    .meter i {
+      height: 13px;
+      border-radius: 2px;
+      background: rgba(23, 63, 59, 0.16);
+    }
+
+    .meter i:first-child { background: var(--tone); }
+
+    .state-content { padding: 18px 28px 30px; }
+
+    .state-kicker {
+      margin-bottom: 7px;
+      color: var(--tone);
+      font-size: 0.78rem;
+      font-weight: 880;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .state-content h3 {
+      margin-bottom: 10px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(1.75rem, 3vw, 2.45rem);
+      letter-spacing: -0.035em;
+      line-height: 1.02;
+    }
+
+    .state-content > p { color: var(--ink-soft); }
+
+    .signal-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+      margin: 22px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .signal-list li {
+      min-height: 62px;
+      padding: 11px 12px;
+      border-radius: 14px;
+      background: var(--tone-pale);
+      color: var(--ink);
+      font-size: 0.86rem;
+      font-weight: 740;
+    }
+
+    .signal-list li::before {
+      content: "•";
+      margin-right: 7px;
+      color: var(--tone);
+      font-size: 1.1rem;
+    }
+
+    .balance-section {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 52px;
+      align-items: center;
+      margin-bottom: 92px;
+      padding: clamp(24px, 4vw, 50px);
+      border-radius: 38px;
+      color: #fdf9ee;
+      background: var(--ink);
+      box-shadow: 0 30px 80px rgba(23, 63, 59, 0.18);
+    }
+
+    .balance-photo {
+      overflow: hidden;
+      border-radius: 26px 60px 26px 26px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+    }
+
+    .balance-photo img {
+      width: 100%;
+      aspect-ratio: 3 / 2;
+      object-fit: cover;
+    }
+
+    .balance-copy h2 {
+      margin-bottom: 18px;
+      font-size: clamp(2.5rem, 5vw, 4.7rem);
+      line-height: 0.96;
+    }
+
+    .balance-copy > p { color: rgba(255, 253, 247, 0.74); }
+
+    .balance-points {
+      display: grid;
+      gap: 10px;
+      margin: 26px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .balance-points li {
+      display: grid;
+      grid-template-columns: 35px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 11px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.13);
+    }
+
+    .balance-points li span {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border-radius: 10px;
+      color: var(--ink);
+      background: var(--mustard-pale);
+      font-weight: 900;
+    }
+
+    .balance-points strong { display: block; color: white; }
+    .balance-points small { color: rgba(255, 253, 247, 0.66); }
+
+    .plate-section {
+      display: grid;
+      grid-template-columns: 0.8fr 1.2fr;
+      gap: 54px;
+      align-items: center;
+      margin-bottom: 92px;
+    }
+
+    .plate-visual {
+      position: relative;
+      width: min(100%, 460px);
+      aspect-ratio: 1;
+      margin: 0 auto;
+      padding: 7%;
+      border-radius: 50%;
+      background: #e8dfcd;
+      box-shadow: inset 0 0 0 16px rgba(255,255,255,0.62), 0 24px 50px rgba(61, 52, 32, 0.14);
+    }
+
+    .plate-grid {
+      display: grid;
+      width: 100%;
+      height: 100%;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 7px;
+      overflow: hidden;
+      border-radius: 50%;
+      transform: rotate(-2deg);
+    }
+
+    .plate-part {
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      text-align: center;
+      font-weight: 880;
+    }
+
+    .plate-part span { display: block; font-size: clamp(1.7rem, 4vw, 3.1rem); }
+    .plate-part small { font-size: 0.76rem; }
+    .plate-veg { grid-row: 1 / 3; background: #bdd8bd; }
+    .plate-grain { background: #edd5a0; }
+    .plate-protein { background: #dfad92; }
+
+    .plate-copy h2 {
+      margin-bottom: 18px;
+      font-size: clamp(2.4rem, 5vw, 4.5rem);
+      line-height: 1;
+    }
+
+    .plate-copy > p { max-width: 620px; color: var(--ink-soft); }
+
+    .rhythm-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 26px;
+    }
+
+    .rhythm-card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.58);
+    }
+
+    .rhythm-card strong { display: block; margin-bottom: 4px; }
+    .rhythm-card small { color: var(--ink-soft); }
+
+    .help-card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 28px;
+      align-items: center;
+      margin-bottom: 60px;
+      padding: 28px 30px;
+      border: 1px solid rgba(200, 110, 77, 0.2);
+      border-radius: 26px;
+      background: var(--clay-pale);
+    }
+
+    .help-card h2 {
+      margin-bottom: 7px;
+      font-family: inherit;
+      font-size: 1.35rem;
+      letter-spacing: -0.02em;
+    }
+
+    .help-card p { margin-bottom: 0; color: var(--ink-soft); }
+
+    .help-card .button { color: white; background: var(--clay); white-space: nowrap; }
+
+    footer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 30px;
+      align-items: start;
+      padding: 30px 0 44px;
+      border-top: 1px solid var(--line);
+      color: var(--ink-soft);
+      font-size: 0.82rem;
+    }
+
+    .source-links {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px 18px;
+    }
+
+    .source-links a { font-weight: 760; text-underline-offset: 3px; }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 600ms ease, transform 600ms cubic-bezier(.2,.8,.2,1);
+    }
+
+    .reveal.is-visible { opacity: 1; transform: none; }
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; min-height: auto; padding-top: 36px; }
+      .hero-copy { text-align: center; }
+      .hero-copy > p { margin-inline: auto; }
+      .hero-actions { justify-content: center; }
+      .hero-visual { width: min(760px, 94%); margin: 0 auto; }
+      .section-heading { grid-template-columns: 1fr; gap: 14px; }
+      .balance-section, .plate-section { grid-template-columns: 1fr; }
+      .balance-copy { order: -1; }
+      .plate-copy { text-align: center; }
+      .plate-copy > p { margin-inline: auto; }
+    }
+
+    @media (max-width: 700px) {
+      .shell { width: min(100% - 24px, 1180px); }
+      .site-header { padding: 16px 0; }
+      .top-nav { display: none; }
+      .hero { gap: 38px; padding: 38px 0 62px; }
+      h1 { font-size: clamp(3.05rem, 16vw, 4.5rem); }
+      .hero-note { right: -3px; bottom: -20px; width: 64%; }
+      .body-note { margin-top: 24px; margin-bottom: 64px; }
+      .comparison-grid { grid-template-columns: 1fr; margin-bottom: 72px; }
+      .state-media img { height: min(620px, 115vw); }
+      .balance-section { gap: 30px; margin-bottom: 72px; padding: 24px 18px; border-radius: 28px; }
+      .rhythm-grid { grid-template-columns: 1fr; }
+      .help-card { grid-template-columns: 1fr; }
+      .help-card .button { width: 100%; }
+      footer { grid-template-columns: 1fr; }
+      .source-links { justify-content: flex-start; }
+    }
+
+    @media (max-width: 430px) {
+      .signal-list { grid-template-columns: 1fr; }
+      .state-content { padding-inline: 20px; }
+      .plate-part { padding: 8px; }
+      .plate-part small { font-size: 0.67rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+      .reveal { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the lesson</a>
+
+  <header class="shell site-header">
+    <a class="brand" href="#top" aria-label="Fuel the Body home">
+      <span class="brand-mark" aria-hidden="true">✦</span>
+      <span>Fuel the Body</span>
+    </a>
+    <nav class="top-nav" aria-label="Lesson sections">
+      <a href="#compare">Compare</a>
+      <a href="#balance">Find balance</a>
+      <a href="#plate">Build a plate</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="shell hero" id="top">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>Food is daily fuel</div>
+        <h1>Your body needs <span>enough.</span></h1>
+        <p>Too little food can leave the body running on empty. Too much energy without enough variety can still leave it poorly nourished. Balance helps us feel steady, strong and supported.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#compare">See the body states <span aria-hidden="true">↓</span></a>
+          <a class="button button-secondary" href="#plate">Build a balanced plate</a>
+        </div>
+      </div>
+
+      <div class="hero-visual reveal">
+        <div class="hero-image">
+          <img src="./assets/balanced-eating/balanced-meal.jpg" width="1280" height="853" alt="Two adults of different body sizes enjoying a varied meal with vegetables, grains, protein, fruit and water.">
+        </div>
+        <div class="hero-note"><strong>Steady fuel</strong>Enough energy + enough nutrients + variety over time</div>
+      </div>
+    </section>
+
+    <aside class="shell body-note reveal" aria-label="Important context">
+      <div class="body-note-icon" aria-hidden="true">◎</div>
+      <p><strong>A body’s shape does not tell its whole health story.</strong> Thin people can be well nourished, and larger people can be strong and healthy. These illustrations explain eating patterns—not judge bodies.</p>
+    </aside>
+
+    <section class="shell" id="compare" aria-labelledby="compare-title">
+      <div class="section-heading reveal">
+        <h2 id="compare-title">Different extremes.<br>The same low-energy signal.</h2>
+        <p>The body can struggle when it receives too little overall—or when everyday food choices provide plenty of energy but not enough nutritional variety.</p>
+      </div>
+
+      <div class="comparison-grid">
+        <article class="state-card reveal" data-tone="clay">
+          <div class="state-media">
+            <img src="./assets/balanced-eating/too-little.jpg" width="896" height="1120" loading="lazy" alt="A slender adult sitting with low energy beside an almost empty plate and a low battery symbol.">
+            <div class="state-badge"><span class="meter" aria-label="Low energy"><i></i><i></i><i></i><i></i></span> Low fuel</div>
+          </div>
+          <div class="state-content">
+            <div class="state-kicker">When the body gets too little</div>
+            <h3>Running on empty</h3>
+            <p>Without enough energy and nutrients, the body has less available for daily movement, concentration, temperature control, repair and recovery.</p>
+            <ul class="signal-list" aria-label="Possible signals of under-eating">
+              <li>Tired or weak</li>
+              <li>Cold or light-headed</li>
+              <li>Hard to focus</li>
+              <li>Slower recovery</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="state-card reveal" data-tone="mustard">
+          <div class="state-media">
+            <img src="./assets/balanced-eating/often-unbalanced.jpg" width="896" height="1120" loading="lazy" alt="A larger adult sitting with low energy beside snack foods and a low battery symbol.">
+            <div class="state-badge"><span class="meter" aria-label="Low energy"><i></i><i></i><i></i><i></i></span> Low quality</div>
+          </div>
+          <div class="state-content">
+            <div class="state-kicker">When eating is often unbalanced</div>
+            <h3>Full, but not fully fueled</h3>
+            <p>Energy-dense foods can add up while crowding out fibre, protein, vitamins and minerals. Large meals may also bring uncomfortable fullness or a short-term energy dip.</p>
+            <ul class="signal-list" aria-label="Possible signals of regularly unbalanced eating">
+              <li>Sluggish after meals</li>
+              <li>Energy ups and downs</li>
+              <li>Uncomfortable fullness</li>
+              <li>Less food variety</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="shell balance-section reveal" id="balance" aria-labelledby="balance-title">
+      <div class="balance-photo">
+        <img src="./assets/balanced-eating/balanced-meal.jpg" width="1280" height="853" loading="lazy" alt="A varied, balanced meal shared by two adults in a warm kitchen.">
+      </div>
+      <div class="balance-copy">
+        <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>The middle path</div>
+        <h2 id="balance-title">Nourished feels steady.</h2>
+        <p>Balanced eating is not one perfect meal. It is a flexible pattern that gives the body enough energy, a variety of nutrients and regular chances to refuel.</p>
+        <ul class="balance-points">
+          <li><span aria-hidden="true">1</span><div><strong>Enough</strong><small>Portions that respond to hunger, growth, activity and individual needs.</small></div></li>
+          <li><span aria-hidden="true">2</span><div><strong>Variety</strong><small>Different colours, food groups, textures and culturally familiar foods.</small></div></li>
+          <li><span aria-hidden="true">3</span><div><strong>Rhythm</strong><small>Meals and snacks spaced in a way that supports comfortable, steady energy.</small></div></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="shell plate-section reveal" id="plate" aria-labelledby="plate-title">
+      <div class="plate-visual" role="img" aria-label="A simple plate guide: half fruits and vegetables, one quarter grains, and one quarter protein.">
+        <div class="plate-grid">
+          <div class="plate-part plate-veg"><div><span aria-hidden="true">🥕</span>Fruits + veg<br><small>about half</small></div></div>
+          <div class="plate-part plate-grain"><div><span aria-hidden="true">🌾</span>Grains<br><small>about a quarter</small></div></div>
+          <div class="plate-part plate-protein"><div><span aria-hidden="true">🫘</span>Protein<br><small>about a quarter</small></div></div>
+        </div>
+      </div>
+
+      <div class="plate-copy">
+        <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>A simple starting point</div>
+        <h2 id="plate-title">Build a plate that works for you.</h2>
+        <p>Try making roughly half the plate fruits and vegetables, then add grains or another starchy food and a protein source. Water and dairy or a fortified alternative can round things out. Exact needs vary.</p>
+        <div class="rhythm-grid" aria-label="Balanced eating reminders">
+          <div class="rhythm-card"><strong>Add colour</strong><small>Fresh, frozen and canned options can all count.</small></div>
+          <div class="rhythm-card"><strong>Add staying power</strong><small>Pair carbohydrates with protein and healthy fats.</small></div>
+          <div class="rhythm-card"><strong>Keep it flexible</strong><small>Culture, access, allergies and appetite matter.</small></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="shell help-card reveal">
+      <div>
+        <h2>Feeling weak, dizzy, or losing weight without trying?</h2>
+        <p>Those signs deserve attention. A doctor or registered dietitian can help identify the cause and build a safe, personal plan.</p>
+      </div>
+      <a class="button" href="https://www.nhs.uk/conditions/malnutrition/" target="_blank" rel="noreferrer">Learn about warning signs</a>
+    </aside>
+  </main>
+
+  <footer class="shell">
+    <div>
+      <strong>Educational only.</strong> This page uses simplified examples and is not medical or weight-loss advice.
+    </div>
+    <div class="source-links" aria-label="Sources">
+      <a href="https://www.who.int/news-room/fact-sheets/detail/healthy-diet" target="_blank" rel="noreferrer">WHO: Healthy diet</a>
+      <a href="https://www.who.int/en/news-room/fact-sheets/detail/malnutrition" target="_blank" rel="noreferrer">WHO: Malnutrition</a>
+      <a href="https://medlineplus.gov/malnutrition.html" target="_blank" rel="noreferrer">MedlinePlus: Malnutrition</a>
+      <a href="https://www.myplate.gov/sites/default/files/2024-05/create-your-own-myplate-menu.pdf" target="_blank" rel="noreferrer">USDA: MyPlate</a>
+    </div>
+  </footer>
+
+  <script>
+    const revealItems = document.querySelectorAll('.reveal');
+
+    if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12 });
+
+      revealItems.forEach((item) => observer.observe(item));
+    } else {
+      revealItems.forEach((item) => item.classList.add('is-visible'));
+    }
+  </script>
+</body>
+</html>

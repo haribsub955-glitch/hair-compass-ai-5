@@ -23,10 +23,12 @@ struct LogSheet: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The calendar day this log belongs to. Scrubbable (up to 60 days back) when creating a
     /// new entry; fixed to the entry's own day when editing an existing one.
     @State private var logDate: Date
+    @State private var scrollTarget: String?
     /// When creating a new entry and the scrubbed day already has one, that entry — the form
     /// shows its values and save() writes into it instead of inserting a duplicate.
     @State private var matchedEntry: DailyEntry?
@@ -58,6 +60,8 @@ struct LogSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
+                    CheckInJourneyHeader(onSelect: scrollToChapter)
+
                     section("Day") {
                         if existing == nil {
                             DateStripPicker(selection: $logDate, range: backfillRange)
@@ -76,6 +80,7 @@ struct LogSheet: View {
                     section(variable: "shedding") {
                         ShedDialField(shed: $shed)
                     }
+                    .id("checkInHair")
 
                     section(variable: "scalp", trailing: AnyView(severityReadout)) {
                         VStack(spacing: 16) {
@@ -104,6 +109,7 @@ struct LogSheet: View {
                             .font(.system(size: 11))
                             .foregroundStyle(Clinical.tertiary)
                     }
+                    .id("checkInScalp")
 
                     section("Wellbeing") {
                         VStack(spacing: 16) {
@@ -122,11 +128,29 @@ struct LogSheet: View {
                             .font(.system(size: 11))
                             .foregroundStyle(Clinical.tertiary)
                     }
+                    .id("checkInContext")
+
+                    CheckInPortraitCard(
+                        shed: shed,
+                        scalpTotal: scalpTotal,
+                        scalpBand: scalpBand,
+                        sleepQuality: sleepQuality,
+                        stress: stress
+                    )
+                    .id("checkInPortrait")
 
                     section("Note") {
-                        TextField("Anything worth remembering", text: $note, axis: .vertical)
+                        TextField(
+                            "",
+                            text: $note,
+                            prompt: Text("Anything worth remembering")
+                                .foregroundStyle(Clinical.secondary.opacity(0.78)),
+                            axis: .vertical
+                        )
                             .lineLimit(2...5)
                             .font(.system(size: 15))
+                            .foregroundStyle(Clinical.ink)
+                            .tint(Clinical.accent)
                             .padding(12)
                             .background(Clinical.canvas)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -141,13 +165,23 @@ struct LogSheet: View {
                 }
                 .padding(20)
                 .padding(.bottom, 20)
+                .scrollTargetLayout()
             }
+            .scrollPosition(id: $scrollTarget, anchor: .top)
             .clinicalScreen()
             .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                }
+                if existing != nil || matchedEntry != nil {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save", action: save)
+                            .fontWeight(.semibold)
+                            .accessibilityHint("Saves these changes without scrolling to the end")
+                    }
                 }
             }
             .onAppear(perform: loadExisting)
@@ -187,9 +221,15 @@ struct LogSheet: View {
     /// Live scalp-severity composite — recomputed from the current gauge intensities, so it
     /// updates while you drag (flaking + redness + itch, the Zhang 2023 16-point scale).
     private var severityReadout: some View {
-        Text("\(scalpTotal)/16 · \(scalpBand.title)")
-            .font(Clinical.number(12))
-            .foregroundStyle(Clinical.bandColor(scalpBand))
+        AnimatedSeverityReadout(total: scalpTotal, band: scalpBand)
+    }
+
+    private func scrollToChapter(_ id: String) {
+        if reduceMotion {
+            scrollTarget = id
+        } else {
+            withAnimation(.easeInOut(duration: 0.28)) { scrollTarget = id }
+        }
     }
 
     // MARK: Captions — titles reuse the app's existing vocabulary; subtitles from the design.
@@ -250,6 +290,21 @@ struct LogSheet: View {
             // of it — the same live-load the date scrub does.
             syncForm(to: logDate)
         }
+
+#if DEBUG
+        // Deterministic visual-QA hook: `HC_SHED_BAND 0...3` opens the sheet at a chosen
+        // semantic portrait without changing seed data or production behavior.
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "HC_SHED_BAND"),
+           arguments.indices.contains(index + 1),
+           let raw = Int(arguments[index + 1]),
+           let level = ShedLevel(rawValue: min(3, max(0, raw))) {
+            shed = level
+        }
+        if arguments.contains("HC_LOG_PORTRAIT") {
+            scrollTarget = "checkInPortrait"
+        }
+#endif
     }
 
     private func load(from e: DailyEntry) {
@@ -341,5 +396,321 @@ struct LogSheet: View {
         if reward.isWorthCelebrating {
             onSaved?(reward)
         }
+    }
+}
+
+/// The scalp composite should feel like a current condition, not a spreadsheet subtotal. Pulse
+/// strength rises gently with the score; the label remains calm and categorical. Reduce Motion
+/// holds the same cue as a static dot.
+private struct AnimatedSeverityReadout: View {
+    let total: Int
+    let band: SeverityBand
+
+    private var color: Color { Clinical.bandColor(band) }
+    private var intensity: CGFloat { CGFloat(min(max(total, 0), 16)) / 16 }
+
+    var body: some View {
+        MotionTimeline(cadence: .decorative) { timeline, reduceMotion in
+            let seconds = timeline.date.timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: 60)
+            let wave = reduceMotion
+                ? 0.0
+                : (sin(seconds * (1.7 + Double(intensity) * 1.5)) + 1) / 2
+
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 7, height: 7)
+                    .overlay {
+                        Circle()
+                            .stroke(color.opacity(0.34 * wave), lineWidth: 2)
+                            .scaleEffect(1 + wave * (0.45 + Double(intensity) * 0.45))
+                    }
+                Text("\(total)/16 · \(band.title)")
+                    .font(Clinical.number(12))
+                    .foregroundStyle(color)
+                    .contentTransition(.numericText())
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: total)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Scalp severity \(total) out of 16, \(band.title)")
+    }
+}
+
+// MARK: - V5 check-in structure and synthesis
+
+/// A compact orientation cue so the sheet reads as a short guided journey rather than a long
+/// clinical form. It deliberately avoids fake completion percentages: every chapter stays editable.
+private struct CheckInJourneyHeader: View {
+    let onSelect: (String) -> Void
+
+    private let chapters: [(symbol: String, title: String, anchor: String)] = [
+        ("waveform.path", "Hair", "checkInHair"),
+        ("circle.hexagongrid", "Scalp", "checkInScalp"),
+        ("heart.text.square", "Context", "checkInContext"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Eyebrow(text: "Daily portrait")
+                    Text("Notice the day, not just the numbers.")
+                        .font(Clinical.headline(18))
+                        .foregroundStyle(Clinical.ink)
+                }
+                Spacer(minLength: 12)
+                Text("~2 MIN")
+                    .font(Clinical.eyebrow(9))
+                    .tracking(0.8)
+                    .foregroundStyle(Clinical.accent)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(Clinical.accent.opacity(0.09), in: Capsule())
+            }
+
+            HStack(spacing: 8) {
+                ForEach(chapters, id: \.anchor) { chapter in
+                    Button { onSelect(chapter.anchor) } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: chapter.symbol)
+                                .foregroundStyle(Clinical.accent)
+                            Text(chapter.title)
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Clinical.ink)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .background(Clinical.canvas, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+                    }
+                    .buttonStyle(.clinicalPressable)
+                    .accessibilityHint("Jumps to the \(chapter.title.lowercased()) section")
+                }
+            }
+        }
+        .padding(14)
+        .background(Clinical.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Clinical.hairline, lineWidth: 1)
+        )
+        .shadow(color: Clinical.cardShadow.opacity(0.65), radius: 12, y: 5)
+    }
+}
+
+/// A live, plain-language synthesis immediately before save. It reflects the values already on
+/// screen and never generates a diagnosis, score, or recommendation.
+private struct CheckInPortraitCard: View {
+    let shed: ShedLevel
+    let scalpTotal: Int
+    let scalpBand: SeverityBand
+    let sleepQuality: Int
+    let stress: Int
+
+    private var reflection: SheddingReflection { .make(band: shed.rawValue) }
+    private var shedProgress: CGFloat { CGFloat(shed.rawValue) / 3 }
+    private var scalpProgress: CGFloat { CGFloat(min(max(scalpTotal, 0), 16)) / 16 }
+    private var contextProgress: CGFloat {
+        let sleep = CGFloat(min(max(sleepQuality, 1), 5) - 1) / 4
+        let calm = CGFloat(5 - min(max(stress, 1), 5)) / 4
+        return (sleep + calm) / 2
+    }
+    private var contextTitle: String {
+        switch contextProgress {
+        case ..<0.26: return "Under strain"
+        case ..<0.51: return "Mixed"
+        case ..<0.76: return "Steady"
+        default: return "Rested"
+        }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            CheckInPortraitOrbit(
+                values: [shedProgress, scalpProgress, contextProgress],
+                colors: [Clinical.accent, Clinical.bandColor(scalpBand), Clinical.sage]
+            )
+            .frame(width: 148, height: 148)
+            .offset(x: 24, y: -28)
+            .opacity(0.72)
+
+            LinearGradient(
+                colors: [Clinical.surface.opacity(0.97), Clinical.surface.opacity(0.76), .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .allowsHitTesting(false)
+
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Eyebrow(text: "Your check-in portrait")
+                    Text(reflection.title)
+                        .font(Clinical.headline(27))
+                        .foregroundStyle(Clinical.ink)
+                        .contentTransition(.opacity)
+                    Text(reflection.detail)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Clinical.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: 270, alignment: .leading)
+                        .contentTransition(.opacity)
+                }
+
+                VStack(spacing: 9) {
+                    PortraitMetricRow(
+                        symbol: "waveform.path",
+                        label: "Shedding",
+                        value: shed.title,
+                        progress: shedProgress,
+                        tint: Clinical.accent
+                    )
+                    PortraitMetricRow(
+                        symbol: "circle.hexagongrid",
+                        label: "Scalp",
+                        value: "\(scalpTotal)/16 · \(scalpBand.title)",
+                        progress: scalpProgress,
+                        tint: Clinical.bandColor(scalpBand)
+                    )
+                    PortraitMetricRow(
+                        symbol: "heart.text.square",
+                        label: "Body context",
+                        value: contextTitle,
+                        progress: contextProgress,
+                        tint: Clinical.sage
+                    )
+                }
+
+                Label("One day is context. The pattern becomes useful over time.", systemImage: "calendar.badge.clock")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Clinical.tertiary)
+            }
+            .padding(18)
+        }
+        .background(
+            LinearGradient(
+                colors: [Clinical.surface, Clinical.canvas, Clinical.accent.opacity(0.035)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Clinical.accent.opacity(0.16), lineWidth: 1)
+        )
+        .shadow(color: Clinical.cardShadow, radius: 14, y: 6)
+        .animation(.easeOut(duration: 0.24), value: shed)
+        .animation(.easeOut(duration: 0.24), value: scalpTotal)
+        .animation(.easeOut(duration: 0.24), value: contextProgress)
+    }
+}
+
+private struct PortraitMetricRow: View {
+    let symbol: String
+    let label: String
+    let value: String
+    let progress: CGFloat
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 27, height: 27)
+                .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(label)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Clinical.secondary)
+                    Spacer(minLength: 8)
+                    Text(value)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Clinical.ink)
+                        .contentTransition(.numericText())
+                }
+                GeometryReader { geo in
+                    Capsule()
+                        .fill(Clinical.hairline.opacity(0.72))
+                        .overlay(alignment: .leading) {
+                            Capsule()
+                                .fill(tint)
+                                .frame(width: max(5, geo.size.width * min(1, max(0, progress))))
+                        }
+                }
+                .frame(height: 4)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(minHeight: 43)
+        .background(Clinical.surface.opacity(0.76), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Clinical.hairline.opacity(0.78), lineWidth: 1)
+        )
+        .animation(.spring(response: 0.38, dampingFraction: 0.84), value: progress)
+    }
+}
+
+/// Three status-driven compass arcs. Arc length carries magnitude; the slow orbit only conveys
+/// continuity and freezes to the same data-bearing frame under Reduce Motion.
+private struct CheckInPortraitOrbit: View {
+    let values: [CGFloat]
+    let colors: [Color]
+
+    var body: some View {
+        MotionTimeline(cadence: .decorative) { timeline, reduceMotion in
+            Canvas { ctx, size in
+                let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                let seconds = timeline.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 60)
+
+                for index in 0..<min(values.count, colors.count) {
+                    let radius = min(size.width, size.height) * (0.43 - CGFloat(index) * 0.095)
+                    let value = min(1, max(0, values[index]))
+                    let rotation = reduceMotion ? 0 : seconds * (0.10 + Double(index) * 0.025)
+                    let start = -Double.pi / 2 + rotation
+                    let end = start + Double.pi * 2 * Double(max(0.08, value))
+
+                    var track = Path()
+                    track.addArc(
+                        center: center,
+                        radius: radius,
+                        startAngle: .radians(start),
+                        endAngle: .radians(start + Double.pi * 2),
+                        clockwise: false
+                    )
+                    ctx.stroke(track, with: .color(Clinical.hairline.opacity(0.46)), lineWidth: 2)
+
+                    var arc = Path()
+                    arc.addArc(
+                        center: center,
+                        radius: radius,
+                        startAngle: .radians(start),
+                        endAngle: .radians(end),
+                        clockwise: false
+                    )
+                    ctx.stroke(
+                        arc,
+                        with: .color(colors[index].opacity(0.72)),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                    )
+
+                    let dot = CGPoint(
+                        x: center.x + cos(end) * radius,
+                        y: center.y + sin(end) * radius
+                    )
+                    ctx.fill(
+                        Path(ellipseIn: CGRect(x: dot.x - 2.5, y: dot.y - 2.5, width: 5, height: 5)),
+                        with: .color(colors[index])
+                    )
+                }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }

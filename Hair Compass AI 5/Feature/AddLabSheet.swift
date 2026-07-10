@@ -38,9 +38,16 @@ struct AddLabSheet: View {
                     }
 
                     section("Value (\(test.unit))") {
-                        TextField("0", text: $valueText)
+                        TextField(
+                            "",
+                            text: $valueText,
+                            prompt: Text("0").foregroundStyle(Clinical.secondary.opacity(0.78))
+                        )
                             .keyboardType(.decimalPad)
                             .font(Clinical.number(18))
+                            .foregroundStyle(Clinical.ink)
+                            .tint(Clinical.accent)
+                            .textFieldStyle(.plain)
                             .padding(12)
                             .background(Clinical.surface)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -57,8 +64,16 @@ struct AddLabSheet: View {
                     }
 
                     section("Note") {
-                        TextField("Optional", text: $note)
-                            .font(.system(size: 15)).padding(12)
+                        TextField(
+                            "",
+                            text: $note,
+                            prompt: Text("Optional").foregroundStyle(Clinical.secondary.opacity(0.78))
+                        )
+                            .font(.system(size: 15))
+                            .foregroundStyle(Clinical.ink)
+                            .tint(Clinical.accent)
+                            .textFieldStyle(.plain)
+                            .padding(12)
                             .background(Clinical.surface)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))

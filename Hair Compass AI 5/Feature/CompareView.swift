@@ -61,7 +61,7 @@ struct CompareView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .padding(.bottom, 110)
+            .padding(.bottom, 24)
         }
         .clinicalScreen()
         .sheet(isPresented: $showChat) {
