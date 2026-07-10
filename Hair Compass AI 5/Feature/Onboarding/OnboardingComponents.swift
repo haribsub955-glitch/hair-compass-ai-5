@@ -48,29 +48,108 @@ struct SheddingDial: View {
     }
 }
 
-// MARK: - Family-history risk arc
+// MARK: - Family-history risk gauge
 
-/// An arc gauge that fills to an evidence-grounded level (family history OR ~2.72) — context, never
-/// a prediction.
-struct RiskArc: View {
+/// A wide half-arc gauge that fills to an evidence-grounded level (family history OR ~2.72) with a
+/// sweeping needle and banded labels — context, never a prediction. Replaces the earlier small
+/// `RiskArc`; same call shape (`RiskGauge(value:)`), only caller is `OnboardingFlow.familyStep`.
+struct RiskGauge: View {
     var value: Double   // 0…1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let width: CGFloat = 230
+    private let height: CGFloat = 130
+    private let radius: CGFloat = 80
+    private let lineWidth: CGFloat = 14
+    private let bandLabels = ["LOW", "RAISED", "HIGH", "HIGHEST"]
+    private let bandWords = ["Low", "Raised", "High", "Highest"]
+
+    private var clamped: Double { min(1, max(0, value)) }
+    private var center: CGPoint { CGPoint(x: width / 2, y: height - 18) }
+
+    /// Same bands as the earlier RiskArc label.
+    private var activeIndex: Int {
+        switch clamped {
+        case ..<0.15: return 0
+        case ..<0.5: return 1
+        case ..<0.8: return 2
+        default: return 3
+        }
+    }
+
     var body: some View {
         ZStack {
-            Circle().trim(from: 0, to: 0.5).rotation(.degrees(180))
-                .stroke(Clinical.hairline, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-            Circle().trim(from: 0, to: 0.5 * value).rotation(.degrees(180))
-                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: value)
+            Circle()
+                .trim(from: 0, to: 0.5)
+                .rotation(.degrees(180))
+                .stroke(Clinical.hairline, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .frame(width: radius * 2, height: radius * 2)
+                .position(center)
+
+            Circle()
+                .trim(from: 0, to: 0.5 * clamped)
+                .rotation(.degrees(180))
+                .stroke(
+                    AngularGradient(colors: [Clinical.accentSoft, Clinical.accent], center: .center, startAngle: .degrees(180), endAngle: .degrees(360)),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                )
+                .frame(width: radius * 2, height: radius * 2)
+                .position(center)
+                .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.8), value: clamped)
+
+            // Needle: a thin round-capped line from the pivot (arc center) toward the value's point
+            // on the arc — built as a custom Shape (not a rotated capsule) so `animatableData`
+            // gives a genuinely smooth sweep rather than an offset/anchor guess.
+            NeedleShape(value: clamped, center: center, length: radius - lineWidth / 2 - 6)
+                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.8), value: clamped)
+
+            ForEach(Array(bandLabels.enumerated()), id: \.offset) { i, name in
+                let on = i == activeIndex
+                Text(name)
+                    .font(Clinical.eyebrow(9))
+                    .fontWeight(on ? .semibold : .regular)
+                    .foregroundStyle(on ? Clinical.accent : Clinical.tertiary)
+                    .position(point(atValue: Double(i) / 3, radius: radius + 14))
+            }
+
             VStack(spacing: 2) {
-                Text(label).font(Clinical.headline(18)).foregroundStyle(Clinical.ink)
-                Text("relative risk").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-            }.offset(y: 10)
+                Text(bandWords[activeIndex]).font(Clinical.headline(22)).foregroundStyle(Clinical.ink)
+                Text("relative odds").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+            }
+            .position(x: center.x, y: center.y - radius * 0.5)
         }
-        .frame(width: 150, height: 90, alignment: .top)
-        .clipped()
+        .frame(width: width, height: height)
+        .accessibilityHidden(true)   // the option buttons below carry the semantics
     }
-    private var label: String {
-        switch value { case ..<0.15: return "Low"; case ..<0.5: return "Raised"; case ..<0.8: return "High"; default: return "Highest" }
+
+    /// A point on a circle of the given radius, at the same 180°(west)…360°(east) sweep — through
+    /// the top — used by both the arc trim and the needle above.
+    private func point(atValue v: Double, radius r: CGFloat) -> CGPoint {
+        let theta = Angle.degrees(180 + 180 * v).radians
+        return CGPoint(x: center.x + r * CGFloat(cos(theta)), y: center.y + r * CGFloat(sin(theta)))
+    }
+}
+
+/// The risk gauge's needle, expressed as a genuine `Shape` (rather than a rotated view) so its
+/// `animatableData` drives a continuous trig-computed sweep under the same spring as the arc fill.
+private struct NeedleShape: Shape {
+    var value: Double   // 0…1
+    let center: CGPoint
+    let length: CGFloat
+
+    var animatableData: Double {
+        get { value }
+        set { value = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let theta = Angle.degrees(180 + 180 * value).radians
+        let tip = CGPoint(x: center.x + length * CGFloat(cos(theta)), y: center.y + length * CGFloat(sin(theta)))
+        var p = Path()
+        p.move(to: center)
+        p.addLine(to: tip)
+        return p
     }
 }
 

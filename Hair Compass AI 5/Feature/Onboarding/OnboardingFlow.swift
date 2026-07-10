@@ -377,7 +377,16 @@ struct OnboardingFlow: View {
         VStack(spacing: 0) {
             head("Risk", "Does hair loss run\nin your family?", "The single strongest measured factor — context, not a prediction.")
             Spacer()
-            RiskArc(value: riskValue).padding(.bottom, 8)
+            RiskGauge(value: riskValue)
+            Text(familyContextLine)
+                .font(.system(size: 12))
+                .foregroundStyle(Clinical.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.opacity)
+                .padding(.horizontal, 28)
+                .padding(.top, 6)
+                .padding(.bottom, 10)
             VStack(spacing: 8) {
                 ForEach(FamilyHistory.allCases) { f in
                     let on = profile.familyHistory == f
@@ -395,6 +404,16 @@ struct OnboardingFlow: View {
     }
     private var riskValue: Double {
         switch profile.familyHistory { case .none: return 0.05; case .extended: return 0.35; case .oneParent: return 0.6; case .bothParents: return 0.9 }
+    }
+    /// Switches with the selection — honest, never predictive; each ends "context, not a
+    /// prediction." except the baseline (no-signal) line.
+    private var familyContextLine: String {
+        switch profile.familyHistory {
+        case .none: return "Baseline odds — no measured family signal."
+        case .extended: return "Somewhat raised odds in studies — context, not a prediction."
+        case .oneParent: return "Meaningfully raised odds (~2.7× in a 2026 meta-analysis) — context, not a prediction."
+        case .bothParents: return "The strongest measured signal (~2.7× odds, both sides) — still context, not a prediction."
+        }
     }
 
     private var habitsStep: some View {
