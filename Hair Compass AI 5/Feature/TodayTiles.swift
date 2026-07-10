@@ -16,6 +16,9 @@ struct ConditionsHero: View {
     var hasLoggedToday = false
     let greeting: String
     let streak: Int
+    /// Streak shields currently held (0–2, Duolingo-style): a single-day logging gap consumes
+    /// one instead of breaking the streak. Purely a display badge on the streak chip below.
+    var shields: Int = 0
     /// Optional gamification level name ("Sapling") shown in the XP chip — effort-only.
     var levelName: String? = nil
     var onOpenBaseline: () -> Void
@@ -286,11 +289,23 @@ struct ConditionsHero: View {
     }
 
     private var streakChip: some View {
-        Label("\(streak)-day streak", systemImage: "flame.fill")
-            .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
-            .padding(.horizontal, 12).padding(.vertical, 7)
-            .background(Clinical.surface.opacity(0.85), in: Capsule())
-            .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+        HStack(spacing: 5) {
+            Label("\(streak)-day streak", systemImage: "flame.fill")
+            if shields > 0 {
+                Label("\(shields)", systemImage: "shield.fill")
+                    .foregroundStyle(Clinical.sage)
+            }
+        }
+        .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(Clinical.surface.opacity(0.85), in: Capsule())
+        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            shields > 0
+                ? "\(streak)-day streak, \(shields) streak shield\(shields == 1 ? "" : "s") held"
+                : "\(streak)-day streak"
+        )
     }
 
     /// Ring (progress to next level) + XP total + level name, all in one chip so the row stays

@@ -202,6 +202,70 @@ enum HairAnalytics {
         return streak
     }
 
+    /// Displayed streak with Duolingo-style shields: every 7 consecutive logged days earns one
+    /// shield (max 2 held); a single-day gap consumes a shield and the run continues through
+    /// it; a gap of 2+ days breaks the run. Deterministic and replayable from history — no
+    /// stored state. Shields protect the DISPLAYED streak only; XP never mints from them
+    /// (`loggingStreak` above stays untouched for that reason).
+    static func shieldedStreak(
+        entryDates: [Date], now: Date = .now, calendar: Calendar = .current
+    ) -> (streak: Int, shieldsHeld: Int) {
+        let days = Array(Set(entryDates.map { calendar.startOfDay(for: $0) })).sorted()
+        guard !days.isEmpty else { return (0, 0) }
+
+        var run = 0            // consecutive REAL logged days since the last full break —
+                                // this is what earns shields; a bridged gap day never adds to it.
+        var shields = 0
+        var streakStart = days[0]
+        var previous: Date?
+
+        for day in days {
+            if let previous {
+                let gapDays = calendar.dateComponents([.day], from: previous, to: day).day ?? 0
+                switch gapDays {
+                case 1:
+                    // Back-to-back day — the run continues uninterrupted.
+                    run += 1
+                case 2:
+                    // Exactly one day missing in between. A held shield bridges it — the run's
+                    // real-day count grows by one (for the day just logged, not the gap day
+                    // itself), and the streak's span keeps its original start so the gap day
+                    // still counts toward the displayed streak.
+                    if shields > 0 {
+                        shields -= 1
+                        run += 1
+                    } else {
+                        streakStart = day
+                        run = 1
+                        shields = 0
+                    }
+                default:
+                    // Two or more days missing — no shield can cover it, the run breaks fresh.
+                    streakStart = day
+                    run = 1
+                    shields = 0
+                }
+            } else {
+                run = 1
+            }
+
+            if run > 0, run % 7 == 0 {
+                shields = min(2, shields + 1)
+            }
+            previous = day
+        }
+
+        guard let lastDay = previous else { return (0, 0) }
+        let daysSinceLast = calendar.dateComponents(
+            [.day], from: lastDay, to: calendar.startOfDay(for: now)
+        ).day ?? 0
+        let isCurrent = daysSinceLast <= 1   // last covered day is today or yesterday.
+        let spanDays = calendar.dateComponents([.day], from: streakStart, to: lastDay).day ?? 0
+        let streak = isCurrent ? spanDays + 1 : 0
+
+        return (streak, shields)
+    }
+
     // MARK: - Baseline risk readout (context, not prediction)
 
     /// Orders baseline risk factors by verified effect size for a plain-language readout.

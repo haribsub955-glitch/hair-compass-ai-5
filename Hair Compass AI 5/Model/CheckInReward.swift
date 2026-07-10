@@ -74,9 +74,11 @@ struct CheckInReward {
             level: levelAfter,
             progressToNext: GamificationLevel.progressToNext(xp: xpAfter),
             leveledUp: levelAfter.index > levelBefore.index,
-            streak: HairAnalytics.loggingStreak(
+            // Shielded, not raw — so the celebration's streak matches what the Today hero shows.
+            // XP itself never reads this; only the displayed number does (see shieldedStreak doc).
+            streak: HairAnalytics.shieldedStreak(
                 entryDates: after.entries.map(\.date), now: now, calendar: calendar
-            ),
+            ).streak,
             newBadges: newBadges
         )
     }

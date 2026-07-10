@@ -22,6 +22,11 @@ struct CareView: View {
     @State private var detailTreatment: Treatment?
     @State private var showReport = false
 
+    /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
+    /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
+    @AppStorage("eveningCheckInEnabled") private var eveningCheckInEnabled = false
+    @AppStorage("eveningCheckInMinutes") private var eveningCheckInMinutes = 20 * 60 + 30
+
     private var profile: Profile? { profiles.first }
 
     private var calendar: Calendar { .current }
@@ -107,6 +112,25 @@ struct CareView: View {
         }
         .task(id: treatmentFingerprint) {
             await notifications.reschedule(treatments: notifTreatments, refills: notifRefills)
+            await replanEveningCheckIn()
+        }
+        // Re-plans whenever today's logged state flips — the "cancel when logged" honesty rule:
+        // once today is logged, today's pending reminder id is dropped from the schedule.
+        .task(id: hasLoggedToday) {
+            await replanEveningCheckIn()
+        }
+        .onChange(of: eveningCheckInEnabled) { _, on in
+            Task {
+                if on {
+                    let granted = await notifications.requestAuthorizationIfNeeded()
+                    guard granted else { eveningCheckInEnabled = false; return }
+                }
+                await replanEveningCheckIn()
+            }
+        }
+        .onChange(of: eveningCheckInMinutes) { _, _ in
+            guard eveningCheckInEnabled else { return }
+            Task { await replanEveningCheckIn() }
         }
         }
     }
@@ -131,6 +155,44 @@ struct CareView: View {
     private var streak: Int { HairAnalytics.loggingStreak(entryDates: entries.map(\.date)) }
     private var hasRecentSevereSideEffect: Bool {
         HairAnalytics.hasRecentSevereSideEffect(logs: sideEffectLogs.map { ($0.severity, $0.date) })
+    }
+
+    // MARK: Evening check-in reminder
+
+    /// The shielded (displayed) streak, not the raw coach/milestone one above — the evening
+    /// reminder's copy should match whatever number the Today hero is actually showing.
+    private var shieldedStreak: Int {
+        HairAnalytics.shieldedStreak(entryDates: entries.map(\.date)).streak
+    }
+    private var hasLoggedToday: Bool { entries.contains { calendar.isDateInToday($0.date) } }
+    private var eveningCheckInComponents: DateComponents {
+        var comps = DateComponents()
+        comps.hour = eveningCheckInMinutes / 60
+        comps.minute = eveningCheckInMinutes % 60
+        return comps
+    }
+    /// Binding into the AppStorage minutes-since-midnight Int, for the DatePicker below.
+    private var eveningCheckInTime: Binding<Date> {
+        Binding(
+            get: {
+                var comps = calendar.dateComponents([.year, .month, .day], from: .now)
+                comps.hour = eveningCheckInMinutes / 60
+                comps.minute = eveningCheckInMinutes % 60
+                return calendar.date(from: comps) ?? .now
+            },
+            set: { newValue in
+                let comps = calendar.dateComponents([.hour, .minute], from: newValue)
+                eveningCheckInMinutes = (comps.hour ?? 20) * 60 + (comps.minute ?? 30)
+            }
+        )
+    }
+    private func replanEveningCheckIn() async {
+        await notifications.planEveningCheckIn(
+            enabled: eveningCheckInEnabled,
+            time: eveningCheckInComponents,
+            hasLoggedToday: hasLoggedToday,
+            streak: shieldedStreak
+        )
     }
 
     /// The periodic synthesis — nil until there's an active daily treatment or ≥ 8 weeks of logs.
@@ -307,28 +369,48 @@ struct CareView: View {
 
     private var remindersCard: some View {
         ClinicalCard(padding: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle(isOn: $remindersOn) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Reminders").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
-                        Text("Nudge me at my routine times and each evening.")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                    }
-                }
-                .tint(Clinical.accent)
-                .onChange(of: remindersOn) { _, on in
-                    Task {
-                        if on {
-                            let granted = await notifications.enable(treatments: notifTreatments, refills: notifRefills)
-                            if !granted { remindersOn = false }
-                        } else {
-                            notifications.disable()
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle(isOn: $remindersOn) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Reminders").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                            Text("Nudge me at my routine times.")
+                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
                         }
                     }
+                    .tint(Clinical.accent)
+                    .onChange(of: remindersOn) { _, on in
+                        Task {
+                            if on {
+                                let granted = await notifications.enable(treatments: notifTreatments, refills: notifRefills)
+                                if !granted { remindersOn = false }
+                            } else {
+                                notifications.disable()
+                            }
+                        }
+                    }
+                    if remindersOn && notifTreatments.isEmpty {
+                        Text("Add a daily treatment with times to get routine reminders.")
+                            .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    }
                 }
-                if remindersOn && notifTreatments.isEmpty {
-                    Text("Add a daily treatment with times to get routine reminders.")
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+
+                Divider().overlay(Clinical.hairline)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle(isOn: $eveningCheckInEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Evening check-in").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                            Text("One invite at a time you pick — off until you turn it on.")
+                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        }
+                    }
+                    .tint(Clinical.accent)
+                    if eveningCheckInEnabled {
+                        DatePicker("Reminder time", selection: eveningCheckInTime, displayedComponents: .hourAndMinute)
+                            .font(.system(size: 13))
+                            .tint(Clinical.accent)
+                    }
                 }
             }
         }
@@ -596,8 +678,11 @@ private struct RoutineStepRow: View {
                 Spacer()
                 Button(action: onInfo) {
                     Image(systemName: "info.circle").font(.system(size: 15)).foregroundStyle(Clinical.tertiary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("About this step")
                 checkButton
             }
             if expanded {

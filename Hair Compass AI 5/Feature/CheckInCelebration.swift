@@ -75,14 +75,28 @@ struct CheckInCelebration: View {
 
     // MARK: Pieces
 
-    /// The default spotlight: what this check-in earned, in gold serif.
+    /// The default spotlight: what this check-in earned, in gold serif, under an identity-framed
+    /// line — "you're someone who shows up" reads as durable, never an outcome claim (research:
+    /// identity-based copy outlasts outcome copy; see docs/research/2026-07-11-engagement-science).
     private var xpHeadline: some View {
         VStack(spacing: 6) {
             Text("+\(reward.xpGained) XP")
                 .font(Clinical.headline(44))
                 .foregroundStyle(Clinical.gold)
-            Eyebrow(text: "for checking in")
+            Text(identityLine)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Clinical.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
         }
+    }
+
+    /// Effort/identity framing — never mentions shedding or scalp severity, only the act of
+    /// showing up. Includes the streak day count once one exists (endowed-progress framing).
+    private var identityLine: String {
+        reward.streak > 0
+            ? "You're someone who shows up for your hair — day \(reward.streak)."
+            : "You're someone who shows up for your hair."
     }
 
     /// When the save crossed a rung, the new level takes the spotlight instead.
