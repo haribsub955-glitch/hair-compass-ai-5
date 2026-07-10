@@ -36,8 +36,11 @@ struct TodayView: View {
     private var activeDaily: [Treatment] {
         treatments.filter { $0.isActive && !$0.slots.isEmpty }
     }
-    private var streak: Int {
-        HairAnalytics.loggingStreak(entryDates: entries.map(\.date))
+    /// Displayed streak with Duolingo-style shields — see `HairAnalytics.shieldedStreak`. Only
+    /// what's shown changes; XP/badge math (`CheckInReward`) still runs off the plain,
+    /// unshielded streak, so shields never mint extra reward.
+    private var shieldedInfo: (streak: Int, shieldsHeld: Int) {
+        HairAnalytics.shieldedStreak(entryDates: entries.map(\.date))
     }
 
     /// Total XP — a pure fold over the tracking data, hoisted so the hero's level name and its
@@ -64,6 +67,29 @@ struct TodayView: View {
         dailySlots.filter { isLogged($0.0, slot: $0.1) }.count
     }
 
+    /// True when a progress photo exists in the current calendar week — the Lens ring input.
+    private var hasPhotoThisWeek: Bool {
+        photos.contains { calendar.isDate($0.createdAt, equalTo: .now, toGranularity: .weekOfYear) }
+    }
+
+    /// Today's effort score behind the Compass Rings — built only from controllable inputs.
+    /// Shedding/scalp severity never touch it.
+    private var compassScore: CompassScore {
+        CompassScore(
+            hasLoggedToday: todayEntry != nil,
+            medsDone: medsDone,
+            medsTotal: dailySlots.count,
+            hasPhotoThisWeek: hasPhotoThisWeek
+        )
+    }
+
+    /// True only on the very first day the app has any data at all — the sole entry in history
+    /// is today's, seeded by onboarding rather than tapped by the user. Feeds the rings card's
+    /// day-one welcome line only; never affects the score itself.
+    private var isDayOneSeed: Bool {
+        entries.count == 1 && todayEntry != nil
+    }
+
     /// Most recent trigger still inside the ~16-week telogen-effluvium watch period.
     private var watchTriggerWeeks: Int? {
         triggers.lazy.map { $0.weeksElapsed() }.first { (0...16).contains($0) }
@@ -78,7 +104,8 @@ struct TodayView: View {
                     scalpBand: todayEntry?.scalpBand,
                     hasLoggedToday: todayEntry != nil,
                     greeting: greeting,
-                    streak: streak,
+                    streak: shieldedInfo.streak,
+                    shields: shieldedInfo.shieldsHeld,
                     levelName: levelName,
                     onOpenBaseline: onOpenBaseline,
                     onLog: { showLog = true },
@@ -96,7 +123,18 @@ struct TodayView: View {
                 )
                 .staggeredEntrance(index: 0)
                 VStack(alignment: .leading, spacing: 16) {
-                    // Entrance sequence: hero 0, tiles 1…6 (inside the grid), cards continue.
+                    // Entrance sequence: hero 0, compass rings 1 (shares its 50ms step with the
+                    // grid's own tile 1 below — a harmless timing overlap, not a functional
+                    // dependency), tiles 1…6 (inside the grid, indices owned by TodayTileGrid),
+                    // cards continue at 8…11.
+                    CompassRingsCard(
+                        score: compassScore,
+                        medsDone: medsDone,
+                        medsTotal: dailySlots.count,
+                        isDayOneSeed: isDayOneSeed,
+                        onLog: { showLog = true }
+                    )
+                    .staggeredEntrance(index: 1)
                     TodayTileGrid(
                         entry: todayEntry,
                         sleepHours: todaySleepHours,
@@ -106,11 +144,11 @@ struct TodayView: View {
                         onLogTap: { showLog = true },
                         onOpenPlan: onOpenPlan
                     )
-                    logCard.staggeredEntrance(index: 7)
-                    insightCard.staggeredEntrance(index: 8)
+                    logCard.staggeredEntrance(index: 8)
+                    insightCard.staggeredEntrance(index: 9)
                     StrandDivider()
-                    learnStrip.staggeredEntrance(index: 9)
-                    statusCard.staggeredEntrance(index: 10)
+                    learnStrip.staggeredEntrance(index: 10)
+                    statusCard.staggeredEntrance(index: 11)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
