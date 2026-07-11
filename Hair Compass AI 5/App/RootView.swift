@@ -83,8 +83,8 @@ struct RootView: View {
             }
             .transition(tabTransition)
         }
-        // Design V2: a quiet crossfade/settle connects destinations while the matched tab pill
-        // carries spatial continuity. Reduce Motion keeps only the short fade.
+        // Design V2: a quiet crossfade connects destinations while the matched tab pill carries
+        // spatial continuity. Reduce Motion keeps only the short fade.
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.22), value: tab)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // First-launch tutorial: a card-above-the-tab-bar coach sequence that drives `tab`
@@ -235,8 +235,11 @@ struct RootView: View {
     }
 
     private var tabTransition: AnyTransition {
-        if reduceMotion { return .opacity }
-        return .opacity.combined(with: .scale(scale: 0.985, anchor: .center))
+        // Pure crossfade — no scale. A centre-anchored scale-in spreads full-width content
+        // outward by ~1.5% as it settles; on the chart-dense Trends tab that reads as the plotted
+        // line and gridlines drifting "left and right" on every entry. A plain opacity swap keeps
+        // every tab's content positionally still.
+        .opacity
     }
 }
 

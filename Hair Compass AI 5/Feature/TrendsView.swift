@@ -101,6 +101,13 @@ struct TrendsView: View {
             .padding(.top, 8)
             .padding(.bottom, 24)
         }
+        // Trends is a reference surface, not a motion surface: the user reported chart elements
+        // sliding "left and right" on interaction. The outer scroll is width-locked (content ==
+        // viewport, verified), so that motion was never a horizontal pan — it was Swift Charts
+        // animating mark/domain changes (e.g. tapping 1M/3M/6M) and entrance transitions sliding
+        // the plotted line. Nil-ing the transaction animation for this subtree makes every data
+        // or range change snap into place instead of interpolating, so nothing drifts on touch.
+        .transaction { $0.animation = nil }
         .clinicalScreen()
         .sheet(isPresented: $showCompare) {
             NavigationStack {
