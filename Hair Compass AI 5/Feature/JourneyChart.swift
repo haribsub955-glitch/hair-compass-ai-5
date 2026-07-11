@@ -101,6 +101,7 @@ struct JourneyChart: View {
                         if Self.shedAxisLabels.indices.contains(i) {
                             Text(Self.shedAxisLabels[i])
                                 .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                                .frame(width: 34, alignment: .trailing)   // pin gutter — stops horizontal breathing
                         }
                     }
                 }
@@ -177,7 +178,9 @@ struct JourneyChart: View {
                 // the same width and the two time axes stay vertically aligned.
                 AxisMarks(position: .leading, values: [0.0]) { _ in
                     AxisValueLabel {
-                        Text("Heavy").font(Clinical.eyebrow(9)).foregroundStyle(.clear)
+                        Text("Heavy")
+                            .font(Clinical.eyebrow(9)).foregroundStyle(.clear)
+                            .frame(width: 34, alignment: .trailing)   // pin gutter — stops horizontal breathing
                     }
                 }
             }

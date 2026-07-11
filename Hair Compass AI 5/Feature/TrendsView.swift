@@ -422,7 +422,9 @@ struct TrendsView: View {
             AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
             AxisValueLabel {
                 if let v = value.as(Double.self), let idx = values.firstIndex(of: v) {
-                    Text(labels[idx]).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                    Text(labels[idx])
+                        .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                        .frame(width: 34, alignment: .trailing)   // pin gutter — stops horizontal breathing
                 }
             }
         }
