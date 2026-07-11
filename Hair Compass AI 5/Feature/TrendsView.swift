@@ -57,7 +57,6 @@ struct TrendsView: View {
                 ClinicalSegmented(options: Range.allCases, label: { $0.rawValue }, selection: $range)
 
                 trajectoryCard
-                    .staggeredEntrance(index: 0)
 
                 JourneyChart(
                     entries: entries,
@@ -66,7 +65,6 @@ struct TrendsView: View {
                     triggers: triggers,
                     windowDays: range.days
                 )
-                .staggeredEntrance(index: 1)
 
                 ConsistencyCard(
                     entries: entries,
@@ -77,7 +75,6 @@ struct TrendsView: View {
                     triggers: triggers,
                     showAllBadges: $showBadges
                 )
-                .staggeredEntrance(index: 2)
 
                 StrandDivider()
 
@@ -88,24 +85,17 @@ struct TrendsView: View {
                     recentTrigger: triggers.first
                 )
                 .id("body-signals")
-                .staggeredEntrance(index: 3)
                 compareEntryCard
-                    .staggeredEntrance(index: 4)
 
                 if windowEntries.count < 2 {
                     emptyState
-                        .staggeredEntrance(index: 5)
                 } else {
                     sheddingCard
-                        .staggeredEntrance(index: 5)
                     scalpCard
-                        .staggeredEntrance(index: 6)
                     adherenceCard
-                        .staggeredEntrance(index: 7)
                 }
 
                 excludedCard
-                    .staggeredEntrance(index: 8)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -221,7 +211,6 @@ struct TrendsView: View {
                             Text(average.formatted(.number.precision(.fractionLength(1))))
                                 .font(Clinical.number(22))
                                 .foregroundStyle(Clinical.ink)
-                                .contentTransition(.numericText())
                             Text("7D AVG")
                                 .font(Clinical.eyebrow(8))
                                 .foregroundStyle(Clinical.tertiary)
