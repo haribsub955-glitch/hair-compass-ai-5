@@ -147,7 +147,10 @@ enum ShedLevel: Int, Codable, CaseIterable, Identifiable {
 }
 
 enum TreatmentClass: String, Codable, CaseIterable, Identifiable {
-    case minoxidil, finasteride, dutasteride, microneedling, prp, lllt, other
+    // Medications, then in-office/device work, then over-the-counter care products, then a
+    // free-form catch-all. `classRaw` is stored as a String, so appending cases needs no schema
+    // migration — existing rows keep their raw value and only new entries can pick the new ones.
+    case minoxidil, finasteride, dutasteride, microneedling, prp, lllt, shampoo, oil, supplement, other
     var id: String { rawValue }
 
     var title: String {
@@ -158,6 +161,9 @@ enum TreatmentClass: String, Codable, CaseIterable, Identifiable {
         case .microneedling: return "Microneedling"
         case .prp: return "PRP"
         case .lllt: return "Low-level laser"
+        case .shampoo: return "Shampoo"
+        case .oil: return "Oil / serum"
+        case .supplement: return "Supplement"
         case .other: return "Other"
         }
     }
@@ -169,20 +175,34 @@ enum TreatmentClass: String, Codable, CaseIterable, Identifiable {
         case .microneedling: return "circle.grid.cross.fill"
         case .prp: return "syringe.fill"
         case .lllt: return "light.max"
+        case .shampoo: return "bubbles.and.sparkles.fill"
+        case .oil: return "drop.halffull"
+        case .supplement: return "leaf.fill"
         case .other: return "cross.case.fill"
         }
     }
 
-    /// Typical loggable events per day, used for adherence math.
+    /// Whether the item is a daily-adherence step (has clock times) or a periodic one that lives
+    /// under "As scheduled". Shampoos and oils are used a few times a week, not on a clock, so
+    /// they are periodic; a supplement is a once-a-day habit like the oral medications.
     var defaultDailyCount: Int {
         switch self {
         case .minoxidil: return 2
-        case .finasteride, .dutasteride: return 1
-        default: return 0 // periodic, not daily
+        case .finasteride, .dutasteride, .supplement: return 1
+        default: return 0 // periodic, not daily (shampoo, oil, procedures, other)
         }
     }
 
     var isDaily: Bool { defaultDailyCount > 0 }
+
+    /// True for the over-the-counter care products — used by the add form to reframe "Dose" as
+    /// "Amount" and to offer product-appropriate placeholders instead of medication ones.
+    var isCareProduct: Bool {
+        switch self {
+        case .shampoo, .oil, .supplement: return true
+        default: return false
+        }
+    }
 }
 
 /// Pragmatic, class-agnostic tolerability vocabulary. Covers the common minoxidil

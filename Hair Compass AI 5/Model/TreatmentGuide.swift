@@ -23,6 +23,12 @@ enum TreatmentGuide {
             return "Done in-clinic on the schedule your provider sets (often monthly at first). Log each session so the 24-week clock stays accurate."
         case .lllt:
             return "Use the device for the recommended session length on the recommended days. Regular, consistent sessions matter more than long occasional ones."
+        case .shampoo:
+            return "Massage into a wet scalp and, if it's a treatment shampoo, leave it on a few minutes before rinsing. Two to three times a week is typical — follow the product's label."
+        case .oil:
+            return "Massage a small amount into the scalp, often a few evenings a week. More isn't better, and an oil is a comfort step, not a proven regrowth treatment — follow the product's guidance."
+        case .supplement:
+            return "Take with water at the same time each day. Supplements help hair mainly when something is genuinely low (like iron or vitamin D) — they aren't a substitute for proven treatments."
         case .other:
             return "Follow the routine you and your clinician agreed on, and log it so your adherence and the 24-week window stay accurate."
         }
@@ -102,6 +108,7 @@ extension TreatmentGuide {
                        scheduleTimes: "",
                        note: "3×/week in studies."),
         ]
+        case .shampoo, .oil, .supplement: return []   // OTC products carry no standard "regimen"
         case .other: return []
         }
     }

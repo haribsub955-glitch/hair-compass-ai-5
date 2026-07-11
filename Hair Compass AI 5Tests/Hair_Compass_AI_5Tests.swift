@@ -798,11 +798,13 @@ struct Hair_Compass_AI_5Tests {
 
     // MARK: - Common-regimen dose presets
 
-    @Test func everyClassExceptOtherHasADosePreset() {
+    @Test func medicationAndProcedureClassesHaveDosePresets() {
         for c in TreatmentClass.allCases {
             let presets = TreatmentGuide.presets(for: c)
-            if c == .other {
-                #expect(presets.isEmpty)   // nothing honest to suggest for an unknown treatment
+            if c == .other || c.isCareProduct {
+                // No honest standard "regimen" to suggest for an unknown item or an over-the-
+                // counter care product (shampoo, oil, supplement) — those are free-form.
+                #expect(presets.isEmpty)
             } else {
                 #expect(!presets.isEmpty)
             }
@@ -829,6 +831,28 @@ struct Hair_Compass_AI_5Tests {
                 // Every preset carries the honest one-line caveat.
                 #expect(!p.note.isEmpty)
             }
+        }
+    }
+
+    @Test func careProductsAdaptScheduleIconAndRxGate() {
+        // The three over-the-counter categories exist and identify as care products.
+        #expect(TreatmentClass.shampoo.isCareProduct)
+        #expect(TreatmentClass.oil.isCareProduct)
+        #expect(TreatmentClass.supplement.isCareProduct)
+        #expect(!TreatmentClass.minoxidil.isCareProduct)
+
+        // Schedule adapts by category: shampoo/oil are periodic (no clock-adherence math), while
+        // a supplement is a daily habit like the oral medications.
+        #expect(!TreatmentClass.shampoo.isDaily)
+        #expect(!TreatmentClass.oil.isDaily)
+        #expect(TreatmentClass.supplement.isDaily)
+
+        // Each carries a distinct icon and honest guidance, and none is ever treated as a
+        // prescription-only medication (no confirmation card).
+        for c in [TreatmentClass.shampoo, .oil, .supplement] {
+            #expect(!c.symbol.isEmpty)
+            #expect(!TreatmentGuide.instruction(for: c).isEmpty)
+            #expect(RxGate.requirement(treatmentClass: c, name: c.title, dose: "") == nil)
         }
     }
 

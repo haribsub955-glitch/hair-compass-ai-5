@@ -82,6 +82,9 @@ enum RxGate {
         case .microneedling, .prp, .lllt:
             // Procedures and devices, not dispensed medications — never a card.
             return nil
+        case .shampoo, .oil, .supplement:
+            // Over-the-counter care products — never prescription-only, so never a card.
+            return nil
         case .other:
             // Name-based detection so `.other`-class entries (one-tap science products,
             // free-typed names) still pause when the substance itself is prescription-only.

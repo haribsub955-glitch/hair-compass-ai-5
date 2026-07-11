@@ -32,23 +32,31 @@ struct AddTreatmentSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     section("Type") {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(TreatmentClass.allCases) { c in
-                                    let on = c == treatmentClass
-                                    Button {
-                                        selectClass(c)
-                                    } label: {
-                                        Label(c.title, systemImage: c.symbol)
-                                            .font(.system(size: 14, weight: on ? .semibold : .regular))
-                                            .foregroundStyle(on ? Clinical.surface : Clinical.ink)
-                                            .padding(.horizontal, 13).padding(.vertical, 9)
-                                            .background(on ? Clinical.ink : Clinical.surface)
-                                            .clipShape(Capsule())
-                                            .overlay(Capsule().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
+                        ScrollViewReader { proxy in
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(TreatmentClass.allCases) { c in
+                                        let on = c == treatmentClass
+                                        Button {
+                                            selectClass(c)
+                                        } label: {
+                                            Label(c.title, systemImage: c.symbol)
+                                                .font(.system(size: 14, weight: on ? .semibold : .regular))
+                                                .foregroundStyle(on ? Clinical.surface : Clinical.ink)
+                                                .padding(.horizontal, 13).padding(.vertical, 9)
+                                                .background(on ? Clinical.ink : Clinical.surface)
+                                                .clipShape(Capsule())
+                                                .overlay(Capsule().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .id(c)
                                     }
-                                    .buttonStyle(.plain)
                                 }
+                            }
+                            // The care products sit past the fold; bring the chosen chip into view
+                            // so the selection is always visible, however far along it is.
+                            .onChange(of: treatmentClass) { _, c in
+                                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(c, anchor: .center) }
                             }
                         }
                     }
@@ -65,10 +73,10 @@ struct AddTreatmentSheet: View {
                     }
 
                     section("Name") {
-                        textField("e.g. Minoxidil 5%", text: $name)
+                        textField(namePlaceholder, text: $name)
                     }
-                    section("Dose") {
-                        textField("e.g. 1 mL", text: $dose)
+                    section(doseLabel) {
+                        textField(dosePlaceholder, text: $dose)
                     }
 
                     if treatmentClass.isDaily {
@@ -107,7 +115,7 @@ struct AddTreatmentSheet: View {
 
                     ingredientPhotoSection
 
-                    Button("Add treatment", action: save)
+                    Button("Add to plan", action: save)
                         .buttonStyle(ClinicalButtonStyle())
                         .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                         .opacity(name.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
@@ -115,7 +123,7 @@ struct AddTreatmentSheet: View {
                 .padding(20)
             }
             .clinicalScreen()
-            .navigationTitle("New treatment")
+            .navigationTitle("New plan item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -123,6 +131,13 @@ struct AddTreatmentSheet: View {
             .onAppear {
                 if name.isEmpty { name = treatmentClass.title }
                 #if DEBUG
+                // HC_ADDCLASS <rawValue> preselects a category so the adaptive form (icon,
+                // dose/amount label, per-type schedule) can be inspected without tapping.
+                let launchArgs = ProcessInfo.processInfo.arguments
+                if let i = launchArgs.firstIndex(of: "HC_ADDCLASS"), i + 1 < launchArgs.count,
+                   let c = TreatmentClass(rawValue: launchArgs[i + 1]) {
+                    selectClass(c)
+                }
                 // HC_RXCONFIRM (launched with HC_ADDTREATMENT): preselect finasteride, apply its
                 // standard regimen, and run the real save path so the prescription confirmation
                 // card presents itself — same delayed-trigger pattern as CareView's HC_ flags.
@@ -173,6 +188,47 @@ struct AddTreatmentSheet: View {
         let today = Calendar.current.startOfDay(for: .now)
         let upper = Calendar.current.date(byAdding: .day, value: 180, to: today) ?? today
         return today...max(today, upper)
+    }
+
+    // MARK: Type-aware field copy
+    //
+    // The category reshapes the form: a shampoo or oil has an "Amount" (there's no mg/mL), and
+    // every type gets a name/dose placeholder in its own language so the fields never read like a
+    // medication when the item isn't one.
+
+    private var doseLabel: String {
+        switch treatmentClass {
+        case .shampoo, .oil: return "Amount"
+        default: return "Dose"
+        }
+    }
+
+    private var dosePlaceholder: String {
+        switch treatmentClass {
+        case .minoxidil: return "e.g. 1 mL"
+        case .finasteride, .dutasteride: return "e.g. 1 mg"
+        case .microneedling: return "e.g. 1.5 mm roller"
+        case .prp, .lllt: return "e.g. per clinic protocol"
+        case .shampoo: return "e.g. coin-sized, 2\u{2013}3\u{00d7} a week"
+        case .oil: return "e.g. a few drops, a few evenings a week"
+        case .supplement: return "e.g. 1 capsule (5000 mcg)"
+        case .other: return "e.g. as directed"
+        }
+    }
+
+    private var namePlaceholder: String {
+        switch treatmentClass {
+        case .minoxidil: return "e.g. Minoxidil 5%"
+        case .finasteride: return "e.g. Finasteride 1 mg"
+        case .dutasteride: return "e.g. Dutasteride 0.5 mg"
+        case .microneedling: return "e.g. Dermaroller"
+        case .prp: return "e.g. PRP session"
+        case .lllt: return "e.g. Laser cap"
+        case .shampoo: return "e.g. Ketoconazole 2% shampoo"
+        case .oil: return "e.g. Rosemary oil"
+        case .supplement: return "e.g. Biotin 5000 mcg"
+        case .other: return "e.g. your product\u{2019}s name"
+        }
     }
 
     private func defaultTimes(for c: TreatmentClass) -> String {
