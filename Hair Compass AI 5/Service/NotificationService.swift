@@ -97,9 +97,10 @@ final class NotificationService {
             for slot in t.slots {
                 guard let comps = Self.components(from: slot) else { continue }
                 let content = UNMutableNotificationContent()
-                content.title = "Hair Compass"
-                content.body = "Time for your \(t.name)."
+                content.title = t.name
+                content.body = "A tap when it's done."
                 content.sound = .default
+                if let art = NotificationArt.attachment() { content.attachments = [art] }
                 let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
                 let request = UNNotificationRequest(identifier: "\(treatmentPrefix)\(i).\(slot)", content: content, trigger: trigger)
                 try? await center.add(request)
@@ -111,9 +112,10 @@ final class NotificationService {
         for (i, r) in refills.enumerated() {
             guard let fireDate = Self.refillReminderDate(for: r.refillBy), fireDate > .now else { continue }
             let content = UNMutableNotificationContent()
-            content.title = "Running low soon"
-            content.body = "Your \(r.name) supply runs out around \(r.refillBy.formatted(date: .abbreviated, time: .omitted)). A good week to arrange a refill."
+            content.title = "Running low"
+            content.body = "Time to reorder \(r.name)."
             content.sound = .default
+            if let art = NotificationArt.attachment() { content.attachments = [art] }
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
             let request = UNNotificationRequest(identifier: "\(refillPrefix)\(i)", content: content, trigger: trigger)
@@ -123,9 +125,10 @@ final class NotificationService {
         // Monthly photo prompt — a comparable set on the 1st of each month.
         var monthly = DateComponents(); monthly.day = 1; monthly.hour = 10
         let photo = UNMutableNotificationContent()
-        photo.title = "Monthly photos"
-        photo.body = "Capture your five regions for a comparable set — same lighting and angle as last time."
+        photo.title = "Monthly photo"
+        photo.body = "Same light, same spot."
         photo.sound = .default
+        if let art = NotificationArt.attachment() { photo.attachments = [art] }
         let photoRequest = UNNotificationRequest(
             identifier: photoReminderID,
             content: photo,
@@ -147,8 +150,8 @@ final class NotificationService {
 
         let calendar = Calendar.current
         let body = streak >= 3
-            ? "Day \(streak + 1) is a 20-second check-in away."
-            : "Ready for tonight's check-in? 20 seconds keeps your chart honest."
+            ? "Day \(streak + 1). Twenty seconds."
+            : "Twenty seconds."
 
         for offset in 0..<3 {
             if offset == 0 && hasLoggedToday { continue }
@@ -159,9 +162,10 @@ final class NotificationService {
             guard let fireDate = calendar.date(from: comps), fireDate > .now else { continue }
 
             let content = UNMutableNotificationContent()
-            content.title = "Hair Compass"
+            content.title = "Tonight's check-in"
             content.body = body
             content.sound = .default
+            if let art = NotificationArt.attachment() { content.attachments = [art] }
             let trigger = UNCalendarNotificationTrigger(
                 dateMatching: calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
                 repeats: false
