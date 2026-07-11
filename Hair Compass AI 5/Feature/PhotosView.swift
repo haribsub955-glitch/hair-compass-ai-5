@@ -11,6 +11,7 @@ struct PhotosView: View {
     @State private var showAdd = false
     @State private var comparePosition: CGFloat = 0.5
     @State private var detailRecord: PhotoRecord?
+    @State private var journey: JourneyPresentation?
 
     private var regionPhotos: [PhotoRecord] {
         photos.filter { $0.region == region }.sorted { $0.createdAt < $1.createdAt }
@@ -50,9 +51,12 @@ struct PhotosView: View {
                 regionPicker
                     .staggeredEntrance(index: 2)
 
+                journeyCard
+                    .staggeredEntrance(index: 2)
+
                 if regionPhotos.count >= 2 {
                     compareCard
-                        .staggeredEntrance(index: 3)
+                        .staggeredEntrance(index: 4)
                 }
 
                 if regionPhotos.isEmpty {
@@ -82,9 +86,16 @@ struct PhotosView: View {
         .sheet(item: $detailRecord) { record in
             PhotoDetailView(record: record) { detailRecord = nil }
         }
+        .sheet(item: $journey) { presentation in
+            JourneyPlayerView(frames: presentation.frames, isExample: presentation.isExample)
+        }
         .onAppear {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_ADDPHOTO") { showAdd = true }
+            // Opens the example journey player headlessly for screenshot verification.
+            if ProcessInfo.processInfo.arguments.contains("HC_JOURNEY") {
+                journey = JourneyPresentation(frames: exampleFrames(), isExample: true)
+            }
             #endif
         }
     }
@@ -187,6 +198,50 @@ struct PhotosView: View {
         }
     }
 
+    /// Invites playing the region's photos as a scrubbable timelapse — the real series once
+    /// there's enough to aggregate, otherwise a clearly-labeled generated example so users see
+    /// the payoff before they've built their own.
+    private var journeyCard: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow(text: "Journey")
+                if regionPhotos.count >= 2 {
+                    Text("Play your \(region.title.lowercased()) captures as a scrubbable timelapse.")
+                        .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                    Button("Play journey · \(regionPhotos.count) photos") {
+                        journey = JourneyPresentation(frames: regionFrames(), isExample: false)
+                    }
+                    .buttonStyle(ClinicalButtonStyle())
+                } else {
+                    Text("Capture a few \(region.title.lowercased()) photos to build your own — here's what one looks like.")
+                        .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                    Button("See an example journey") {
+                        journey = JourneyPresentation(frames: exampleFrames(), isExample: true)
+                    }
+                    .buttonStyle(ClinicalButtonStyle(filled: false))
+                }
+            }
+        }
+    }
+
+    /// Oldest → newest thumbnails for the current region, captioned by capture date.
+    private func regionFrames() -> [JourneyFrame] {
+        regionPhotos.compactMap { record in
+            guard let image = PhotoStore.shared.loadThumbnail(record.imagePath, maxPixel: 1200) else { return nil }
+            return JourneyFrame(image: image, caption: record.createdAt.formatted(.dateTime.month().day().year()))
+        }
+    }
+
+    /// The bundled, honestly-labeled example sequence — never mistaken for the user's own data.
+    private func exampleFrames() -> [JourneyFrame] {
+        let names = ["journey-example-1", "journey-example-2", "journey-example-3", "journey-example-4"]
+        let captions = ["Baseline", "Month 2", "Month 4", "Month 6"]
+        return zip(names, captions).compactMap { name, caption in
+            guard let image = UIImage(named: name) else { return nil }
+            return JourneyFrame(image: image, caption: caption)
+        }
+    }
+
     private func thumbImage(_ record: PhotoRecord) -> some View {
         Group {
             if let image = PhotoStore.shared.loadThumbnail(record.imagePath, maxPixel: 960) {
@@ -219,7 +274,7 @@ struct PhotosView: View {
                 }
                 // Tiles continue the stack's stagger; capped so a long grid doesn't
                 // keep staggering forever.
-                .staggeredEntrance(index: min(4 + index, 9))
+                .staggeredEntrance(index: min(5 + index, 10))
             }
         }
     }
@@ -239,6 +294,14 @@ struct PhotosView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
     }
+}
+
+/// `.sheet(item:)` needs Identifiable — wraps the frames + example flag for one journey
+/// presentation so a fresh sheet is driven by identity rather than a pair of Bool/optional state.
+private struct JourneyPresentation: Identifiable {
+    let id = UUID()
+    let frames: [JourneyFrame]
+    let isExample: Bool
 }
 
 /// Design V2 capture guidance: the new phone-and-mirror artwork drifts on the shared low-cost
