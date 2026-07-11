@@ -15,12 +15,17 @@ struct ProGate<Content: View>: View {
 
     @Environment(PurchaseService.self) private var purchases
     @State private var isPurchasing = false
+    @State private var yearlyIntroEligible = false
 
     var body: some View {
         if purchases.hasPro {
             content()
         } else {
             locked
+                .task(id: purchases.yearly?.id) {
+                    guard let yearly = purchases.yearly else { return }
+                    yearlyIntroEligible = await purchases.isEligibleForIntro(yearly)
+                }
         }
     }
 
@@ -48,13 +53,20 @@ struct ProGate<Content: View>: View {
             if !purchases.products.isEmpty {
                 VStack(spacing: 10) {
                     if let yearly = purchases.yearly {
+                        let trialText = yearlyIntroEligible ? purchases.trialDescriptor(for: yearly) : nil
                         Button {
                             buy(yearly)
                         } label: {
                             VStack(spacing: 2) {
-                                Text("Yearly — \(yearly.displayPrice)/year")
-                                if let perMonth = yearly.monthlyEquivalentDisplay {
-                                    Text(perMonth).font(.system(size: 11, weight: .regular))
+                                if let trialText {
+                                    Text("Start 3-day free trial")
+                                    Text("\(trialText) · cancel anytime")
+                                        .font(.system(size: 11, weight: .regular))
+                                } else {
+                                    Text("Yearly — \(yearly.displayPrice)/year")
+                                    if let perMonth = yearly.monthlyEquivalentDisplay {
+                                        Text(perMonth).font(.system(size: 11, weight: .regular))
+                                    }
                                 }
                             }
                         }

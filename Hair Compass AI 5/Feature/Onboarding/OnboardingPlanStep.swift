@@ -15,6 +15,7 @@ struct OnboardingPlanStep: View {
 
     @Environment(PurchaseService.self) private var purchases
     @State private var isPurchasing = false
+    @State private var yearlyIntroEligible = false
 
     private var model: ProjectionModel {
         ProjectionModel.make(condition: profile.condition, sex: profile.sex)
@@ -33,6 +34,10 @@ struct OnboardingPlanStep: View {
                 .padding(.bottom, 16)
             }
             footer
+        }
+        .task(id: purchases.yearly?.id) {
+            guard let yearly = purchases.yearly else { return }
+            yearlyIntroEligible = await purchases.isEligibleForIntro(yearly)
         }
     }
 
@@ -312,14 +317,22 @@ struct OnboardingPlanStep: View {
     @ViewBuilder
     private var purchaseButtons: some View {
         if let yearly = purchases.yearly {
+            let showsTrial = yearlyIntroEligible && purchases.introOffer(for: yearly) != nil
             Button {
                 buy(yearly)
             } label: {
                 VStack(spacing: 2) {
-                    Text("Start with yearly — \(yearly.displayPrice)/year")
-                    if let perMonth = yearly.monthlyEquivalentDisplay {
-                        Text(perMonth)
-                            .font(.system(size: 11, weight: .regular))
+                    if showsTrial {
+                        Text("Start 3-day free trial")
+                        Text("then \(yearly.displayPrice)/year · cancel anytime — no charge for 3 days")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Clinical.secondary)
+                    } else {
+                        Text("Start with yearly — \(yearly.displayPrice)/year")
+                        if let perMonth = yearly.monthlyEquivalentDisplay {
+                            Text(perMonth)
+                                .font(.system(size: 11, weight: .regular))
+                        }
                     }
                 }
             }

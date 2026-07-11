@@ -66,6 +66,33 @@ final class PurchaseService {
 
     var monthly: Product? { products.first { $0.id == Self.monthlyID } }
     var yearly: Product? { products.first { $0.id == Self.yearlyID } }
+
+    /// The product's introductory offer, if any (e.g. the 3-day free trial).
+    func introOffer(for product: Product) -> Product.SubscriptionOffer? {
+        product.subscription?.introductoryOffer
+    }
+
+    /// Whether THIS Apple ID can still use the group's intro offer (one per group).
+    func isEligibleForIntro(_ product: Product) async -> Bool {
+        guard let sub = product.subscription else { return false }
+        return await sub.isEligibleForIntroOffer
+    }
+
+    /// "3-day free trial, then $4.99/month" — nil when no offer / ineligible handled by caller.
+    func trialDescriptor(for product: Product) -> String? {
+        guard let offer = product.subscription?.introductoryOffer, offer.paymentMode == .freeTrial
+        else { return nil }
+        let period = offer.period
+        let unit: String
+        switch period.unit {
+        case .day: unit = period.value == 1 ? "day" : "days"
+        case .week: unit = period.value == 1 ? "week" : "weeks"
+        case .month: unit = period.value == 1 ? "month" : "months"
+        case .year: unit = period.value == 1 ? "year" : "years"
+        @unknown default: unit = "days"
+        }
+        return "\(period.value)-\(unit) free trial, then \(product.displayPrice)"
+    }
 }
 
 extension Product {

@@ -71,7 +71,13 @@
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "9C1A4E21",
-          "introductoryOffer" : null,
+          "introductoryOffer" : {
+            "displayPrice" : "0.00",
+            "internalID" : "9C1A4E31",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P3D"
+          },
           "localizations" : [
             {
               "description" : "Monthly access to Hair Compass Pro — AI hair chat, deep photo analysis, and smart reminders.",
@@ -92,7 +98,13 @@
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "9C1A4E22",
-          "introductoryOffer" : null,
+          "introductoryOffer" : {
+            "displayPrice" : "0.00",
+            "internalID" : "9C1A4E32",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P3D"
+          },
           "localizations" : [
             {
               "description" : "Yearly access to Hair Compass Pro — AI hair chat, deep photo analysis, and smart reminders.",
