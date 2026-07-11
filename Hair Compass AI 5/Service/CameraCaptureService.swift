@@ -1,9 +1,13 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import SwiftUI
 
 /// Thin AVFoundation wrapper for the guided capture flow: a running session, a preview layer,
-/// permission state, and a single-shot photo capture. The session is configured and started off
-/// the main thread; UI-observable state stays on the main actor.
+/// permission state, and a single-shot photo capture. All session configuration, start/stop, and
+/// photo capture happen on `CaptureSessionCoordinator`, an `actor` with its own isolation domain
+/// (actors are exempt from this project's `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` build
+/// setting), so AVFoundation's "configure/start/stop off the main thread" calls never need to
+/// reach into `@MainActor` state from a background `@Sendable` closure. UI-observable state
+/// (`permission`, `hasCamera`, `isRunning`, `position`) stays on the main actor.
 ///
 /// The camera device is nil in the Simulator — `hasCamera` reflects that so the UI can fall back
 /// to the photo picker without a black preview.
@@ -17,11 +21,15 @@ final class CameraCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
     private(set) var isRunning = false
     private(set) var position: AVCaptureDevice.Position = .back
 
-    private let output = AVCapturePhotoOutput()
-    private let queue = DispatchQueue(label: "camera.session")
+    private let coordinator: CaptureSessionCoordinator
     private var captureContinuation: CheckedContinuation<UIImage?, Never>?
 
     enum Permission { case notDetermined, authorized, denied }
+
+    override init() {
+        coordinator = CaptureSessionCoordinator(session: session)
+        super.init()
+    }
 
     // MARK: Lifecycle
 
@@ -36,13 +44,11 @@ final class CameraCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
         }
         guard permission == .authorized else { return }
         await configureIfNeeded(position: position)
-        startRunning()
+        await startRunning()
     }
 
     func stop() {
-        queue.async { [session] in
-            if session.isRunning { session.stopRunning() }
-        }
+        Task { await coordinator.stopRunning() }
         isRunning = false
     }
 
@@ -62,10 +68,7 @@ final class CameraCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
         guard hasCamera, isRunning, captureContinuation == nil else { return nil }
         return await withCheckedContinuation { continuation in
             self.captureContinuation = continuation
-            let settings = AVCapturePhotoSettings()
-            queue.async { [output] in
-                output.capturePhoto(with: settings, delegate: self)
-            }
+            Task { await coordinator.capturePhoto(delegate: self) }
         }
     }
 
@@ -83,50 +86,72 @@ final class CameraCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
     // MARK: Configuration
 
     private func configureIfNeeded(position: AVCaptureDevice.Position, force: Bool = false) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            queue.async { [weak self] in
-                guard let self else { continuation.resume(); return }
-                self.session.beginConfiguration()
-                defer { self.session.commitConfiguration() }
-
-                if force {
-                    for input in self.session.inputs { self.session.removeInput(input) }
-                }
-                if self.session.canAddOutput(self.output) == false,
-                   self.session.outputs.contains(self.output) == false {
-                    // output not addable and not present — nothing to do
-                } else if self.session.outputs.contains(self.output) == false {
-                    self.session.sessionPreset = .photo
-                    if self.session.canAddOutput(self.output) { self.session.addOutput(self.output) }
-                }
-
-                guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
-                        ?? AVCaptureDevice.default(for: .video),
-                      let input = try? AVCaptureDeviceInput(device: device),
-                      self.session.canAddInput(input) else {
-                    Task { @MainActor in self.hasCamera = false }
-                    continuation.resume(); return
-                }
-                self.session.addInput(input)
-                Task { @MainActor in
-                    self.hasCamera = true
-                    self.position = position
-                }
-                continuation.resume()
-            }
-        }
+        let result = await coordinator.configureSession(position: position, force: force)
+        hasCamera = result.hasCamera
+        if result.hasCamera { self.position = result.position }
     }
 
-    private func startRunning() {
-        queue.async { [weak self] in
-            guard let self, self.hasCameraSync, self.session.isRunning == false else { return }
-            self.session.startRunning()
-            Task { @MainActor in self.isRunning = self.session.isRunning }
-        }
+    private func startRunning() async {
+        isRunning = await coordinator.startRunning()
+    }
+}
+
+/// Owns the `AVCaptureSession`/`AVCapturePhotoOutput` and performs all configuration, start/stop,
+/// and capture calls on its own actor executor — off the main actor, matching Apple's guidance
+/// that session configuration and `startRunning()`/`stopRunning()` not run on the main thread.
+private actor CaptureSessionCoordinator {
+    // `AVCaptureSession` is documented as safe to configure from a background thread while its
+    // preview layer reads it on the main thread (that's exactly how `CameraPreview` uses it), but
+    // it predates Swift concurrency and isn't `Sendable`-audited. The instance is created once on
+    // the main actor and handed in before it has any other observers, so sharing the reference
+    // here is safe even though the compiler can't prove it — hence `nonisolated(unsafe)` instead
+    // of a synchronous cross-actor hop just to read a session reference for the preview layer.
+    nonisolated(unsafe) private let session: AVCaptureSession
+    private let output = AVCapturePhotoOutput()
+
+    init(session: AVCaptureSession) {
+        self.session = session
     }
 
-    // Session-queue-safe read of whether an input is present.
-    private var hasCameraSync: Bool { !session.inputs.isEmpty }
+    /// Adds/replaces the camera input for `position`. Mirrors the previous inline logic: the
+    /// output is added once (first time it's addable), the input is swapped when `force` is set.
+    func configureSession(position: AVCaptureDevice.Position, force: Bool) -> (hasCamera: Bool, position: AVCaptureDevice.Position) {
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+
+        if force {
+            for input in session.inputs { session.removeInput(input) }
+        }
+        if session.outputs.contains(output) == false, session.canAddOutput(output) {
+            session.sessionPreset = .photo
+            session.addOutput(output)
+        }
+
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
+                ?? AVCaptureDevice.default(for: .video),
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else {
+            return (false, position)
+        }
+        session.addInput(input)
+        return (true, position)
+    }
+
+    func startRunning() -> Bool {
+        if session.isRunning == false, session.inputs.isEmpty == false {
+            session.startRunning()
+        }
+        return session.isRunning
+    }
+
+    func stopRunning() {
+        if session.isRunning { session.stopRunning() }
+    }
+
+    func capturePhoto(delegate: AVCapturePhotoCaptureDelegate) {
+        let settings = AVCapturePhotoSettings()
+        output.capturePhoto(with: settings, delegate: delegate)
+    }
 }
 
 /// SwiftUI host for the live preview layer.

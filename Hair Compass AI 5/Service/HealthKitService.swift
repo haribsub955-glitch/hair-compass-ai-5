@@ -68,7 +68,7 @@ final class HealthKitService: SignalSource {
         async let bmi = mostRecent(.bodyMassIndex, unit: .count())
         async let protein = sumToday(.dietaryProtein, unit: .gram())
 
-        let snapshot = await upsertToday(context: context)
+        let snapshot = upsertToday(context: context)
         snapshot.sleepHours = await sleep
         snapshot.hrvSDNN = await hrv
         snapshot.restingHR = await rhr
