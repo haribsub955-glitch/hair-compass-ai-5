@@ -67,7 +67,7 @@
         {
           "adHocOffers" : [],
           "codeOffers" : [],
-          "displayPrice" : "4.99",
+          "displayPrice" : "5.00",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "9C1A4E21",
@@ -94,16 +94,16 @@
         {
           "adHocOffers" : [],
           "codeOffers" : [],
-          "displayPrice" : "29.99",
+          "displayPrice" : "79.00",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "9C1A4E22",
           "introductoryOffer" : {
-            "displayPrice" : "0.00",
-            "internalID" : "9C1A4E32",
+            "displayPrice" : "39.00",
+            "internalID" : "9C1A4E33",
             "numberOfPeriods" : 1,
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P3D"
+            "paymentMode" : "payUpFront",
+            "subscriptionPeriod" : "P1Y"
           },
           "localizations" : [
             {

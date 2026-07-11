@@ -16,6 +16,7 @@ struct OnboardingPlanStep: View {
     @Environment(PurchaseService.self) private var purchases
     @State private var isPurchasing = false
     @State private var yearlyIntroEligible = false
+    @State private var monthlyIntroEligible = false
 
     private var model: ProjectionModel {
         ProjectionModel.make(condition: profile.condition, sex: profile.sex)
@@ -38,6 +39,10 @@ struct OnboardingPlanStep: View {
         .task(id: purchases.yearly?.id) {
             guard let yearly = purchases.yearly else { return }
             yearlyIntroEligible = await purchases.isEligibleForIntro(yearly)
+        }
+        .task(id: purchases.monthly?.id) {
+            guard let monthly = purchases.monthly else { return }
+            monthlyIntroEligible = await purchases.isEligibleForIntro(monthly)
         }
     }
 
@@ -317,34 +322,57 @@ struct OnboardingPlanStep: View {
     @ViewBuilder
     private var purchaseButtons: some View {
         if let yearly = purchases.yearly {
-            let showsTrial = yearlyIntroEligible && purchases.introOffer(for: yearly) != nil
-            Button {
-                buy(yearly)
-            } label: {
-                VStack(spacing: 2) {
-                    if showsTrial {
-                        Text("Start 3-day free trial")
-                        Text("then \(yearly.displayPrice)/year · cancel anytime — no charge for 3 days")
-                            .font(.system(size: 11))
+            // Eligibility-gated: the launch offer only renders for Apple IDs that haven't
+            // already used the group's introductory offer — never a placeholder discount.
+            let offer = yearlyIntroEligible ? purchases.launchOffer(for: yearly) : nil
+            VStack(spacing: 8) {
+                if let offer {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(offer.base)
+                            .font(.system(size: 14))
+                            .strikethrough()
+                            .foregroundStyle(Clinical.tertiary)
+                        Text(offer.intro)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Clinical.ink)
+                        Text("/year")
+                            .font(.system(size: 13))
                             .foregroundStyle(Clinical.secondary)
-                    } else {
-                        Text("Start with yearly — \(yearly.displayPrice)/year")
-                        if let perMonth = yearly.monthlyEquivalentDisplay {
-                            Text(perMonth)
-                                .font(.system(size: 11, weight: .regular))
+                    }
+                }
+                Button {
+                    buy(yearly)
+                } label: {
+                    VStack(spacing: 2) {
+                        if let offer {
+                            Text("Start yearly — \(offer.intro) first year")
+                            Text("First year — save \(offer.percentOff)%, then \(offer.base)/year · Limited-time")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Clinical.secondary)
+                        } else {
+                            Text("Start with yearly — \(yearly.displayPrice)/year")
+                            if let perMonth = yearly.monthlyEquivalentDisplay {
+                                Text(perMonth)
+                                    .font(.system(size: 11, weight: .regular))
+                            }
                         }
                     }
                 }
+                .buttonStyle(ClinicalButtonStyle())
+                .disabled(isPurchasing)
+                .accessibilityIdentifier("onboardPurchaseYearly")
             }
-            .buttonStyle(ClinicalButtonStyle())
-            .disabled(isPurchasing)
-            .accessibilityIdentifier("onboardPurchaseYearly")
         }
         if let monthly = purchases.monthly {
+            let trialText = monthlyIntroEligible ? purchases.trialDescriptor(for: monthly) : nil
             Button {
                 buy(monthly)
             } label: {
-                Text("Monthly — \(monthly.displayPrice)/month")
+                if let trialText {
+                    Text("\(trialText)/month")
+                } else {
+                    Text("Monthly — \(monthly.displayPrice)/month")
+                }
             }
             .buttonStyle(ClinicalButtonStyle(filled: false))
             .disabled(isPurchasing)

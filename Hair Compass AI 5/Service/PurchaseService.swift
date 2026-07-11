@@ -78,7 +78,7 @@ final class PurchaseService {
         return await sub.isEligibleForIntroOffer
     }
 
-    /// "3-day free trial, then $4.99/month" — nil when no offer / ineligible handled by caller.
+    /// "3-day free trial, then $5.00" — nil when no offer / ineligible handled by caller.
     func trialDescriptor(for product: Product) -> String? {
         guard let offer = product.subscription?.introductoryOffer, offer.paymentMode == .freeTrial
         else { return nil }
@@ -92,6 +92,19 @@ final class PurchaseService {
         @unknown default: unit = "days"
         }
         return "\(period.value)-\(unit) free trial, then \(product.displayPrice)"
+    }
+
+    /// For a product whose intro offer is a paid launch discount (pay-up-front / pay-as-you-go):
+    /// the intro price, the base price, and the honest rounded percent off — all from real prices.
+    func launchOffer(for product: Product) -> (intro: String, base: String, percentOff: Int)? {
+        guard let offer = product.subscription?.introductoryOffer,
+              offer.paymentMode == .payUpFront || offer.paymentMode == .payAsYouGo,
+              product.price > 0 else { return nil }
+        let base = product.price
+        let intro = offer.price
+        let pct = ((base - intro) / base * 100)
+        let percentOff = Int((pct as NSDecimalNumber).doubleValue.rounded())
+        return (intro: offer.displayPrice, base: product.displayPrice, percentOff: percentOff)
     }
 }
 
