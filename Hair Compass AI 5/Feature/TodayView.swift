@@ -271,14 +271,14 @@ struct TodayView: View {
     // MARK: - Insight (hybrid: on-device AI, deterministic fallback)
 
     private var insightFingerprint: String {
-        "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(snapshots.count)-\(treatments.count)"
+        "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(snapshots.count)-\(treatments.count)-\(labs.count)"
     }
 
     @MainActor
     private func buildContext() -> InsightContext {
         InsightContext.build(
             entries: entries, treatments: treatments, doses: doses,
-            snapshots: snapshots, triggers: triggers, profile: profile
+            snapshots: snapshots, triggers: triggers, labs: labs, profile: profile
         )
     }
 

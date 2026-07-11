@@ -25,6 +25,9 @@ struct InsightContext: Sendable {
     var tractionRisk: Bool
     var recentTrigger: TriggerNote?
     var treatments: [TreatmentSummary]
+    /// Latest result per lab test — a lower-priority, honest note for the daily insight, never
+    /// a diagnosis. Matches the deep-analysis/chat `AIContext`'s labs, which already carry this.
+    var labs: [LabNote]
 
     struct TriggerNote: Sendable { var title: String; var weeks: Int }
     struct TreatmentSummary: Sendable {
@@ -33,6 +36,7 @@ struct InsightContext: Sendable {
         var outcomeReady: Bool
         var adherencePercent: Int?
     }
+    struct LabNote: Sendable { var name: String; var flag: String; var value: Double; var unit: String }
 
     /// Build the context on the main actor from the current SwiftData state.
     @MainActor
@@ -42,6 +46,7 @@ struct InsightContext: Sendable {
         doses: [TreatmentDose],
         snapshots: [HealthSnapshot],
         triggers: [TriggerEvent],
+        labs: [LabResult],
         profile: Profile?
     ) -> InsightContext {
         let sortedEntries = entries.sorted { $0.date < $1.date }
@@ -74,6 +79,21 @@ struct InsightContext: Sendable {
             trigger = TriggerNote(title: t.type.title, weeks: t.weeksElapsed())
         }
 
+        // Latest LabResult per LabTest — never invented, only what's actually logged.
+        // Iterate LabTest.allCases (not the dictionary) so the note order is deterministic.
+        let latestPerTest = Dictionary(grouping: labs, by: \.test)
+            .compactMapValues { results in results.max { $0.collectedAt < $1.collectedAt } }
+        let labNotes: [LabNote] = LabTest.allCases.compactMap { test in
+            guard let result = latestPerTest[test] else { return nil }
+            let flagText: String
+            switch result.flag {
+            case .low: flagText = "below"
+            case .normal: flagText = "in"
+            case .high: flagText = "above"
+            }
+            return LabNote(name: test.title, flag: flagText, value: result.value, unit: test.unit)
+        }
+
         let condition = profile?.condition ?? .unsure
         return InsightContext(
             conditionTitle: condition.title,
@@ -93,7 +113,8 @@ struct InsightContext: Sendable {
             rapidWeightLossPercent: HairAnalytics.rapidWeightLossPercent(samples: massSamples),
             tractionRisk: profile?.hasTractionRisk ?? false,
             recentTrigger: trigger,
-            treatments: treatmentSummaries
+            treatments: treatmentSummaries,
+            labs: labNotes
         )
     }
 }
@@ -129,6 +150,14 @@ enum RuleBasedInsight {
             let gate = t.outcomeReady ? "past the 24-week judging point" : "week \(t.weeksElapsed) of 24 before efficacy can be judged"
             lines.append("Treatment \(t.name): \(gate)\(adherence).")
         }
+        // Structured lab facts so the on-device model sees the same numbers the rule-based
+        // path does — never invented, only what's actually been logged.
+        if !c.labs.isEmpty {
+            let labText = c.labs
+                .map { "\($0.name) \(formattedLabValue($0.value)) \($0.unit) (\($0.flag) range)" }
+                .joined(separator: ", ")
+            lines.append("Recent labs: \(labText).")
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -158,6 +187,12 @@ enum RuleBasedInsight {
             parts.append("\(t.title) \(t.weeks) weeks ago may still be echoing — diffuse shedding often lags a trigger by 2–3 months.")
         }
 
+        // Labs are an additional, lower-priority note — only added when something's actually
+        // out of range, and always context, never a diagnosis.
+        if let note = labNote(c.labs) {
+            parts.append(note)
+        }
+
         if parts.isEmpty { parts.append("Nothing stands out today. Consistent logging is what makes the trends trustworthy.") }
         return parts.joined(separator: " ")
     }
@@ -168,6 +203,25 @@ enum RuleBasedInsight {
         if improving { return "improving" }
         if worsening { return "rising" }
         return "steady"
+    }
+
+    /// An honest, non-diagnostic lab note — surfaced only when a hair-relevant lab is actually
+    /// out of range. Prioritizes a below-range ferritin, then any out-of-range thyroid result
+    /// (TSH/Free T4). Never invents a lab that wasn't logged.
+    private static func labNote(_ labs: [InsightContext.LabNote]) -> String? {
+        if labs.contains(where: { $0.name == LabTest.ferritin.title && $0.flag == "below" }) {
+            return "Ferritin is below the range often cited for hair — worth raising with a clinician."
+        }
+        if let thyroid = labs.first(where: {
+            ($0.name == LabTest.tsh.title || $0.name == LabTest.freeT4.title) && $0.flag != "in"
+        }) {
+            return "\(thyroid.name) is \(thyroid.flag) range — thyroid results are worth discussing with a clinician, since they can affect hair."
+        }
+        return nil
+    }
+
+    private static func formattedLabValue(_ value: Double) -> String {
+        value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
     }
 }
 
