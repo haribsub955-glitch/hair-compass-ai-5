@@ -12,7 +12,13 @@ enum HairCompassWidgetStore {
 
 /// Snapshot v2 — the Compass Rings score, shielded streak, and today's remaining plan steps.
 /// Duplicated verbatim from Service/WidgetBridge.swift in the app target.
-struct WidgetSnapshot: Codable {
+//
+// KEEP IN SYNC — WidgetSnapshot is duplicated in
+//   Service/WidgetBridge.swift  and
+//   Hair Compass CheckIn Widget/HairCompassCheckInWidget.swift
+// Stored fields (Codable): generatedAt, hasLoggedToday, score, ringLog, ringCare, ringLens,
+//   shedLabel, scalpLabel, streakDays, shieldsHeld, dueTitles. Change both together.
+struct WidgetSnapshot: Codable, Equatable {
     let generatedAt: Date
     let hasLoggedToday: Bool
     let score: Int          // Compass score 0–100 (CompassScore)
@@ -24,6 +30,11 @@ struct WidgetSnapshot: Codable {
     let streakDays: Int     // shielded streak
     let shieldsHeld: Int
     let dueTitles: [String] // remaining routine steps today
+
+    enum CodingKeys: String, CodingKey {
+        case generatedAt, hasLoggedToday, score, ringLog, ringCare, ringLens, shedLabel, scalpLabel,
+             streakDays, shieldsHeld, dueTitles
+    }
 
     /// Bundled preview + first-run fallback: every ring at rest, nothing logged yet. Never
     /// reads as an error — see `isFreshInstall` below for the copy it drives.

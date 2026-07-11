@@ -15,7 +15,13 @@ enum WidgetStore {
 /// verbatim in the widget target (it cannot import the app target, and pulling in
 /// CompassScore.swift/Clinical.swift would drag SwiftData model types into the extension) —
 /// keep both copies field-for-field identical, including the key below.
-struct WidgetSnapshot: Codable {
+//
+// KEEP IN SYNC — WidgetSnapshot is duplicated in
+//   Service/WidgetBridge.swift  and
+//   Hair Compass CheckIn Widget/HairCompassCheckInWidget.swift
+// Stored fields (Codable): generatedAt, hasLoggedToday, score, ringLog, ringCare, ringLens,
+//   shedLabel, scalpLabel, streakDays, shieldsHeld, dueTitles. Change both together.
+struct WidgetSnapshot: Codable, Equatable {
     let generatedAt: Date
     let hasLoggedToday: Bool
     let score: Int          // Compass score 0–100 (CompassScore)
@@ -27,6 +33,11 @@ struct WidgetSnapshot: Codable {
     let streakDays: Int     // shielded streak
     let shieldsHeld: Int
     let dueTitles: [String] // remaining routine steps today
+
+    enum CodingKeys: String, CodingKey {
+        case generatedAt, hasLoggedToday, score, ringLog, ringCare, ringLens, shedLabel, scalpLabel,
+             streakDays, shieldsHeld, dueTitles
+    }
 }
 
 enum WidgetBridge {

@@ -91,4 +91,20 @@ struct WidgetSnapshotTests {
         #expect(snap.streakDays == 7)
         #expect(snap.shieldsHeld == 1)
     }
+
+    // MARK: - Round-trip + pinned wire keys (the widget copy must be updated in lockstep —
+    // this test can't see the widget target, see the KEEP IN SYNC header on WidgetSnapshot).
+
+    @Test func widgetSnapshotRoundTripsAndKeysAreStable() throws {
+        let snap = WidgetSnapshot(generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            hasLoggedToday: true, score: 71, ringLog: 1, ringCare: 0.5, ringLens: 0,
+            shedLabel: "Elevated", scalpLabel: "Scalp mild", streakDays: 4, shieldsHeld: 1,
+            dueTitles: ["Minoxidil · 21:00"])
+        let data = try JSONEncoder().encode(snap)
+        let back = try JSONDecoder().decode(WidgetSnapshot.self, from: data)
+        #expect(back == snap)
+        let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(obj.keys) == ["generatedAt","hasLoggedToday","score","ringLog","ringCare",
+            "ringLens","shedLabel","scalpLabel","streakDays","shieldsHeld","dueTitles"])
+    }
 }
