@@ -32,6 +32,7 @@ struct RootView: View {
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
+    @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab: AppTab = RootView.initialTab
@@ -48,12 +49,14 @@ struct RootView: View {
     @State private var purchases = PurchaseService()
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @State private var showTutorial = false
+    @State private var deepLinks = DeepLinkRouter()
 
     private var profile: Profile? { profiles.first }
     private var widgetFingerprint: String {
         let latestEntry = entries.first.map { "\($0.shedRaw)-\($0.flaking)-\($0.erythema)-\($0.itch)" } ?? "none"
         let activeTreatments = treatments.filter(\.isActive).count
-        return "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)"
+        let photoWeek = photos.first.map { "\($0.createdAt.timeIntervalSince1970)" } ?? "nophoto"
+        return "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)-\(photoWeek)"
     }
 
     private static var initialTab: AppTab {
@@ -122,6 +125,7 @@ struct RootView: View {
         .environment(notifications)
         .environment(affiliates)
         .environment(purchases)
+        .environment(deepLinks)
         .task {
             guard !didBootstrap else { return }
             didBootstrap = true
@@ -156,7 +160,7 @@ struct RootView: View {
             }
         }
         .task(id: widgetFingerprint) {
-            WidgetBridge.write(WidgetSnapshotBuilder.build(entries: entries, treatments: treatments, doses: doses))
+            WidgetBridge.write(WidgetSnapshotBuilder.build(entries: entries, treatments: treatments, doses: doses, photos: photos))
         }
         // Owner-controlled affiliate links: pull the remote catalog once per launch. A no-op
         // while RemoteConfig.catalogURLString is unset; failures are silent (bundled links serve).
@@ -223,6 +227,11 @@ struct RootView: View {
         }
         .tint(Clinical.accent)
         .environment(appLock)
+        .onOpenURL { url in
+            guard url.scheme == "haircompass" else { return }
+            tab = .today
+            if url.host == "log", !showOnboarding { deepLinks.openLogRequested = true }
+        }
     }
 
     private var tabTransition: AnyTransition {

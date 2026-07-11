@@ -9,6 +9,7 @@ struct TodayView: View {
     var onOpenPlan: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
+    @Environment(DeepLinkRouter.self) private var deepLinks
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
@@ -185,6 +186,13 @@ struct TodayView: View {
                 )
             }
             #endif
+        }
+        .onChange(of: deepLinks.openLogRequested) { _, requested in
+            if requested { showLog = true; deepLinks.openLogRequested = false }
+        }
+        .onAppear {
+            // Covers the cold-start case where the widget's URL arrives before this view exists.
+            if deepLinks.openLogRequested { showLog = true; deepLinks.openLogRequested = false }
         }
         // Celebration presentation uses the same onDismiss chain as the AI-consent →
         // deep-analysis pair: the log sheet stores the reward, and only its onDismiss

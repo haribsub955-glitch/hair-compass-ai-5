@@ -517,16 +517,9 @@ struct Hair_Compass_AI_5Tests {
     }
 
     // MARK: - Widget snapshot
-
-    @Test @MainActor func widgetSnapshotSummarizesStreakAndDue() {
-        let cal = Calendar.current
-        let entry = DailyEntry(date: .now, flaking: 1, erythema: 1, itch: 1)
-        let t = Treatment(name: "Minoxidil", treatmentClass: .minoxidil, scheduleTimes: "08:00,21:00", startDate: .now, isActive: true)
-        let snap = WidgetSnapshotBuilder.build(entries: [entry], treatments: [t], doses: [], now: .now, calendar: cal)
-        #expect(snap.streakDays == 1)
-        #expect(snap.dueTitles.count == 2)          // both slots unlogged
-        #expect(snap.headline == "2 steps left today")
-    }
+    // Widget snapshot v2 (Compass rings + shielded streak) is covered in
+    // WidgetSnapshotTests.swift — the pre-rebuild headline/severityLabel shape tested here
+    // no longer exists.
 
     // MARK: - Calendar-day bounds (one-entry-per-day upsert window)
 
