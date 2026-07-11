@@ -8,6 +8,7 @@ enum MetricGroup: String, CaseIterable, Identifiable {
     case hairFall = "Hair fall"
     case lifestyle = "Lifestyle"
     case body = "Body & recovery"
+    case treatment = "Plan"
     var id: String { rawValue }
 }
 
@@ -17,6 +18,9 @@ struct ChartMetric: Identifiable {
     let group: MetricGroup
     let unit: String
 
+    /// Static, hand-authored signals. Treatment metrics (`.treatment` group) are DYNAMIC —
+    /// one per active `Treatment`, built per-render by `CompareView.treatmentMetrics` with
+    /// ids `"tx.0"`, `"tx.1"`, … — so they are intentionally not listed here.
     static let catalog: [ChartMetric] = [
         // Hair fall
         .init(id: "shed", title: "Shedding", group: .hairFall, unit: "0–3"),

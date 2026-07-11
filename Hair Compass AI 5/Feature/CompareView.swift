@@ -37,7 +37,26 @@ struct CompareView: View {
     }
 
     private var hair: ChartMetric { ChartMetric[hairID] ?? ChartMetric.hairFall[0] }
-    private var overlay: ChartMetric { ChartMetric[overlayID] ?? ChartMetric.lifestyle[0] }
+    private var overlay: ChartMetric { ChartMetric[overlayID] ?? treatmentMetrics.first { $0.id == overlayID } ?? ChartMetric.lifestyle[0] }
+
+    // MARK: Dynamic treatment metrics (not in ChartMetric.catalog — one per active treatment)
+
+    private var activeTreatments: [Treatment] {
+        treatments.filter { $0.isActive }.sorted { $0.startDate < $1.startDate }
+    }
+
+    /// One synthetic `ChartMetric` per active treatment — id `"tx.<index>"`, index into
+    /// `activeTreatments`. Stable within a render; the view is ephemeral so that's enough.
+    private var treatmentMetrics: [ChartMetric] {
+        activeTreatments.enumerated().map { i, t in
+            ChartMetric(id: "tx.\(i)", title: t.name.isEmpty ? t.treatmentClass.title : t.name, group: .treatment, unit: "14-day avg")
+        }
+    }
+
+    private func treatment(forMetricID id: String) -> Treatment? {
+        guard id.hasPrefix("tx."), let i = Int(id.dropFirst(3)), activeTreatments.indices.contains(i) else { return nil }
+        return activeTreatments[i]
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -84,6 +103,12 @@ struct CompareView: View {
                 presetChip("Shedding vs Stress", "shed", "stress")
                 presetChip("Scalp vs Sleep", "scalp", "sleepHours")
                 presetChip("Shedding vs Weight", "shed", "bodyMass")
+                if !activeTreatments.isEmpty {
+                    presetChip(
+                        "Shedding vs \(activeTreatments[0].name.isEmpty ? activeTreatments[0].treatmentClass.title : activeTreatments[0].name)",
+                        "shed", "tx.0"
+                    )
+                }
             }
         }
     }
@@ -116,7 +141,7 @@ struct CompareView: View {
                 Image(systemName: "arrow.up.arrow.down").font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
                 Rectangle().fill(Clinical.hairline).frame(height: 1)
             }
-            MetricScrubber(title: "Lifestyle", options: ChartMetric.lifestyle, selectionID: $overlayID,
+            MetricScrubber(title: "Lifestyle & plan", options: ChartMetric.lifestyle + treatmentMetrics, selectionID: $overlayID,
                            tint: Clinical.sage,
                            normalizedSeries: { ChartMath.normalize(series(for: $0.id).map(\.value)) })
         }
@@ -296,6 +321,12 @@ struct CompareView: View {
         case "restingHR": pairs = s.compactMap { snap in snap.restingHR.map { (snap.date, $0) } }
         case "bodyMass": pairs = s.compactMap { snap in snap.bodyMassKg.map { (snap.date, $0) } }
         case "protein": pairs = s.compactMap { snap in snap.dietaryProteinG.map { (snap.date, $0) } }
+        case let id where id.hasPrefix("tx."):
+            if let t = treatment(forMetricID: id) {
+                pairs = TreatmentAdherence.dailyAverage(treatment: t, doses: doses, window: window.days).map { ($0.day, $0.value) }
+            } else {
+                pairs = []
+            }
         default: pairs = []
         }
         return pairs.sorted { $0.0 < $1.0 }.map { (day: $0.0, value: $0.1) }
