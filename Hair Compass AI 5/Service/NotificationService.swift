@@ -19,6 +19,7 @@ final class NotificationService {
     private let photoReminderID = "photoReminder"
     private let eveningCheckInPrefix = "eveningCheckIn."
     private let procedurePrefix = "procedure."
+    private let progressCheckInID = "progressCheckIn.0"
 
     /// Coalescing guard for `reschedule()` (audit #5): a second call cancels the first's task
     /// before it starts a fresh remove+add sequence, so a stale removeAll from an old call can
@@ -165,6 +166,40 @@ final class NotificationService {
             let request = UNNotificationRequest(identifier: "\(procedurePrefix)\(item.id)", content: content, trigger: trigger)
             try? await center.add(request)
         }
+    }
+
+    /// ONE low-frequency monthly nudge toward the Plan tab's Progress check-in — the between-
+    /// visit questions a dermatologist asks (new regrowth, density/shedding/hairline trend,
+    /// overall, scalp red flag). Fires once, ~30 days after `lastCheckIn` (30 days from now if
+    /// there's never been one) at 10:00, id `progressCheckIn.0`. Only ever touches that one id
+    /// (never `removeAllPendingNotificationRequests()`), so — like `planProcedureReminders` —
+    /// it's safe to call after `reschedule()` in the same cycle (see `CareView`'s shared
+    /// `.task(id:)`, which re-plans this whenever the latest check-in date changes). No-op
+    /// (after clearing the stale id) when reminders are off — it shares the same "Reminders"
+    /// toggle as the treatment/refill/procedure reminders rather than adding a new one.
+    func planProgressCheckInReminder(lastCheckIn: Date?) async {
+        center.removePendingNotificationRequests(withIdentifiers: [progressCheckInID])
+        guard isEnabled, authorization == .authorized || authorization == .provisional else { return }
+        guard !Task.isCancelled else { return }
+
+        let calendar = Calendar.current
+        let base = lastCheckIn ?? .now
+        guard let dueDay = calendar.date(byAdding: .day, value: 30, to: calendar.startOfDay(for: base)) else { return }
+        var comps = calendar.dateComponents([.year, .month, .day], from: dueDay)
+        comps.hour = 10; comps.minute = 0
+        guard let fireDate = calendar.date(from: comps), fireDate > .now else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Monthly progress check-in"
+        content.body = "A minute on how it's going."
+        content.sound = .default
+        if let art = NotificationArt.attachment() { content.attachments = [art] }
+        let trigger = UNCalendarNotificationTrigger(
+            dateMatching: calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
+            repeats: false
+        )
+        let request = UNNotificationRequest(identifier: progressCheckInID, content: content, trigger: trigger)
+        try? await center.add(request)
     }
 
     /// Implementation-intention evening reminder (research: a user-chosen time beats generic

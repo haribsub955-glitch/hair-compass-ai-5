@@ -15,6 +15,7 @@ struct CareView: View {
     @Query private var labs: [LabResult]
     @Query private var triggerEvents: [TriggerEvent]
     @Query(sort: \ProcedureAppointment.date) private var procedureAppointments: [ProcedureAppointment]
+    @Query(sort: \ProgressCheckIn.date, order: .reverse) private var checkIns: [ProgressCheckIn]
 
     @State private var showAdd = false
     @State private var showRecommender = false
@@ -23,6 +24,7 @@ struct CareView: View {
     @State private var detailTreatment: Treatment?
     @State private var showReport = false
     @State private var showProcedures = false
+    @State private var showProgressCheckIn = false
 
     /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
     /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
@@ -74,6 +76,10 @@ struct CareView: View {
                 // renumbering of the fixed indices elsewhere in this stack required.
                 proceduresCard.staggeredEntrance(index: 13)
 
+                // New card, new trailing index — appended past the capped treatment/procedures
+                // beat rather than renumbering any index above.
+                progressCheckInCard.staggeredEntrance(index: 14)
+
                 // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
                 // straight to it and must never catch a mid-fade frame.
                 ScienceProductsSection().id("science")
@@ -86,6 +92,9 @@ struct CareView: View {
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
         .sheet(item: $detailTreatment) { TreatmentDetailSheet(treatment: $0) }
         .sheet(isPresented: $showProcedures) { ProceduresView() }
+        .sheet(isPresented: $showProgressCheckIn) {
+            ProgressCheckInSheet(treatmentContext: progressCheckInTreatmentContext)
+        }
         .sheet(isPresented: $showReport) {
             if let report = progressReport { ProgressReportSheet(report: report) }
         }
@@ -119,16 +128,23 @@ struct CareView: View {
                 try? await Task.sleep(for: .milliseconds(250))
                 showProcedures = true
             }
+            if ProcessInfo.processInfo.arguments.contains("HC_PROGRESSCHECKIN") {
+                try? await Task.sleep(for: .milliseconds(250))
+                showProgressCheckIn = true
+            }
             #endif
         }
         // Combined fingerprint: an appointment change alone (fingerprint unaffected by
-        // treatments) still needs to re-plan procedure reminders, so both fingerprints key the
-        // same task. `reschedule()` runs first — it's the only one of the three calls below
-        // that does a `removeAllPendingNotificationRequests()`, so it must land before the
-        // procedure/evening calls or it would wipe the reminders they just scheduled.
-        .task(id: "\(treatmentFingerprint)||\(procedureFingerprint)") {
+        // treatments), or a new progress check-in alone (fingerprint unaffected by both), still
+        // needs to re-plan its own reminder, so all three fingerprints key the same task.
+        // `reschedule()` runs first — it's the only one of the four calls below that does a
+        // `removeAllPendingNotificationRequests()`, so it must land before the
+        // procedure/progress-check-in/evening calls or it would wipe the reminders they just
+        // scheduled.
+        .task(id: "\(treatmentFingerprint)||\(procedureFingerprint)||\(checkIns.first?.date.timeIntervalSince1970 ?? 0)") {
             await notifications.reschedule(treatments: notifTreatments, refills: notifRefills)
             await notifications.planProcedureReminders(notifProcedures)
+            await notifications.planProgressCheckInReminder(lastCheckIn: checkIns.first?.date)
             await replanEveningCheckIn()
         }
         // Re-plans whenever today's logged state flips — the "cancel when logged" honesty rule:
@@ -567,6 +583,60 @@ struct CareView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: Progress check-in
+
+    /// "You've been on {name} for {N} weeks." from the first active treatment — read against
+    /// the clinician's own between-visit framing ("after starting a medication or a
+    /// procedure"). nil when there's no active treatment yet, in which case the sheet just
+    /// omits the context line.
+    private var progressCheckInTreatmentContext: String? {
+        guard let first = activeTreatments.first else { return nil }
+        let name = first.name.isEmpty ? first.treatmentClass.title : first.name
+        let weeks = HairAnalytics.weeksElapsed(since: first.startDate)
+        return "You've been on \(name) for \(weeks) week\(weeks == 1 ? "" : "s")."
+    }
+
+    /// Due once it's been ≥ 30 days since the last check-in, or there's never been one.
+    private var isProgressCheckInDue: Bool {
+        guard let last = checkIns.first else { return true }
+        guard let cutoff = calendar.date(byAdding: .day, value: -30, to: .now) else { return false }
+        return last.date < cutoff
+    }
+
+    /// The dermatologist's between-visit questions (new regrowth, density/shedding/hairline
+    /// trend, overall, scalp red flag), captured monthly. A compact entry card in the same
+    /// family as `proceduresCard`/`guidanceCard` — last date, a "Due" chip, and a trailing
+    /// link-style action rather than a full-bleed button, so it reads as one more item in the
+    /// card stack rather than a standalone form.
+    private var progressCheckInCard: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Eyebrow(text: "Progress check-in")
+                    Spacer()
+                    if isProgressCheckInDue {
+                        statusChip("Due", symbol: "calendar.badge.exclamationmark", tint: Clinical.warning)
+                    }
+                }
+                Text(checkIns.first.map { "Last check-in \($0.date.formatted(date: .abbreviated, time: .omitted))" } ?? "Not done yet")
+                    .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                Text("The between-visit questions a dermatologist asks — new baby hairs, density, shedding, hairline, scalp symptoms.")
+                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    showProgressCheckIn = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("New check-in").font(.system(size: 13, weight: .semibold))
+                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(Clinical.accent)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private func treatmentCard(_ t: Treatment) -> some View {
