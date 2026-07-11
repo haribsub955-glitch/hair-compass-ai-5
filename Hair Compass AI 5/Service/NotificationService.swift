@@ -18,6 +18,7 @@ final class NotificationService {
     private let refillPrefix = "refill."
     private let photoReminderID = "photoReminder"
     private let eveningCheckInPrefix = "eveningCheckIn."
+    private let procedurePrefix = "procedure."
 
     /// Coalescing guard for `reschedule()` (audit #5): a second call cancels the first's task
     /// before it starts a fresh remove+add sequence, so a stale removeAll from an old call can
@@ -137,6 +138,35 @@ final class NotificationService {
         try? await center.add(photoRequest)
     }
 
+    /// One reminder ~1 day before each upcoming, not-yet-completed procedure appointment (a PRP
+    /// session, a transplant, …) — beautiful, low-text, the same brand image as every other
+    /// reminder, ids `procedure.<appointment id>`. Only ever touches its own `procedure.*` ids
+    /// (never `removeAllPendingNotificationRequests()`), so it's safe to call independently of
+    /// `reschedule()` — though callers that also call `reschedule()` in the same cycle should
+    /// call this AFTER it, since `reschedule()`'s remove-all would otherwise wipe reminders this
+    /// call just scheduled (see `CareView`'s shared `.task(id:)`). No-op (after clearing stale
+    /// ids) when reminders are off.
+    func planProcedureReminders(_ items: [(id: String, title: String, date: Date)]) async {
+        let pending = await center.pendingNotificationRequests()
+        let staleIDs = pending.map(\.identifier).filter { $0.hasPrefix(procedurePrefix) }
+        if !staleIDs.isEmpty { center.removePendingNotificationRequests(withIdentifiers: staleIDs) }
+        guard isEnabled, authorization == .authorized || authorization == .provisional else { return }
+        guard !Task.isCancelled else { return }
+
+        for item in items {
+            guard let fireDate = Self.procedureReminderDate(for: item.date), fireDate > .now else { continue }
+            let content = UNMutableNotificationContent()
+            content.title = "Upcoming: \(item.title)"
+            content.body = Self.procedureReminderBody(fireDate: fireDate, appointmentDate: item.date)
+            content.sound = .default
+            if let art = NotificationArt.attachment() { content.attachments = [art] }
+            let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+            let request = UNNotificationRequest(identifier: "\(procedurePrefix)\(item.id)", content: content, trigger: trigger)
+            try? await center.add(request)
+        }
+    }
+
     /// Implementation-intention evening reminder (research: a user-chosen time beats generic
     /// smart timing, and caps at ≤1/day keep retention high). Independent of the routine
     /// "Reminders" toggle above — OFF until the Plan tab's evening-check-in toggle turns it on.
@@ -179,6 +209,22 @@ final class NotificationService {
     static func refillReminderDate(for refillBy: Date, calendar: Calendar = .current) -> Date? {
         guard let weekBefore = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: refillBy)) else { return nil }
         return calendar.date(byAdding: .hour, value: 10, to: weekBefore)
+    }
+
+    /// 10:00 local time the day before the appointment — or the appointment's own time when
+    /// that 10:00 slot has already passed (the appointment is less than a day away, e.g. booked
+    /// same-day). nil only if the calendar math fails.
+    static func procedureReminderDate(for appointmentDate: Date, calendar: Calendar = .current) -> Date? {
+        guard let dayBefore = calendar.date(byAdding: .day, value: -1, to: appointmentDate) else { return nil }
+        var comps = calendar.dateComponents([.year, .month, .day], from: dayBefore)
+        comps.hour = 10; comps.minute = 0
+        guard let candidate = calendar.date(from: comps) else { return nil }
+        return candidate > .now ? candidate : appointmentDate
+    }
+
+    /// "Tomorrow"/"Today" reads correctly whichever branch `procedureReminderDate` took.
+    static func procedureReminderBody(fireDate: Date, appointmentDate: Date, calendar: Calendar = .current) -> String {
+        calendar.isDate(fireDate, inSameDayAs: appointmentDate) ? "Today at your clinic." : "Tomorrow at your clinic."
     }
 
     /// "08:00" → hour/minute DateComponents for a repeating daily trigger.

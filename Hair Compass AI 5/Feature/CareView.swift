@@ -14,6 +14,7 @@ struct CareView: View {
     @Query private var sideEffectLogs: [SideEffectLog]
     @Query private var labs: [LabResult]
     @Query private var triggerEvents: [TriggerEvent]
+    @Query(sort: \ProcedureAppointment.date) private var procedureAppointments: [ProcedureAppointment]
 
     @State private var showAdd = false
     @State private var showRecommender = false
@@ -21,6 +22,7 @@ struct CareView: View {
     @State private var expandedSteps: Set<String> = []
     @State private var detailTreatment: Treatment?
     @State private var showReport = false
+    @State private var showProcedures = false
 
     /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
     /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
@@ -68,6 +70,10 @@ struct CareView: View {
                     }
                 }
 
+                // Same cap as the last treatment card above — lands in the same beat, no
+                // renumbering of the fixed indices elsewhere in this stack required.
+                proceduresCard.staggeredEntrance(index: 13)
+
                 // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
                 // straight to it and must never catch a mid-fade frame.
                 ScienceProductsSection().id("science")
@@ -79,6 +85,7 @@ struct CareView: View {
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
         .sheet(item: $detailTreatment) { TreatmentDetailSheet(treatment: $0) }
+        .sheet(isPresented: $showProcedures) { ProceduresView() }
         .sheet(isPresented: $showReport) {
             if let report = progressReport { ProgressReportSheet(report: report) }
         }
@@ -108,10 +115,20 @@ struct CareView: View {
                 try? await Task.sleep(for: .milliseconds(250))
                 showAdd = true
             }
+            if ProcessInfo.processInfo.arguments.contains("HC_PROCEDURES") {
+                try? await Task.sleep(for: .milliseconds(250))
+                showProcedures = true
+            }
             #endif
         }
-        .task(id: treatmentFingerprint) {
+        // Combined fingerprint: an appointment change alone (fingerprint unaffected by
+        // treatments) still needs to re-plan procedure reminders, so both fingerprints key the
+        // same task. `reschedule()` runs first — it's the only one of the three calls below
+        // that does a `removeAllPendingNotificationRequests()`, so it must land before the
+        // procedure/evening calls or it would wipe the reminders they just scheduled.
+        .task(id: "\(treatmentFingerprint)||\(procedureFingerprint)") {
             await notifications.reschedule(treatments: notifTreatments, refills: notifRefills)
+            await notifications.planProcedureReminders(notifProcedures)
             await replanEveningCheckIn()
         }
         // Re-plans whenever today's logged state flips — the "cancel when logged" honesty rule:
@@ -151,6 +168,13 @@ struct CareView: View {
     }
     private var treatmentFingerprint: String {
         activeTreatments.map { "\($0.name)\($0.scheduleTimes)\($0.isActive)\($0.refillBy?.timeIntervalSince1970 ?? 0)" }.joined(separator: "|")
+    }
+    private var upcomingProcedures: [ProcedureAppointment] { procedureAppointments.filter(\.isUpcoming) }
+    private var notifProcedures: [(id: String, title: String, date: Date)] {
+        upcomingProcedures.map { (String($0.persistentModelID.hashValue), $0.type.title, $0.date) }
+    }
+    private var procedureFingerprint: String {
+        procedureAppointments.map { "\($0.persistentModelID.hashValue)|\($0.date.timeIntervalSince1970)|\($0.isCompleted)" }.joined(separator: "|")
     }
     private var streak: Int { HairAnalytics.loggingStreak(entryDates: entries.map(\.date)) }
     private var hasRecentSevereSideEffect: Bool {
@@ -497,6 +521,52 @@ struct CareView: View {
             }
             .frame(maxWidth: .infinity)
         }
+    }
+
+    // MARK: Procedures
+
+    /// Compact entry card mirroring the treatment cards: the next couple of upcoming
+    /// appointments (if any) plus an add action. The full booked/done list lives in
+    /// `ProceduresView`, one tap away — this card never disturbs the treatment content around it.
+    private var proceduresCard: some View {
+        Button { showProcedures = true } label: {
+            ClinicalCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Eyebrow(text: "Procedures")
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                    }
+                    if upcomingProcedures.isEmpty {
+                        Text("Book PRP, microneedling, or another in-clinic procedure and get a reminder the day before.")
+                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        ForEach(upcomingProcedures.prefix(2)) { appt in
+                            HStack(spacing: 10) {
+                                Image(systemName: appt.type.symbol)
+                                    .font(.system(size: 13)).foregroundStyle(Clinical.sage)
+                                    .frame(width: 28, height: 28)
+                                    .background(Clinical.sage.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(appt.type.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                                    Text(appt.date.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                }
+                                Spacer()
+                            }
+                        }
+                        if upcomingProcedures.count > 2 {
+                            Text("+ \(upcomingProcedures.count - 2) more")
+                                .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        }
+                    }
+                    Text(upcomingProcedures.isEmpty ? "Add procedure" : "See all")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private func treatmentCard(_ t: Treatment) -> some View {

@@ -24,6 +24,7 @@ struct LogSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Query(sort: \ProcedureAppointment.date, order: .reverse) private var procedureAppointments: [ProcedureAppointment]
 
     /// The calendar day this log belongs to. Scrubbable (up to 60 days back) when creating a
     /// new entry; fixed to the entry's own day when editing an existing one.
@@ -160,6 +161,12 @@ struct LogSheet: View {
                             )
                     }
 
+                    // Optional, minimal, and fully independent of the DailyEntry save below —
+                    // it acts immediately on tap and never gates or is gated by the main Save.
+                    if Calendar.current.isDateInToday(logDate) {
+                        section("Procedure") { procedureControl }
+                    }
+
                     Button(saveButtonTitle, action: save)
                         .buttonStyle(ClinicalButtonStyle())
                 }
@@ -230,6 +237,68 @@ struct LogSheet: View {
         } else {
             withAnimation(.easeInOut(duration: 0.28)) { scrollTarget = id }
         }
+    }
+
+    // MARK: Procedure — a compact, optional "did a procedure today?" affordance (Track C).
+
+    private var todaysProcedures: [ProcedureAppointment] {
+        procedureAppointments.filter { Calendar.current.isDateInToday($0.date) }
+    }
+    /// A scheduled, not-yet-done appointment dated today — offered a one-tap "Mark done".
+    private var pendingProcedureToday: ProcedureAppointment? {
+        todaysProcedures.first { !$0.isCompleted }
+    }
+    private var completedProceduresToday: [ProcedureAppointment] {
+        todaysProcedures.filter(\.isCompleted)
+    }
+
+    @ViewBuilder
+    private var procedureControl: some View {
+        if let appt = pendingProcedureToday {
+            HStack(spacing: 10) {
+                Image(systemName: appt.type.symbol)
+                    .font(.system(size: 14)).foregroundStyle(Clinical.accent)
+                    .frame(width: 31, height: 31)
+                    .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(appt.type.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                    Text("Scheduled today").font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                }
+                Spacer()
+                Button("Mark done") { markProcedureDone(appt) }
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.surface)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Clinical.accent, in: Capsule())
+                    .buttonStyle(.plain)
+            }
+        } else if !completedProceduresToday.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(completedProceduresToday) { appt in
+                    Label("\(appt.type.title) · logged", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.positive)
+                }
+            }
+        } else {
+            Menu {
+                ForEach(ProcedureType.allCases) { type in
+                    Button(type.title) { logAdHocProcedure(type) }
+                }
+            } label: {
+                Label("Did a procedure today?", systemImage: "plus.circle")
+                    .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.accent)
+            }
+        }
+    }
+
+    private func markProcedureDone(_ appt: ProcedureAppointment) {
+        appt.isCompleted = true
+        appt.completedAt = .now
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func logAdHocProcedure(_ type: ProcedureType) {
+        context.insert(ProcedureAppointment(type: type, date: .now, isCompleted: true, completedAt: .now))
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     // MARK: Captions — titles reuse the app's existing vocabulary; subtitles from the design.
