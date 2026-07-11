@@ -288,6 +288,46 @@ enum LabFlag {
     }
 }
 
+/// In-clinic procedures a user can book an appointment for. Distinct from a daily `Treatment` —
+/// these are dated events with reminders and a completion state.
+enum ProcedureType: String, Codable, CaseIterable, Identifiable {
+    case prp, microneedling, transplant, lllt, mesotherapy, other
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .prp: return "PRP"
+        case .microneedling: return "Microneedling"
+        case .transplant: return "Hair transplant"
+        case .lllt: return "Low-level laser (LLLT)"
+        case .mesotherapy: return "Mesotherapy"
+        case .other: return "Other procedure"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .prp: return "syringe.fill"
+        case .microneedling: return "circle.grid.cross.fill"
+        case .transplant: return "cross.case.fill"
+        case .lllt: return "light.max"
+        case .mesotherapy: return "drop.triangle.fill"
+        case .other: return "calendar.badge.plus"
+        }
+    }
+
+    /// The bundled gouache procedure art, where one exists (else empty → callers fall back to the symbol).
+    var art: String {
+        switch self {
+        case .prp: return "procedure-prp"
+        case .microneedling: return "procedure-microneedling"
+        case .transplant: return "procedure-hair-transplant"
+        case .lllt: return "procedure-low-level-laser"
+        case .mesotherapy, .other: return ""
+        }
+    }
+}
+
 enum PhotoRegion: String, Codable, CaseIterable, Identifiable {
     case frontal, vertex, templeLeft, templeRight, global
     var id: String { rawValue }

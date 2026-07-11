@@ -128,6 +128,11 @@ final class Treatment {
     /// Running low is the most common reason a regimen lapses, so it gets a first-class date.
     var refillBy: Date? = nil
 
+    /// A custom item can carry a photo of its ingredient label (path on disk via PhotoStore)
+    /// and a short AI-produced summary of what it is. Empty means "not provided".
+    var ingredientPhotoPath: String = ""
+    var aiIngredientSummary: String = ""
+
     @Relationship(deleteRule: .cascade, inverse: \TreatmentDose.treatment)
     var doses: [TreatmentDose] = []
 
@@ -141,7 +146,9 @@ final class Treatment {
         scheduleTimes: String = "",
         startDate: Date = .now,
         isActive: Bool = true,
-        refillBy: Date? = nil
+        refillBy: Date? = nil,
+        ingredientPhotoPath: String = "",
+        aiIngredientSummary: String = ""
     ) {
         self.name = name
         self.classRaw = treatmentClass.rawValue
@@ -150,6 +157,8 @@ final class Treatment {
         self.startDate = startDate
         self.isActive = isActive
         self.refillBy = refillBy
+        self.ingredientPhotoPath = ingredientPhotoPath
+        self.aiIngredientSummary = aiIngredientSummary
     }
 
     var treatmentClass: TreatmentClass {
@@ -174,6 +183,46 @@ final class Treatment {
         default: return []
         }
     }
+}
+
+/// A scheduled (or already-done) in-clinic procedure — PRP, microneedling, a transplant, LLLT.
+/// Unlike a daily `Treatment`, a procedure is a dated event the user books, gets reminded about,
+/// and marks done (from its detail view or the daily check-in).
+@Model
+final class ProcedureAppointment {
+    var typeRaw: String = ProcedureType.prp.rawValue
+    var date: Date = Date.now
+    var location: String = ""
+    var isCompleted: Bool = false
+    var completedAt: Date? = nil
+    var note: String = ""
+    var createdAt: Date = Date.now
+
+    init(
+        type: ProcedureType = .prp,
+        date: Date = .now,
+        location: String = "",
+        isCompleted: Bool = false,
+        completedAt: Date? = nil,
+        note: String = "",
+        createdAt: Date = .now
+    ) {
+        self.typeRaw = type.rawValue
+        self.date = date
+        self.location = location
+        self.isCompleted = isCompleted
+        self.completedAt = completedAt
+        self.note = note
+        self.createdAt = createdAt
+    }
+
+    var type: ProcedureType {
+        get { ProcedureType(rawValue: typeRaw) ?? .other }
+        set { typeRaw = newValue.rawValue }
+    }
+
+    /// True for a future, not-yet-done appointment (the ones worth reminding about).
+    var isUpcoming: Bool { !isCompleted && date >= Calendar.current.startOfDay(for: .now) }
 }
 
 @Model
