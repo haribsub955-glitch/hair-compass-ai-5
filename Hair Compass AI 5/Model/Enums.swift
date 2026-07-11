@@ -64,23 +64,23 @@ enum HairCondition: String, Codable, CaseIterable, Identifiable {
     /// Plain-language summary shown under `plainTitle` in onboarding.
     var plainSummary: String {
         switch self {
-        case .androgenetic: return "Slow thinning at the hairline, crown, or part. The most common kind — driven by genes and hormones."
-        case .alopeciaAreata: return "Coin-sized smooth patches that can appear quickly — an immune response."
-        case .telogenEffluvium: return "Lots of extra hairs everywhere, often 2–3 months after stress, illness, or a diet change."
-        case .traction: return "Thinning at the hairline or part from tight braids, buns, or ponytails."
-        case .seborrheicDermatitis: return "Dandruff-like flaking with redness and itch."
-        case .unsure: return "No problem — we'll track broadly until a pattern shows."
+        case .androgenetic: return "Slow thinning at the hairline, crown, or part — the most common kind."
+        case .alopeciaAreata: return "Smooth, coin-sized bald patches that can show up fast."
+        case .telogenEffluvium: return "Lots of extra shedding all over, often after stress or illness."
+        case .traction: return "Thinning where hair is pulled tight — braids, buns, ponytails."
+        case .seborrheicDermatitis: return "A flaky, itchy, sometimes red scalp."
+        case .unsure: return "Not sure yet? We'll track broadly until a pattern shows."
         }
     }
 
     /// One plain line describing what the demo animation is showing.
     var demoCaption: String {
         switch self {
-        case .androgenetic: return "What you're seeing: strands thinning gradually at the crown."
-        case .alopeciaAreata: return "What you're seeing: a smooth patch appearing, then regrowing."
-        case .telogenEffluvium: return "What you're seeing: extra hairs falling all over."
-        case .traction: return "What you're seeing: a strand strained where it's pulled tight."
-        case .seborrheicDermatitis: return "What you're seeing: flakes shedding from an itchy scalp."
+        case .androgenetic: return "What you're seeing: the crown slowly thinning."
+        case .alopeciaAreata: return "What you're seeing: a smooth patch appear, then regrow."
+        case .telogenEffluvium: return "What you're seeing: extra hairs shedding all over."
+        case .traction: return "What you're seeing: a strand strained where it's pulled."
+        case .seborrheicDermatitis: return "What you're seeing: flakes lifting from an itchy scalp."
         case .unsure: return "We'll help you find your pattern as you track."
         }
     }

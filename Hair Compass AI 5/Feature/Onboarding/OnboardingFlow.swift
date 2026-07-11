@@ -18,11 +18,13 @@ struct OnboardingFlow: View {
     @State private var shedIntensity: CGFloat = 0.34
 
     // Status questions (steps 6–8) — feed the day-one seed and the paywall's personalized line.
-    @State private var oiliness = 0      // 0–3
-    @State private var flaking = 0       // 0–3
-    @State private var itch = 0          // 0–3
-    @State private var stress = 3        // 1–5
-    @State private var sleepQuality = 3  // 1–5
+    // Scalp/wellbeing fields are `LivingGauge` intensities (0…1); `finish()` converts them to the
+    // discrete bands `OnboardingSeed.dayOneEntry` takes via `GaugeBand.index`.
+    @State private var oilI: CGFloat = 0
+    @State private var flakeI: CGFloat = 0
+    @State private var itchI: CGFloat = 0
+    @State private var sleepI: CGFloat = 0.5
+    @State private var stressI: CGFloat = 0.5
     @State private var selectedTriggers = Set<TriggerType>()
 
     @FocusState private var nameFocused: Bool
@@ -119,8 +121,11 @@ struct OnboardingFlow: View {
         if !hasToday {
             context.insert(OnboardingSeed.dayOneEntry(
                 shedIntensity: shedIntensity,
-                oiliness: oiliness, flaking: flaking, itch: itch,
-                stress: stress, sleepQuality: sleepQuality
+                oiliness: GaugeBand.index(oilI, count: 4),
+                flaking: GaugeBand.index(flakeI, count: 4),
+                itch: GaugeBand.index(itchI, count: 4),
+                stress: GaugeBand.index(stressI, count: 5) + 1,
+                sleepQuality: GaugeBand.index(sleepI, count: 5) + 1
             ))
         }
         for event in OnboardingSeed.triggerEvents(selectedTriggers) {
@@ -298,37 +303,63 @@ struct OnboardingFlow: View {
 
     private var scalpFeelStep: some View {
         VStack(spacing: 0) {
-            head("Your scalp", "How does your scalp feel?", "Day to day, on average.")
-            Spacer()
-            VStack(spacing: 22) {
-                BandChipRow(title: "Oiliness", bands: ["Dry", "Balanced", "Oily", "Very oily"], value: $oiliness)
-                BandChipRow(title: "Flaking", bands: ["None", "A little", "Visible", "Heavy"], value: $flaking)
-                BandChipRow(title: "Itch", bands: ["None", "Mild", "Comes and goes", "Constant"], value: $itch)
-            }.padding(.horizontal, 20)
-            Spacer()
+            head("Your scalp", "How does your scalp feel?", "Drag each — the preview reacts as you go.")
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    LivingGauge(title: "Oiliness", intensity: $oilI, bandCount: 4,
+                                tint: Clinical.accent, zones: ["NORMAL", "SLIGHT", "OILY", "VERY"], ends: nil,
+                                caption: { i in Self.scalpCaption(i, count: 4,
+                                    titles: ["Balanced", "Slightly oily", "Oily", "Very oily"],
+                                    subs: ["comfortable", "a little greasy", "greasy by midday", "greasy fast"]) }) { i in OilMotif(intensity: i) }
+                    LivingGauge(title: "Flaking", intensity: $flakeI, bandCount: 4,
+                                tint: Clinical.accent, zones: ["NONE", "POWDERY", "VISIBLE", "ADHERENT"], ends: nil,
+                                caption: { i in Self.scalpCaption(i, count: 4,
+                                    titles: ["No flaking", "Powdery", "Visible flakes", "Sticky flakes"],
+                                    subs: ["clear", "fine dust", "you can see it", "clings to the scalp"]) }) { i in FlakeMotif(intensity: i) }
+                    LivingGauge(title: "Itch", intensity: $itchI, bandCount: 4,
+                                tint: Clinical.accent, zones: ["NONE", "MILD", "COMES & GOES", "CONSTANT"], ends: nil,
+                                caption: { i in Self.scalpCaption(i, count: 4,
+                                    titles: ["No itch", "Mild", "Comes and goes", "Constant"],
+                                    subs: ["clear", "barely there", "on and off", "hard to ignore"]) }) { i in ItchMotif(intensity: i) }
+                }
+                .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 8)
+            }
             primary("Continue") { next() }
         }
+    }
+
+    /// Shared caption builder: band index → (title, subtitle) from parallel arrays.
+    private static func scalpCaption(_ i: CGFloat, count: Int, titles: [String], subs: [String]) -> (String, String) {
+        let b = GaugeBand.index(i, count: count)
+        return (titles[b], subs[b])
     }
 
     private var stressSleepStep: some View {
         VStack(spacing: 0) {
             head("Lifestyle", "Stress and sleep lately?", "Both can show up in your hair 2–3 months later.")
-            Spacer()
-            VStack(spacing: 22) {
-                BandChipRow(
-                    title: "Stress",
-                    bands: ["Very low", "Low", "Medium", "High", "Very high"],
-                    value: Binding(get: { stress - 1 }, set: { stress = $0 + 1 })
-                )
-                BandChipRow(
-                    title: "Sleep",
-                    bands: ["Poor", "Fair", "OK", "Good", "Great"],
-                    value: Binding(get: { sleepQuality - 1 }, set: { sleepQuality = $0 + 1 })
-                )
-            }.padding(.horizontal, 20)
-            Spacer()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    LivingGauge(title: "Sleep quality", intensity: $sleepI, bandCount: 5,
+                                tint: Clinical.sage, zones: nil, ends: ("POOR", "DEEP"),
+                                caption: { i in Self.fiveCaption(i,
+                                    titles: ["Poor", "Fair", "OK", "Good", "Great"],
+                                    subs: ["restless nights", "broken sleep", "average", "mostly solid", "deeply rested"]) }) { i in SleepMotif(intensity: i) }
+                    LivingGauge(title: "Stress", intensity: $stressI, bandCount: 5,
+                                tint: Clinical.accent, zones: nil, ends: ("CALM", "HIGH"),
+                                caption: { i in Self.fiveCaption(i,
+                                    titles: ["Very low", "Low", "Medium", "High", "Very high"],
+                                    subs: ["calm", "steady", "some pressure", "stretched", "overwhelmed"]) }) { i in StressMotif(intensity: i) }
+                }
+                .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 8)
+            }
             primary("Continue") { next() }
         }
+    }
+
+    /// Shared caption builder for the 5-band wellbeing gauges — analogous to `scalpCaption`.
+    private static func fiveCaption(_ i: CGFloat, titles: [String], subs: [String]) -> (String, String) {
+        let b = GaugeBand.index(i, count: 5)
+        return (titles[b], subs[b])
     }
 
     private var triggersStep: some View {

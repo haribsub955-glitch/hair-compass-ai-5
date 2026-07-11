@@ -203,32 +203,48 @@ struct DensityFadeView: View {
 }
 
 /// A field of short rooted strands (mirrors `DensityFadeView`'s grid) with an off-centre circular
-/// patch that fades out and regrows on a slow ~6s cycle — appear → hold → regrow. Reads as smooth
+/// patch that fades **fully out** — a sharp-edged bald patch, not a broad dimming — and regrows on
+/// a slow ~6s cycle (fade ~2.2s, hold ~1s bald, regrow the remainder). Reads as smooth
 /// alopecia-areata patches without claiming a diagnosis.
 struct PatchDemoView: View {
     var body: some View {
         MotionTimeline(cadence: .ambient) { tl, reduceMotion in
             Canvas { ctx, size in
-                let seconds = tl.date.timeIntervalSinceReferenceDate
-                    .truncatingRemainder(dividingBy: 3600)
-                let cycle = 6.0
-                let phase = reduceMotion ? 0.5 : (seconds.truncatingRemainder(dividingBy: cycle)) / cycle
-                // 0–0.4 the patch fades out (loss), 0.4–0.6 holds bald, 0.6–1 regrows.
-                let loss: Double
-                if phase < 0.4 { loss = phase / 0.4 }
-                else if phase < 0.6 { loss = 1 }
-                else { loss = max(0, 1 - (phase - 0.6) / 0.4) }
-
                 let cols = 16, rows = 10
                 let patchCenter = CGPoint(x: size.width * 0.62, y: size.height * 0.42)
                 let patchR = min(size.width, size.height) * 0.24
+
+                // 0 = full patch (all strands present), 1 = clean bald patch.
+                let loss: Double
+                if reduceMotion {
+                    loss = 0.5   // static half-faded steady state
+                } else {
+                    let cycle = 6.0, fadeOut = 2.2, hold = 1.0
+                    let regrow = cycle - fadeOut - hold
+                    let seconds = tl.date.timeIntervalSinceReferenceDate
+                        .truncatingRemainder(dividingBy: 3600)
+                    let phase = seconds.truncatingRemainder(dividingBy: cycle)
+                    if phase < fadeOut {
+                        loss = onboardEase(phase / fadeOut)
+                    } else if phase < fadeOut + hold {
+                        loss = 1
+                    } else {
+                        loss = max(0, 1 - onboardEase((phase - fadeOut - hold) / regrow))
+                    }
+                }
+
                 for r in 0..<rows {
                     for c in 0..<cols {
                         let x = size.width * (CGFloat(c) + 0.5) / CGFloat(cols)
                         let y = size.height * (CGFloat(r) + 0.5) / CGFloat(rows)
                         let d = ((x - patchCenter.x) * (x - patchCenter.x) + (y - patchCenter.y) * (y - patchCenter.y)).squareRoot()
-                        let inPatch = max(0, 1 - d / patchR)
-                        let alpha = max(0.05, 1 - inPatch * loss)
+                        // A narrow 10pt feather at the circle's edge keeps the boundary from
+                        // aliasing on the grid while everywhere else stays either fully present
+                        // (outside) or fully governed by `loss` (inside) — no broad halo of
+                        // "just dimmer" strands.
+                        let edge: CGFloat = 5
+                        let inside = min(1, max(0, (patchR + edge - d) / (edge * 2)))
+                        let alpha = max(0, 1 - inside * CGFloat(loss))
                         var p = Path()
                         p.move(to: CGPoint(x: x, y: y))
                         p.addQuadCurve(to: CGPoint(x: x + 2, y: y + 12), control: CGPoint(x: x - 2, y: y + 6))
@@ -243,6 +259,13 @@ struct PatchDemoView: View {
         }
         .accessibilityHidden(true)
     }
+}
+
+/// Smoothstep ease (`3t²-2t³`), clamped — used for the patch demo's fade/regrow so the loop reads
+/// as a soft, organic transition rather than a linear wipe.
+private func onboardEase(_ x: Double) -> Double {
+    let t = min(1, max(0, x))
+    return t * t * (3 - 2 * t)
 }
 
 /// 5–6 strands anchored along a hairline arc; the outermost strands angle and straighten toward a
@@ -296,18 +319,38 @@ struct TractionDemoView: View {
     }
 }
 
-/// A scalp arc across the top third; small rounded flakes detach and drift down with a slight sway,
-/// while a soft warm blush pulses under the arc for the itch/redness.
+/// A clear scalp band across the top third (the part line, filled and legible — not just an
+/// off-canvas ellipse), with larger rounded copper/ivory flakes detaching and drifting down with a
+/// slight sway, and a slightly stronger warm blush pulsing under the band for the itch/redness.
 struct FlakeDemoView: View {
     var body: some View {
         MotionTimeline(cadence: .ambient) { tl, reduceMotion in
             Canvas { ctx, size in
                 let seconds = tl.date.timeIntervalSinceReferenceDate
                     .truncatingRemainder(dividingBy: 3600)
-                let arcRect = CGRect(x: size.width * 0.1, y: -size.height * 0.35, width: size.width * 0.8, height: size.height * 0.7)
+
+                // The scalp band: a filled shape across the top third, its lower edge dipping
+                // gently like a visible part line.
+                let bandBottom = size.height * 0.30
+                let bandDip = size.height * 0.10
+                var band = Path()
+                band.move(to: CGPoint(x: 0, y: 0))
+                band.addLine(to: CGPoint(x: 0, y: bandBottom))
+                band.addQuadCurve(to: CGPoint(x: size.width, y: bandBottom), control: CGPoint(x: size.width / 2, y: bandDip))
+                band.addLine(to: CGPoint(x: size.width, y: 0))
+                band.closeSubpath()
+                ctx.fill(band, with: .color(Clinical.secondary.opacity(0.15)))
+
+                var bandEdge = Path()
+                bandEdge.move(to: CGPoint(x: 0, y: bandBottom))
+                bandEdge.addQuadCurve(to: CGPoint(x: size.width, y: bandBottom), control: CGPoint(x: size.width / 2, y: bandDip))
+                ctx.stroke(bandEdge, with: .color(Clinical.ink.opacity(0.3)), style: StrokeStyle(lineWidth: 1.2))
+
+                // Warm blush pulsing under the band — the itch/redness cue, a touch stronger than
+                // the earlier pass.
                 let pulse = reduceMotion ? 0.6 : (sin(seconds * 1.4) * 0.5 + 0.5)
-                ctx.fill(Path(ellipseIn: arcRect.insetBy(dx: -8, dy: -8)), with: .color(Clinical.warning.opacity(0.12 * pulse)))
-                ctx.stroke(Path(ellipseIn: arcRect), with: .color(Clinical.ink.opacity(0.35)), style: StrokeStyle(lineWidth: 1.4))
+                let blushRect = CGRect(x: size.width * 0.08, y: bandDip - 6, width: size.width * 0.84, height: bandBottom - bandDip + 30)
+                ctx.fill(Path(ellipseIn: blushRect), with: .color(Clinical.warning.opacity(0.16 * pulse)))
 
                 let count = 14
                 for i in 0..<count {
@@ -315,18 +358,27 @@ struct FlakeDemoView: View {
                     let cycle = 2.6 / speedFactor
                     let t: CGFloat
                     if reduceMotion {
-                        t = onboardHashUnit(i, salt: 9)
+                        // Static mid-frame: hold flakes mid-fall (near the fade-envelope's peak)
+                        // rather than freezing at a random moment that could read as empty.
+                        t = 0.45 + onboardHashUnit(i, salt: 9) * 0.3
                     } else {
                         let raw = seconds / Double(cycle) + Double(onboardHashUnit(i, salt: 3))
                         t = CGFloat(raw - raw.rounded(.down))
                     }
                     let sway = sin(Double(t) * .pi * 2 + Double(i)) * 6
                     let x = size.width * (0.15 + onboardHashUnit(i, salt: 7) * 0.7) + CGFloat(sway)
-                    let y = size.height * 0.18 + t * size.height * 0.75
-                    let r: CGFloat = 2 + onboardHashUnit(i, salt: 11) * 2
+                    let y = bandBottom - 6 + t * size.height * 0.68
+                    let r: CGFloat = 3 + onboardHashUnit(i, salt: 11) * 2   // larger flakes: 3–5pt
                     let alpha = min(1, t * 4) * min(1, (1 - t) * 4)
-                    ctx.fill(Path(ellipseIn: CGRect(x: x - r / 2, y: y - r / 2, width: r, height: r)),
-                             with: .color(Clinical.tertiary.opacity(0.6 * alpha)))
+                    let flakeRect = CGRect(x: x - r, y: y - r * 0.7, width: r * 2, height: r * 1.4)
+                    if onboardHashUnit(i, salt: 13) < 0.55 {
+                        // Copper flake.
+                        ctx.fill(Path(roundedRect: flakeRect, cornerRadius: r * 0.6), with: .color(Clinical.accent.opacity(0.55 * alpha)))
+                    } else {
+                        // Ivory flake, outlined so it reads against the panel background.
+                        ctx.fill(Path(roundedRect: flakeRect, cornerRadius: r * 0.6), with: .color(Clinical.canvas.opacity(alpha)))
+                        ctx.stroke(Path(roundedRect: flakeRect, cornerRadius: r * 0.6), with: .color(Clinical.hairline.opacity(alpha)), style: StrokeStyle(lineWidth: 0.8))
+                    }
                 }
             }
         }
@@ -375,36 +427,6 @@ struct CompassDemoView: View {
 private func onboardHashUnit(_ index: Int, salt: Int) -> CGFloat {
     let value = sin(CGFloat((index + 1) * 127 + salt * 313)) * 43_758.5453
     return value - value.rounded(.down)
-}
-
-/// A labeled row of tappable band chips (e.g. None/Mild/Moderate/Severe). Selection binds to the
-/// chip's index — callers offset the binding for scales that don't start at 0 (see the
-/// stress/sleep step, which maps 1–5 through an offset `Binding`).
-struct BandChipRow: View {
-    let title: String
-    let bands: [String]
-    @Binding var value: Int
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-            HStack(spacing: 8) {
-                ForEach(Array(bands.enumerated()), id: \.offset) { i, band in
-                    let on = value == i
-                    Button {
-                        value = i
-                        UISelectionFeedbackGenerator().selectionChanged()
-                    } label: {
-                        Text(band)
-                            .font(.system(size: 13, weight: on ? .semibold : .regular))
-                            .foregroundStyle(on ? Clinical.surface : Clinical.ink)
-                            .frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(on ? Clinical.accent : Clinical.surface, in: Capsule())
-                            .overlay(Capsule().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
-                    }.buttonStyle(.plain)
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Hair-care stressor demo

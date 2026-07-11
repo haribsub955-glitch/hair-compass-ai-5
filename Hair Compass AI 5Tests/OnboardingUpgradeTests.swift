@@ -22,6 +22,15 @@ import Testing
     #expect(events.allSatisfy { !$0.note.isEmpty })
 }
 
+@Test func gaugeBandIndexMapsOnboardingIntensities() {
+    #expect(GaugeBand.index(0, count: 4) == 0)
+    #expect(GaugeBand.index(1, count: 4) == 3)
+    #expect(GaugeBand.index(0.5, count: 5) == 2)
+    // Stress/sleep add 1 to land in the 1–5 range OnboardingSeed.dayOneEntry expects.
+    #expect(GaugeBand.index(0, count: 5) + 1 == 1)
+    #expect(GaugeBand.index(1, count: 5) + 1 == 5)
+}
+
 @Test func plainLanguageIsExhaustiveAndDistinct() {
     for c in HairCondition.allCases {
         #expect(!c.plainTitle.isEmpty)
