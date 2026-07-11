@@ -67,9 +67,9 @@ struct AIContextTests {
         let empty = AIContext.build(
             entries: [], treatments: [], doses: [], snapshots: [], triggers: [],
             labs: [], sideEffects: [], photos: [], profile: nil, now: now, calendar: calendar)
-        #expect(empty.schemaVersion == 1)
+        #expect(empty.schemaVersion == 2)
         #expect(empty.schemaVersion == AIContext.currentSchemaVersion)
-        #expect(empty.jsonString().contains("\"schemaVersion\":1"))
+        #expect(empty.jsonString().contains("\"schemaVersion\":2"))
         // generatedAt is derived from the passed-in now, not a hidden Date.now.
         #expect(empty.generatedAt == AIContext.iso8601(now))
     }

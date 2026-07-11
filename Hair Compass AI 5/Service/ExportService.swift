@@ -15,6 +15,7 @@ enum ExportService {
         doses: [TreatmentDose],
         labs: [LabResult],
         triggers: [TriggerEvent],
+        progressCheckIns: [ProgressCheckIn],
         now: Date = .now,
         calendar: Calendar = .current
     ) -> String {
@@ -89,6 +90,19 @@ enum ExportService {
             out += "\n"
         }
 
+        // Progress check-ins — self-reported answers to the between-visit questions a
+        // dermatologist asks (regrowth, density/shedding/hairline trend, scalp symptoms).
+        if !progressCheckIns.isEmpty {
+            out += "PROGRESS CHECK-INS (self-reported)\n"
+            for c in progressCheckIns.sorted(by: { $0.date > $1.date }).prefix(3) {
+                out += "\(c.date.formatted(.dateTime.year().month().day())):\n"
+                for line in c.clinicianSummary() {
+                    out += "  • \(line)\n"
+                }
+            }
+            out += "\n"
+        }
+
         out += "Bring your progress photos and trend charts to the appointment for the full picture."
         return out
     }
@@ -101,6 +115,7 @@ enum ExportService {
         doses: [TreatmentDose],
         labs: [LabResult],
         triggers: [TriggerEvent],
+        progressCheckIns: [ProgressCheckIn],
         snapshots: [HealthSnapshot]
     ) -> Data? {
         let dto = ExportBundle(
@@ -113,6 +128,11 @@ enum ExportService {
             treatmentDoses: doses.map { .init(treatment: $0.treatment?.name ?? "", slot: $0.slot, loggedAt: $0.loggedAt) },
             labs: labs.map { .init(test: $0.test.rawValue, value: $0.value, unit: $0.test.unit, collectedAt: $0.collectedAt) },
             triggers: triggers.map { .init(type: $0.type.rawValue, date: $0.date, note: $0.note) },
+            progressCheckIns: progressCheckIns.map {
+                .init(date: $0.date, regrowth: $0.regrowthRaw, density: $0.densityRaw, shedding: $0.sheddingRaw,
+                      hairline: $0.hairlineRaw, overall: $0.overallRaw, scalpPain: $0.scalpPain,
+                      scalpPainNote: $0.scalpPainNote, note: $0.note)
+            },
             healthSnapshots: snapshots.map {
                 .init(date: $0.date, sleepHours: $0.sleepHours, hrvSDNN: $0.hrvSDNN, restingHR: $0.restingHR,
                       bodyMassKg: $0.bodyMassKg, bmi: $0.bmi, dietaryProteinG: $0.dietaryProteinG)
@@ -139,6 +159,7 @@ private struct ExportBundle: Codable {
     let treatmentDoses: [Dose]
     let labs: [Lab]
     let triggers: [Trigger]
+    let progressCheckIns: [CheckIn]
     let healthSnapshots: [Snapshot]
 
     struct Entry: Codable {
@@ -148,6 +169,12 @@ private struct ExportBundle: Codable {
     struct Dose: Codable { let treatment: String; let slot: String; let loggedAt: Date }
     struct Lab: Codable { let test: String; let value: Double; let unit: String; let collectedAt: Date }
     struct Trigger: Codable { let type: String; let date: Date; let note: String }
+    /// Raw answer fields (the model's own `...Raw` ints) rather than resolved titles, matching
+    /// how the rest of this JSON export favors machine-stable raw values over display strings.
+    struct CheckIn: Codable {
+        let date: Date; let regrowth: Int; let density: Int; let shedding: Int; let hairline: Int
+        let overall: Int; let scalpPain: Bool; let scalpPainNote: String; let note: String
+    }
     struct Snapshot: Codable {
         let date: Date; let sleepHours: Double?; let hrvSDNN: Double?; let restingHR: Double?
         let bodyMassKg: Double?; let bmi: Double?; let dietaryProteinG: Double?

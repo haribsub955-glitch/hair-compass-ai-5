@@ -17,8 +17,9 @@ import SwiftData
 /// - Encoding uses `.sortedKeys`, so output is stable for tests and prompt caching.
 struct AIContext: Codable, Equatable, Sendable {
 
-    /// Bump on any change to field names or semantics. v1: the initial shape.
-    static let currentSchemaVersion = 1
+    /// Bump on any change to field names or semantics. v1: the initial shape. v2: adds
+    /// `progressCheckIns` (self-reported regrowth/density/shedding/hairline/overall + scalp-pain).
+    static let currentSchemaVersion = 2
 
     var schemaVersion: Int = AIContext.currentSchemaVersion
     /// ISO8601 (UTC, whole seconds) timestamp of the `now` the context was built against.
@@ -28,6 +29,7 @@ struct AIContext: Codable, Equatable, Sendable {
     var treatments: [TreatmentFacts]
     var labs: [LabFacts]
     var triggers: [TriggerFacts]
+    var progressCheckIns: [ProgressCheckInFacts]
     var bodySignals: BodySignals
     var meta: Meta
 
@@ -111,6 +113,20 @@ struct AIContext: Codable, Equatable, Sendable {
         var weeksAgo: Int
     }
 
+    /// A self-reported periodic answer to the between-visit questions a dermatologist asks.
+    /// Context only, never a measurement or diagnosis — `scalpPain` is a safety flag the model
+    /// may surface as "worth mentioning to your clinician," never as a claim a treatment worked.
+    struct ProgressCheckInFacts: Codable, Equatable, Sendable {
+        var date: String             // "yyyy-MM-dd"
+        var regrowth: String         // RegrowthLevel title, e.g. "Clearly visible"
+        var density: String          // ProgressTrend.clinicianPhrase(for: .density)
+        var shedding: String         // ProgressTrend.clinicianPhrase(for: .shedding)
+        var hairline: String         // ProgressTrend.clinicianPhrase(for: .hairline)
+        var overall: String          // ProgressTrend.clinicianPhrase(for: .overall)
+        var scalpPain: Bool          // safety flag, not a diagnosis
+        var note: String
+    }
+
     /// Latest reading + 30d-vs-previous-30d delta per HealthKit signal (BodySignalsMath).
     /// A signal with no reading in the window is simply absent — never a fake zero.
     struct BodySignals: Codable, Equatable, Sendable {
@@ -152,6 +168,7 @@ struct AIContext: Codable, Equatable, Sendable {
         sideEffects: [SideEffectLog],
         photos: [PhotoRecord],
         profile: Profile?,
+        progressCheckIns: [ProgressCheckIn] = [],
         now: Date,
         calendar: Calendar = .current
     ) -> AIContext {
@@ -258,6 +275,24 @@ struct AIContext: Codable, Equatable, Sendable {
                 )
             }
 
+        // Progress check-ins — self-reported answers to the between-visit questions a
+        // dermatologist asks, most recent ~6, oldest first (same windowing convention as the
+        // daily series). Context only: phrases, never a diagnosis or a "worked" claim.
+        let progressCheckInFacts = Array(
+            progressCheckIns.sorted { $0.date < $1.date }.suffix(6)
+        ).map { c in
+            ProgressCheckInFacts(
+                date: dayString(c.date, calendar: calendar),
+                regrowth: c.regrowth.title,
+                density: c.density.clinicianPhrase(for: .density),
+                shedding: c.shedding.clinicianPhrase(for: .shedding),
+                hairline: c.hairline.clinicianPhrase(for: .hairline),
+                overall: c.overall.clinicianPhrase(for: .overall),
+                scalpPain: c.scalpPain,
+                note: c.note
+            )
+        }
+
         // Body signals — latest + 30d delta per signal via BodySignalsMath; absent = untracked.
         var signalReadings: [BodySignals.Signal] = []
         for signal in BodySignal.allCases {
@@ -299,6 +334,7 @@ struct AIContext: Codable, Equatable, Sendable {
             treatments: treatmentFacts,
             labs: labFacts,
             triggers: triggerFacts,
+            progressCheckIns: progressCheckInFacts,
             bodySignals: bodySignals,
             meta: meta
         )

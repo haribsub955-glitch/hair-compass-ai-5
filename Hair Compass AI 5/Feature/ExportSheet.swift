@@ -12,6 +12,7 @@ struct ExportSheet: View {
     @Query private var doses: [TreatmentDose]
     @Query(sort: \LabResult.collectedAt, order: .reverse) private var labs: [LabResult]
     @Query(sort: \TriggerEvent.date, order: .reverse) private var triggers: [TriggerEvent]
+    @Query(sort: \ProgressCheckIn.date, order: .reverse) private var progressCheckIns: [ProgressCheckIn]
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
 
     @State private var jsonURL: URL?
@@ -19,7 +20,7 @@ struct ExportSheet: View {
     private var summary: String {
         ExportService.clinicianSummary(
             profile: profiles.first, entries: entries, treatments: treatments,
-            doses: doses, labs: labs, triggers: triggers
+            doses: doses, labs: labs, triggers: triggers, progressCheckIns: progressCheckIns
         )
     }
 
@@ -82,7 +83,10 @@ struct ExportSheet: View {
     }
 
     private func writeJSON() {
-        guard let data = ExportService.dataJSON(entries: entries, doses: doses, labs: labs, triggers: triggers, snapshots: snapshots) else { return }
+        guard let data = ExportService.dataJSON(
+            entries: entries, doses: doses, labs: labs, triggers: triggers,
+            progressCheckIns: progressCheckIns, snapshots: snapshots
+        ) else { return }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("HairCompassData.json")
         try? data.write(to: url, options: .atomic)
         jsonURL = url

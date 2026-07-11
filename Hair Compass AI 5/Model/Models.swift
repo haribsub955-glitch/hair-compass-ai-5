@@ -297,7 +297,7 @@ final class ProgressCheckIn {
             "Overall: \(overall.clinicianPhrase(for: .overall))"
         ]
         if scalpPain {
-            lines.append("⚠ Reports scalp pain/tenderness\(scalpPainNote.isEmpty ? "" : " — \(scalpPainNote)") — worth prompt dermatology review.")
+            lines.append("⚠ Reports scalp pain/tenderness\(scalpPainNote.isEmpty ? "" : " — \(scalpPainNote)"). Worth prompt dermatology review.")
         }
         if !note.isEmpty { lines.append("Note: \(note)") }
         return lines
