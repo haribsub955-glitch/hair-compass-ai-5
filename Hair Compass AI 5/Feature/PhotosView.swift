@@ -10,9 +10,16 @@ struct PhotosView: View {
     @State private var region: PhotoRegion = .frontal
     @State private var showAdd = false
     @State private var comparePosition: CGFloat = 0.5
+    @State private var detailRecord: PhotoRecord?
 
     private var regionPhotos: [PhotoRecord] {
         photos.filter { $0.region == region }.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    /// Regions with at least one capture — drives the region-chip coverage dots and the
+    /// progress summary line.
+    private var regionsWithPhotos: Set<PhotoRegion> {
+        Set(photos.map(\.region))
     }
 
     var body: some View {
@@ -28,6 +35,9 @@ struct PhotosView: View {
                     )
                 ).padding(.top, 8)
 
+                progressSummary
+                    .staggeredEntrance(index: 0)
+
                 ClinicalCard(padding: 14) {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "camera.metering.center.weighted").font(.system(size: 15)).foregroundStyle(Clinical.accent)
@@ -35,14 +45,14 @@ struct PhotosView: View {
                             .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
                     }
                 }
-                .staggeredEntrance(index: 0)
+                .staggeredEntrance(index: 1)
 
                 regionPicker
-                    .staggeredEntrance(index: 1)
+                    .staggeredEntrance(index: 2)
 
                 if regionPhotos.count >= 2 {
                     compareCard
-                        .staggeredEntrance(index: 2)
+                        .staggeredEntrance(index: 3)
                 }
 
                 if regionPhotos.isEmpty {
@@ -69,6 +79,9 @@ struct PhotosView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { GuidedCaptureView(defaultRegion: region) }
+        .sheet(item: $detailRecord) { record in
+            PhotoDetailView(record: record) { detailRecord = nil }
+        }
         .onAppear {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_ADDPHOTO") { showAdd = true }
@@ -76,11 +89,25 @@ struct PhotosView: View {
         }
     }
 
+    /// "N photos · M of 5 regions · last {relative}", or an invitation when the library is
+    /// empty — recency made visible without guilt.
+    private var progressSummary: some View {
+        Group {
+            if let latest = photos.first {
+                Text("\(photos.count) photo\(photos.count == 1 ? "" : "s") · \(regionsWithPhotos.count) of \(PhotoRegion.allCases.count) regions · last \(latest.createdAt.formatted(.relative(presentation: .named)))")
+            } else {
+                Text("Capture your first region to start a comparable series.")
+            }
+        }
+        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+    }
+
     private var regionPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(PhotoRegion.allCases) { r in
                     let on = r == region
+                    let hasPhotos = regionsWithPhotos.contains(r)
                     Button { withAnimation(.easeOut(duration: 0.15)) { region = r } } label: {
                         Label(r.title, systemImage: r.symbol)
                             .font(.system(size: 13, weight: on ? .semibold : .regular))
@@ -89,10 +116,20 @@ struct PhotosView: View {
                             .background(on ? Clinical.ink : Clinical.surface)
                             .clipShape(Capsule())
                             .overlay(Capsule().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
+                            .overlay(alignment: .topTrailing) {
+                                if hasPhotos {
+                                    Circle()
+                                        .fill(Clinical.accent)
+                                        .frame(width: 6, height: 6)
+                                        .overlay(Circle().strokeBorder(Clinical.surface, lineWidth: 1))
+                                        .offset(x: -2, y: 2)
+                                        .allowsHitTesting(false)
+                                }
+                            }
                     }
                     .buttonStyle(.clinicalPressable)
                     .accessibilityAddTraits(on ? .isSelected : [])
-                    .accessibilityHint(on ? "Selected region" : "Shows \(r.title.lowercased()) progress photos")
+                    .accessibilityHint((on ? "Selected region" : "Shows \(r.title.lowercased()) progress photos") + (hasPhotos ? ", has photos" : ""))
                 }
             }
             // Spring the ink pill from chip to chip on selection; Reduce Motion keeps the
@@ -164,11 +201,16 @@ struct PhotosView: View {
     private var grid: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             ForEach(Array(regionPhotos.reversed().enumerated()), id: \.element.id) { index, record in
-                VStack(alignment: .leading, spacing: 4) {
-                    thumb(record)
-                    Text(record.createdAt.formatted(.dateTime.month().day()))
-                        .font(Clinical.number(11)).foregroundStyle(Clinical.secondary)
+                Button { detailRecord = record } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        thumb(record)
+                        Text(record.createdAt.formatted(.dateTime.month().day()))
+                            .font(Clinical.number(11)).foregroundStyle(Clinical.secondary)
+                    }
                 }
+                .buttonStyle(.clinicalPressable)
+                .accessibilityLabel("\(region.title) photo, \(record.createdAt.formatted(.dateTime.month().day().year()))")
+                .accessibilityHint("Opens the full photo")
                 .contextMenu {
                     Button("Delete", role: .destructive) {
                         PhotoStore.shared.delete(record.imagePath)
@@ -177,7 +219,7 @@ struct PhotosView: View {
                 }
                 // Tiles continue the stack's stagger; capped so a long grid doesn't
                 // keep staggering forever.
-                .staggeredEntrance(index: min(3 + index, 8))
+                .staggeredEntrance(index: min(4 + index, 9))
             }
         }
     }
