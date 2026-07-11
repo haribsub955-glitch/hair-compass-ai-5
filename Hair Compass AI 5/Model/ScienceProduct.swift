@@ -47,6 +47,11 @@ struct ScienceProduct: Identifiable {
     let detail: String          // "what the evidence says"
     let industryFunded: Bool    // disclose when the key trials were manufacturer-funded
     let deficiencyGated: Bool   // only relevant with a low blood test
+    /// The `LabTest` a low result on makes this product relevant — nil for everything that
+    /// isn't deficiency-gated. Lets `LabProposal` map a lab result to a product without
+    /// hardcoding ids in two places. `var` (not `let`) so it stays an optional, defaulted
+    /// parameter in the synthesized memberwise init — a `let` with a default is excluded from it.
+    var relevantTest: LabTest? = nil
 
     /// One honest, freely-editable prefill used by "Add to plan" — how the product is commonly
     /// used (trial dose where one exists, label-level otherwise). A record aid, never advice.
@@ -166,13 +171,18 @@ enum ScienceCatalog {
         .init(id: "iron", name: "Iron (ferritin support)", route: .oral, evidence: .conditional,
               summary: "Helps shedding only if a blood test shows low ferritin — blanket dosing risks iron overload.",
               detail: "Low iron stores are linked to shedding, and correcting a confirmed deficiency is standard care. Supplementing without a low ferritin result does nothing and can be harmful. Test first.",
-              industryFunded: false, deficiencyGated: true,
+              industryFunded: false, deficiencyGated: true, relevantTest: .ferritin,
               suggestedDose: "Dose per your clinician after a low ferritin", suggestedSchedule: "08:00"),
         .init(id: "vitamind", name: "Vitamin D", route: .oral, evidence: .conditional,
               summary: "Worth correcting only if measured low — there's no proof it regrows hair in people who aren't deficient.",
               detail: "Low vitamin D is associated with several hair problems, but supplementation hasn't been shown to regrow hair when levels are normal, and megadoses are toxic. Test first.",
-              industryFunded: false, deficiencyGated: true,
+              industryFunded: false, deficiencyGated: true, relevantTest: .vitaminD,
               suggestedDose: "1,000–2,000 IU if tested low", suggestedSchedule: "08:00"),
+        .init(id: "b12", name: "Vitamin B12", route: .oral, evidence: .conditional,
+              summary: "Worth correcting only if measured low — deficiency is uncommon and supplementing without a low result does nothing for hair.",
+              detail: "B12 deficiency is an uncommon but recognized, reversible cause of diffuse shedding. Correcting a confirmed low result is standard care; there's no evidence supplementing helps when levels are normal. Test first.",
+              industryFunded: false, deficiencyGated: true, relevantTest: .vitaminB12,
+              suggestedDose: "1,000 mcg if tested low", suggestedSchedule: "08:00"),
     ]
 
     static subscript(_ id: String) -> ScienceProduct? { products.first { $0.id == id } }

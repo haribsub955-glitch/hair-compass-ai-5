@@ -9,6 +9,11 @@ struct AddLabSheet: View {
     @State private var valueText = ""
     @State private var date = Date.now
     @State private var note = ""
+    /// Non-nil right after Save when the entered value is out of range — presented as a sheet
+    /// over this one, so the honest proposal pops up immediately instead of waiting for the
+    /// user to find it in Labs. This sheet only dismisses once that one closes (see `.sheet`
+    /// below), never before.
+    @State private var proposal: LabProposal?
 
     private var value: Double? { Double(valueText.replacingOccurrences(of: ",", with: ".")) }
 
@@ -90,6 +95,11 @@ struct AddLabSheet: View {
             .navigationTitle("Log lab result")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            // Fires whether the proposal sheet closed via its own Done button or a swipe —
+            // either way, this sheet's job is done and it dismisses in step.
+            .sheet(item: $proposal, onDismiss: { dismiss() }) { proposal in
+                LabProposalSheet(proposal: proposal)
+            }
         }
     }
 
@@ -100,8 +110,15 @@ struct AddLabSheet: View {
 
     private func save() {
         guard let v = value else { return }
-        context.insert(LabResult(test: test, value: v, collectedAt: date, note: note.trimmingCharacters(in: .whitespaces)))
+        let result = LabResult(test: test, value: v, collectedAt: date, note: note.trimmingCharacters(in: .whitespaces))
+        context.insert(result)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        dismiss()
+        // Out of range → hold this sheet open and pop the honest proposal card over it instead
+        // of dismissing immediately; in range → the original one-tap dismiss, unchanged.
+        if let next = LabProposal.for(result) {
+            proposal = next
+        } else {
+            dismiss()
+        }
     }
 }

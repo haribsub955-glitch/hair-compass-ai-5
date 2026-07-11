@@ -5,6 +5,13 @@ struct LabsView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \LabResult.collectedAt, order: .reverse) private var labs: [LabResult]
     @State private var showAdd = false
+    @State private var showProposalDetail = false
+
+    /// The most recent result (labs are sorted newest-first) that maps to a proposal — so the
+    /// banner surfaces the latest thing actually worth acting on, not just the latest draw.
+    private var latestProposal: LabProposal? {
+        labs.lazy.compactMap { LabProposal.for($0) }.first
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -54,6 +61,11 @@ struct LabsView: View {
                 }
                 .staggeredEntrance(index: 0)
 
+                if let proposal = latestProposal {
+                    deficiencyBanner(proposal)
+                        .staggeredEntrance(index: 1)
+                }
+
                 if labs.isEmpty {
                     reference
                         .staggeredEntrance(index: 1)
@@ -72,11 +84,47 @@ struct LabsView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddLabSheet() }
+        // Persists the honest proposal beyond the one-shot pop-up in AddLabSheet — tapping the
+        // banner reopens the same card any time, not just right after logging the value.
+        .sheet(isPresented: $showProposalDetail) {
+            if let proposal = latestProposal {
+                LabProposalSheet(proposal: proposal)
+            }
+        }
         .onAppear {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_ADDLAB") { showAdd = true }
             #endif
         }
+    }
+
+    /// A compact, tappable card for the latest lab-confirmed deficiency or medical finding —
+    /// the honest surface that persists after the one-shot pop-up in `AddLabSheet` closes.
+    private func deficiencyBanner(_ proposal: LabProposal) -> some View {
+        Button {
+            showProposalDetail = true
+        } label: {
+            ClinicalCard {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: proposal.kind == .clinician ? "stethoscope" : "leaf.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Clinical.accent)
+                        .frame(width: 22)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Eyebrow(text: "What this may mean")
+                        Text(proposal.deficiency)
+                            .font(.system(size: 13.5, weight: .medium))
+                            .foregroundStyle(Clinical.ink)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Clinical.tertiary)
+                        .padding(.top, 3)
+                }
+            }
+        }
+        .buttonStyle(.clinicalPressable)
     }
 
     /// Each result reads as a gauge — the value dotted along a 0→high axis with the
