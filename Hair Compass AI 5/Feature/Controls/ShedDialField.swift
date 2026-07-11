@@ -8,6 +8,7 @@ struct ShedDialField: View {
     @Binding var shed: ShedLevel
 
     @State private var intensity: CGFloat = 1.0 / 3.0
+    @State private var dragging = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let bands = ["Minimal", "Normal", "Elevated", "Heavy"]
@@ -152,16 +153,24 @@ struct ShedDialField: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { v in
+                        if !dragging {
+                            dragging = true
+                            Haptics.shared.startTexture()
+                        }
                         let previousBand = SheddingDial.band(intensity)
                         let ni = min(1, max(0, (v.location.x - inset - thumb / 2) / usable))
                         intensity = ni
-                        if SheddingDial.band(ni) != previousBand {
-                            UISelectionFeedbackGenerator().selectionChanged()
+                        Haptics.shared.updateTexture(intensity: Double(ni))
+                        let newBand = SheddingDial.band(ni)
+                        if newBand != previousBand {
+                            Haptics.shared.bandTick(fraction: Double(newBand) / 3.0)
                         }
                         let level = SheddingDial.shedLevel(ni)
                         if level != shed { shed = level }
                     }
                     .onEnded { v in
+                        Haptics.shared.stopTexture()
+                        dragging = false
                         // A near-zero drag is a tap: snap straight to the tapped zone.
                         if abs(v.translation.width) < 4, abs(v.translation.height) < 4 {
                             setBand(min(3, max(0, Int(v.location.x / w * 4))))
@@ -184,7 +193,7 @@ struct ShedDialField: View {
         }
         if shed.rawValue != clamped {
             shed = ShedLevel(rawValue: clamped) ?? .normal
-            UISelectionFeedbackGenerator().selectionChanged()
+            Haptics.shared.bandTick(fraction: Double(clamped) / 3.0)
         }
     }
 }

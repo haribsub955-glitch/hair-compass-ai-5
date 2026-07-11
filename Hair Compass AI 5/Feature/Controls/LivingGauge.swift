@@ -16,7 +16,7 @@ enum GaugeBand {
 ///
 /// Interaction grammar (lifted verbatim from `ShedDialField`):
 /// - zero-distance `DragGesture` so a tap jumps straight to that zone,
-/// - `UISelectionFeedbackGenerator` fires only when the discrete band changes, never per pixel,
+/// - `Haptics.shared.bandTick` fires only when the discrete band changes, never per pixel,
 /// - `accessibilityElement(children: .ignore)` + adjustable action stepping one band,
 /// - Reduce Motion is honored inside each motif (one static representative frame).
 struct LivingGauge<Motif: View>: View {
@@ -171,8 +171,9 @@ struct LivingGauge<Motif: View>: View {
                         let previousBand = GaugeBand.index(intensity, count: bandCount)
                         let ni = min(1, max(0, (v.location.x - inset - thumb / 2) / usable))
                         intensity = ni
-                        if GaugeBand.index(ni, count: bandCount) != previousBand {
-                            UISelectionFeedbackGenerator().selectionChanged()
+                        let newBand = GaugeBand.index(ni, count: bandCount)
+                        if newBand != previousBand {
+                            Haptics.shared.bandTick(fraction: Double(newBand) / Double(max(1, bandCount - 1)))
                         }
                     }
                     .onEnded { v in
@@ -198,7 +199,7 @@ struct LivingGauge<Motif: View>: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { intensity = target }
         }
         if changed {
-            UISelectionFeedbackGenerator().selectionChanged()
+            Haptics.shared.bandTick(fraction: Double(clamped) / Double(max(1, bandCount - 1)))
         }
     }
 }

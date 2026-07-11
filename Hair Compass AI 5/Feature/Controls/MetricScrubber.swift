@@ -182,7 +182,7 @@ struct MetricScrubber: View {
         guard !options.isEmpty else { return }
         let clamped = min(options.count - 1, max(0, i))
         guard options[clamped].id != selectionID else { return }
-        UISelectionFeedbackGenerator().selectionChanged()
+        Haptics.shared.detentTick()
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) {
             selectionID = options[clamped].id
         }

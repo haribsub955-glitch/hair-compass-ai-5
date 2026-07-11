@@ -117,7 +117,7 @@ struct CountScrubber: View {
     private func setValue(_ newValue: Int) {
         let clamped = min(range.upperBound, max(range.lowerBound, newValue))
         guard clamped != value else { return }
-        UISelectionFeedbackGenerator().selectionChanged()
+        Haptics.shared.detentTick()
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) { value = clamped }
     }
 

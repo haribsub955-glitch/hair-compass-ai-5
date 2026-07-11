@@ -8,6 +8,9 @@ struct SheddingDial: View {
     @Binding var intensity: CGFloat
     private let bands = ["Minimal", "Normal", "Elevated", "Heavy"]
 
+    @State private var dragging = false
+    @State private var lastBand = 0
+
     var body: some View {
         GeometryReader { geo in
             let h = geo.size.height, pad: CGFloat = 14, thumb: CGFloat = 56
@@ -32,11 +35,28 @@ struct SheddingDial: View {
                     .offset(y: pad + (1 - intensity) * usable)
             }
             .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { v in
-                let ni = 1 - (v.location.y - pad - thumb / 2) / usable
-                intensity = min(1, max(0, ni))
-                UISelectionFeedbackGenerator().selectionChanged()
-            })
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        if !dragging {
+                            dragging = true
+                            lastBand = SheddingDial.band(intensity)
+                            Haptics.shared.startTexture()
+                        }
+                        let ni = 1 - (v.location.y - pad - thumb / 2) / usable
+                        intensity = min(1, max(0, ni))
+                        Haptics.shared.updateTexture(intensity: Double(intensity))
+                        let newBand = SheddingDial.band(intensity)
+                        if newBand != lastBand {
+                            lastBand = newBand
+                            Haptics.shared.bandTick(fraction: Double(newBand) / 3.0)
+                        }
+                    }
+                    .onEnded { _ in
+                        Haptics.shared.stopTexture()
+                        dragging = false
+                    }
+            )
         }
     }
 
