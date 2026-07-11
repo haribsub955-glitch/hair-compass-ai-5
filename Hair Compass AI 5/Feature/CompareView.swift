@@ -65,18 +65,20 @@ struct CompareView: View {
 
                 presets
                     .staggeredEntrance(index: 0)
-                pickers
+                medicationMenu
                     .staggeredEntrance(index: 1)
-
-                ClinicalSegmented(options: Window.allCases, label: { $0.rawValue }, selection: $window)
+                pickers
                     .staggeredEntrance(index: 2)
 
-                chartCard
+                ClinicalSegmented(options: Window.allCases, label: { $0.rawValue }, selection: $window)
                     .staggeredEntrance(index: 3)
-                lagCard
+
+                chartCard
                     .staggeredEntrance(index: 4)
-                readCard
+                lagCard
                     .staggeredEntrance(index: 5)
+                readCard
+                    .staggeredEntrance(index: 6)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -129,6 +131,53 @@ struct CompareView: View {
         .buttonStyle(.clinicalPressable)
     }
 
+    /// Proposes the user's own tracked treatments as an overlay — they're otherwise only reachable
+    /// buried inside the "Lifestyle & plan" scrubber below. Selecting one sets `overlayID` to that
+    /// treatment's synthetic metric id and nudges `hairID` to a hair-fall metric if it wasn't
+    /// already one, so the comparison reads sensibly. Hidden entirely when there's nothing to
+    /// propose — no empty affordance.
+    @ViewBuilder
+    private var medicationMenu: some View {
+        if !activeTreatments.isEmpty {
+            Menu {
+                ForEach(Array(activeTreatments.enumerated()), id: \.element.persistentModelID) { i, t in
+                    Button {
+                        overlayID = "tx.\(i)"
+                        if !ChartMetric.hairFall.contains(where: { $0.id == hairID }) { hairID = "shed" }
+                    } label: {
+                        Label(
+                            t.name.isEmpty ? t.treatmentClass.title : t.name,
+                            systemImage: overlayID == "tx.\(i)" ? "checkmark" : t.treatmentClass.symbol
+                        )
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "pills.fill").font(.system(size: 11))
+                    Text(selectedTreatmentTitle ?? "Compare a medication")
+                        .font(.system(size: 12, weight: selectedTreatmentTitle == nil ? .regular : .semibold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(selectedTreatmentTitle == nil ? Clinical.accent : Clinical.surface)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(selectedTreatmentTitle == nil ? Clinical.accentSoft : Clinical.accent)
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule().strokeBorder(selectedTreatmentTitle == nil ? Clinical.accent.opacity(0.35) : Color.clear, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.clinicalPressable)
+        }
+    }
+
+    /// The active treatment's display name when `overlayID` currently points at one of the
+    /// synthetic `"tx.N"` metrics — keeps the dropdown label showing the live selection.
+    private var selectedTreatmentTitle: String? {
+        guard let t = treatment(forMetricID: overlayID) else { return nil }
+        return t.name.isEmpty ? t.treatmentClass.title : t.name
+    }
+
     /// Two stacked scrub-strips — drag across a strip and the sparkline preview (and the chart
     /// behind) re-draws live with the metric under your finger; lifting/tapping selects it.
     private var pickers: some View {
@@ -149,15 +198,21 @@ struct CompareView: View {
 
     // MARK: Chart
 
+    /// Overlapping days needed before the real chart replaces the illustrative preview — matches
+    /// `previewLocked`'s copy and `ChartMath.association`'s honesty gate is separate (8 pairs) but
+    /// deliberately close, so a comparison that's just unlocked the chart is also close to a read.
+    private static let readyThreshold = 7
+
     private var chartCard: some View {
         let hairPts = series(for: hairID)
         let overlayPts = series(for: overlayID)
+        let overlapDays = min(hairPts.count, overlayPts.count)
+        let ready = overlapDays >= Self.readyThreshold
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
                 legend(hairPts: hairPts, overlayPts: overlayPts)
-                if hairPts.count < 2 || overlayPts.count < 2 {
-                    Text("Not enough data in this window yet — keep logging and connect Health for the auto signals.")
-                        .font(.system(size: 13)).foregroundStyle(Clinical.secondary).frame(height: 120, alignment: .center)
+                if !ready {
+                    previewLocked(daysLogged: overlapDays)
                 } else {
                     Chart {
                         // Faint daily reality behind the trend — kept visible for honesty.
@@ -201,6 +256,72 @@ struct CompareView: View {
                 }
             }
         }
+    }
+
+    // MARK: Faded illustrative preview (< 7 overlapping days)
+
+    /// A fixed, hand-authored 14-point sample — never real data. Already normalized to 0...1: a
+    /// gently declining "your signal" curve, mirroring what a real shedding trend easing down
+    /// would look like once the chart unlocks.
+    private static let sampleSignal: [Double] = [
+        0.80, 0.78, 0.74, 0.76, 0.70, 0.66, 0.68, 0.60, 0.58, 0.54, 0.50, 0.48, 0.44, 0.40,
+    ]
+    /// The paired sample overlay curve — a rising lifestyle/treatment signal, purely illustrative.
+    private static let sampleOverlay: [Double] = [
+        0.22, 0.26, 0.24, 0.30, 0.28, 0.34, 0.38, 0.36, 0.42, 0.46, 0.44, 0.50, 0.54, 0.58,
+    ]
+
+    /// Honest "not enough data yet" state: a faded static sample chart (never mistaken for real
+    /// data — see the "Sample" eyebrow) drawn at the same styling/height as the real chart, so
+    /// nothing visually jumps the moment the comparison crosses the 7-day threshold and the real
+    /// chart takes its place.
+    private func previewLocked(daysLogged: Int) -> some View {
+        ZStack {
+            Chart {
+                ForEach(Array(Self.sampleSignal.enumerated()), id: \.offset) { i, v in
+                    LineMark(x: .value("Day", i), y: .value("Level", v), series: .value("s", "sample-signal"))
+                        .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 2.5))
+                        .foregroundStyle(Clinical.ink)
+                }
+                ForEach(Array(Self.sampleOverlay.enumerated()), id: \.offset) { i, v in
+                    LineMark(x: .value("Day", i), y: .value("Level", v), series: .value("s", "sample-overlay"))
+                        .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 2.5))
+                        .foregroundStyle(Clinical.sage)
+                }
+            }
+            .frame(height: 170)
+            .chartYScale(domain: 0...1)
+            .chartYAxis(.hidden)
+            .chartXAxis(.hidden)
+            .opacity(0.28)
+            .accessibilityHidden(true)
+
+            VStack(spacing: 8) {
+                Eyebrow(text: "Sample — your data will replace this")
+                lockChip(daysLogged: daysLogged)
+            }
+        }
+        .frame(height: 170)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Sample chart, illustrative only. Your real graph unlocks after 7 days of tracking. \(daysLogged) of 7 days logged.")
+    }
+
+    private func lockChip(daysLogged: Int) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Your real graph unlocks after 7 days of tracking")
+                    .font(.system(size: 14)).foregroundStyle(Clinical.ink)
+                Text("\(daysLogged) of 7 days logged")
+                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .frame(maxWidth: 260)
+        .background(Clinical.surface.opacity(0.9), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+        .shadow(color: Clinical.cardShadow, radius: 6, y: 2)
     }
 
     private func legend(hairPts: [(day: Date, value: Double)], overlayPts: [(day: Date, value: Double)]) -> some View {
