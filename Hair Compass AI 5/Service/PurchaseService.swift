@@ -78,7 +78,7 @@ final class PurchaseService {
         return await sub.isEligibleForIntroOffer
     }
 
-    /// "3-day free trial, then $5.00" — nil when no offer / ineligible handled by caller.
+    /// "3-day free trial, then $9.99" — nil when no offer / ineligible handled by caller.
     func trialDescriptor(for product: Product) -> String? {
         guard let offer = product.subscription?.introductoryOffer, offer.paymentMode == .freeTrial
         else { return nil }
