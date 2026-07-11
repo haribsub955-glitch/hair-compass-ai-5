@@ -1,52 +1,54 @@
 import SwiftUI
 
-/// Scalp massage (`massage`) — spec §3.2. Rubbing below the top 30% of the screen builds foam
-/// bubbles at the finger; each bubble grows, drifts up, and pops (end of life, or when the finger
-/// brushes an older one) into an expanding white ring — the satisfying beat. A thin copper progress
-/// ring at bottom center fills with drag distance; full ring completes. Uses the plain fade finish.
+/// Scalp massage (`massage`) — auto "settle pulse" (design doc 2026-07-11 §1). Three concentric
+/// copper rings pulse outward from center on their own, ~0.33s apart, each fading as it expands;
+/// a faint radial glow sits behind them and a soft field of scalp dots nudges outward as each
+/// pulse passes. Complete on its own in ~1.05s. A touch spawns a bonus ripple at the touch point.
 struct MassageRitual: Ritual {
     let kind: RitualKind = .massage
-    let title = "Massage in circles"
-    let hint = "Rub gently — the lather builds as you go."
+    let title = "Breathe"
+    let hint = "A moment, then we begin."
 
-    // MARK: Tuning (spec §3.2)
-    private static let speedGate: CGFloat = 1.5      // pt/frame to count as rubbing
-    private static let topExclusion: CGFloat = 0.30  // no bubbles in the top 30%
-    private static let reach: CGFloat = 58           // (unused for combing; kept for touch pops)
-    private static let progressRate: CGFloat = 0.00028
-    private static let popRingDuration: CGFloat = 0.38
-    private static let touchPopAge: CGFloat = 0.35
+    // MARK: Tuning
+    private static let cadence: CGFloat = 0.33        // spawn gap between the 3 center pulses
+    private static let pulseDuration: CGFloat = 0.6    // time for a pulse to expand from 0 → maxR
+    private static let totalDuration: CGFloat = 1.05   // isComplete gate
+    private static let dotCount = 64
+    private static let dotMaxRadiusFrac: CGFloat = 0.42  // matches the pulses' own max-radius fraction
+    private static let dotFalloff: CGFloat = 26          // how close a pulse ring must be to nudge a dot
+    private static let dotNudge: CGFloat = 5             // max outward displacement at the ring itself
+    private static let rippleMaxR: CGFloat = 46
+    private static let ripplePulseDuration: CGFloat = 0.4
+    private static let rippleThrottle: CGFloat = 0.09    // min gap between touch-spawned ripples
+    private static let seedRingFloor: CGFloat = 8         // keeps the t==0 ring visible before it grows
+    private static let goldenAngle: CGFloat = 2.399963229728653   // phyllotaxis spread for the dot field
 
-    private struct Bubble {
-        var pos: CGPoint
-        var r: CGFloat
-        var maxR: CGFloat
-        var vel: CGPoint
-        var age: CGFloat
-        var life: CGFloat
-        var maxLife: CGFloat
-    }
-    private struct PopRing { var pos: CGPoint; var r0: CGFloat; var elapsed: CGFloat }
+    private struct Pulse { var start: CGFloat; var r: CGFloat }
+    private struct Ripple { var pos: CGPoint; var start: CGFloat; var r: CGFloat }
+    private struct Dot { var angle: CGFloat; var radiusFrac: CGFloat }
 
-    private var bubbles: [Bubble] = []
-    private var rings: [PopRing] = []
-    private var progress: CGFloat = 0
-    private var finger: CGPoint?
-    private var active = false
-    private var prevStepFinger: CGPoint?
+    // The first pulse exists from construction (not spawned lazily in `step`), so `draw` has
+    // something to render for the Reduce Motion static frame at time == 0 — `draw` is non-mutating
+    // and that path never calls `step`. `step`'s first tick still reports its "beat".
+    private var pulses: [Pulse] = [Pulse(start: 0, r: 0)]
+    private var spawnedCount = 0
     private var time: CGFloat = 0
+    private var ripples: [Ripple] = []
+    private var lastRippleSpawn: CGFloat = -1
+    private let dots: [Dot] = MassageRitual.makeDots()
 
     // MARK: Ritual
 
-    var isComplete: Bool { progress >= 1 }
+    var isComplete: Bool { time >= Self.totalDuration }
 
     mutating func handle(_ touch: RitualTouch) {
         switch touch.phase {
         case .began, .moved:
-            active = true
-            finger = touch.location
+            guard time - lastRippleSpawn > Self.rippleThrottle else { return }
+            lastRippleSpawn = time
+            ripples.append(Ripple(pos: touch.location, start: time, r: 0))
         case .ended:
-            active = false
+            break
         }
     }
 
@@ -56,103 +58,104 @@ struct MassageRitual: Ritual {
         time += dt
         var beats = 0
 
-        // Rubbing: per-frame drag speed (pt/frame), gated below the top 30%.
-        if active, let f = finger {
-            let dragSpeed: CGFloat
-            if let prev = prevStepFinger {
-                let dx = f.x - prev.x, dy = f.y - prev.y
-                dragSpeed = (dx * dx + dy * dy).squareRoot()
-            } else {
-                dragSpeed = 0
-            }
-            prevStepFinger = f
-
-            if dragSpeed > Self.speedGate && f.y > size.height * Self.topExclusion {
-                progress = min(1, progress + dragSpeed * Self.progressRate)
-                // Spawn chance ∝ speed, capped 0.8/frame.
-                let chance = min(0.8, dragSpeed * 0.06)
-                if CGFloat.random(in: 0...1) < chance {
-                    let life = CGFloat.random(in: 1.8...3.4)
-                    bubbles.append(Bubble(
-                        pos: CGPoint(x: f.x + CGFloat.random(in: -6...6), y: f.y + CGFloat.random(in: -6...6)),
-                        r: CGFloat.random(in: 2...5),
-                        maxR: CGFloat.random(in: 7...22),
-                        vel: CGPoint(x: CGFloat.random(in: -5...5), y: -CGFloat.random(in: 12...28)),
-                        age: 0, life: life, maxLife: life))
-                }
-            }
-        } else {
-            prevStepFinger = nil
+        // Spawn the 3 center pulses at time ≈ 0, 0.33, 0.66 — one beat each.
+        if spawnedCount == 0 {
+            spawnedCount = 1
+            beats += 1
+        }
+        if spawnedCount == 1 && time >= Self.cadence {
+            pulses.append(Pulse(start: Self.cadence, r: 0))
+            spawnedCount = 2
+            beats += 1
+        }
+        if spawnedCount == 2 && time >= Self.cadence * 2 {
+            pulses.append(Pulse(start: Self.cadence * 2, r: 0))
+            spawnedCount = 3
+            beats += 1
         }
 
-        // Grow + drift bubbles.
-        for i in bubbles.indices {
-            bubbles[i].r += (bubbles[i].maxR - bubbles[i].r) * 0.04   // per-frame growth
-            bubbles[i].pos.x += bubbles[i].vel.x * dt                 // slow upward drift
-            bubbles[i].pos.y += bubbles[i].vel.y * dt
-            bubbles[i].age += dt
-            bubbles[i].life -= dt
+        let maxR = min(size.width, size.height) * Self.dotMaxRadiusFrac
+        for i in pulses.indices {
+            let t = min(1, max(0, (time - pulses[i].start) / Self.pulseDuration))
+            pulses[i].r = maxR * Self.easeOut(t)
         }
+        pulses.removeAll { time - $0.start > Self.pulseDuration }
 
-        // Pops: end of life, or finger touches a bubble older than 0.35s.
-        var survivors: [Bubble] = []
-        for b in bubbles {
-            var popped = b.life <= 0
-            if !popped, active, let f = finger, b.age > Self.touchPopAge {
-                let dx = b.pos.x - f.x, dy = b.pos.y - f.y
-                if (dx * dx + dy * dy).squareRoot() < b.r + 8 { popped = true }
-            }
-            if popped {
-                rings.append(PopRing(pos: b.pos, r0: b.r, elapsed: 0))
-                beats += 1
-            } else {
-                survivors.append(b)
-            }
+        for i in ripples.indices {
+            let t = min(1, max(0, (time - ripples[i].start) / Self.ripplePulseDuration))
+            ripples[i].r = Self.rippleMaxR * Self.easeOut(t)
         }
-        bubbles = survivors
-
-        // Advance pop rings.
-        for i in rings.indices { rings[i].elapsed += dt }
-        rings.removeAll { $0.elapsed > Self.popRingDuration }
+        ripples.removeAll { time - $0.start > Self.ripplePulseDuration }
 
         return beats
     }
 
     func draw(in ctx: inout GraphicsContext, size: CGSize) {
-        // Foam bubbles: cream fill, white rim, small white highlight dot.
-        for b in bubbles {
-            let fade = Double(min(1, b.life / 0.4))
-            let circle = Path(ellipseIn: CGRect(x: b.pos.x - b.r, y: b.pos.y - b.r, width: b.r * 2, height: b.r * 2))
-            ctx.fill(circle, with: .color(Clinical.canvas.opacity(0.35 * fade)))          // cream fill 35%
-            ctx.stroke(circle, with: .color(Color.white.opacity(0.85 * fade)),            // white rim 1.6@85%
-                       style: StrokeStyle(lineWidth: 1.6))
-            let hr = max(1, b.r * 0.22)
-            let hx = b.pos.x - b.r * 0.35, hy = b.pos.y - b.r * 0.35
-            let dot = Path(ellipseIn: CGRect(x: hx - hr, y: hy - hr, width: hr * 2, height: hr * 2))
-            ctx.fill(dot, with: .color(Color.white.opacity(0.8 * fade)))                  // highlight dot
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let maxR = min(size.width, size.height) * Self.dotMaxRadiusFrac
+
+        // Faint radial glow behind everything.
+        let glowR = maxR * 1.15
+        let glow = Path(ellipseIn: CGRect(x: center.x - glowR, y: center.y - glowR, width: glowR * 2, height: glowR * 2))
+        ctx.fill(glow, with: .radialGradient(
+            Gradient(colors: [Clinical.accent.opacity(0.16), Clinical.accent.opacity(0)]),
+            center: center, startRadius: 0, endRadius: glowR))
+
+        // Scalp dot field — each dot nudges outward when a pulse ring is near its resting radius.
+        for dot in dots {
+            let baseR = dot.radiusFrac * maxR
+            var nudge: CGFloat = 0
+            for p in pulses {
+                let ringR = max(p.r, Self.seedRingFloor)
+                let d = abs(baseR - ringR)
+                if d < Self.dotFalloff {
+                    nudge = max(nudge, (1 - d / Self.dotFalloff) * Self.dotNudge)
+                }
+            }
+            let r = baseR + nudge
+            let pos = CGPoint(x: center.x + cos(dot.angle) * r, y: center.y + sin(dot.angle) * r)
+            let dotR: CGFloat = 1.4
+            let alpha = 0.24 + 0.34 * Double(min(1, nudge / Self.dotNudge))
+            ctx.fill(Path(ellipseIn: CGRect(x: pos.x - dotR, y: pos.y - dotR, width: dotR * 2, height: dotR * 2)),
+                     with: .color(Clinical.tertiary.opacity(alpha)))
         }
 
-        // Pop rings: expand r → r+14 over 0.38s, fading.
-        for ring in rings {
-            let t = ring.elapsed / Self.popRingDuration
-            let radius = ring.r0 + 14 * t
-            let alpha = Double(1 - t) * 0.9
-            let rect = CGRect(x: ring.pos.x - radius, y: ring.pos.y - radius, width: radius * 2, height: radius * 2)
-            ctx.stroke(Path(ellipseIn: rect), with: .color(Color.white.opacity(alpha)),
-                       style: StrokeStyle(lineWidth: 1.6))
+        // Concentric copper→gold pulses, fading as they expand.
+        for p in pulses {
+            let r = max(p.r, Self.seedRingFloor)
+            let t = min(1, r / maxR)
+            let alpha = Double(1 - t) * 0.75
+            guard alpha > 0.01 else { continue }
+            let rect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
+            let color = Clinical.accent.mix(with: Clinical.gold, by: Double(t) * 0.5)
+            ctx.stroke(Path(ellipseIn: rect), with: .color(color.opacity(alpha)),
+                       style: StrokeStyle(lineWidth: 2.5 - t * 1.2, lineCap: .round))
         }
 
-        // Progress: thin copper ring (r 24) at bottom center that fills with progress.
-        let center = CGPoint(x: size.width / 2, y: size.height - 70)
-        let ringR: CGFloat = 24
-        let track = Path(ellipseIn: CGRect(x: center.x - ringR, y: center.y - ringR, width: ringR * 2, height: ringR * 2))
-        ctx.stroke(track, with: .color(Clinical.accent.opacity(0.18)), style: StrokeStyle(lineWidth: 3))
-        if progress > 0 {
-            var arc = Path()
-            arc.addArc(center: center, radius: ringR,
-                       startAngle: .degrees(-90), endAngle: .degrees(-90 + 360 * Double(min(1, progress))),
-                       clockwise: false)
-            ctx.stroke(arc, with: .color(Clinical.accent), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+        // Bonus touch ripples.
+        for ripple in ripples {
+            let t = min(1, ripple.r / Self.rippleMaxR)
+            let alpha = Double(1 - t) * 0.6
+            guard alpha > 0.01 else { continue }
+            let rect = CGRect(x: ripple.pos.x - ripple.r, y: ripple.pos.y - ripple.r, width: ripple.r * 2, height: ripple.r * 2)
+            ctx.stroke(Path(ellipseIn: rect), with: .color(Color.white.opacity(alpha)), style: StrokeStyle(lineWidth: 1.4))
         }
+    }
+
+    // MARK: Helpers
+
+    private static func easeOut(_ t: CGFloat) -> CGFloat { 1 - (1 - t) * (1 - t) }
+
+    /// A phyllotaxis (golden-angle) spread — an even, non-clumpy scattering of dots without
+    /// needing randomness, so the field is identical across ritual instances.
+    private static func makeDots() -> [Dot] {
+        var out: [Dot] = []
+        out.reserveCapacity(dotCount)
+        for i in 0..<dotCount {
+            let angle = CGFloat(i) * goldenAngle
+            let radiusFrac = (CGFloat(i) / CGFloat(dotCount)).squareRoot() * dotMaxRadiusFrac
+            out.append(Dot(angle: angle, radiusFrac: radiusFrac))
+        }
+        return out
     }
 }
