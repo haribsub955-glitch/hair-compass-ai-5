@@ -328,6 +328,50 @@ enum ProcedureType: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// The "are you seeing new hair?" answer — the earliest patient-observable sign a treatment or
+/// procedure is working (fine vellus "baby" hairs converting to terminal, ~2–4 months in).
+enum RegrowthLevel: Int, Codable, CaseIterable, Identifiable {
+    case none, few, visible, lots
+    var id: Int { rawValue }
+    var title: String {
+        switch self {
+        case .none: return "None"
+        case .few: return "A few"
+        case .visible: return "Clearly visible"
+        case .lots: return "Lots"
+        }
+    }
+}
+
+/// A three-point self-reported direction where `.better` is always the good direction. The exact
+/// wording differs per question (density vs shedding vs hairline vs overall) — `label(for:)`.
+enum ProgressTrend: Int, Codable, CaseIterable, Identifiable {
+    case worse, same, better
+    var id: Int { rawValue }
+
+    enum Question { case density, shedding, hairline, overall }
+
+    func label(for q: Question) -> String {
+        switch (q, self) {
+        case (.density, .worse): return "More scalp shows"
+        case (.density, .same): return "About the same"
+        case (.density, .better): return "Less scalp shows"
+        case (.shedding, .worse): return "More"
+        case (.shedding, .same): return "Same"
+        case (.shedding, .better): return "Less"
+        case (.hairline, .worse): return "Receding / widening"
+        case (.hairline, .same): return "Stable"
+        case (.hairline, .better): return "Filling in"
+        case (.overall, .worse): return "Worse"
+        case (.overall, .same): return "Stable"
+        case (.overall, .better): return "Better"
+        }
+    }
+
+    /// Compact lower-case phrase for the clinician export line.
+    func clinicianPhrase(for q: Question) -> String { label(for: q).lowercased() }
+}
+
 enum PhotoRegion: String, Codable, CaseIterable, Identifiable {
     case frontal, vertex, templeLeft, templeRight, global
     var id: String { rawValue }

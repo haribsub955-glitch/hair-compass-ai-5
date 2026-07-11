@@ -17,7 +17,8 @@ struct HairCompassApp: App {
             PhotoRecord.self,
             HealthSnapshot.self,
             TriggerEvent.self,
-            ProcedureAppointment.self
+            ProcedureAppointment.self,
+            ProgressCheckIn.self
         ])
         // CloudKit readiness — the schema already satisfies CloudKit's model rules:
         // every attribute has a default value or is optional, every relationship is

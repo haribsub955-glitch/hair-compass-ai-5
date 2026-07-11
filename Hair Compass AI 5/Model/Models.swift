@@ -225,6 +225,85 @@ final class ProcedureAppointment {
     var isUpcoming: Bool { !isCompleted && date >= Calendar.current.startOfDay(for: .now) }
 }
 
+/// A periodic (≈monthly) answer to the between-visit questions a dermatologist asks — new
+/// regrowth, density/shedding/hairline trend, scalp symptoms, overall. Slow-moving, self-
+/// reported *context* (never measurement or diagnosis); surfaced in the clinician export + AI.
+@Model
+final class ProgressCheckIn {
+    var date: Date = Date.now
+    var regrowthRaw: Int = RegrowthLevel.none.rawValue
+    var densityRaw: Int = ProgressTrend.same.rawValue
+    var sheddingRaw: Int = ProgressTrend.same.rawValue
+    var hairlineRaw: Int = ProgressTrend.same.rawValue
+    var overallRaw: Int = ProgressTrend.same.rawValue
+    var scalpPain: Bool = false          // a genuine red flag — persistent pain can mean scarring alopecia
+    var scalpPainNote: String = ""
+    var note: String = ""
+    var createdAt: Date = Date.now
+
+    init(
+        date: Date = .now,
+        regrowth: RegrowthLevel = .none,
+        density: ProgressTrend = .same,
+        shedding: ProgressTrend = .same,
+        hairline: ProgressTrend = .same,
+        overall: ProgressTrend = .same,
+        scalpPain: Bool = false,
+        scalpPainNote: String = "",
+        note: String = "",
+        createdAt: Date = .now
+    ) {
+        self.date = date
+        self.regrowthRaw = regrowth.rawValue
+        self.densityRaw = density.rawValue
+        self.sheddingRaw = shedding.rawValue
+        self.hairlineRaw = hairline.rawValue
+        self.overallRaw = overall.rawValue
+        self.scalpPain = scalpPain
+        self.scalpPainNote = scalpPainNote
+        self.note = note
+        self.createdAt = createdAt
+    }
+
+    var regrowth: RegrowthLevel {
+        get { RegrowthLevel(rawValue: regrowthRaw) ?? .none }
+        set { regrowthRaw = newValue.rawValue }
+    }
+    var density: ProgressTrend {
+        get { ProgressTrend(rawValue: densityRaw) ?? .same }
+        set { densityRaw = newValue.rawValue }
+    }
+    var shedding: ProgressTrend {
+        get { ProgressTrend(rawValue: sheddingRaw) ?? .same }
+        set { sheddingRaw = newValue.rawValue }
+    }
+    var hairline: ProgressTrend {
+        get { ProgressTrend(rawValue: hairlineRaw) ?? .same }
+        set { hairlineRaw = newValue.rawValue }
+    }
+    var overall: ProgressTrend {
+        get { ProgressTrend(rawValue: overallRaw) ?? .same }
+        set { overallRaw = newValue.rawValue }
+    }
+
+    /// Plain, clinician-readable lines for the export. The scalp-pain line is a safety flag,
+    /// not a diagnosis.
+    func clinicianSummary() -> [String] {
+        var lines: [String] = [
+            "New regrowth (baby hairs): \(regrowth.title)",
+            "Density: \(density.clinicianPhrase(for: .density))",
+            "Shedding: \(shedding.clinicianPhrase(for: .shedding))",
+            "Hairline/part: \(hairline.clinicianPhrase(for: .hairline))",
+            "Overall: \(overall.clinicianPhrase(for: .overall))"
+        ]
+        if scalpPain {
+            lines.append("⚠ Reports scalp pain/tenderness\(scalpPainNote.isEmpty ? "" : " — \(scalpPainNote)") — worth prompt dermatology review.")
+        }
+        if !note.isEmpty { lines.append("Note: \(note)") }
+        return lines
+    }
+}
+
 @Model
 final class TreatmentDose {
     var treatment: Treatment?
