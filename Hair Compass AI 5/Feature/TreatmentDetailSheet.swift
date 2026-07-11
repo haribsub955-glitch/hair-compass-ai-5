@@ -22,6 +22,7 @@ struct TreatmentDetailSheet: View {
                 VStack(alignment: .leading, spacing: 22) {
                     header
                     refillSection
+                    ingredientsSection
                     tolerabilitySection
                     Text("A private record for your own prescriber conversations — not medical advice.")
                         .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
@@ -109,6 +110,39 @@ struct TreatmentDetailSheet: View {
             }()
             Label(text, systemImage: "pills.circle")
                 .font(.system(size: 13, weight: .medium)).foregroundStyle(tint)
+        }
+    }
+
+    // MARK: Ingredients (custom items with an AI-identified label photo)
+
+    /// Only present when a photo was attached at add time (see `AddTreatmentSheet`) — most
+    /// treatments from the evidence library never set these fields, so the section disappears.
+    @ViewBuilder
+    private var ingredientsSection: some View {
+        if !treatment.ingredientPhotoPath.isEmpty || !treatment.aiIngredientSummary.isEmpty {
+            section("Ingredients") {
+                ClinicalCard(padding: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if !treatment.ingredientPhotoPath.isEmpty,
+                           let thumbnail = PhotoStore.shared.loadThumbnail(treatment.ingredientPhotoPath) {
+                            Image(uiImage: thumbnail)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 96, height: 96)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                        }
+                        if !treatment.aiIngredientSummary.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(treatment.aiIngredientSummary)
+                                    .font(.system(size: 13)).foregroundStyle(Clinical.ink)
+                                Text("AI summary · not medical advice")
+                                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

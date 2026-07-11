@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftData
 import SwiftUI
 
@@ -14,6 +15,17 @@ struct AddTreatmentSheet: View {
     /// Non-nil while the prescription confirmation card is up — set by `save()` when the
     /// final field values describe a usually-prescription-only medication.
     @State private var rxRequirement: RxGate.Requirement? = nil
+
+    // MARK: Ingredients photo + AI summary (custom item support)
+    @State private var ingredientPickerItem: PhotosPickerItem?
+    @State private var ingredientImage: UIImage?
+    @State private var ingredientPhotoPath = ""
+    @State private var aiIngredientSummary = ""
+    @State private var analysisService = CloudAnalysisService()
+    /// Consent gate for the "Analyze with AI" tap — the photo leaves the device, mirroring the
+    /// same allow/not-now flow `TodayView` uses before `DeepAnalysisSheet`.
+    @State private var showAIConsent = false
+    @State private var aiConsentJustGranted = false
 
     var body: some View {
         NavigationStack {
@@ -93,6 +105,8 @@ struct AddTreatmentSheet: View {
                         }
                     }
 
+                    ingredientPhotoSection
+
                     Button("Add treatment", action: save)
                         .buttonStyle(ClinicalButtonStyle())
                         .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -134,6 +148,23 @@ struct AddTreatmentSheet: View {
                     rxRequirement = nil
                     insertAndDismiss()
                 }
+            }
+            // One-time consent before the ingredient photo leaves the device — same allow/not-now
+            // pattern as TodayView's gate in front of DeepAnalysisSheet. The next step (running the
+            // analysis) fires from onDismiss, not from onAllow, so only one sheet is ever presented.
+            .sheet(isPresented: $showAIConsent, onDismiss: {
+                if aiConsentJustGranted {
+                    aiConsentJustGranted = false
+                    runIngredientAnalysis()
+                }
+            }) {
+                AIConsentSheet(
+                    onAllow: {
+                        aiConsentJustGranted = true
+                        showAIConsent = false
+                    },
+                    onNotNow: { showAIConsent = false }
+                )
             }
         }
     }
@@ -231,6 +262,90 @@ struct AddTreatmentSheet: View {
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
     }
 
+    // MARK: Ingredients photo + AI summary
+
+    /// Optional — mainly for a custom item (class `.other`) whose ingredients aren't in the
+    /// evidence library. A photo of the label lets the AI identify it; nothing leaves the device
+    /// until the consent gate is passed.
+    private var ingredientPhotoSection: some View {
+        section("Ingredients photo (optional)") {
+            VStack(alignment: .leading, spacing: 12) {
+                if let ingredientImage {
+                    Image(uiImage: ingredientImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 96, height: 96)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                }
+
+                PhotosPicker(selection: $ingredientPickerItem, matching: .images) {
+                    Label(ingredientImage == nil ? "Add a photo of the label" : "Replace photo", systemImage: "camera")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .buttonStyle(ClinicalButtonStyle(filled: false))
+                .onChange(of: ingredientPickerItem) { _, item in loadIngredientPhoto(item) }
+
+                if ingredientImage != nil {
+                    Button(action: analyzeIngredientsTapped) {
+                        Label(analysisService.isRunning ? "Analyzing…" : "Analyze with AI", systemImage: "sparkles")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .buttonStyle(ClinicalButtonStyle(filled: false))
+                    .disabled(analysisService.isRunning)
+
+                    if !aiIngredientSummary.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(aiIngredientSummary)
+                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            Text("AI summary · not medical advice")
+                                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        }
+                    }
+
+                    if let error = analysisService.errorMessage {
+                        Text(error).font(.system(size: 12)).foregroundStyle(Clinical.critical)
+                    }
+                }
+
+                Text("Sends this one photo off-device to identify what it is — record-keeping, not medical advice.")
+                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+            }
+        }
+    }
+
+    private func loadIngredientPhoto(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self), let ui = UIImage(data: data) else { return }
+            ingredientImage = ui
+            aiIngredientSummary = ""
+            if let path = PhotoStore.shared.save(ui) {
+                ingredientPhotoPath = path
+            }
+        }
+    }
+
+    private func analyzeIngredientsTapped() {
+        guard ingredientImage != nil else { return }
+        // Consent gate: this photo leaves the device, so the first tap asks in plain language.
+        // Once granted (revocable in Privacy), straight in — mirrors TodayView's deep-analysis gate.
+        if AIConsent.isGranted() {
+            runIngredientAnalysis()
+        } else {
+            showAIConsent = true
+        }
+    }
+
+    private func runIngredientAnalysis() {
+        guard let ingredientImage else { return }
+        Task {
+            if let summary = await analysisService.analyzeIngredients(image: ingredientImage) {
+                aiIngredientSummary = summary
+            }
+        }
+    }
+
     private func save() {
         // Usually-prescription-only medications pause on a friendly confirmation instead of
         // saving silently. The gate reads the final field values — never a preset's identity —
@@ -256,7 +371,9 @@ struct AddTreatmentSheet: View {
             scheduleTimes: treatmentClass.isDaily ? times : "",
             startDate: startDate,
             isActive: true,
-            refillBy: refillBy
+            refillBy: refillBy,
+            ingredientPhotoPath: ingredientPhotoPath,
+            aiIngredientSummary: aiIngredientSummary
         )
         context.insert(t)
         UINotificationFeedbackGenerator().notificationOccurred(.success)

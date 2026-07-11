@@ -41,6 +41,24 @@ final class CloudAnalysisService {
         }
     }
 
+    /// Identify a product from a photo of its ingredient label. Consent-gated (photo leaves the
+    /// device). Returns a short summary, or nil on refusal/error. Record-keeping, not medical
+    /// advice — never a diagnosis.
+    func analyzeIngredients(image: UIImage) async -> String? {
+        isRunning = true
+        errorMessage = nil
+        defer { isRunning = false }
+        do {
+            return try await requestIngredients(image: image)
+        } catch let e as AnalysisError {
+            errorMessage = e.message
+            return nil
+        } catch {
+            errorMessage = "Couldn't reach the analysis service. Check your connection and try again."
+            return nil
+        }
+    }
+
     // MARK: - Request
 
     private func request(context: AIContext, images: [UIImage]) async throws -> String {
@@ -66,9 +84,48 @@ final class CloudAnalysisService {
             }
         }
 
+        return try await send(
+            content: content,
+            key: key,
+            maxTokens: 1024,
+            refusalMessage: "The model declined to analyze this request. Try again with different photos or notes."
+        )
+    }
+
+    /// Same consent/key/downscale plumbing as `request(context:images:)`, but for a single
+    /// ingredient-label photo with a focused, non-diagnostic prompt.
+    private func requestIngredients(image: UIImage) async throws -> String {
+        // Belt and braces: no code path may send this photo off-device without explicit consent.
+        // The UI gates the entry point (AIConsentSheet); this is the last line of defense.
+        guard AIConsent.isGranted(defaults) else {
+            throw AnalysisError(message: "Analyzing this photo is off: sending it off-device needs your consent first. You'll be asked when you tap Analyze, and you can manage it in your profile's Privacy section.")
+        }
+        guard let key = AIConfig.claudeKey, !key.isEmpty else {
+            throw AnalysisError(message: "No API key configured. Ingredient analysis needs a Claude API key (set OPENAI/ANTHROPIC key in the run scheme).")
+        }
+        guard let b64 = Self.downscaledJPEGBase64(image) else {
+            throw AnalysisError(message: "Couldn't prepare this photo for analysis. Try a different photo.")
+        }
+
+        let content: [[String: Any]] = [
+            ["type": "text", "text": ingredientPrompt],
+            ["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": b64]]
+        ]
+
+        return try await send(
+            content: content,
+            key: key,
+            maxTokens: 512,
+            refusalMessage: "The model declined to analyze this photo. Try a clearer photo of the label."
+        )
+    }
+
+    /// Shared HTTP call: posts one message to Fable with a server-side Opus fallback and returns
+    /// the response text, or throws an `AnalysisError` with a user-facing message.
+    private func send(content: [[String: Any]], key: String, maxTokens: Int, refusalMessage: String) async throws -> String {
         let body: [String: Any] = [
             "model": "claude-fable-5",
-            "max_tokens": 1024,
+            "max_tokens": maxTokens,
             "fallbacks": [["model": "claude-opus-4-8"]],
             "messages": [["role": "user", "content": content]]
         ]
@@ -98,7 +155,7 @@ final class CloudAnalysisService {
 
         // Fable can decline benign requests via safety classifiers — handle before reading content.
         if let stop = json["stop_reason"] as? String, stop == "refusal" {
-            throw AnalysisError(message: "The model declined to analyze this request. Try again with different photos or notes.")
+            throw AnalysisError(message: refusalMessage)
         }
 
         let blocks = json["content"] as? [[String: Any]] ?? []
@@ -121,6 +178,13 @@ final class CloudAnalysisService {
         Facts: the JSON object below is this person's tracking record (schemaVersion \(context.schemaVersion) of the app's AI context — its field layout; dates are yyyy-MM-dd; all statistics are precomputed on-device). Absent fields were simply not tracked — never guess them.
         \(context.jsonString())\(photoNote)
         """
+    }
+
+    /// Focused, single-photo prompt for identifying a product from its ingredient label —
+    /// deliberately narrower in scope than the deep-analysis prompt above (no tracking JSON,
+    /// no photo-to-photo comparison).
+    private var ingredientPrompt: String {
+        "From this product's ingredient label, identify what it is and summarize its key active ingredients and their evidence tier for hair. Note if it's largely inactive or a marketing myth. Be brief. Record-keeping, not medical advice; do not diagnose."
     }
 
     // MARK: - Image helpers
