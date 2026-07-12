@@ -96,6 +96,7 @@ struct DeepAnalysisSheet: View {
     @Query private var sideEffects: [SideEffectLog]
     @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
     @Query private var profiles: [Profile]
+    @Query(sort: \ProgressCheckIn.date) private var progressCheckIns: [ProgressCheckIn]
 
     var body: some View {
         NavigationStack {
@@ -165,7 +166,7 @@ struct DeepAnalysisSheet: View {
                         entries: entries, treatments: treatments, doses: doses,
                         snapshots: snapshots, triggers: triggers,
                         labs: labs, sideEffects: sideEffects, photos: photos,
-                        profile: profiles.first, now: .now
+                        profile: profiles.first, progressCheckIns: progressCheckIns, now: .now
                     )
                     Task { await service.analyze(context: payload, images: images) }
                 }

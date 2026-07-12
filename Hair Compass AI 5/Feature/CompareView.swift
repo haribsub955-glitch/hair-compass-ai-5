@@ -19,6 +19,7 @@ struct CompareView: View {
     @Query private var sideEffects: [SideEffectLog]
     @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
     @Query private var profiles: [Profile]
+    @Query(sort: \ProgressCheckIn.date) private var progressCheckIns: [ProgressCheckIn]
 
     @State private var hairID = "shed"
     @State private var overlayID = "sleepQuality"
@@ -408,7 +409,7 @@ struct CompareView: View {
             entries: entries, treatments: treatments, doses: doses,
             snapshots: snapshots, triggers: triggers,
             labs: labs, sideEffects: sideEffects, photos: photos,
-            profile: profiles.first, now: .now
+            profile: profiles.first, progressCheckIns: progressCheckIns, now: .now
         ).jsonString()
         showChat = true
     }
