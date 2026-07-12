@@ -125,6 +125,33 @@ enum BiologicalSex: String, Codable, CaseIterable, Identifiable {
     var stagingScaleName: String { self == .female ? "Ludwig" : "Norwood" }
 }
 
+/// Whether the person is pregnant or planning/expecting — asked once during onboarding (women
+/// only) so the app can flag hair-loss medications that are usually avoided in and around
+/// pregnancy. Self-reported context for a safety nudge, never a diagnosis or a directive.
+enum PregnancyStatus: String, Codable, CaseIterable, Identifiable {
+    case unspecified, no, pregnant, tryingToConceive, breastfeeding
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .unspecified: return "Prefer not to say"
+        case .no: return "No"
+        case .pregnant: return "Yes, I'm pregnant"
+        case .tryingToConceive: return "Trying to conceive"
+        case .breastfeeding: return "Breastfeeding"
+        }
+    }
+
+    /// True in the states where medications that aren't recommended in or around pregnancy
+    /// should be flagged. "No" and "Prefer not to say" never raise a caution.
+    var flagsMedicationCaution: Bool {
+        switch self {
+        case .pregnant, .tryingToConceive, .breastfeeding: return true
+        case .unspecified, .no: return false
+        }
+    }
+}
+
 enum ShedLevel: Int, Codable, CaseIterable, Identifiable {
     case minimal = 0, normal = 1, elevated = 2, heavy = 3
     var id: Int { rawValue }

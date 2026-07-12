@@ -22,6 +22,11 @@ final class Profile {
     var usesHeat: Bool = false
     var usesChemicalTreatments: Bool = false
 
+    /// Pregnant / trying / breastfeeding, asked of women in onboarding so the plan can flag the
+    /// medications that aren't recommended in or around pregnancy. Defaults to `.unspecified`
+    /// (never asked / declined), which raises no caution — schema-safe as a stored String.
+    var pregnancyStatusRaw: String = PregnancyStatus.unspecified.rawValue
+
     init(
         name: String = "",
         sex: BiologicalSex = .male,
@@ -33,7 +38,8 @@ final class Profile {
         hasOnboarded: Bool = false,
         wearsTightStyles: Bool = false,
         usesHeat: Bool = false,
-        usesChemicalTreatments: Bool = false
+        usesChemicalTreatments: Bool = false,
+        pregnancyStatus: PregnancyStatus = .unspecified
     ) {
         self.name = name
         self.sexRaw = sex.rawValue
@@ -46,6 +52,7 @@ final class Profile {
         self.wearsTightStyles = wearsTightStyles
         self.usesHeat = usesHeat
         self.usesChemicalTreatments = usesChemicalTreatments
+        self.pregnancyStatusRaw = pregnancyStatus.rawValue
     }
 
     /// True if any mechanical/thermal/chemical stressor is in play — surfaces a traction note.
@@ -62,6 +69,10 @@ final class Profile {
     var familyHistory: FamilyHistory {
         get { FamilyHistory(rawValue: familyHistoryRaw) ?? .none }
         set { familyHistoryRaw = newValue.rawValue }
+    }
+    var pregnancyStatus: PregnancyStatus {
+        get { PregnancyStatus(rawValue: pregnancyStatusRaw) ?? .unspecified }
+        set { pregnancyStatusRaw = newValue.rawValue }
     }
 }
 

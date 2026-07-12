@@ -29,12 +29,17 @@ struct OnboardingFlow: View {
 
     @FocusState private var nameFocused: Bool
 
-    private let total = 14   // 0 welcome … 13 finale
+    private let total = 15   // 0 welcome … 14 finale (step 3 = pregnancy, women only)
+
+    /// The female-only pregnancy question. Non-female users hop over it, so it never appears for
+    /// them and the progress bar simply skips a notch.
+    private let pregnancyStepIndex = 3
+    private var asksPregnancy: Bool { profile.sex == .female }
 
     private static var initialStep: Int {
         #if DEBUG
         let a = ProcessInfo.processInfo.arguments
-        if let i = a.firstIndex(of: "HC_ONBOARD_STEP"), i + 1 < a.count, let n = Int(a[i + 1]) { return max(0, min(13, n)) }
+        if let i = a.firstIndex(of: "HC_ONBOARD_STEP"), i + 1 < a.count, let n = Int(a[i + 1]) { return max(0, min(14, n)) }
         #endif
         return 0
     }
@@ -56,9 +61,9 @@ struct OnboardingFlow: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            // The paywall (12) is a forward-or-through screen — no back button, "Continue free"
+            // The paywall (13) is a forward-or-through screen — no back button, "Continue free"
             // is the honest exit.
-            if step > 0 && step < total - 1 && step != 12 {
+            if step > 0 && step < total - 1 && step != 13 {
                 Button { back() } label: {
                     Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold)).foregroundStyle(Clinical.ink)
                 }
@@ -87,16 +92,17 @@ struct OnboardingFlow: View {
         case 0: welcome
         case 1: nameStep
         case 2: sexStep
-        case 3: ageStep
-        case 4: concernStep
-        case 5: sheddingStep
-        case 6: scalpFeelStep
-        case 7: stressSleepStep
-        case 8: triggersStep
-        case 9: familyStep
-        case 10: habitsStep
-        case 11: healthConnectStep
-        case 12: OnboardingPlanStep(profile: profile) { next() }
+        case 3: pregnancyStep
+        case 4: ageStep
+        case 5: concernStep
+        case 6: sheddingStep
+        case 7: scalpFeelStep
+        case 8: stressSleepStep
+        case 9: triggersStep
+        case 10: familyStep
+        case 11: habitsStep
+        case 12: healthConnectStep
+        case 13: OnboardingPlanStep(profile: profile) { next() }
         default: finale
         }
     }
@@ -106,11 +112,21 @@ struct OnboardingFlow: View {
     private func next() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         nameFocused = false
-        withAnimation(.easeInOut(duration: 0.35)) { step = min(total - 1, step + 1) }
+        withAnimation(.easeInOut(duration: 0.35)) { step = advanced(from: step, by: 1) }
     }
     private func back() {
         nameFocused = false
-        withAnimation(.easeInOut(duration: 0.3)) { step = max(0, step - 1) }
+        withAnimation(.easeInOut(duration: 0.3)) { step = advanced(from: step, by: -1) }
+    }
+
+    /// One screen forward or backward, hopping over the female-only pregnancy step for anyone who
+    /// isn't female — in both directions, so it's never reachable for them.
+    private func advanced(from s: Int, by delta: Int) -> Int {
+        var n = max(0, min(total - 1, s + delta))
+        if n == pregnancyStepIndex && !asksPregnancy {
+            n = max(0, min(total - 1, n + delta))
+        }
+        return n
     }
 
     private func finish() {
@@ -211,6 +227,44 @@ struct OnboardingFlow: View {
                         .padding(.horizontal, 18).padding(.vertical, 18)
                         .background(on ? Clinical.accent : Clinical.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }.padding(.horizontal, 20)
+            Spacer()
+            primary("Continue") { next() }
+        }
+    }
+
+    /// Women only (non-female users skip it via `advanced(from:by:)`). Self-reported context so
+    /// the plan can flag medications usually avoided in or around pregnancy — never a diagnosis.
+    private var pregnancyStep: some View {
+        // Friendlier order than raw `allCases`: the plain answers first, "Prefer not to say" last.
+        let options: [PregnancyStatus] = [.no, .pregnant, .tryingToConceive, .breastfeeding, .unspecified]
+        return VStack(spacing: 0) {
+            head("About you", "Are you pregnant or\nplanning a pregnancy?",
+                 "A few hair-loss medications aren't recommended in or around pregnancy. This just lets us flag them — you always decide with your clinician, and it stays private on your device.")
+            Spacer()
+            VStack(spacing: 10) {
+                ForEach(options) { s in
+                    let on = profile.pregnancyStatus == s
+                    Button {
+                        profile.pregnancyStatus = s
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        HStack {
+                            Text(s.title)
+                                .font(.system(size: 16, weight: on ? .semibold : .regular))
+                                .foregroundStyle(on ? Clinical.surface : Clinical.ink)
+                            Spacer()
+                            if on {
+                                Image(systemName: "checkmark").font(.system(size: 13, weight: .bold)).foregroundStyle(Clinical.surface)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18).padding(.vertical, 15)
+                        .background(on ? Clinical.accent : Clinical.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }

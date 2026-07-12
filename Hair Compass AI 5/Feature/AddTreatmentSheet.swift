@@ -16,6 +16,12 @@ struct AddTreatmentSheet: View {
     /// final field values describe a usually-prescription-only medication.
     @State private var rxRequirement: RxGate.Requirement? = nil
 
+    /// The profile drives the pregnancy caution: if she said pregnant / trying / breastfeeding,
+    /// adding one of the recognised medications pauses on an honest note first.
+    @Query(sort: \Profile.createdAt) private var profiles: [Profile]
+    @State private var pregnancyInfo: PregnancyCaution.Info? = nil
+    @State private var proceedAfterPregnancyCaution = false
+
     // MARK: Ingredients photo + AI summary (custom item support)
     @State private var ingredientPickerItem: PhotosPickerItem?
     @State private var ingredientImage: UIImage?
@@ -150,6 +156,20 @@ struct AddTreatmentSheet: View {
                     }
                 }
                 #endif
+            }
+            // Pregnancy caution floats over the form first. "Add anyway" flags `proceed` and
+            // dismisses; the rest of the save (Rx check → insert) runs from `onDismiss` so two
+            // sheets never contend — the same pattern the AI-consent gate below uses.
+            .sheet(item: $pregnancyInfo, onDismiss: {
+                if proceedAfterPregnancyCaution {
+                    proceedAfterPregnancyCaution = false
+                    runRxCheckThenInsert()
+                }
+            }) { info in
+                PregnancyCautionSheet(info: info) {
+                    proceedAfterPregnancyCaution = true
+                    pregnancyInfo = nil
+                }
             }
             // Sheet-over-sheet (the app's whole flow is sheet-based): the card floats over the
             // form at a medium detent, so "Go back" lands on the untouched form underneath.
@@ -403,9 +423,24 @@ struct AddTreatmentSheet: View {
     }
 
     private func save() {
-        // Usually-prescription-only medications pause on a friendly confirmation instead of
-        // saving silently. The gate reads the final field values — never a preset's identity —
-        // so hand-edited names/doses are what get judged.
+        // Safety first: if she's pregnant / trying / breastfeeding and this is one of the
+        // medications usually avoided then, pause on the honest note before the Rx check. "Add
+        // anyway" (from that card) continues here via `proceedAfterPregnancyCaution`.
+        if let info = PregnancyCaution.info(
+            treatmentClass: treatmentClass,
+            name: name.trimmingCharacters(in: .whitespaces),
+            status: profiles.first?.pregnancyStatus ?? .unspecified
+        ) {
+            pregnancyInfo = info
+            return
+        }
+        runRxCheckThenInsert()
+    }
+
+    /// Usually-prescription-only medications pause on a friendly confirmation instead of saving
+    /// silently. The gate reads the final field values — never a preset's identity — so
+    /// hand-edited names/doses are what get judged.
+    private func runRxCheckThenInsert() {
         if let requirement = RxGate.requirement(
             treatmentClass: treatmentClass,
             name: name.trimmingCharacters(in: .whitespaces),

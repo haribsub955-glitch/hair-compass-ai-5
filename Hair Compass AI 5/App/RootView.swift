@@ -139,6 +139,13 @@ struct RootView: View {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_ONBOARD") { showOnboarding = true }
             if ProcessInfo.processInfo.arguments.contains("HC_PROFILE") { showProfileEdit = true }
+            // Flags the seeded profile pregnant + female so the pregnancy-caution flow (adding
+            // finasteride/minoxidil/etc.) and the female-only onboarding step can be inspected.
+            if ProcessInfo.processInfo.arguments.contains("HC_PREGNANT"),
+               let p = try? context.fetch(FetchDescriptor<Profile>()).first {
+                p.sex = .female
+                p.pregnancyStatus = .pregnant
+            }
             #endif
             // Cover the "onboarded but never toured" relaunch — the user killed the app mid-tutorial.
             if !showOnboarding, profile?.hasOnboarded == true, !hasSeenTutorial {

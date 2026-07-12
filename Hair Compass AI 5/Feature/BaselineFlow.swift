@@ -42,6 +42,17 @@ struct BaselineFlow: View {
                         chips(ageBands, selected: profile.ageBand) { profile.ageBand = $0 }
                     }
 
+                    if profile.sex == .female {
+                        field("Pregnancy") {
+                            let opts: [PregnancyStatus] = [.no, .pregnant, .tryingToConceive, .breastfeeding, .unspecified]
+                            chips(opts.map(\.title), selected: profile.pregnancyStatus.title) { title in
+                                if let match = opts.first(where: { $0.title == title }) { profile.pregnancyStatus = match }
+                            }
+                            Text("Lets the plan flag medications usually avoided in or around pregnancy. Stays private to your device.")
+                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        }
+                    }
+
                     field("What are you tracking?") {
                         VStack(spacing: 8) {
                             ForEach(HairCondition.allCases) { c in

@@ -60,6 +60,8 @@ enum BackupService {
         var wearsTightStyles = false
         var usesHeat = false
         var usesChemicalTreatments = false
+        // Defaulted so older backups (without the field) still decode to `.unspecified`.
+        var pregnancyStatusRaw = PregnancyStatus.unspecified.rawValue
     }
 
     struct EntryDTO: Codable {
@@ -161,7 +163,8 @@ enum BackupService {
                 conditionRaw: p.conditionRaw, familyHistoryRaw: p.familyHistoryRaw,
                 baselineStage: p.baselineStage, createdAt: p.createdAt,
                 hasOnboarded: p.hasOnboarded, wearsTightStyles: p.wearsTightStyles,
-                usesHeat: p.usesHeat, usesChemicalTreatments: p.usesChemicalTreatments
+                usesHeat: p.usesHeat, usesChemicalTreatments: p.usesChemicalTreatments,
+                pregnancyStatusRaw: p.pregnancyStatusRaw
             )
         }
 
@@ -328,6 +331,7 @@ enum BackupService {
                     local.wearsTightStyles = incoming.wearsTightStyles
                     local.usesHeat = incoming.usesHeat
                     local.usesChemicalTreatments = incoming.usesChemicalTreatments
+                    local.pregnancyStatusRaw = incoming.pregnancyStatusRaw
                     summary.inserted += 1
                 } else {
                     summary.skipped += 1
@@ -345,6 +349,7 @@ enum BackupService {
                 p.wearsTightStyles = incoming.wearsTightStyles
                 p.usesHeat = incoming.usesHeat
                 p.usesChemicalTreatments = incoming.usesChemicalTreatments
+                p.pregnancyStatusRaw = incoming.pregnancyStatusRaw
                 context.insert(p)
                 summary.inserted += 1
             }
