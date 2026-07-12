@@ -123,7 +123,7 @@ struct JourneyChart: View {
                     .font(Clinical.eyebrow(8))
                     .foregroundStyle(Clinical.secondary)
                     .lineLimit(1)
-                    .frame(maxWidth: 84)
+                    .fixedSize()
             }
         }
     }
@@ -201,6 +201,9 @@ struct JourneyChart: View {
             if let symbol = data.firstSymbol(of: .start) {
                 legendKey(.marker(symbol), color: Clinical.gold, label: "Med start")
             }
+            if let symbol = data.firstSymbol(of: .stop) {
+                legendKey(.marker(symbol), color: Clinical.tertiary, label: "Stopped")
+            }
             if let symbol = data.firstSymbol(of: .trigger) {
                 legendKey(.marker(symbol), color: Clinical.warning, label: "Trigger")
             }
@@ -263,7 +266,7 @@ private struct JourneyData {
     }
 
     struct Marker: Identifiable {
-        enum Kind { case procedure, start, trigger }
+        enum Kind { case procedure, start, stop, trigger }
         let id: String
         let kind: Kind
         let date: Date
@@ -275,6 +278,9 @@ private struct JourneyData {
             switch kind {
             case .procedure: return Clinical.accent
             case .start: return Clinical.gold
+            // Neutral, not warning — stopping a treatment is the user's own recorded decision,
+            // not something the app judges.
+            case .stop: return Clinical.tertiary
             case .trigger: return Clinical.warning
             }
         }
@@ -332,20 +338,29 @@ private struct JourneyData {
         // Event markers: procedures, daily-med starts, and TE triggers inside the window.
         var built: [Marker] = []
         for t in treatments where t.startDate >= start && t.startDate <= end {
-            if !t.slots.isEmpty {   // schedule-driven: `.other` daily items get a "Started …" marker too
-                let name = t.name.isEmpty ? t.treatmentClass.title : t.name
+            if !t.slots.isEmpty {   // schedule-driven: `.other` daily items get a "start" marker too
                 built.append(Marker(
                     id: "start-\(t.classRaw)-\(t.startDate.timeIntervalSinceReferenceDate)",
                     kind: .start, date: t.startDate,
                     symbol: t.treatmentClass.symbol,
-                    tag: "Started \(name)"
+                    tag: Self.canonicalTag(t.treatmentClass, name: t.name)
                 ))
             } else {
                 built.append(Marker(
                     id: "proc-\(t.classRaw)-\(t.startDate.timeIntervalSinceReferenceDate)",
                     kind: .procedure, date: t.startDate,
                     symbol: t.treatmentClass.symbol,
-                    tag: Self.procedureTag(t.treatmentClass, name: t.name)
+                    tag: Self.canonicalTag(t.treatmentClass, name: t.name)
+                ))
+            }
+            // Stop markers: dated the same way a trigger is — a recent stop is exactly the
+            // kind of event that can explain a shedding change 2–3 months later.
+            if let stopDate = t.endDate, stopDate >= start, stopDate <= end {
+                built.append(Marker(
+                    id: "stop-\(t.classRaw)-\(stopDate.timeIntervalSinceReferenceDate)",
+                    kind: .stop, date: stopDate,
+                    symbol: "xmark.circle",
+                    tag: Self.canonicalTag(t.treatmentClass, name: t.name)
                 ))
             }
         }
@@ -414,20 +429,31 @@ private struct JourneyData {
         intakeCeiling = max(expected, observedMax, 1)
     }
 
-    private static func procedureTag(_ cls: TreatmentClass, name: String) -> String {
+    /// Short, canonical per-class tag — never the user's free-form treatment name, so length is
+    /// bounded and predictable regardless of what someone typed into the name field. `.other`
+    /// falls back to the first word of the name (still user-controlled, but rare and short in
+    /// practice) or "Other".
+    private static func canonicalTag(_ cls: TreatmentClass, name: String) -> String {
         switch cls {
+        case .minoxidil: return "Minoxidil"
+        case .finasteride: return "Finasteride"
+        case .dutasteride: return "Dutasteride"
+        case .microneedling: return "Needling"
+        case .prp: return "PRP"
         case .lllt: return "Laser"
-        case .other: return name.isEmpty ? "Procedure" : name
-        default: return cls.title
+        case .shampoo: return "Shampoo"
+        case .oil: return "Oil"
+        case .supplement: return "Supplement"
+        case .other: return name.split(separator: " ").first.map(String.init) ?? "Other"
         }
     }
 
     private static func triggerTag(_ type: TriggerType) -> String {
         switch type {
-        case .crashDiet: return "Crash diet"
-        case .illness: return "Illness"
+        case .crashDiet: return "Diet"
+        case .illness: return "Sick"
         case .majorStress: return "Stress"
-        case .childbirth: return "Childbirth"
+        case .childbirth: return "Birth"
         case .newMedication: return "New med"
         case .other: return "Trigger"
         }

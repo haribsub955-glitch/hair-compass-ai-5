@@ -243,6 +243,12 @@ struct SheddingStatusScene: View {
 
             FallingHairView(intensity: profile.displayIntensity)
 
+            // A quiet resting anchor for the scene's lower edge, present at every band —
+            // including "not logged" and Minimal, where the falling simulation and resting
+            // collection are both nearly invisible. Keeps the hero reading as a composed scene
+            // rather than empty canvas when there is little else to draw.
+            SceneGroundline()
+
             if profile.clusterCount > 0 {
                 SheddingClusterLayer(profile: profile)
                     .transition(.opacity)
@@ -255,6 +261,22 @@ struct SheddingStatusScene: View {
         }
         .animation(.easeInOut(duration: 0.35), value: profile.band)
         .accessibilityHidden(true)
+    }
+}
+
+/// A faint warm gradient hugging the scene's lower edge — a floor for the falling/resting
+/// strands to land on. Always present, independent of band or `showsCollection`, so the hero
+/// never reads as unfinished empty space even when there is almost nothing else to draw.
+private struct SceneGroundline: View {
+    var body: some View {
+        LinearGradient(
+            colors: [Clinical.ink.opacity(0.05), Clinical.ink.opacity(0)],
+            startPoint: .bottom,
+            endPoint: .top
+        )
+        .frame(height: 90)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .allowsHitTesting(false)
     }
 }
 

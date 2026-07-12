@@ -13,6 +13,19 @@ struct LabsView: View {
         labs.lazy.compactMap { LabProposal.for($0) }.first
     }
 
+    /// Repeat draws of the same test only answer "is it correcting?" when they're read
+    /// together — grouped by test, oldest-first within each group, ordered by whichever test
+    /// was drawn most recently overall (keeping the prior newest-first feel at the group level).
+    private var groupedLabs: [(test: LabTest, results: [LabResult])] {
+        let byTest = Dictionary(grouping: labs, by: \.test)
+        return LabTest.allCases
+            .compactMap { test -> (LabTest, [LabResult])? in
+                guard let results = byTest[test], !results.isEmpty else { return nil }
+                return (test, results.sorted { $0.collectedAt < $1.collectedAt })
+            }
+            .sorted { ($0.1.last?.collectedAt ?? .distantPast) > ($1.1.last?.collectedAt ?? .distantPast) }
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
@@ -70,12 +83,12 @@ struct LabsView: View {
                     reference
                         .staggeredEntrance(index: 1)
                 } else {
-                    ForEach(Array(labs.enumerated()), id: \.element.id) { index, lab in
-                        labRow(lab)
+                    ForEach(Array(groupedLabs.enumerated()), id: \.element.test) { index, group in
+                        labGroupCard(test: group.test, results: group.results)
                             .staggeredEntrance(index: min(index + 1, 8))
                     }
                     reference
-                        .staggeredEntrance(index: min(labs.count + 1, 9))
+                        .staggeredEntrance(index: min(groupedLabs.count + 1, 9))
                 }
             }
             .padding(.horizontal, 20)
@@ -127,32 +140,44 @@ struct LabsView: View {
         .buttonStyle(.clinicalPressable)
     }
 
-    /// Each result reads as a gauge — the value dotted along a 0→high axis with the
-    /// healthy reference band shaded, so "in / below / above range" is visible at a glance.
-    private func labRow(_ lab: LabResult) -> some View {
-        let lo = lab.test.referenceRange.lowerBound
-        let hi = lab.test.referenceRange.upperBound
+    /// One card per test: the latest draw reads as a gauge exactly as before, but when there's
+    /// a history it leads with the delta since the prior draw and a compact sparkline — the
+    /// whole reason to re-test is "is it correcting?", and that question deserves a direct
+    /// answer instead of three disconnected cards a user has to compare mentally.
+    private func labGroupCard(test: LabTest, results: [LabResult]) -> some View {
+        let lo = test.referenceRange.lowerBound
+        let hi = test.referenceRange.upperBound
         let domainHi = hi * 1.1               // headroom above the range
-        let pct = min(1, max(0, lab.value / domainHi))
+        let latest = results.last!
+        let previous = results.count > 1 ? results[results.count - 2] : nil
+        let pct = min(1, max(0, latest.value / domainHi))
         let bandStart = lo / domainHi
         let bandWidth = (hi - lo) / domainHi
+        let improving = previous.map {
+            HairAnalytics.labImproving(previous: $0.value, latest: latest.value, range: test.referenceRange)
+        } ?? false
 
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(lab.test.title).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(Clinical.ink)
-                        Text(lab.collectedAt.formatted(.dateTime.month().day().year()))
-                            .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
-                        if !lab.note.isEmpty {
-                            Text(lab.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        Text(test.title).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(Clinical.ink)
+                        if let previous {
+                            Text("\(oneDecimal(previous.value)) → \(oneDecimal(latest.value)) \(test.unit) since \(previous.collectedAt.formatted(.dateTime.month(.abbreviated).day()))")
+                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        } else {
+                            Text(latest.collectedAt.formatted(.dateTime.month().day().year()))
+                                .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        }
+                        if !latest.note.isEmpty {
+                            Text(latest.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
                         }
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 3) {
-                        Text("\(lab.value.formatted(.number.precision(.fractionLength(0...1)))) \(lab.test.unit)")
+                        Text("\(oneDecimal(latest.value)) \(test.unit)")
                             .font(Clinical.number(17)).foregroundStyle(Clinical.ink)
-                        Text(lab.flag.title).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.flagColor(lab.flag))
+                        Text(latest.flag.title).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.flagColor(latest.flag))
                     }
                 }
                 GeometryReader { geo in
@@ -161,7 +186,7 @@ struct LabsView: View {
                         Capsule().fill(Clinical.positive.opacity(0.22))
                             .frame(width: geo.size.width * bandWidth, height: 6)
                             .offset(x: geo.size.width * bandStart, y: 4)
-                        Circle().fill(Clinical.flagColor(lab.flag))
+                        Circle().fill(Clinical.flagColor(latest.flag))
                             .frame(width: 14, height: 14)
                             .overlay(Circle().stroke(Clinical.surface, lineWidth: 2.5))
                             // Soft halo behind the reading — the same flag color at whisper
@@ -169,7 +194,7 @@ struct LabsView: View {
                             // the gauge math above is untouched.
                             .background(
                                 Circle()
-                                    .fill(Clinical.flagColor(lab.flag).opacity(0.18))
+                                    .fill(Clinical.flagColor(latest.flag).opacity(0.18))
                                     .frame(width: 26, height: 26)
                             )
                             .offset(x: min(geo.size.width - 14, max(0, geo.size.width * pct - 7)))
@@ -183,11 +208,30 @@ struct LabsView: View {
                     Spacer()
                     Text("\(domainHi.formatted(.number.precision(.fractionLength(0))))").font(Clinical.number(9)).foregroundStyle(Clinical.tertiary)
                 }
+
+                if results.count > 1 {
+                    Divider().overlay(Clinical.hairline)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Eyebrow(text: "\(results.count) draws since \(results.first!.collectedAt.formatted(.dateTime.month(.abbreviated).year()))")
+                        LabSparkline(results: results, range: test.referenceRange, domainHi: domainHi)
+                            .frame(height: 36)
+                    }
+                }
+
+                if improving {
+                    Label("Moving toward range — worth confirming with your clinician.", systemImage: "arrow.up.forward")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Clinical.positive)
+                }
             }
         }
         .contextMenu {
-            Button("Delete", role: .destructive) { context.delete(lab) }
+            Button("Delete latest draw", role: .destructive) { context.delete(latest) }
         }
+    }
+
+    private func oneDecimal(_ v: Double) -> String {
+        v.formatted(.number.precision(.fractionLength(0...1)))
     }
 
     private var reference: some View {
@@ -208,5 +252,57 @@ struct LabsView: View {
                 }
             }
         }
+    }
+}
+
+/// A compact draws-over-time chart for one test: the reference band shaded as a horizontal
+/// strip, each draw plotted chronologically against it, and a connecting line so "is it
+/// correcting?" reads as a shape instead of a mental diff between separate cards.
+private struct LabSparkline: View {
+    let results: [LabResult]     // chronological, oldest first
+    let range: ClosedRange<Double>
+    let domainHi: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let bandTop = y(range.upperBound, height: h)
+            let bandBottom = y(range.lowerBound, height: h)
+
+            ZStack {
+                Rectangle()
+                    .fill(Clinical.positive.opacity(0.16))
+                    .frame(width: w, height: max(2, bandBottom - bandTop))
+                    .position(x: w / 2, y: (bandTop + bandBottom) / 2)
+
+                if results.count > 1 {
+                    Path { path in
+                        for (index, result) in results.enumerated() {
+                            let point = CGPoint(x: x(index, width: w), y: y(result.value, height: h))
+                            if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+                        }
+                    }
+                    .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                }
+
+                ForEach(Array(results.enumerated()), id: \.offset) { index, result in
+                    let isLatest = index == results.count - 1
+                    Circle()
+                        .fill(isLatest ? Clinical.accent : Clinical.tertiary)
+                        .frame(width: isLatest ? 7 : 5, height: isLatest ? 7 : 5)
+                        .position(x: x(index, width: w), y: y(result.value, height: h))
+                }
+            }
+        }
+        .accessibilityHidden(true)   // the delta line above already states the trend in words
+    }
+
+    private func x(_ index: Int, width: CGFloat) -> CGFloat {
+        results.count > 1 ? width * CGFloat(index) / CGFloat(results.count - 1) : width / 2
+    }
+
+    private func y(_ value: Double, height: CGFloat) -> CGFloat {
+        height - CGFloat(min(1, max(0, value / domainHi))) * height
     }
 }

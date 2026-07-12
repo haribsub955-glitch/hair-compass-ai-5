@@ -68,11 +68,12 @@ struct ConditionsHero: View {
             content
             if onShedSet != nil {
                 // Decorative only — allowsHitTesting(false) so it never competes with the
-                // scene's own drag gesture underneath it.
+                // scene's own drag gesture underneath it. Centered on the trailing edge of the
+                // scene band (clear of both the greeting/avatar row above and the band-word/chip
+                // row below) so it never collides with the 44pt avatar button.
                 dragRailChip
-                    .padding(.top, 74)
-                    .padding(.trailing, 20)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .padding(.trailing, 14)
                     .allowsHitTesting(false)
             }
         }
@@ -170,14 +171,17 @@ struct ConditionsHero: View {
     private var dragRailChip: some View {
         VStack(spacing: 5) {
             Image(systemName: "chevron.up").font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Clinical.accent)
             Text("SET").font(Clinical.eyebrow(9)).tracking(1.0)
+                .foregroundStyle(Clinical.secondary)
             Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Clinical.accent)
         }
-        .foregroundStyle(Clinical.tertiary)
         .padding(.horizontal, 9)
         .padding(.vertical, 10)
-        .background(Clinical.surface.opacity(0.82), in: Capsule())
+        .background(Clinical.surface, in: Capsule())
         .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+        .shadow(color: Clinical.cardShadow, radius: 6, y: 2)
         .accessibilityHidden(true)
     }
 
@@ -486,6 +490,9 @@ struct TodayTileGrid: View {
 
     // Individual tiles — unlogged days show "—" in tertiary with the motif idling at zero.
 
+    /// Unlike the other three self-report tiles, Scalp's total is a composite of three
+    /// components — the tile earns its place by breaking the total down (Flake/Red/Itch bars)
+    /// instead of just repeating the "\(total)/16 · \(band)" line the hero subline already shows.
     private var scalpTile: some View {
         let total = entry?.scalpTotal
         return GlanceTile(
@@ -494,10 +501,15 @@ struct TodayTileGrid: View {
             caption: entry?.scalpBand.title ?? "Not logged",
             valueColor: entry.map { Clinical.bandColor($0.scalpBand) } ?? Clinical.tertiary,
             tint: Clinical.critical,   // the redness/rose family
+            motifOpacity: 1,
             action: onLogTap,
             actionHint: "Edits today's scalp check-in"
         ) {
-            RednessMotif(intensity: CGFloat(total ?? 0) / 16)
+            ScalpComponentBars(
+                flaking: entry?.flaking ?? 0,
+                erythema: entry?.erythema ?? 0,
+                itch: entry?.itch ?? 0
+            )
         }
     }
 
@@ -555,10 +567,11 @@ struct TodayTileGrid: View {
             caption: oil.map(Self.oilWord) ?? "Not logged",
             valueColor: oil == nil ? Clinical.tertiary : Clinical.ink,
             tint: Clinical.gold,
+            motifOpacity: 1,
             action: onLogTap,
             actionHint: "Edits today's oiliness check-in"
         ) {
-            OilMotif(intensity: oil.map { CGFloat($0) / 3 } ?? 0)
+            OilLevelGauge(level: oil ?? 0)
         }
     }
 
@@ -651,6 +664,56 @@ private struct MedsArcRing: View {
                 withAnimation(.spring(response: 0.7, dampingFraction: 0.8).delay(0.4)) { shown = true }
             }
         }
+    }
+}
+
+/// Three small component bars — Flake / Red / Itch, each 0–3 — so the Scalp tile shows the
+/// makeup of its 16-point total instead of leaving the middle band empty. Bottoms align like a
+/// tiny bar chart; an unflagged component still draws a faint track so the trio always reads as
+/// one composed visual, not a sometimes-empty one.
+private struct ScalpComponentBars: View {
+    let flaking: Int
+    let erythema: Int
+    let itch: Int
+
+    private var components: [(label: String, value: Int)] {
+        [("Flake", flaking), ("Red", erythema), ("Itch", itch)]
+    }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 12) {
+            ForEach(components, id: \.label) { component in
+                VStack(spacing: 4) {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(Clinical.critical.opacity(component.value > 0 ? 0.7 : 0.16))
+                        .frame(width: 12, height: 6 + CGFloat(min(3, max(0, component.value))) * 9)
+                    Text(component.label)
+                        .font(Clinical.eyebrow(7))
+                        .foregroundStyle(Clinical.tertiary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, 8)
+    }
+}
+
+/// A 3-segment fuel-gauge matching Oil's 0–3 self-report scale — filled segments show the
+/// logged level at a glance instead of leaving the tile's middle band blank.
+private struct OilLevelGauge: View {
+    let level: Int
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<3, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(index < level ? Clinical.gold : Clinical.hairline)
+                    .frame(height: 10)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 }
 

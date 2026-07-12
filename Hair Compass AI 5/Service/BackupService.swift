@@ -86,6 +86,7 @@ enum BackupService {
         var startDate = Date.now
         var isActive = true
         var refillBy: Date?
+        var endDate: Date?
         var doses: [DoseDTO] = []
         var sideEffects: [SideEffectDTO] = []
     }
@@ -179,7 +180,7 @@ enum BackupService {
             TreatmentDTO(
                 name: t.name, classRaw: t.classRaw, dose: t.dose,
                 scheduleTimes: t.scheduleTimes, startDate: t.startDate,
-                isActive: t.isActive, refillBy: t.refillBy,
+                isActive: t.isActive, refillBy: t.refillBy, endDate: t.endDate,
                 doses: t.doses
                     .sorted { $0.loggedAt < $1.loggedAt }
                     .map { DoseDTO(loggedAt: $0.loggedAt, slot: $0.slot) },
@@ -400,6 +401,7 @@ enum BackupService {
                 t.startDate = dto.startDate
                 t.isActive = dto.isActive
                 t.refillBy = dto.refillBy
+                t.endDate = dto.endDate
                 context.insert(t)
                 treatmentsByKey[key] = t
                 target = t

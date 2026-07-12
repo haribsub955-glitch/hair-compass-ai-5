@@ -206,8 +206,10 @@ struct CornerSprig: View {
             .frame(width: width, height: width)
             .scaleEffect(x: mirrored ? -1 : 1)
             .opacity(opacity)
-            // Nudge partly past the corner so branches read as entering from off-screen.
-            .offset(x: (mirrored ? -1 : 1) * width * 0.16, y: -width * 0.12)
+            // Nudge down and away from the corner — every header that carries a sprig also
+            // carries a 44pt HeaderActionButton at this exact corner, so the artwork's mass
+            // stays clear of the button rather than bleeding straight into it.
+            .offset(x: (mirrored ? -1 : 1) * width * 0.05, y: width * 0.04)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }

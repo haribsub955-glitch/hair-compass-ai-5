@@ -14,13 +14,17 @@ struct ExportSheet: View {
     @Query(sort: \TriggerEvent.date, order: .reverse) private var triggers: [TriggerEvent]
     @Query(sort: \ProgressCheckIn.date, order: .reverse) private var progressCheckIns: [ProgressCheckIn]
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
+    @Query(sort: \SideEffectLog.date, order: .reverse) private var sideEffects: [SideEffectLog]
+    @Query(sort: \ProcedureAppointment.date, order: .reverse) private var procedures: [ProcedureAppointment]
 
     @State private var jsonURL: URL?
+    @State private var pdfURL: URL?
 
     private var summary: String {
         ExportService.clinicianSummary(
             profile: profiles.first, entries: entries, treatments: treatments,
-            doses: doses, labs: labs, triggers: triggers, progressCheckIns: progressCheckIns
+            doses: doses, labs: labs, triggers: triggers, progressCheckIns: progressCheckIns,
+            sideEffects: sideEffects, procedures: procedures
         )
     }
 
@@ -42,6 +46,23 @@ struct ExportSheet: View {
                             Text(summary)
                                 .font(.system(size: 11, design: .monospaced)).foregroundStyle(Clinical.tertiary)
                                 .lineLimit(6)
+                        }
+                    }
+
+                    ClinicalCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Eyebrow(text: "Visit report")
+                            Text("The summary above as a print-ready PDF — one document to bring to the appointment instead of a share-sheet message.")
+                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            if let pdfURL {
+                                ShareLink(item: pdfURL) {
+                                    Label("Visit report (PDF)", systemImage: "doc.richtext")
+                                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                                        .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                                }
+                            }
                         }
                     }
 
@@ -78,14 +99,25 @@ struct ExportSheet: View {
             .navigationTitle("Export")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-            .onAppear(perform: writeJSON)
+            .onAppear {
+                writeJSON()
+                writePDF()
+            }
         }
+    }
+
+    private func writePDF() {
+        let data = VisitReportPDF.render(title: "Hair Compass — Visit Report", summaryText: summary)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("HairCompassVisitReport.pdf")
+        try? data.write(to: url, options: .atomic)
+        pdfURL = url
     }
 
     private func writeJSON() {
         guard let data = ExportService.dataJSON(
-            entries: entries, doses: doses, labs: labs, triggers: triggers,
-            progressCheckIns: progressCheckIns, snapshots: snapshots
+            profile: profiles.first, entries: entries, treatments: treatments, doses: doses,
+            labs: labs, triggers: triggers, progressCheckIns: progressCheckIns, snapshots: snapshots,
+            sideEffects: sideEffects, procedures: procedures
         ) else { return }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("HairCompassData.json")
         try? data.write(to: url, options: .atomic)

@@ -16,6 +16,8 @@ enum ExportService {
         labs: [LabResult],
         triggers: [TriggerEvent],
         progressCheckIns: [ProgressCheckIn],
+        sideEffects: [SideEffectLog] = [],
+        procedures: [ProcedureAppointment] = [],
         now: Date = .now,
         calendar: Calendar = .current
     ) -> String {
@@ -67,10 +69,44 @@ enum ExportService {
                 let dates = doses.filter { $0.treatment?.persistentModelID == t.persistentModelID }.map(\.loggedAt)
                 let adh = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.slots.count)
                 let adhStr = adh.map { " · \(Int(($0 * 100).rounded()))% adherence" } ?? ""
-                out += "• \(t.name.isEmpty ? t.treatmentClass.title : t.name): week \(weeks)/24 (\(ready))\(adhStr)\(t.isActive ? "" : " [inactive]")\n"
+                // A stop date is one of the most clinically actionable things on this line —
+                // shedding changes after discontinuing a treatment often lag by 2–3 months, the
+                // same delay taught for triggers below.
+                let stopStr: String
+                if let end = t.endDate {
+                    let stoppedWeeks = HairAnalytics.weeksElapsed(since: t.startDate, now: end)
+                    stopStr = " · stopped \(end.formatted(.dateTime.year().month().day())) after \(stoppedWeeks) week\(stoppedWeeks == 1 ? "" : "s")"
+                } else {
+                    stopStr = t.isActive ? "" : " [inactive]"
+                }
+                out += "• \(t.name.isEmpty ? t.treatmentClass.title : t.name): week \(weeks)/24 (\(ready))\(adhStr)\(stopStr)\n"
             }
         }
         out += "\n"
+
+        // Tolerability — dated, severity-banded side-effect logs. The single most clinically
+        // actionable artifact in the whole export: a prescriber conversation starter, never a
+        // recommendation to change anything.
+        if !sideEffects.isEmpty {
+            out += "TOLERABILITY (self-logged, for your prescriber conversation)\n"
+            for s in sideEffects.sorted(by: { $0.date > $1.date }) {
+                let band = SeverityBand(rawValue: min(max(s.severity, 1), 3) - 1)?.title ?? "Mild"
+                let treatmentName = s.treatment.map { $0.name.isEmpty ? $0.treatmentClass.title : $0.name } ?? "Unspecified"
+                out += "• \(treatmentName) — \(s.type.title) (\(band)) — \(s.date.formatted(.dateTime.year().month().day()))\(s.note.isEmpty ? "" : " — \(s.note)")\n"
+            }
+            out += "\n"
+        }
+
+        // Procedures — dated in-office work (PRP, microneedling, transplant, LLLT sessions)
+        // that often explains a trend inflection a chart alone can't.
+        if !procedures.isEmpty {
+            out += "PROCEDURES\n"
+            for p in procedures.sorted(by: { $0.date > $1.date }) {
+                let status = p.isCompleted ? "completed" : (p.isUpcoming ? "upcoming" : "not completed")
+                out += "• \(p.type.title) — \(p.date.formatted(.dateTime.year().month().day())) (\(status))\(p.note.isEmpty ? "" : " — \(p.note)")\n"
+            }
+            out += "\n"
+        }
 
         // Labs
         if !labs.isEmpty {
@@ -111,21 +147,42 @@ enum ExportService {
 
     @MainActor
     static func dataJSON(
+        profile: Profile?,
         entries: [DailyEntry],
+        treatments: [Treatment],
         doses: [TreatmentDose],
         labs: [LabResult],
         triggers: [TriggerEvent],
         progressCheckIns: [ProgressCheckIn],
-        snapshots: [HealthSnapshot]
+        snapshots: [HealthSnapshot],
+        sideEffects: [SideEffectLog] = [],
+        procedures: [ProcedureAppointment] = []
     ) -> Data? {
         let dto = ExportBundle(
             exportedAt: .now,
+            profile: profile.map {
+                .init(sex: $0.sexRaw, ageBand: $0.ageBand, condition: $0.conditionRaw,
+                      familyHistory: $0.familyHistoryRaw, baselineStage: $0.baselineStage,
+                      wearsTightStyles: $0.wearsTightStyles, usesHeat: $0.usesHeat,
+                      usesChemicalTreatments: $0.usesChemicalTreatments)
+            },
             dailyEntries: entries.map {
                 .init(date: $0.date, shed: $0.shed.rawValue, flaking: $0.flaking, erythema: $0.erythema,
                       itch: $0.itch, sleepQuality: $0.sleepQuality, stress: $0.stress,
                       cigarettes: $0.cigarettes, alcohol: $0.alcoholDrinks, oiliness: $0.oiliness, note: $0.note)
             },
+            treatments: treatments.map {
+                .init(name: $0.name.isEmpty ? $0.treatmentClass.title : $0.name, treatmentClass: $0.classRaw,
+                      dose: $0.dose, startDate: $0.startDate, endDate: $0.endDate, isActive: $0.isActive)
+            },
             treatmentDoses: doses.map { .init(treatment: $0.treatment?.name ?? "", slot: $0.slot, loggedAt: $0.loggedAt) },
+            sideEffects: sideEffects.map {
+                .init(treatment: $0.treatment.map { t in t.name.isEmpty ? t.treatmentClass.title : t.name } ?? "",
+                      type: $0.typeRaw, severity: $0.severity, date: $0.date, note: $0.note)
+            },
+            procedures: procedures.map {
+                .init(type: $0.typeRaw, date: $0.date, isCompleted: $0.isCompleted, note: $0.note)
+            },
             labs: labs.map { .init(test: $0.test.rawValue, value: $0.value, unit: $0.test.unit, collectedAt: $0.collectedAt) },
             triggers: triggers.map { .init(type: $0.type.rawValue, date: $0.date, note: $0.note) },
             progressCheckIns: progressCheckIns.map {
@@ -155,18 +212,34 @@ enum ExportService {
 // Codable DTOs for the JSON export — decoupled from the SwiftData @Model types.
 private struct ExportBundle: Codable {
     let exportedAt: Date
+    let profile: ProfileDTO?
     let dailyEntries: [Entry]
+    let treatments: [TreatmentDTO]
     let treatmentDoses: [Dose]
+    let sideEffects: [SideEffect]
+    let procedures: [Procedure]
     let labs: [Lab]
     let triggers: [Trigger]
     let progressCheckIns: [CheckIn]
     let healthSnapshots: [Snapshot]
 
+    /// Baseline context — no name, so the portable backup doesn't carry a directly-identifying
+    /// field beyond what's already implicit in being the user's own export.
+    struct ProfileDTO: Codable {
+        let sex: String; let ageBand: String; let condition: String; let familyHistory: String
+        let baselineStage: String; let wearsTightStyles: Bool; let usesHeat: Bool; let usesChemicalTreatments: Bool
+    }
     struct Entry: Codable {
         let date: Date; let shed: Int; let flaking: Int; let erythema: Int; let itch: Int
         let sleepQuality: Int; let stress: Int; let cigarettes: Int; let alcohol: Int; let oiliness: Int; let note: String
     }
+    struct TreatmentDTO: Codable {
+        let name: String; let treatmentClass: String; let dose: String
+        let startDate: Date; let endDate: Date?; let isActive: Bool
+    }
     struct Dose: Codable { let treatment: String; let slot: String; let loggedAt: Date }
+    struct SideEffect: Codable { let treatment: String; let type: String; let severity: Int; let date: Date; let note: String }
+    struct Procedure: Codable { let type: String; let date: Date; let isCompleted: Bool; let note: String }
     struct Lab: Codable { let test: String; let value: Double; let unit: String; let collectedAt: Date }
     struct Trigger: Codable { let type: String; let date: Date; let note: String }
     /// Raw answer fields (the model's own `...Raw` ints) rather than resolved titles, matching

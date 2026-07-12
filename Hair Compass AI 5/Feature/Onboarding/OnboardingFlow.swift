@@ -244,7 +244,9 @@ struct OnboardingFlow: View {
         return VStack(spacing: 0) {
             head("About you", "Are you pregnant or\nplanning a pregnancy?",
                  "A few hair-loss medications aren't recommended in or around pregnancy. This just lets us flag them — you always decide with your clinician, and it stays private on your device.")
-            Spacer()
+            // Question, options anchor together at the top with a fixed gap; any leftover
+            // vertical space accumulates below the options (the trailing Spacer), never as a
+            // dead zone between the question and its answers.
             VStack(spacing: 10) {
                 ForEach(options) { s in
                     let on = profile.pregnancyStatus == s
@@ -268,7 +270,7 @@ struct OnboardingFlow: View {
                     }
                     .buttonStyle(.plain)
                 }
-            }.padding(.horizontal, 20)
+            }.padding(.horizontal, 20).padding(.top, 28)
             Spacer()
             primary("Continue") { next() }
         }
@@ -278,7 +280,8 @@ struct OnboardingFlow: View {
         let bands = ["Under 25", "26–35", "36–45", "46–55", "56+"]
         return VStack(spacing: 0) {
             head("About you", "How old are you?")
-            Spacer()
+            // Question and options anchor together at the top with a fixed gap; leftover
+            // vertical space accumulates below the options, never between question and answers.
             VStack(spacing: 10) {
                 ForEach(bands, id: \.self) { b in
                     let on = profile.ageBand == b
@@ -289,7 +292,7 @@ struct OnboardingFlow: View {
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
                     }.buttonStyle(.plain)
                 }
-            }.padding(.horizontal, 20)
+            }.padding(.horizontal, 20).padding(.top, 28)
             Spacer()
             primary("Continue", enabled: !profile.ageBand.isEmpty) { next() }
         }
@@ -539,12 +542,13 @@ struct OnboardingFlow: View {
     private var healthConnectStep: some View {
         VStack(spacing: 0) {
             head("Automatic signals", "Connect Apple Health?", "Sleep, body weight, and recovery fill in automatically — no typing. You control exactly what's shared, and you can change it anytime in Settings.")
-            Spacer()
+            // Question and benefit list anchor together at the top with a fixed gap; leftover
+            // vertical space accumulates below the list, never between question and content.
             VStack(spacing: 10) {
                 healthBenefitRow(symbol: "bed.double.fill", text: "Sleep hours, every night")
                 healthBenefitRow(symbol: "figure", text: "Body weight and BMI")
                 healthBenefitRow(symbol: "heart.fill", text: "Recovery (HRV) as a stress signal")
-            }.padding(.horizontal, 20)
+            }.padding(.horizontal, 20).padding(.top, 28)
             Spacer()
             healthConnectCTA
         }

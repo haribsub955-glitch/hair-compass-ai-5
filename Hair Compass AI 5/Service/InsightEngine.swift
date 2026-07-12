@@ -24,6 +24,10 @@ struct InsightContext: Sendable {
     var rapidWeightLossPercent: Double?
     var tractionRisk: Bool
     var recentTrigger: TriggerNote?
+    /// A recently stopped treatment reads like a trigger for insight purposes — post-stop
+    /// shedding changes often lag by the same 2–3 months, so it deserves the same nudge.
+    /// Never a suggestion to stop or restart anything, only context for what's already logged.
+    var recentStop: TriggerNote?
     var treatments: [TreatmentSummary]
     /// Latest result per lab test — a lower-priority, honest note for the daily insight, never
     /// a diagnosis. Matches the deep-analysis/chat `AIContext`'s labs, which already carry this.
@@ -79,6 +83,16 @@ struct InsightContext: Sendable {
             trigger = TriggerNote(title: t.type.title, weeks: t.weeksElapsed())
         }
 
+        var stop: TriggerNote?
+        if let stopped = treatments.filter({ $0.endDate != nil }).max(by: { $0.endDate! < $1.endDate! }),
+           let endDate = stopped.endDate {
+            let weeks = max(0, HairAnalytics.weeksElapsed(since: endDate))
+            stop = TriggerNote(
+                title: "Stopped \(stopped.name.isEmpty ? stopped.treatmentClass.title : stopped.name)",
+                weeks: weeks
+            )
+        }
+
         // Latest LabResult per LabTest — never invented, only what's actually logged.
         // Iterate LabTest.allCases (not the dictionary) so the note order is deterministic.
         let latestPerTest = Dictionary(grouping: labs, by: \.test)
@@ -113,6 +127,7 @@ struct InsightContext: Sendable {
             rapidWeightLossPercent: HairAnalytics.rapidWeightLossPercent(samples: massSamples),
             tractionRisk: profile?.hasTractionRisk ?? false,
             recentTrigger: trigger,
+            recentStop: stop,
             treatments: treatmentSummaries,
             labs: labNotes
         )
@@ -145,6 +160,7 @@ enum RuleBasedInsight {
         if let pct = c.rapidWeightLossPercent { lines.append("Body weight down ~\(Int(pct.rounded()))% recently (possible shedding trigger in 2–3 months).") }
         if c.tractionRisk { lines.append("Baseline notes tight styling/heat/chemical use (traction risk).") }
         if let t = c.recentTrigger { lines.append("Trigger logged: \(t.title), \(t.weeks) weeks ago.") }
+        if let s = c.recentStop { lines.append("\(s.title), \(s.weeks) weeks ago.") }
         for t in c.treatments {
             let adherence = t.adherencePercent.map { " · \($0)% adherence" } ?? ""
             let gate = t.outcomeReady ? "past the 24-week judging point" : "week \(t.weeksElapsed) of 24 before efficacy can be judged"
@@ -185,6 +201,9 @@ enum RuleBasedInsight {
         }
         if let t = c.recentTrigger, t.weeks <= 20 {
             parts.append("\(t.title) \(t.weeks) weeks ago may still be echoing — diffuse shedding often lags a trigger by 2–3 months.")
+        }
+        if let s = c.recentStop, s.weeks <= 20 {
+            parts.append("\(s.title) \(s.weeks) week\(s.weeks == 1 ? "" : "s") ago — shedding changes after stopping a treatment often lag by 2–3 months too.")
         }
 
         // Labs are an additional, lower-priority note — only added when something's actually

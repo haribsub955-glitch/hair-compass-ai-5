@@ -138,6 +138,11 @@ final class Treatment {
     /// When the current supply is expected to run out. Optional — unset means "not tracked".
     /// Running low is the most common reason a regimen lapses, so it gets a first-class date.
     var refillBy: Date? = nil
+    /// Set the moment `isActive` flips to false (and cleared on reactivation). Stopping a
+    /// treatment — often because of a side effect — is one of the most informative dated events
+    /// in the whole record: shedding changes can lag a stop by 2–3 months, the same delay the
+    /// app teaches for triggers. Schema-safe optional, so existing rows just read nil.
+    var endDate: Date? = nil
 
     /// A custom item can carry a photo of its ingredient label (path on disk via PhotoStore)
     /// and a short AI-produced summary of what it is. Empty means "not provided".

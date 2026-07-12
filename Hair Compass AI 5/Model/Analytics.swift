@@ -36,6 +36,17 @@ enum HairAnalytics {
         return .normal
     }
 
+    /// Whether a repeat draw has moved from out-of-range toward (or into) the reference range
+    /// compared to the prior draw — the honest "is it correcting?" signal a re-test exists to
+    /// answer. Only true when the *earlier* draw was out of range and the new value moved
+    /// toward the band; a draw that was already in range, or one that's flat/worsening, is
+    /// never called improving. Never a target or a claim of causation — context only.
+    static func labImproving(previous: Double, latest: Double, range: ClosedRange<Double>) -> Bool {
+        if previous < range.lowerBound { return latest > previous }
+        if previous > range.upperBound { return latest < previous }
+        return false
+    }
+
     // MARK: - Treatment adherence & the 24-week outcome gate
 
     /// Standard AGA RCT endpoint for hair-density change (verified 3-0).

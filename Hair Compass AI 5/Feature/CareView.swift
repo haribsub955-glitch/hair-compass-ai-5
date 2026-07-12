@@ -48,6 +48,9 @@ struct CareView: View {
                         }
                     )
                 ).padding(.top, 8)
+                    // Same corner-sprig family as Trends/Labs — Plan and Photos were the two
+                    // headers left undressed.
+                    .background(alignment: .topTrailing) { CornerSprig() }
                     .staggeredEntrance(index: 0)
 
                 // One entrance sequence down the card stack; indices are fixed positions, so a
@@ -663,7 +666,13 @@ struct CareView: View {
                     Spacer()
                     Menu {
                         Button("Refill & side effects") { detailTreatment = t }
-                        Button(t.isActive ? "Mark inactive" : "Reactivate") { t.isActive.toggle() }
+                        Button(t.isActive ? "Mark inactive" : "Reactivate") {
+                            t.isActive.toggle()
+                            // Records the user's own decision and its date — never advises it.
+                            // The stop date lets the trend explain itself later (shedding
+                            // changes after stopping a treatment often lag by 2–3 months).
+                            t.endDate = t.isActive ? nil : .now
+                        }
                         Button("Delete", role: .destructive) { context.delete(t) }
                     } label: {
                         Image(systemName: "ellipsis").font(.system(size: 16)).foregroundStyle(Clinical.tertiary)
@@ -718,7 +727,8 @@ struct CareView: View {
                 }
 
                 if !t.isActive {
-                    Text("Inactive").font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
+                    Text(t.endDate.map { "Stopped \($0.formatted(.dateTime.month(.abbreviated).day()))" } ?? "Inactive")
+                        .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
                 }
             }
         }
@@ -804,14 +814,17 @@ private struct RoutineStepRow: View {
                     .font(.system(size: 14))
                     .foregroundStyle(classTint)
                     .frame(width: 31, height: 31)
-                    .background(classTint.opacity(0.12),
+                    .background(classTint.opacity(done ? 0.06 : 0.12),
                                 in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .opacity(done ? 0.6 : 1)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
+                    // No strikethrough: this is a current-medication list, and a struck-through
+                    // drug name reads clinically as "discontinued" — precisely what this app must
+                    // never imply. Done-ness is conveyed by the filled check + dimmed text only.
                     Text(name)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
-                        .strikethrough(done, color: Clinical.tertiary)
                     Text(subtitle)
                         .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
                 }

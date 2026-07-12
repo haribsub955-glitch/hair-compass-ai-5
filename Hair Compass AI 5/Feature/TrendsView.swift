@@ -11,6 +11,7 @@ struct TrendsView: View {
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
     @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
+    @Query(sort: \ProgressCheckIn.date) private var progressCheckIns: [ProgressCheckIn]
 
     @State private var showCompare = false
     @State private var showExport = false
@@ -65,6 +66,8 @@ struct TrendsView: View {
                     triggers: triggers,
                     windowDays: range.days
                 )
+
+                progressCheckInsCard
 
                 ConsistencyCard(
                     entries: entries,
@@ -157,6 +160,96 @@ struct TrendsView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Monthly check-ins (slow-moving, self-reported)
+
+    /// The monthly `ProgressCheckIn` answers are collected but were never shown back — this
+    /// renders the stored values as-is: a dot per month per question, colored by the trend the
+    /// user already picked, plus the latest regrowth level and a prominent scalp-pain flag.
+    /// Deterministic, no new math.
+    @ViewBuilder
+    private var progressCheckInsCard: some View {
+        if !progressCheckIns.isEmpty {
+            let sorted = progressCheckIns.sorted { $0.date < $1.date }
+            ClinicalCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Eyebrow(text: "Monthly check-ins")
+                    Text("Your own answers to the questions a dermatologist asks between visits.")
+                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+
+                    if let latest = sorted.last {
+                        HStack(spacing: 6) {
+                            Text("Latest regrowth").font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            Text(latest.regrowth.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.ink)
+                            Spacer()
+                            Text(latest.date.formatted(.dateTime.month(.abbreviated).day()))
+                                .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        checkInTrendRow(title: "Density", question: .density, checkIns: sorted)
+                        checkInTrendRow(title: "Shedding", question: .shedding, checkIns: sorted)
+                        checkInTrendRow(title: "Hairline", question: .hairline, checkIns: sorted)
+                        checkInTrendRow(title: "Overall", question: .overall, checkIns: sorted)
+                    }
+
+                    // A genuine red flag — persistent scalp pain can mean scarring alopecia.
+                    // Surfaced from the most recent check-in that reported it, however long ago.
+                    if let pain = sorted.reversed().first(where: { $0.scalpPain }) {
+                        Label(
+                            "Scalp pain reported \(pain.date.formatted(.dateTime.month(.abbreviated).day())) — worth a prompt dermatology review.",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Clinical.warning)
+                    }
+                }
+            }
+        }
+    }
+
+    private func checkInTrendRow(title: String, question: ProgressTrend.Question, checkIns: [ProgressCheckIn]) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(Clinical.ink)
+                .frame(width: 64, alignment: .leading)
+            HStack(spacing: 5) {
+                ForEach(Array(checkIns.enumerated()), id: \.offset) { _, checkIn in
+                    Circle()
+                        .fill(trendDotColor(Self.trendValue(checkIn, question)))
+                        .frame(width: 8, height: 8)
+                }
+            }
+            Spacer(minLength: 8)
+            if let last = checkIns.last {
+                Text(Self.trendValue(last, question).label(for: question))
+                    .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(title): " + checkIns.map { Self.trendValue($0, question).label(for: question) }.joined(separator: ", then ")
+        )
+    }
+
+    private static func trendValue(_ checkIn: ProgressCheckIn, _ question: ProgressTrend.Question) -> ProgressTrend {
+        switch question {
+        case .density: return checkIn.density
+        case .shedding: return checkIn.shedding
+        case .hairline: return checkIn.hairline
+        case .overall: return checkIn.overall
+        }
+    }
+
+    private func trendDotColor(_ trend: ProgressTrend) -> Color {
+        switch trend {
+        case .worse: return Clinical.warning
+        case .same: return Clinical.tertiary
+        case .better: return Clinical.sage
+        }
     }
 
     private var emptyState: some View {

@@ -35,6 +35,9 @@ struct PhotosView: View {
                         }
                     )
                 ).padding(.top, 8)
+                    // Same corner-sprig family as Trends/Labs/Plan — Photos was the last header
+                    // left undressed.
+                    .background(alignment: .topTrailing) { CornerSprig() }
 
                 progressSummary
                     .staggeredEntrance(index: 0)
