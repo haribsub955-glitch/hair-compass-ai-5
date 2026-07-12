@@ -33,6 +33,12 @@ struct ConditionsHero: View {
     var onShedSet: ((ShedLevel) -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Drives the headline's accessibility-size fallback: at .accessibility1+ Dynamic Type the
+    /// 44–50pt serif headline stops fighting for one crushed/truncated line — it drops the
+    /// ladder's trailing reservation and wraps onto up to two lines at word boundaries instead
+    /// (see round-5 fix below; `Text("Not logged")` used to render "Not lo…").
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private var isAccessibilitySize: Bool { dynamicTypeSize >= .accessibility1 }
     /// Transient live value while a finger is on the scene — overrides the entry-driven
     /// intensity so the falling-hair simulation and band word track the drag in real time.
     /// Cleared on release, at which point the display falls back to `heroIntensity`, which by
@@ -222,6 +228,13 @@ struct ConditionsHero: View {
         UIFontMetrics(forTextStyle: .caption2).scaledValue(for: 108)
     }
 
+    /// The inset actually applied to headline/subtitle content: zero at accessibility sizes,
+    /// where the headline is allowed to wrap onto a second line instead of squeezing beside the
+    /// ladder (see round-5 fix in `content`/`bandWordText`).
+    private var ladderInset: CGFloat {
+        isAccessibilitySize ? 0 : ladderReservedInset
+    }
+
     // MARK: - Foreground content
 
     private var content: some View {
@@ -256,10 +269,12 @@ struct ConditionsHero: View {
                     // Live preview while the finger is down — same slot the saved band word
                     // occupies, so nothing reflows when the drag ends. Reserves the ladder's
                     // trailing column (it's on screen throughout the drag) so the band word
-                    // never renders under it.
+                    // never renders under it — except at accessibility sizes, where the ladder
+                    // reservation is dropped in favor of letting the headline wrap (see
+                    // `bandWordText`/`ladderInset(...)` below).
                     let caption = SheddingDial.bandCaption(dragIntensity)
                     bandWordText(caption.0)
-                        .padding(.trailing, ladderReservedInset)
+                        .padding(.trailing, ladderInset)
                     subtitleText(caption.1.prefix(1).uppercased() + caption.1.dropFirst())
                     scalpLine
                     chipRow
@@ -273,13 +288,21 @@ struct ConditionsHero: View {
                     // size instead of being crushed or truncated at 44pt, and keeps this branch's
                     // structure (headline + subtitle) identical to theirs so nothing reflows when
                     // a finger goes down.
+                    //
+                    // Round-5 fix: at .accessibility1+ Dynamic Type, `lineLimit(1) +
+                    // minimumScaleFactor(0.65)` still couldn't fit "Not logged" and truncated to
+                    // "Not lo…" — the one word this screen exists to show, unreadable. At those
+                    // sizes we drop the ladder's trailing reservation (nothing to protect against
+                    // once the ladder no longer sits this close) and let the headline wrap onto
+                    // up to two lines at a natural word boundary instead of scaling/truncating.
                     Text("Not logged")
                         .font(Clinical.headline(44)).foregroundStyle(Clinical.tertiary)
-                        .lineLimit(1).minimumScaleFactor(0.65)
-                        .padding(.trailing, onShedSet != nil ? ladderReservedInset : 0)
+                        .lineLimit(isAccessibilitySize ? 2 : 1)
+                        .minimumScaleFactor(isAccessibilitySize ? 1 : 0.65)
+                        .padding(.trailing, onShedSet != nil ? ladderInset : 0)
                     if onShedSet != nil {
                         subtitleText("Drag the ladder to set")
-                            .padding(.trailing, ladderReservedInset)
+                            .padding(.trailing, ladderInset)
                     }
                     chipRow
                 }
@@ -300,7 +323,8 @@ struct ConditionsHero: View {
     private func bandWordText(_ text: String) -> some View {
         Text(text)
             .font(Clinical.headline(50)).foregroundStyle(Clinical.ink)
-            .lineLimit(1).minimumScaleFactor(0.55)
+            .lineLimit(isAccessibilitySize ? 2 : 1)
+            .minimumScaleFactor(isAccessibilitySize ? 1 : 0.55)
             .contentTransition(.opacity)
             .animation(.easeOut(duration: 0.25), value: currentBand)
     }
@@ -322,12 +346,23 @@ struct ConditionsHero: View {
         }
     }
 
+    /// Falls back to a stacked layout when the row can't fit at large Dynamic Type instead of
+    /// crushing every chip into an unreadable sliver.
     private var chipRow: some View {
-        HStack(spacing: 8) {
-            streakChip
-            xpChip
-            Spacer(minLength: 0)
-            logButton
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                streakChip
+                xpChip
+                Spacer(minLength: 0)
+                logButton
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    streakChip
+                    xpChip
+                }
+                logButton
+            }
         }
     }
 
@@ -354,6 +389,8 @@ struct ConditionsHero: View {
                     .foregroundStyle(Clinical.sage)
             }
         }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
         .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Clinical.surface.opacity(0.85), in: Capsule())

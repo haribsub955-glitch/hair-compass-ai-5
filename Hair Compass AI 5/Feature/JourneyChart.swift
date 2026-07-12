@@ -29,6 +29,10 @@ struct JourneyChart: View {
     /// default size and every label at accessibility sizes. Seeded at 44 so the very first frame
     /// (before the hidden template below reports its real width) still looks reasonable.
     @State private var gutterWidth: CGFloat = 44
+    /// The note marker currently disclosed (tap-to-reveal) — reset on tap-away or re-tap of the
+    /// same marker. Notes are the richest causal context a person records ("switched shampoo",
+    /// "started keto") and used to be write-only outside the exact day's log sheet.
+    @State private var selectedNoteMarker: JourneyData.Marker?
 
     var body: some View {
         let end = Date.now
@@ -52,6 +56,7 @@ struct JourneyChart: View {
                         intakeLane(data: data, domain: start...end)
                     }
                     legend(data: data)
+                    if let selectedNoteMarker { noteDisclosure(selectedNoteMarker) }
                     if !data.echoBands.isEmpty {
                         Text("Faint band = possible echo window — shedding often lags a trigger by 2–3 months.")
                             .font(.system(size: 10)).foregroundStyle(Clinical.tertiary)
@@ -142,6 +147,29 @@ struct JourneyChart: View {
     }
 
     private func markerBadge(_ m: JourneyData.Marker, showTag: Bool) -> some View {
+        Group {
+            if m.kind == .note {
+                // SwiftUI Charts annotations render as regular overlaid views, so a Button here
+                // works exactly like it would anywhere else — this is the tap-to-reveal
+                // affordance for the note text (see `noteDisclosure` below).
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        selectedNoteMarker = (selectedNoteMarker?.id == m.id) ? nil : m
+                    }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    badgeContent(m, showTag: showTag)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Note on \(m.date.formatted(date: .abbreviated, time: .omitted))")
+                .accessibilityHint("Double-tap to read the note")
+            } else {
+                badgeContent(m, showTag: showTag)
+            }
+        }
+    }
+
+    private func badgeContent(_ m: JourneyData.Marker, showTag: Bool) -> some View {
         VStack(spacing: 2) {
             Image(systemName: m.symbol)
                 .font(.system(size: 9, weight: .semibold))
@@ -158,6 +186,27 @@ struct JourneyChart: View {
                     .fixedSize()
             }
         }
+    }
+
+    /// The disclosed note's date + full text, dismissible by re-tapping its marker. Sits below
+    /// the legend, inside the same card, so nothing about the chart's layout shifts when a note
+    /// opens or closes.
+    private func noteDisclosure(_ marker: JourneyData.Marker) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "text.bubble")
+                .font(.system(size: 12)).foregroundStyle(Clinical.sage)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(marker.date.formatted(date: .abbreviated, time: .omitted))
+                    .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                Text(marker.noteText ?? "")
+                    .font(.system(size: 12)).foregroundStyle(Clinical.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(Clinical.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     // MARK: Bottom lane — day-by-day medication intake
@@ -190,16 +239,16 @@ struct JourneyChart: View {
             .chartXScale(domain: domain)
             .chartYScale(domain: 0...Double(data.intakeCeiling))
             .chartXAxis {
-                AxisMarks(values: .stride(by: windowDays <= 31 ? .weekOfYear : .month)) { value in
+                // Three tiers so a multi-year "All" window doesn't cram monthly ticks into a
+                // solid smear: weekly inside a month, monthly inside about a year, quarterly
+                // beyond that — with the year folded into the label once month-only ticks would
+                // otherwise repeat ("Jan" every year) with nothing to tell them apart.
+                AxisMarks(values: .stride(by: axisStride)) { value in
                     AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
                     AxisValueLabel {
                         if let d = value.as(Date.self) {
-                            Text(d.formatted(
-                                windowDays <= 31
-                                    ? .dateTime.month(.abbreviated).day()
-                                    : .dateTime.month(.abbreviated)
-                            ))
-                            .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                            Text(d.formatted(axisFormat))
+                                .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                         }
                     }
                 }
@@ -226,6 +275,18 @@ struct JourneyChart: View {
         }
     }
 
+    private var axisStride: Calendar.Component {
+        if windowDays <= 31 { return .weekOfYear }
+        if windowDays <= 200 { return .month }
+        return .quarter
+    }
+
+    private var axisFormat: Date.FormatStyle {
+        if windowDays <= 31 { return .dateTime.month(.abbreviated).day() }
+        if windowDays <= 200 { return .dateTime.month(.abbreviated) }
+        return .dateTime.month(.abbreviated).year(.twoDigits)
+    }
+
     // MARK: Legend — only keys that actually appear
 
     private func legend(data: JourneyData) -> some View {
@@ -245,6 +306,9 @@ struct JourneyChart: View {
             }
             if let symbol = data.firstSymbol(of: .trigger) {
                 legendKey(.marker(symbol), color: Clinical.warning, label: "Trigger")
+            }
+            if let symbol = data.firstSymbol(of: .note) {
+                legendKey(.marker(symbol), color: Clinical.sage, label: "Note · tap to read")
             }
         }
         .padding(.top, 2)
@@ -304,14 +368,17 @@ private struct JourneyData {
         var id: Date { date }
     }
 
-    struct Marker: Identifiable {
-        enum Kind { case procedure, start, stop, trigger }
+    struct Marker: Identifiable, Equatable {
+        enum Kind { case procedure, start, stop, trigger, note }
         let id: String
         let kind: Kind
         let date: Date
         let symbol: String
         let tag: String
         var level: Int = 0 // 0 = top badge row, 1 = staggered second row
+        /// Full free-text note — set only for `.note` markers, shown by the tap-to-reveal
+        /// disclosure. Every other kind uses `tag`'s short canonical label instead.
+        var noteText: String? = nil
 
         var color: Color {
             switch kind {
@@ -321,8 +388,11 @@ private struct JourneyData {
             // not something the app judges.
             case .stop: return Clinical.tertiary
             case .trigger: return Clinical.warning
+            case .note: return Clinical.sage
             }
         }
+
+        static func == (lhs: Marker, rhs: Marker) -> Bool { lhs.id == rhs.id }
     }
 
     struct DoseBar: Identifiable {
@@ -420,6 +490,21 @@ private struct JourneyData {
                 kind: .trigger, date: tr.date,
                 symbol: tr.type.symbol,
                 tag: Self.triggerTag(tr.type)
+            ))
+        }
+        // Daily-log notes — the richest causal context a person records ("switched shampoo",
+        // "started keto", "post-COVID") used to be write-only outside that exact day's log
+        // sheet. Surfaced as a tap-to-reveal marker so it finally sits alongside the trend it
+        // might explain.
+        for e in entries where e.date >= start && e.date <= end {
+            let trimmed = e.note.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            built.append(Marker(
+                id: "note-\(e.date.timeIntervalSinceReferenceDate)",
+                kind: .note, date: e.date,
+                symbol: "text.bubble",
+                tag: "Note",
+                noteText: trimmed
             ))
         }
         // Completed in-office procedures — dated by when they were actually marked done, which

@@ -154,12 +154,18 @@ struct ProgressReport {
         labs: [LabResult],
         sideEffects: [SideEffectLog],
         triggers: [TriggerEvent],
+        /// Which active daily treatment the report anchors to. Defaults to the earliest one
+        /// (the old, only, behavior) — pass the treatment a user picks (or a milestone
+        /// notification names) so a second, later-added treatment gets its own week clock,
+        /// adherence read, weakest stretch and honest read instead of always reusing the first
+        /// treatment's report.
+        focus: Treatment? = nil,
         now: Date = .now,
         calendar: Calendar = .current
     ) -> ProgressReport? {
-        let primary = treatments
+        let dailyTreatments = treatments
             .filter { $0.isActive && !$0.slots.isEmpty }   // schedule-driven, so `.other` daily items count
-            .min { $0.startDate < $1.startDate }
+        let primary = focus ?? dailyTreatments.min { $0.startDate < $1.startDate }
         let sorted = entries.sorted { $0.date < $1.date }
         let entryWeeks = sorted.first.map {
             HairAnalytics.weeksElapsed(since: $0.date, now: now, calendar: calendar)
@@ -506,5 +512,35 @@ struct ProgressReport {
 
     private static func dayString(_ date: Date) -> String {
         date.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+
+    // MARK: - Photo evidence
+
+    /// A region's baseline/latest photo pair, scoped to THIS report's window — the milestone
+    /// reports drive people to the assessment moment, but until now never showed the one artifact
+    /// (a before/after photo) that most persuasively answers "did anything change?". When this
+    /// report has a treatment to anchor to, "baseline" is the capture nearest `periodStart` (so
+    /// "before vs now" matches the report's own window, not always the account's very first
+    /// photo); otherwise this defers to `VisitReportPDF.comparisonPair`'s plain earliest/latest
+    /// reading. Same comparability check either way (`PhotosView.compareMismatchCaption`) — no
+    /// new math, pure reuse of the existing selection logic. nil when the region has fewer than
+    /// two comparable captures.
+    func photoPair(in regionPhotos: [PhotoRecord]) -> (baseline: PhotoRecord, latest: PhotoRecord, caveat: String?)? {
+        guard treatment != nil else {
+            return VisitReportPDF.comparisonPair(in: regionPhotos)
+        }
+        let sorted = regionPhotos.sorted { $0.createdAt < $1.createdAt }
+        guard sorted.count >= 2,
+              let baseline = sorted.min(by: {
+                  abs($0.createdAt.timeIntervalSince(periodStart)) < abs($1.createdAt.timeIntervalSince(periodStart))
+              })
+        else { return nil }
+
+        let laterCandidates = sorted.filter { $0.createdAt > baseline.createdAt }
+        guard let trueLatest = laterCandidates.last else { return nil }
+        if let matched = laterCandidates.reversed().first(where: { PhotosView.compareMismatchCaption(baseline, $0) == nil }) {
+            return (baseline, matched, nil)
+        }
+        return (baseline, trueLatest, "Conditions differ from baseline — read with care.")
     }
 }

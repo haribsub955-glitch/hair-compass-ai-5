@@ -25,6 +25,11 @@ struct CareView: View {
     @State private var expandedSteps: Set<String> = []
     @State private var detailTreatment: Treatment?
     @State private var showReport = false
+    /// Which active daily treatment the progress report is scoped to. nil defers to
+    /// `ProgressReport.build`'s default (the earliest one) — set explicitly by the in-card
+    /// picker (when there's more than one) or by a milestone notification's deep link so a
+    /// second treatment's milestone opens THAT treatment's report.
+    @State private var reportFocusTreatment: Treatment?
     @State private var showProcedures = false
     @State private var showProgressCheckIn = false
     @State private var showAddTrigger = false
@@ -110,7 +115,7 @@ struct CareView: View {
             ProgressCheckInSheet(treatmentContext: progressCheckInTreatmentContext)
         }
         .sheet(isPresented: $showReport) {
-            if let report = progressReport { ProgressReportSheet(report: report) }
+            if let report = progressReport { ProgressReportSheet(report: report, photos: photoRecords) }
         }
         .sheet(isPresented: $showRecommender) {
             NavigationStack {
@@ -163,10 +168,17 @@ struct CareView: View {
             await replanEveningCheckIn()
         }
         // Tapping a milestone reminder lands here already on Plan (RootView switches tabs) —
-        // just open the report it pointed to.
+        // just open the report it pointed to, focused on the treatment the milestone was about
+        // (round-5 fix: a second treatment's week-12 milestone used to always open the earliest
+        // treatment's report instead of its own).
         .onChange(of: deepLinks.openProgressReportRequested) { _, requested in
             guard requested else { return }
             deepLinks.openProgressReportRequested = false
+            if let focusID = deepLinks.progressReportFocusTreatmentID,
+               let matched = dailyActiveTreatments.first(where: { String($0.persistentModelID.hashValue) == focusID }) {
+                reportFocusTreatment = matched
+            }
+            deepLinks.progressReportFocusTreatmentID = nil
             if progressReport != nil { showReport = true }
         }
         // A refill or treatment-schedule reminder tap lands here already on Plan (RootView
@@ -273,11 +285,21 @@ struct CareView: View {
     }
 
     /// The periodic synthesis — nil until there's an active daily treatment or ≥ 8 weeks of logs.
+    /// Scoped to `reportFocusTreatment` when set (picker choice or a milestone notification's
+    /// deep link); otherwise `ProgressReport.build` falls back to the earliest active daily
+    /// treatment, same as before.
     private var progressReport: ProgressReport? {
         ProgressReport.build(
             entries: entries, treatments: treatments, doses: doses,
-            labs: labs, sideEffects: sideEffectLogs, triggers: triggerEvents
+            labs: labs, sideEffects: sideEffectLogs, triggers: triggerEvents,
+            focus: reportFocusTreatment
         )
+    }
+
+    /// Every active treatment with its own daily schedule — the report-focus picker only earns
+    /// its place once there's more than one to choose between.
+    private var dailyActiveTreatments: [Treatment] {
+        activeTreatments.filter { !$0.slots.isEmpty }
     }
 
     /// Today's routine grouped into blocks, carrying the Treatment so a tap can log the dose.
@@ -521,50 +543,76 @@ struct CareView: View {
 
     /// One card that opens the full week-N progress report, sitting next to the assessment
     /// clock it serves. Gets an accent border when the current week IS a review milestone
-    /// (4 · 12 · 24, then every 12).
+    /// (4 · 12 · 24, then every 12). When more than one active daily treatment exists, a
+    /// segmented picker sits above the tappable row so a second treatment (e.g. finasteride
+    /// added after two years of minoxidil) gets its own week clock and honest read instead of
+    /// always reusing the earliest treatment's report — the picker sits outside the Button so
+    /// choosing a segment never also opens the sheet.
     private func progressReportCard(_ report: ProgressReport) -> some View {
         let milestone = report.isMilestoneWeek
-        return Button { showReport = true } label: {
-            ClinicalCard(padding: 16) {
-                HStack(spacing: 12) {
-                    Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 16))
-                        .foregroundStyle(milestone ? Clinical.surface : Clinical.accent)
-                        .frame(width: 38, height: 38)
-                        .background(milestone ? Clinical.accent : Clinical.accentSoft,
-                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text("Progress report")
-                                .font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
-                            if milestone {
-                                Text("MILESTONE")
-                                    .font(Clinical.eyebrow(8)).tracking(0.8)
-                                    .foregroundStyle(Clinical.gold)
-                                    .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(Clinical.gold.opacity(0.14), in: Capsule())
-                            }
+        return ClinicalCard(padding: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                if dailyActiveTreatments.count > 1 {
+                    Picker("Report focus", selection: reportFocusBinding) {
+                        ForEach(dailyActiveTreatments) { t in
+                            Text(t.name.isEmpty ? t.treatmentClass.title : t.name).tag(Optional(t))
                         }
-                        Text(milestone
-                             ? "Week \(report.weekNumber) is a review milestone — read the full picture."
-                             : "Week \(report.weekNumber) · next report at week \(report.nextMilestoneWeek).")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
                     }
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Text("View report")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(Clinical.accent)
+                    .pickerStyle(.segmented)
+                }
+                Button { showReport = true } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.system(size: 16))
+                            .foregroundStyle(milestone ? Clinical.surface : Clinical.accent)
+                            .frame(width: 38, height: 38)
+                            .background(milestone ? Clinical.accent : Clinical.accentSoft,
+                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("Progress report")
+                                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                                if milestone {
+                                    Text("MILESTONE")
+                                        .font(Clinical.eyebrow(8)).tracking(0.8)
+                                        .foregroundStyle(Clinical.gold)
+                                        .padding(.horizontal, 6).padding(.vertical, 2)
+                                        .background(Clinical.gold.opacity(0.14), in: Capsule())
+                                }
+                            }
+                            Text(milestone
+                                 ? "Week \(report.weekNumber) is a review milestone — read the full picture."
+                                 : "Week \(report.weekNumber) · next report at week \(report.nextMilestoneWeek).")
+                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        }
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Text("View report")
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(Clinical.accent)
+                        }
                     }
                 }
+                .buttonStyle(.plain)
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Clinical.accent.opacity(milestone ? 0.55 : 0), lineWidth: 1.5)
-            )
         }
-        .buttonStyle(.plain)
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Clinical.accent.opacity(milestone ? 0.55 : 0), lineWidth: 1.5)
+        )
+    }
+
+    /// Binding for the report-focus picker: reads/writes `reportFocusTreatment`, but a nil
+    /// selection (nothing explicitly chosen yet) resolves to the earliest daily treatment so the
+    /// segmented control always shows a selected segment instead of none.
+    private var reportFocusBinding: Binding<Treatment?> {
+        Binding(
+            get: {
+                reportFocusTreatment ?? dailyActiveTreatments.min { $0.startDate < $1.startDate }
+            },
+            set: { reportFocusTreatment = $0 }
+        )
     }
 
     private var empty: some View {
@@ -889,6 +937,9 @@ private struct RoutineStepRow: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pop = false
+    /// The check circle's diameter, scaled with Dynamic Type so the actual tap target grows
+    /// alongside the surrounding row text instead of staying a fixed 24pt dot.
+    @ScaledMetric(relativeTo: .body) private var checkDiameter: CGFloat = 24
 
     /// Meds read copper, device/in-office work reads sage — both straight from the palette.
     private var classTint: Color {
@@ -960,19 +1011,22 @@ private struct RoutineStepRow: View {
             }
         } label: {
             ZStack {
-                Circle().fill(done ? Clinical.accent : Color.clear)
-                Circle().strokeBorder(done ? Clinical.accent : Clinical.hairline, lineWidth: 1.5)
+                // Unchecked reads as an actionable empty checkbox — a faint copper fill plus a
+                // stronger copper stroke — rather than the old near-invisible hairline dot that
+                // lost to the (i) info glyph for visual weight on the row.
+                Circle().fill(done ? Clinical.accent : Clinical.accent.opacity(0.06))
+                Circle().strokeBorder(done ? Clinical.accent : Clinical.accent.opacity(0.45), lineWidth: 2)
                 if done {
                     Image(systemName: "checkmark")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Clinical.surface)
                 }
             }
-            .frame(width: 24, height: 24)
+            .frame(width: checkDiameter, height: checkDiameter)
             .scaleEffect(pop ? 1.15 : 1)
             // Reduce Motion: the fill lands instantly and the pop above never fires.
             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: done)
-            .frame(width: 36, height: 36)   // generous hit target around the 24pt circle
+            .frame(width: max(44, checkDiameter + 20), height: max(44, checkDiameter + 20))   // >=44pt hit target
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

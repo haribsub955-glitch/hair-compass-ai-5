@@ -13,6 +13,17 @@ struct TreatmentDetailSheet: View {
     /// tap away.
     var startWithLogForm = false
 
+    // Everything a per-treatment progress report needs — this sheet doesn't otherwise touch
+    // most of these, but `ProgressReport.build` is a pure app-wide synthesis, not something
+    // scoped to a single Treatment's own relationships.
+    @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
+    @Query private var allTreatments: [Treatment]
+    @Query private var doses: [TreatmentDose]
+    @Query private var labs: [LabResult]
+    @Query private var sideEffectLogs: [SideEffectLog]
+    @Query private var triggerEvents: [TriggerEvent]
+    @Query(sort: \PhotoRecord.createdAt) private var photoRecords: [PhotoRecord]
+
     @State private var showLogForm = false
     @State private var newType: SideEffectType = .scalpIrritation
     @State private var newSeverity: Int = 1
@@ -21,6 +32,7 @@ struct TreatmentDetailSheet: View {
     /// backdatable, same ~30-day-back idiom `LogSheet`'s `DateStripPicker` already uses for
     /// backfill, so a late entry doesn't get mis-dated or skipped.
     @State private var newDate = Date.now
+    @State private var showReport = false
 
     private var calendar: Calendar { .current }
 
@@ -29,6 +41,7 @@ struct TreatmentDetailSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     header
+                    if let report = treatmentReport { progressReportRow(report) }
                     refillSection
                     ingredientsSection
                     tolerabilitySection
@@ -46,7 +59,42 @@ struct TreatmentDetailSheet: View {
             .onAppear {
                 if startWithLogForm { showLogForm = true }
             }
+            .sheet(isPresented: $showReport) {
+                if let report = treatmentReport { ProgressReportSheet(report: report, photos: photoRecords) }
+            }
         }
+    }
+
+    /// This treatment's own progress report — focused via `ProgressReport.build(focus:)` so a
+    /// treatment added well after another one gets its own week clock and honest read instead of
+    /// reusing whichever treatment happens to be earliest (round-5 fix).
+    private var treatmentReport: ProgressReport? {
+        ProgressReport.build(
+            entries: entries, treatments: allTreatments, doses: doses,
+            labs: labs, sideEffects: sideEffectLogs, triggers: triggerEvents,
+            focus: treatment
+        )
+    }
+
+    private func progressReportRow(_ report: ProgressReport) -> some View {
+        Button { showReport = true } label: {
+            ClinicalCard(padding: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 15)).foregroundStyle(Clinical.accent)
+                        .frame(width: 34, height: 34)
+                        .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Progress report").font(.system(size: 14, weight: .semibold)).foregroundStyle(Clinical.ink)
+                        Text("Week \(report.weekNumber) · this treatment's own trajectory")
+                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Header

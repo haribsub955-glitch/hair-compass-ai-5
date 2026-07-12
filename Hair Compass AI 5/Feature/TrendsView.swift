@@ -18,8 +18,22 @@ struct TrendsView: View {
     @State private var showExport = false
     @State private var showBadges = false
 
-    enum Range: String, CaseIterable { case m1 = "1M", m3 = "3M", m6 = "6M"
-        var days: Int { self == .m1 ? 30 : (self == .m3 ? 90 : 180) }
+    // Round-5 addition: 1Y and All. The app's central teaching is "judge at 24 weeks" and
+    // treatment journeys run multi-year — a 180-day cap meant the moment someone passed ~week
+    // 26 they could never again see their pre-treatment baseline and treatment period on one
+    // chart. "All" isn't literally unbounded (a fixed 10-year window is indistinguishable from
+    // "everything logged" for any real account) — it just stops being the thing that quietly
+    // truncates a loyal user's own history.
+    enum Range: String, CaseIterable { case m1 = "1M", m3 = "3M", m6 = "6M", y1 = "1Y", all = "All"
+        var days: Int {
+            switch self {
+            case .m1: return 30
+            case .m3: return 90
+            case .m6: return 180
+            case .y1: return 365
+            case .all: return 3650
+            }
+        }
     }
     @State private var range: Range = .m3
 
@@ -311,12 +325,12 @@ struct TrendsView: View {
 
                     Spacer(minLength: 8)
 
-                    if let average = summary.currentAverage {
+                    if let stat = summary.heroStat {
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text(average.formatted(.number.precision(.fractionLength(1))))
+                            Text(stat.value)
                                 .font(Clinical.number(22))
-                                .foregroundStyle(Clinical.ink)
-                            Text("7D AVG")
+                                .foregroundStyle(stat.isDelta ? summary.tint : Clinical.ink)
+                            Text(stat.caption)
                                 .font(Clinical.eyebrow(8))
                                 .foregroundStyle(Clinical.tertiary)
                         }
@@ -521,14 +535,34 @@ struct TrendsView: View {
     }
 
     private var xAxis: some AxisContent {
-        AxisMarks(values: .stride(by: range == .m1 ? .weekOfYear : .month)) { value in
+        AxisMarks(values: .stride(by: xAxisStride)) { value in
             AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
             AxisValueLabel {
                 if let d = value.as(Date.self) {
-                    Text(d.formatted(range == .m1 ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated)))
+                    Text(d.formatted(xAxisFormat))
                         .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                 }
             }
+        }
+    }
+
+    /// Denser stride at short ranges, coarser at long ones — a year-plus of daily data crammed
+    /// into monthly ticks would read as a solid smear of labels.
+    private var xAxisStride: Calendar.Component {
+        switch range {
+        case .m1: return .weekOfYear
+        case .m3, .m6: return .month
+        case .y1, .all: return .quarter
+        }
+    }
+
+    /// Month-only reads fine inside one calendar year; past that the same "Jan" tick would
+    /// repeat every year with nothing to tell them apart, so the year joins the label.
+    private var xAxisFormat: Date.FormatStyle {
+        switch range {
+        case .m1: return .dateTime.month(.abbreviated).day()
+        case .m3, .m6: return .dateTime.month(.abbreviated)
+        case .y1, .all: return .dateTime.month(.abbreviated).year(.twoDigits)
         }
     }
 
@@ -638,9 +672,27 @@ struct TrajectorySummary {
     var confidenceLabel: String {
         switch currentCount {
         case 5...: return "Good coverage"
-        case 3...4: return "Building coverage"
+        case 3...4:
+            let remaining = 5 - currentCount
+            return "Log \(remaining) more day\(remaining == 1 ? "" : "s") to firm this up"
         default: return "Limited coverage"
         }
+    }
+
+    /// The card's headline stat: once two comparable seven-day windows exist, the number IS the
+    /// delta the body copy describes ("A 0.5-band change…") — captioned and colored to match, so
+    /// the big number and the sentence underneath it can never contradict each other. Before that
+    /// (baseline still forming), there's no delta to show, so it falls back to the plain current
+    /// average captioned for exactly what it is.
+    var heroStat: (value: String, caption: String, isDelta: Bool)? {
+        if let delta, currentCount >= 2, previousCount >= 2 {
+            let text = String(format: "%+.1f", delta)
+            return (text, "BANDS VS LAST WK", true)
+        }
+        if let currentAverage {
+            return (currentAverage.formatted(.number.precision(.fractionLength(1))), "7D AVG", false)
+        }
+        return nil
     }
 
     var accessibilityLabel: String {

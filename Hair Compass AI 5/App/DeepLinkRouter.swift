@@ -9,6 +9,11 @@ final class DeepLinkRouter {
     /// Set when a milestone-reminder notification is tapped — CareView opens the progress
     /// report and resets this.
     var openProgressReportRequested = false
+    /// The treatment a milestone notification's report tap should focus on (parsed from the
+    /// `milestone.<treatmentID>.<week>` notification id), so a second, later treatment's
+    /// milestone opens THAT treatment's report instead of always the earliest one's. nil for any
+    /// other route into the report (the in-app card), where CareView's own picker/default rules.
+    var progressReportFocusTreatmentID: String?
     /// Set when the monthly photo-reminder notification is tapped — PhotosView opens guided
     /// capture and resets this.
     var openGuidedCaptureRequested = false

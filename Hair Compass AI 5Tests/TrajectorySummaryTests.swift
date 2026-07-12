@@ -93,4 +93,43 @@ struct TrajectorySummaryTests {
         #expect(summary.washDayHedge == nil)
         #expect(!summary.detail.contains("wash day"))
     }
+
+    @Test func heroStatShowsSignedDeltaWhenBothWindowsAreComparable() {
+        // Round-5 fix: the headline number must be the same quantity the body sentence
+        // describes (a band *change*), never a plain average captioned as if it were the delta.
+        let now = Date.now
+        var entries: [DailyEntry] = []
+        for offset in -13...(-7) {
+            entries.append(DailyEntry(date: day(offset, from: now), shed: .normal))
+        }
+        for offset in -6...0 {
+            entries.append(DailyEntry(date: day(offset, from: now), shed: .heavy))
+        }
+
+        let summary = TrajectorySummary(entries: entries, now: now, calendar: calendar)
+        let stat = try! #require(summary.heroStat)
+        #expect(stat.isDelta)
+        #expect(stat.caption == "BANDS VS LAST WK")
+        #expect(stat.value.hasPrefix("+"))
+    }
+
+    @Test func heroStatFallsBackToAverageWhileBaselineIsForming() {
+        let now = Date.now
+        let entries = [DailyEntry(date: now, shed: .heavy)]
+        let summary = TrajectorySummary(entries: entries, now: now, calendar: calendar)
+        let stat = try! #require(summary.heroStat)
+        #expect(!stat.isDelta)
+        #expect(stat.caption == "7D AVG")
+    }
+
+    @Test func confidenceLabelGivesActionableCountInsteadOfJargon() {
+        let now = Date.now
+        var entries: [DailyEntry] = []
+        for offset in -2...0 {
+            entries.append(DailyEntry(date: day(offset, from: now), shed: .normal))
+        }
+        let summary = TrajectorySummary(entries: entries, now: now, calendar: calendar)
+        #expect(summary.currentCount == 3)
+        #expect(summary.confidenceLabel == "Log 2 more days to firm this up")
+    }
 }

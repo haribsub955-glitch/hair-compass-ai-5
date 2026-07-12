@@ -286,9 +286,12 @@ struct OnboardingFlow: View {
                 ForEach(bands, id: \.self) { b in
                     let on = profile.ageBand == b
                     Button { profile.ageBand = b; UISelectionFeedbackGenerator().selectionChanged() } label: {
+                        // Copper selected state — matches sexStep/pregnancyStep/familyStep so the
+                        // whole linear flow speaks one "selected" language instead of switching to
+                        // a near-black ink pill just for this step.
                         Text(b).font(.system(size: 16, weight: on ? .semibold : .regular)).foregroundStyle(on ? Clinical.surface : Clinical.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 15)
-                            .background(on ? Clinical.ink : Clinical.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .background(on ? Clinical.accent : Clinical.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
                     }.buttonStyle(.plain)
                 }

@@ -159,6 +159,9 @@ struct PhotosView: View {
     private var regionPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                // A little top clearance keeps the row below the header's CornerSprig leaves,
+                // and the trailing padding below gives the last chip full breathing room at the
+                // scroll's end instead of butting straight against the fade mask's edge.
                 ForEach(PhotoRegion.allCases) { r in
                     let on = r == region
                     let hasPhotos = regionsWithPhotos.contains(r)
@@ -185,7 +188,11 @@ struct PhotosView: View {
                     .accessibilityAddTraits(on ? .isSelected : [])
                     .accessibilityHint((on ? "Selected region" : "Shows \(r.title.lowercased()) progress photos") + (hasPhotos ? ", has photos" : ""))
                 }
+                // Trailing breathing room so the last chip lands clear of the fade mask's edge
+                // at full scroll instead of having its glyph bisected right at the boundary.
+                Spacer(minLength: 12)
             }
+            .padding(.top, 3)
             // Spring the ink pill from chip to chip on selection; Reduce Motion keeps the
             // original quick ease instead.
             .animation(
@@ -193,7 +200,7 @@ struct PhotosView: View {
                 value: region
             )
         }
-        .trailingFade()
+        .trailingFade(width: 36)
     }
 
     /// A draggable before/after slider in place of two side-by-side thumbnails. Defaults to the

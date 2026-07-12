@@ -65,6 +65,23 @@ enum ExportService {
         }
         out += "• Logging streak: \(HairAnalytics.loggingStreak(entryDates: entries.map(\.date))) days\n\n"
 
+        // Notes — free-text context the user wrote down ("switched shampoo", "started keto",
+        // "post-illness") that the structured fields can't hold. Previously write-only: stored
+        // on every DailyEntry but never surfaced anywhere except reopening that exact day, so the
+        // dated context that later explains a trend inflection silently never reached a visit.
+        // Capped to the last 90 days / 15 entries so it can't balloon the summary.
+        let noteCutoff = calendar.date(byAdding: .day, value: -90, to: now) ?? now
+        let notedEntries = entries
+            .filter { $0.date >= noteCutoff && !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted { $0.date > $1.date }
+        if !notedEntries.isEmpty {
+            out += "NOTES (last 90 days)\n"
+            for e in notedEntries.prefix(15) {
+                out += "• \(e.date.formatted(.dateTime.year().month().day())): \(e.note)\n"
+            }
+            out += "\n"
+        }
+
         // Treatments
         out += "TREATMENTS\n"
         if treatments.isEmpty {

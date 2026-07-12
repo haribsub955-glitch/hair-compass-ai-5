@@ -7,6 +7,10 @@ import SwiftUI
 /// shown is derived by the pure `ProgressReport.build`; this view only renders it.
 struct ProgressReportSheet: View {
     let report: ProgressReport
+    /// Every photo on record — filtered/paired per region via `ProgressReport.photoPair`. Nil
+    /// (the default) simply skips the photo section, so existing call sites that predate this
+    /// argument keep building.
+    var photos: [PhotoRecord] = []
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -25,6 +29,7 @@ struct ProgressReportSheet: View {
                     if let adherence = report.adherence { adherenceCard(adherence) }
                     tolerabilityCard
                     if !report.labs.isEmpty { labsCard }
+                    if !photoPairs.isEmpty { photoCard }
                     StrandDivider()
                     honestReadCard
                     Text("A self-tracked record for your own clinician conversations — not medical advice.")
@@ -271,6 +276,64 @@ struct ProgressReportSheet: View {
                 }
             }
         }
+    }
+
+    // MARK: Photo evidence
+
+    /// One baseline/latest pair per region with ≥ 2 captures, via `ProgressReport.photoPair` —
+    /// pure reuse of the same selection logic the Visit PDF already uses, anchored to this
+    /// report's own window when it has a focus treatment.
+    private var photoPairs: [(region: PhotoRegion, baseline: PhotoRecord, latest: PhotoRecord, caveat: String?)] {
+        PhotoRegion.allCases.compactMap { region in
+            let regionPhotos = photos.filter { $0.region == region }
+            guard let pair = report.photoPair(in: regionPhotos) else { return nil }
+            return (region, pair.baseline, pair.latest, pair.caveat)
+        }
+    }
+
+    /// The evidence users and clinicians trust most for hair — shown here so the milestone
+    /// moment this report exists to deliver doesn't ask someone to judge 24 weeks of change
+    /// without the single most persuasive record they've been diligently building.
+    private var photoCard: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Eyebrow(text: "Photo record")
+                ForEach(photoPairs, id: \.region) { pair in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(pair.region.title)
+                            .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.ink)
+                        HStack(spacing: 10) {
+                            photoThumb(pair.baseline, label: "Baseline")
+                            photoThumb(pair.latest, label: "Latest")
+                        }
+                        if let caveat = pair.caveat {
+                            Label(caveat, systemImage: "exclamationmark.triangle")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Clinical.warning)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func photoThumb(_ record: PhotoRecord, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Group {
+                if let image = PhotoStore.shared.loadThumbnail(record.imagePath) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Rectangle().fill(Clinical.canvas)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(3.0 / 4.0, contentMode: .fill)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+            Text("\(label) · \(record.createdAt.formatted(date: .abbreviated, time: .omitted))")
+                .font(.system(size: 10)).foregroundStyle(Clinical.tertiary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: The honest read

@@ -280,7 +280,10 @@ enum RefillUrgency {
 }
 
 enum LabTest: String, Codable, CaseIterable, Identifiable {
-    case ferritin, tsh, freeT4, vitaminD, vitaminB12
+    // Round-5 addition: zinc, hemoglobin, total testosterone and DHEA-S — the rest of a
+    // standard hair-loss workup (CBC/iron studies and the female-pattern-loss androgen panel)
+    // that a five-test vocabulary couldn't hold.
+    case ferritin, tsh, freeT4, vitaminD, vitaminB12, zinc, hemoglobin, totalTestosterone, dheaS
     var id: String { rawValue }
 
     var title: String {
@@ -290,6 +293,10 @@ enum LabTest: String, Codable, CaseIterable, Identifiable {
         case .freeT4: return "Free T4"
         case .vitaminD: return "Vitamin D (25-OH)"
         case .vitaminB12: return "Vitamin B12"
+        case .zinc: return "Zinc"
+        case .hemoglobin: return "Hemoglobin"
+        case .totalTestosterone: return "Total testosterone"
+        case .dheaS: return "DHEA-S"
         }
     }
 
@@ -300,6 +307,10 @@ enum LabTest: String, Codable, CaseIterable, Identifiable {
         case .freeT4: return "ng/dL"
         case .vitaminD: return "ng/mL"
         case .vitaminB12: return "pg/mL"
+        case .zinc: return "mcg/dL"
+        case .hemoglobin: return "g/dL"
+        case .totalTestosterone: return "ng/dL"
+        case .dheaS: return "mcg/dL"
         }
     }
 
@@ -311,6 +322,16 @@ enum LabTest: String, Codable, CaseIterable, Identifiable {
         case .freeT4: return 0.8...1.8
         case .vitaminD: return 30...100
         case .vitaminB12: return 200...900
+        case .zinc: return 70...120
+        // Spans both sexes loosely — hemoglobin's real range is sex-specific (roughly
+        // 13.5–17.5 g/dL men, 12.0–15.5 g/dL women). Use the per-result override for a
+        // precise read; this default only catches a clearly abnormal value either way.
+        case .hemoglobin: return 12.0...17.5
+        // Testosterone and DHEA-S are ordered here mainly for a female-pattern-loss workup —
+        // the default shown is a typical adult FEMALE range. A male result should always use
+        // the range printed on the lab report (the per-result override below), not this default.
+        case .totalTestosterone: return 15...70
+        case .dheaS: return 65...380
         }
     }
 
@@ -320,6 +341,10 @@ enum LabTest: String, Codable, CaseIterable, Identifiable {
         case .tsh, .freeT4: return "Thyroid function — a treatable shedding driver."
         case .vitaminD: return "Order when clinically indicated, not by default."
         case .vitaminB12: return "Checked selectively; deficiency is uncommon."
+        case .zinc: return "Supports hair-follicle function; deficiency is uncommon without a dietary or absorption cause."
+        case .hemoglobin: return "Part of a CBC/iron workup. Default range spans both sexes — use your lab's own range for a precise read."
+        case .totalTestosterone: return "Ordered mainly for female pattern hair loss. Default range shown is typical for women — for a male result, use the range printed on your report."
+        case .dheaS: return "Ordered mainly for female pattern hair loss. Ranges vary widely by age and lab — use your report's printed range."
         }
     }
 
@@ -341,7 +366,7 @@ enum LabTest: String, Codable, CaseIterable, Identifiable {
                 LabUnitOption(label: unit, factorToCanonical: 1),
                 LabUnitOption(label: "pmol/L", factorToCanonical: 1.355),
             ]
-        case .ferritin, .tsh, .freeT4:
+        case .ferritin, .tsh, .freeT4, .zinc, .hemoglobin, .totalTestosterone, .dheaS:
             return [LabUnitOption(label: unit, factorToCanonical: 1)]
         }
     }

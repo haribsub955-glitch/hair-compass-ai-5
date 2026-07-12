@@ -177,6 +177,12 @@ struct RootView: View {
             notifications.onNotificationTapped = { identifier in
                 if identifier.hasPrefix("milestone.") {
                     tab = .care
+                    // Identifier shape is "milestone.<treatmentID>.<week>" (see
+                    // NotificationService.planMilestoneReminders) — pull the treatment id back
+                    // out so the report that opens is the one THIS milestone was about, not
+                    // whichever treatment happens to be earliest.
+                    let rest = identifier.dropFirst("milestone.".count)
+                    deepLinks.progressReportFocusTreatmentID = rest.split(separator: ".").first.map(String.init)
                     deepLinks.openProgressReportRequested = true
                 } else if identifier.hasPrefix("eveningCheckIn.") {
                     tab = .today
