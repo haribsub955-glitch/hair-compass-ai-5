@@ -48,6 +48,13 @@ enum ExportService {
             let sheds = recent.map { Double($0.shed.rawValue) }
             let scalps = recent.map { Double($0.scalpTotal) }
             out += "• Shedding avg: \(oneDecimal(HairAnalytics.mean(sheds)))/3 (trend \(trend(HairAnalytics.direction(recent.sorted { $0.date < $1.date }.map { Double($0.shed.rawValue) }))))\n"
+            // Wash days read heavier than dry days for reasons unrelated to a real change —
+            // splitting the average keeps the headline number from quietly absorbing that.
+            let washed = recent.filter(\.washedHair).map { Double($0.shed.rawValue) }
+            let dry = recent.filter { !$0.washedHair }.map { Double($0.shed.rawValue) }
+            if !washed.isEmpty && !dry.isEmpty {
+                out += "  – wash-day avg \(oneDecimal(HairAnalytics.mean(washed)))/3 (\(washed.count) days) vs non-wash avg \(oneDecimal(HairAnalytics.mean(dry)))/3 (\(dry.count) days)\n"
+            }
             out += "• Scalp severity avg: \(oneDecimal(HairAnalytics.mean(scalps)))/16\n"
             out += "• Sleep quality avg: \(oneDecimal(HairAnalytics.mean(recent.map { Double($0.sleepQuality) })))/5\n"
             out += "• Stress avg: \(oneDecimal(HairAnalytics.mean(recent.map { Double($0.stress) })))/5\n"
@@ -139,7 +146,7 @@ enum ExportService {
             out += "\n"
         }
 
-        out += "Bring your progress photos and trend charts to the appointment for the full picture."
+        out += "This plain-text summary doesn't include photos or charts — the Visit report (PDF) does, in one document."
         return out
     }
 
@@ -169,7 +176,8 @@ enum ExportService {
             dailyEntries: entries.map {
                 .init(date: $0.date, shed: $0.shed.rawValue, flaking: $0.flaking, erythema: $0.erythema,
                       itch: $0.itch, sleepQuality: $0.sleepQuality, stress: $0.stress,
-                      cigarettes: $0.cigarettes, alcohol: $0.alcoholDrinks, oiliness: $0.oiliness, note: $0.note)
+                      cigarettes: $0.cigarettes, alcohol: $0.alcoholDrinks, oiliness: $0.oiliness,
+                      washedHair: $0.washedHair, note: $0.note)
             },
             treatments: treatments.map {
                 .init(name: $0.name.isEmpty ? $0.treatmentClass.title : $0.name, treatmentClass: $0.classRaw,
@@ -231,7 +239,8 @@ private struct ExportBundle: Codable {
     }
     struct Entry: Codable {
         let date: Date; let shed: Int; let flaking: Int; let erythema: Int; let itch: Int
-        let sleepQuality: Int; let stress: Int; let cigarettes: Int; let alcohol: Int; let oiliness: Int; let note: String
+        let sleepQuality: Int; let stress: Int; let cigarettes: Int; let alcohol: Int; let oiliness: Int
+        let washedHair: Bool; let note: String
     }
     struct TreatmentDTO: Codable {
         let name: String; let treatmentClass: String; let dose: String

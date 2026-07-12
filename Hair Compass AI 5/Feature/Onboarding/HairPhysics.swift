@@ -227,8 +227,18 @@ struct SheddingReflection: Equatable {
 struct SheddingStatusScene: View {
     var intensity: CGFloat
     var showsCollection = true
+    /// When true and nothing has been logged (`showsCollection == false`), seeds a faint, fixed
+    /// resting arrangement so the scene reads as an intentional canvas rather than empty space
+    /// while a new user decides what to log — never a real reading (it ignores `intensity`
+    /// entirely and stays well below Minimal's own opacity), just enough density that the void
+    /// between the greeting and the headline doesn't read as a rendering artifact. Ignored once
+    /// `showsCollection` is true.
+    var ambientWhenEmpty = false
 
     private var profile: SheddingSceneProfile { .make(intensity: intensity) }
+    private static let ambientProfile = SheddingSceneProfile(
+        band: 0, displayIntensity: 0.08, restingStrandCount: 3, clusterCount: 0, washOpacity: 0.018
+    )
 
     var body: some View {
         ZStack {
@@ -256,6 +266,10 @@ struct SheddingStatusScene: View {
 
             if showsCollection {
                 RestingHairCollection(profile: profile)
+                    .transition(.opacity)
+            } else if ambientWhenEmpty {
+                RestingHairCollection(profile: Self.ambientProfile)
+                    .opacity(0.34)
                     .transition(.opacity)
             }
         }

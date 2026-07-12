@@ -30,7 +30,12 @@ enum HairAnalytics {
     // MARK: - Labs
 
     static func flag(for value: Double, test: LabTest) -> LabFlag {
-        let range = test.referenceRange
+        flag(for: value, range: test.referenceRange)
+    }
+
+    /// Range-based overload — honors a user-supplied "range from your lab report" override
+    /// (`LabResult.effectiveRange`) instead of always assuming the built-in adult default.
+    static func flag(for value: Double, range: ClosedRange<Double>) -> LabFlag {
         if value < range.lowerBound { return .low }
         if value > range.upperBound { return .high }
         return .normal

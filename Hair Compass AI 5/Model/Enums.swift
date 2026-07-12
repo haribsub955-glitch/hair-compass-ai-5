@@ -322,9 +322,42 @@ enum LabTest: String, Codable, CaseIterable, Identifiable {
         case .vitaminB12: return "Checked selectively; deficiency is uncommon."
         }
     }
+
+    /// Alternate units some labs report in (UK/EU/AU reports commonly use SI units for vitamin
+    /// D and B12), each with a deterministic factor to this test's canonical `unit` — the unit
+    /// every `LabResult.value` is actually stored in. The canonical unit is always first, so
+    /// "no conversion" is always an available, obvious choice.
+    var unitOptions: [LabUnitOption] {
+        switch self {
+        case .vitaminD:
+            // 25-OH vitamin D: 1 nmol/L ≈ 0.4 ng/mL (i.e. ng/mL = nmol/L / 2.496).
+            return [
+                LabUnitOption(label: unit, factorToCanonical: 1),
+                LabUnitOption(label: "nmol/L", factorToCanonical: 1 / 2.496),
+            ]
+        case .vitaminB12:
+            // 1 pmol/L ≈ 1.355 pg/mL.
+            return [
+                LabUnitOption(label: unit, factorToCanonical: 1),
+                LabUnitOption(label: "pmol/L", factorToCanonical: 1.355),
+            ]
+        case .ferritin, .tsh, .freeT4:
+            return [LabUnitOption(label: unit, factorToCanonical: 1)]
+        }
+    }
 }
 
-enum LabFlag {
+/// One unit a lab report might use for a given test, and the deterministic multiplier that
+/// converts a value in that unit to the test's canonical stored unit.
+struct LabUnitOption: Identifiable, Equatable {
+    let label: String
+    let factorToCanonical: Double
+    var id: String { label }
+
+    func toCanonical(_ value: Double) -> Double { value * factorToCanonical }
+}
+
+enum LabFlag: Equatable {
     case low, normal, high
     var title: String {
         switch self {

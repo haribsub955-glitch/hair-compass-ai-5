@@ -71,10 +71,15 @@ struct ConditionsHero: View {
                 // scene's own drag gesture underneath it. Centered on the trailing edge of the
                 // scene band (clear of both the greeting/avatar row above and the band-word/chip
                 // row below) so it never collides with the 44pt avatar button.
-                dragRailChip
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                    .padding(.trailing, 14)
-                    .allowsHitTesting(false)
+                HStack(alignment: .center, spacing: 10) {
+                    if shed == nil {
+                        bandTickScale
+                    }
+                    dragRailChip
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                .padding(.trailing, 14)
+                .allowsHitTesting(false)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 304, alignment: .topLeading)
@@ -97,7 +102,8 @@ struct ConditionsHero: View {
                 GeometryReader { geo in
                     SheddingStatusScene(
                         intensity: displayIntensity,
-                        showsCollection: dragIntensity != nil || shed != nil
+                        showsCollection: dragIntensity != nil || shed != nil,
+                        ambientWhenEmpty: true
                     )
                     .frame(width: geo.size.width, height: geo.size.height)
                     .contentShape(Rectangle())
@@ -183,6 +189,28 @@ struct ConditionsHero: View {
         .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
         .shadow(color: Clinical.cardShadow, radius: 6, y: 2)
         .accessibilityHidden(true)
+    }
+
+    /// Ghosted band-name ticks along the drag path, shown only before anything is logged so the
+    /// void between the greeting and the headline reads as an intentional scale rather than
+    /// empty space with a lone rail chip floating in it. Sits at a low, non-competing opacity —
+    /// decorative only, same as the rail chip it sits beside — and brightens the row nearest a
+    /// live drag so the scale doubles as feedback once a finger is down.
+    private var bandTickScale: some View {
+        VStack(alignment: .trailing, spacing: 13) {
+            ForEach(ShedLevel.allCases.reversed()) { level in
+                Text(level.title.uppercased())
+                    .font(Clinical.eyebrow(8)).tracking(0.8)
+                    .foregroundStyle(Clinical.ink)
+                    .opacity(tickOpacity(for: level))
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func tickOpacity(for level: ShedLevel) -> Double {
+        guard let dragIntensity else { return 0.30 }
+        return SheddingDial.band(dragIntensity) == level.rawValue ? 0.85 : 0.18
     }
 
     // MARK: - Foreground content
@@ -313,27 +341,37 @@ struct ConditionsHero: View {
     }
 
     /// Ring (progress to next level) + XP total + level name, all in one chip so the row stays
-    /// to one line. `.numericText()` only wraps the number itself, so a level-up's longer name
-    /// doesn't fight the digit-roll transition.
+    /// to one line. `ViewThatFits` picks the fullest label ("1,623 XP · Sapling") that fits the
+    /// available width and falls back to the number-only label ("1,623 XP") rather than letting
+    /// the level name ellipsize into gibberish — the level name always stays in the
+    /// accessibility label either way. `.numericText()` only wraps the number itself, so a
+    /// level-up's longer name doesn't fight the digit-roll transition.
     private var xpChip: some View {
         HStack(spacing: 6) {
             XPProgressRing(progress: levelProgress)
-            HStack(spacing: 2) {
-                Text("\(xp)")
-                    .contentTransition(.numericText())
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: xp)
-                Text("XP" + (levelName.map { " · \($0)" } ?? ""))
+            ViewThatFits(in: .horizontal) {
+                xpLabel(showsLevel: true)
+                xpLabel(showsLevel: false)
             }
-            .font(Clinical.eyebrow(10))
-            .foregroundStyle(Clinical.accent)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Clinical.surface.opacity(0.85), in: Capsule())
         .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(levelName.map { "\(xp) XP, \($0) level" } ?? "\(xp) XP")
+    }
+
+    private func xpLabel(showsLevel: Bool) -> some View {
+        HStack(spacing: 2) {
+            Text("\(xp)")
+                .contentTransition(.numericText())
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: xp)
+            Text("XP" + (showsLevel ? (levelName.map { " · \($0)" } ?? "") : ""))
+        }
+        .font(Clinical.eyebrow(10))
+        .foregroundStyle(Clinical.accent)
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -493,24 +531,60 @@ struct TodayTileGrid: View {
     /// Unlike the other three self-report tiles, Scalp's total is a composite of three
     /// components — the tile earns its place by breaking the total down (Flake/Red/Itch bars)
     /// instead of just repeating the "\(total)/16 · \(band)" line the hero subline already shows.
+    ///
+    /// This is a bespoke layout rather than `GlanceTile` because the bar cluster needs its own
+    /// row in the normal flow: GlanceTile's background-motif layering (built for a light wash
+    /// behind the text) let the not-logged caption visually collide with the Flake/Red/Itch
+    /// labels underneath it. Explicit rows with real spacing keep the two apart at every state.
     private var scalpTile: some View {
         let total = entry?.scalpTotal
-        return GlanceTile(
-            title: "Scalp",
-            value: total.map { "\($0)/16" } ?? "—",
-            caption: entry?.scalpBand.title ?? "Not logged",
-            valueColor: entry.map { Clinical.bandColor($0.scalpBand) } ?? Clinical.tertiary,
-            tint: Clinical.critical,   // the redness/rose family
-            motifOpacity: 1,
-            action: onLogTap,
-            actionHint: "Edits today's scalp check-in"
-        ) {
-            ScalpComponentBars(
-                flaking: entry?.flaking ?? 0,
-                erythema: entry?.erythema ?? 0,
-                itch: entry?.itch ?? 0
+        let logged = total != nil
+        return Button(action: onLogTap) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text("SCALP")
+                        .font(Clinical.eyebrow(10)).tracking(1.2)
+                        .foregroundStyle(Clinical.tertiary)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Clinical.accent.opacity(0.75))
+                        .accessibilityHidden(true)
+                }
+                Text(total.map { "\($0)/16" } ?? "—")
+                    .font(Clinical.number(24))
+                    .foregroundStyle(entry.map { Clinical.bandColor($0.scalpBand) } ?? Clinical.tertiary)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                Text(entry?.scalpBand.title ?? "Not logged")
+                    .font(.system(size: 11)).foregroundStyle(Clinical.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 10)
+                ScalpComponentBars(
+                    flaking: entry?.flaking ?? 0,
+                    erythema: entry?.erythema ?? 0,
+                    itch: entry?.itch ?? 0,
+                    logged: logged
+                )
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 122, alignment: .leading)
+            .background {
+                // Identity wash — the redness/rose family, same whisper the other tiles use.
+                LinearGradient(colors: [Clinical.critical.opacity(0.02), Clinical.critical.opacity(0.06)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+            .background(Clinical.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Clinical.hairline, lineWidth: 1)
             )
+            .shadow(color: Clinical.cardShadow, radius: 10, y: 4)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Scalp: \(total.map { "\($0)/16" } ?? "not logged"), \(entry?.scalpBand.title ?? "not logged")")
         }
+        .buttonStyle(.clinicalPressable)
+        .accessibilityHint("Edits today's scalp check-in")
     }
 
     private var sleepTile: some View {
@@ -670,11 +744,16 @@ private struct MedsArcRing: View {
 /// Three small component bars — Flake / Red / Itch, each 0–3 — so the Scalp tile shows the
 /// makeup of its 16-point total instead of leaving the middle band empty. Bottoms align like a
 /// tiny bar chart; an unflagged component still draws a faint track so the trio always reads as
-/// one composed visual, not a sometimes-empty one.
+/// one composed visual, not a sometimes-empty one. Sits in the normal VStack flow below the
+/// value/caption (not layered as a background motif), so it never overlaps the text above it.
+/// When nothing is logged yet, the bars ghost to a flat zero-height track — an intentional
+/// empty state rather than a bare "—" — and the caption above already reads "Not logged" once,
+/// so the bars themselves stay silent rather than repeating it.
 private struct ScalpComponentBars: View {
     let flaking: Int
     let erythema: Int
     let itch: Int
+    var logged: Bool = true
 
     private var components: [(label: String, value: Int)] {
         [("Flake", flaking), ("Red", erythema), ("Itch", itch)]
@@ -685,16 +764,14 @@ private struct ScalpComponentBars: View {
             ForEach(components, id: \.label) { component in
                 VStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(Clinical.critical.opacity(component.value > 0 ? 0.7 : 0.16))
-                        .frame(width: 12, height: 6 + CGFloat(min(3, max(0, component.value))) * 9)
+                        .fill(Clinical.critical.opacity(logged ? (component.value > 0 ? 0.7 : 0.16) : 0.10))
+                        .frame(width: 12, height: logged ? 6 + CGFloat(min(3, max(0, component.value))) * 9 : 6)
                     Text(component.label)
                         .font(Clinical.eyebrow(7))
-                        .foregroundStyle(Clinical.tertiary)
+                        .foregroundStyle(Clinical.tertiary.opacity(logged ? 1 : 0.55))
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .padding(.bottom, 8)
     }
 }
 

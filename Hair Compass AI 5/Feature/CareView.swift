@@ -263,29 +263,32 @@ struct CareView: View {
 
     // MARK: Coach
 
-    /// Redesign v2: progress reads as a ring on the trailing side, not a bar.
+    /// Redesign v2: progress reads as a ring on the trailing side, not a bar. Capped and the
+    /// illustration faded well behind the text (round-2 fix) — this card used to run the
+    /// bottle art at near-full opacity across ~178pt, pushing today's actual routine below the
+    /// fold on every visit. Text now drives the height; the artwork is a whisper behind it.
     private var coachCard: some View {
         let msg = AdherenceCoach.message(doneToday: doneToday, totalToday: dailySteps.count, streak: streak, weeklyAdherence: nil)
         let progress = dailySteps.isEmpty ? 0 : Double(doneToday) / Double(dailySteps.count)
         return ClinicalCard(padding: 0) {
             ZStack {
                 LivingArtwork(art: BrandArt.planRitualV2, travel: 4, zoom: 0.014, phase: 0.4)
-                    .frame(maxWidth: .infinity, minHeight: 178)
+                    .frame(maxWidth: .infinity, minHeight: 118, maxHeight: 180)
                     .clipped()
-                    .opacity(0.52)
+                    .opacity(0.28)
 
                 LinearGradient(
                     stops: [
                         .init(color: Clinical.surface.opacity(0.99), location: 0),
-                        .init(color: Clinical.surface.opacity(0.94), location: 0.52),
-                        .init(color: Clinical.surface.opacity(0.48), location: 1),
+                        .init(color: Clinical.surface.opacity(0.96), location: 0.52),
+                        .init(color: Clinical.surface.opacity(0.62), location: 1),
                     ],
                     startPoint: .leading,
                     endPoint: .trailing
                 )
 
                 HStack(alignment: .center, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 8) {
                             Eyebrow(text: "Coach")
                             if streak > 0 {
@@ -293,10 +296,11 @@ struct CareView: View {
                                     .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
                             }
                         }
-                        Text(msg.headline).font(Clinical.headline(21)).foregroundStyle(Clinical.ink)
+                        Text(msg.headline).font(Clinical.headline(19)).foregroundStyle(Clinical.ink)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(msg.detail).font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                        Text(msg.detail).font(.system(size: 12.5)).foregroundStyle(Clinical.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(2)
                             .frame(maxWidth: 220, alignment: .leading)
                     }
                     Spacer(minLength: 8)
@@ -304,7 +308,7 @@ struct CareView: View {
                         CoachProgressRing(done: doneToday, total: dailySteps.count, progress: progress)
                     }
                 }
-                .padding(18)
+                .padding(16)
             }
         }
     }

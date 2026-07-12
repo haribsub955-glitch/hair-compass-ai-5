@@ -19,7 +19,8 @@ struct BackupServiceTests {
         let schema = Schema([
             Profile.self, DailyEntry.self, Treatment.self, TreatmentDose.self,
             SideEffectLog.self, LabResult.self, PhotoRecord.self,
-            HealthSnapshot.self, TriggerEvent.self
+            HealthSnapshot.self, TriggerEvent.self,
+            ProcedureAppointment.self, ProgressCheckIn.self
         ])
         return try ModelContainer(
             for: schema,
@@ -68,6 +69,15 @@ struct BackupServiceTests {
                                bodyMassKg: 78, bmi: 24.1, dietaryProteinG: 110, updatedAt: now)]
         env.triggers = [.init(typeRaw: TriggerType.illness.rawValue, date: yesterday,
                               note: "flu, ran a fever")]
+        env.procedures = [.init(typeRaw: ProcedureType.prp.rawValue, date: yesterday,
+                                location: "Downtown Derm", isCompleted: true,
+                                completedAt: yesterday, note: "session 1")]
+        env.progressCheckIns = [.init(date: yesterday, regrowthRaw: RegrowthLevel.few.rawValue,
+                                      densityRaw: ProgressTrend.better.rawValue,
+                                      sheddingRaw: ProgressTrend.same.rawValue,
+                                      hairlineRaw: ProgressTrend.same.rawValue,
+                                      overallRaw: ProgressTrend.better.rawValue,
+                                      scalpPain: false, scalpPainNote: "", note: "month 1")]
         return env
     }
 
@@ -100,6 +110,11 @@ struct BackupServiceTests {
                                    createdAt: yesterday, lighting: "daylight"))
         context.insert(HealthSnapshot(date: yesterday, sleepHours: 7.2))
         context.insert(TriggerEvent(type: .illness, date: yesterday, note: "flu"))
+        context.insert(ProcedureAppointment(type: .prp, date: yesterday, location: "Downtown Derm",
+                                            isCompleted: true, completedAt: yesterday, note: "session 1"))
+        context.insert(ProgressCheckIn(date: yesterday, regrowth: .few, density: .better,
+                                       shedding: .same, hairline: .same, overall: .better,
+                                       note: "month 1"))
         try context.save()
 
         let envelope = BackupService.makeEnvelope(
@@ -110,6 +125,8 @@ struct BackupServiceTests {
             photos: try context.fetch(FetchDescriptor<PhotoRecord>()),
             snapshots: try context.fetch(FetchDescriptor<HealthSnapshot>()),
             triggers: try context.fetch(FetchDescriptor<TriggerEvent>()),
+            procedures: try context.fetch(FetchDescriptor<ProcedureAppointment>()),
+            progressCheckIns: try context.fetch(FetchDescriptor<ProgressCheckIn>()),
             createdAt: now,
             photoData: { path in path == "fixture.jpg" ? Data("jpeg-bytes".utf8) : nil }
         )
@@ -126,6 +143,8 @@ struct BackupServiceTests {
         #expect(decoded.photos.count == 1)
         #expect(decoded.snapshots.count == 1)
         #expect(decoded.triggers.count == 1)
+        #expect(decoded.procedures.count == 1)
+        #expect(decoded.progressCheckIns.count == 1)
 
         // Spot values, with enums stored as raw values.
         #expect(decoded.profile?.name == "Harib")
@@ -136,6 +155,10 @@ struct BackupServiceTests {
         #expect(decoded.labs.first?.value == 38)
         #expect(decoded.snapshots.first?.sleepHours == 7.2)
         #expect(decoded.photos.first?.imageBase64 == Data("jpeg-bytes".utf8).base64EncodedString())
+        #expect(decoded.procedures.first?.typeRaw == ProcedureType.prp.rawValue)
+        #expect(decoded.procedures.first?.location == "Downtown Derm")
+        #expect(decoded.progressCheckIns.first?.regrowthRaw == RegrowthLevel.few.rawValue)
+        #expect(decoded.progressCheckIns.first?.note == "month 1")
 
         // Dates survive ISO8601 at whole-second fidelity and stay on the same calendar day.
         let labDate = try #require(decoded.labs.first?.collectedAt)
@@ -179,9 +202,10 @@ struct BackupServiceTests {
         let writer: (Data) -> String? = { _ in log.writes += 1; return "restored-\(log.writes).jpg" }
 
         // First pass: everything lands — profile applied (local was default) + 2 entries
-        // + 1 treatment + 2 doses + 1 side effect + 1 lab + 1 photo + 1 snapshot + 1 trigger.
+        // + 1 treatment + 2 doses + 1 side effect + 1 lab + 1 photo + 1 snapshot + 1 trigger
+        // + 1 procedure + 1 progress check-in.
         let first = try BackupService.restore(envelope, into: context, photoWriter: writer)
-        #expect(first.inserted == 11)
+        #expect(first.inserted == 13)
         #expect(first.skipped == 0)
         #expect(first.photosRestored == 1)
         #expect(log.writes == 1)
@@ -209,6 +233,8 @@ struct BackupServiceTests {
         #expect(try context.fetch(FetchDescriptor<PhotoRecord>()).count == 1)
         #expect(try context.fetch(FetchDescriptor<HealthSnapshot>()).count == 1)
         #expect(try context.fetch(FetchDescriptor<TriggerEvent>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<ProcedureAppointment>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<ProgressCheckIn>()).count == 1)
     }
 
     @Test func restoreKeepsAFilledInLocalProfile() throws {
@@ -267,6 +293,10 @@ struct BackupServiceTests {
                 != BackupService.treatmentKey(name: "Finasteride", startDate: truncated))
         #expect(BackupService.triggerKey(typeRaw: "illness", date: truncated)
                 != BackupService.triggerKey(typeRaw: "majorStress", date: truncated))
+        #expect(BackupService.procedureKey(typeRaw: "prp", date: fractional)
+                == BackupService.procedureKey(typeRaw: "prp", date: truncated))
+        #expect(BackupService.procedureKey(typeRaw: "prp", date: truncated)
+                != BackupService.procedureKey(typeRaw: "transplant", date: truncated))
     }
 
     @Test func defaultProfileDetection() {

@@ -89,6 +89,11 @@ final class DailyEntry {
     var alcoholDrinks: Int = 0 // WEAK tier — possible modest association, not proven
     var oiliness: Int = 0      // 0–3 self-report; an observation, not a risk driver (WEAK)
     var note: String = ""
+    /// Self-reported: hair was washed today. Shed hair is far more visible on wash days, so
+    /// this is the confound that lets Trends/ProgressReport/Compare tell an honest "wash days
+    /// show more shed" story instead of reading a heavier wash day as a real change. Schema-
+    /// safe default `false` — older rows decode as "not a wash day" rather than crashing.
+    var washedHair: Bool = false
 
     init(
         date: Date = .now,
@@ -101,7 +106,8 @@ final class DailyEntry {
         cigarettes: Int = 0,
         alcoholDrinks: Int = 0,
         oiliness: Int = 0,
-        note: String = ""
+        note: String = "",
+        washedHair: Bool = false
     ) {
         self.date = date
         self.shedRaw = shed.rawValue
@@ -114,6 +120,7 @@ final class DailyEntry {
         self.alcoholDrinks = alcoholDrinks
         self.oiliness = oiliness
         self.note = note
+        self.washedHair = washedHair
     }
 
     var shed: ShedLevel {
@@ -366,15 +373,28 @@ final class SideEffectLog {
 @Model
 final class LabResult {
     var testRaw: String = LabTest.ferritin.rawValue
+    /// Always stored in `test.unit` (the canonical unit) — any alternate-unit entry (e.g.
+    /// vitamin D in nmol/L) is converted at entry time in AddLabSheet, never at read time.
     var value: Double = 0
     var collectedAt: Date = Date.now
     var note: String = ""
+    /// Optional "use the range printed on your report" override — a UK/EU lab's own printed
+    /// interval, or a sex-specific ferritin range, takes precedence over the app's generic
+    /// adult default whenever both are set with `refLow < refHigh`. Schema-safe: nil means
+    /// "use the built-in default," matching every backup/restore made before this existed.
+    var refLow: Double?
+    var refHigh: Double?
 
-    init(test: LabTest = .ferritin, value: Double = 0, collectedAt: Date = .now, note: String = "") {
+    init(
+        test: LabTest = .ferritin, value: Double = 0, collectedAt: Date = .now, note: String = "",
+        refLow: Double? = nil, refHigh: Double? = nil
+    ) {
         self.testRaw = test.rawValue
         self.value = value
         self.collectedAt = collectedAt
         self.note = note
+        self.refLow = refLow
+        self.refHigh = refHigh
     }
 
     var test: LabTest {
@@ -382,7 +402,23 @@ final class LabResult {
         set { testRaw = newValue.rawValue }
     }
 
-    var flag: LabFlag { HairAnalytics.flag(for: value, test: test) }
+    /// The range flags/gauges actually judge this result against — the user's own override
+    /// when it's a valid interval, otherwise the built-in default.
+    var effectiveRange: ClosedRange<Double> {
+        if let refLow, let refHigh, refLow < refHigh { return refLow...refHigh }
+        return test.referenceRange
+    }
+
+    /// Whether `effectiveRange` differs from the built-in default — drives the "range from
+    /// your lab report" caption instead of a silent, unexplained band shift.
+    var hasCustomRange: Bool {
+        if let refLow, let refHigh, refLow < refHigh {
+            return refLow != test.referenceRange.lowerBound || refHigh != test.referenceRange.upperBound
+        }
+        return false
+    }
+
+    var flag: LabFlag { HairAnalytics.flag(for: value, range: effectiveRange) }
 }
 
 @Model

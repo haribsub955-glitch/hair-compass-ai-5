@@ -40,10 +40,12 @@ struct TrendsView: View {
                     eyebrow: "Longitudinal",
                     title: "Trends",
                     trailing: AnyView(
+                        // Solid ink disc — same treatment as the + buttons on Plan/Labs — so
+                        // the icon reads clearly on top of the sprig's densest leaf cluster
+                        // instead of a bare glyph losing contrast against the artwork.
                         HeaderActionButton(
                             systemName: "square.and.arrow.up",
-                            accessibilityLabel: "Export trends",
-                            prominent: false
+                            accessibilityLabel: "Export trends"
                         ) {
                             showExport = true
                         }
@@ -52,8 +54,9 @@ struct TrendsView: View {
                 .padding(.top, 8)
                 // Unboxed brand accent: the sprig bleeds from the screen's top-right behind the
                 // header. Background views take no layout space (no horizontal scroll), and the
-                // share button stays tappable — the art never hit-tests.
-                .background(alignment: .topTrailing) { CornerSprig() }
+                // share button stays tappable — the art never hit-tests. Inset smaller than the
+                // other tabs' default so it clears the 1M/3M/6M segmented control just below.
+                .background(alignment: .topTrailing) { CornerSprig(width: 150) }
 
                 ClinicalSegmented(options: Range.allCases, label: { $0.rawValue }, selection: $range)
 
@@ -364,6 +367,12 @@ struct TrendsView: View {
         let dir = HairAnalytics.direction(raw)
         let points = Array(zip(windowEntries.map(\.date), smoothed))
         let rawPoints = Array(zip(windowEntries.map(\.date), raw))
+        // Wash days read heavier for reasons that have nothing to do with a real change — marked
+        // hollow on the actual daily reading so the honest reason for a spike stays visible
+        // instead of silently blending into "shedding has been higher."
+        let washPoints: [(Date, Double)] = windowEntries.compactMap {
+            $0.washedHair ? ($0.date, Double($0.shed.rawValue)) : nil
+        }
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -387,11 +396,26 @@ struct TrendsView: View {
                             .lineStyle(.init(lineWidth: 2))
                             .foregroundStyle(Clinical.accent)
                     }
+                    ForEach(washPoints, id: \.0) { date, value in
+                        PointMark(x: .value("Date", date), y: .value("Shed", value))
+                            .symbol {
+                                Circle()
+                                    .strokeBorder(Clinical.ink, lineWidth: 1.3)
+                                    .frame(width: 7, height: 7)
+                            }
+                    }
                 }
                 .frame(height: 150)
                 .chartYScale(domain: 0...3)
-                .chartYAxis { yAxis([0, 1, 2, 3], labels: ["Min", "Norm", "Elev", "Heavy"]) }
+                .chartYAxis { yAxis([0, 1, 2, 3], labels: ["Low", "Normal", "High", "Heavy"]) }
                 .chartXAxis { xAxis }
+                if !washPoints.isEmpty {
+                    HStack(spacing: 5) {
+                        Circle().strokeBorder(Clinical.ink, lineWidth: 1.2).frame(width: 7, height: 7)
+                        Text("Wash day — shed reads heavier, not necessarily worse.")
+                            .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    }
+                }
             }
         }
     }
@@ -511,9 +535,13 @@ struct TrendsView: View {
             AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
             AxisValueLabel {
                 if let v = value.as(Double.self), let idx = values.firstIndex(of: v) {
+                    // Complete words only (no abbreviations that could read as truncated) —
+                    // fixedSize + a wide-enough gutter guarantees every label draws in full.
                     Text(labels[idx])
                         .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-                        .frame(width: 34, alignment: .trailing)   // pin gutter — stops horizontal breathing
+                        .lineLimit(1)
+                        .fixedSize()
+                        .frame(width: 44, alignment: .trailing)   // pin gutter — stops horizontal breathing
                 }
             }
         }
@@ -522,11 +550,16 @@ struct TrendsView: View {
 
 /// A small, deterministic interpretation of recent self-reported shedding. It compares two
 /// adjacent seven-day calendar windows and keeps thin-data language explicit.
-private struct TrajectorySummary {
+/// Internal (not file-private) so its wash-day-hedge logic is unit-testable.
+struct TrajectorySummary {
     let currentAverage: Double?
     let currentCount: Int
     let previousCount: Int
     let delta: Double?
+    /// Wash days logged in each seven-day window — the confound behind a false "shedding rose"
+    /// read (shed hair is far more visible on wash days than dry ones).
+    let currentWashDays: Int
+    let previousWashDays: Int
 
     init(entries: [DailyEntry], now: Date = .now, calendar: Calendar = .current) {
         let today = calendar.startOfDay(for: now)
@@ -539,12 +572,23 @@ private struct TrajectorySummary {
 
         currentCount = current.count
         previousCount = previous.count
+        currentWashDays = current.filter(\.washedHair).count
+        previousWashDays = previous.filter(\.washedHair).count
         currentAverage = Self.average(current)
         if let currentAverage, let previousAverage = Self.average(previous) {
             delta = currentAverage - previousAverage
         } else {
             delta = nil
         }
+    }
+
+    /// Only surfaced once a delta is actually being reported, and only when the two windows'
+    /// wash-day counts genuinely differ — never new data, just an honest caveat on the claim
+    /// already being made.
+    var washDayHedge: String? {
+        guard let delta, currentCount >= 2, previousCount >= 2, abs(delta) >= 0.15 else { return nil }
+        guard currentWashDays != previousWashDays else { return nil }
+        return " This week had \(currentWashDays) wash day\(currentWashDays == 1 ? "" : "s") vs \(previousWashDays) last week — wash days show more shed."
     }
 
     var headline: String {
@@ -568,7 +612,7 @@ private struct TrajectorySummary {
         if abs(delta) < 0.15 {
             return "The seven-day average is very close to the prior week."
         }
-        return "A \(magnitude)-band change versus the previous seven-day average."
+        return "A \(magnitude)-band change versus the previous seven-day average." + (washDayHedge ?? "")
     }
 
     var symbol: String {

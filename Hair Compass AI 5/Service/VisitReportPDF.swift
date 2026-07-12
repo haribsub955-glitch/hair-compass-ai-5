@@ -1,3 +1,4 @@
+import Charts
 import CoreText
 import Foundation
 import SwiftUI
@@ -6,12 +7,13 @@ import UIKit
 /// A print-ready, single-document PDF version of the clinician summary — so a visit doesn't
 /// depend on the user remembering to also bring photos and charts separately, and a plain-text
 /// share sheet message isn't the only thing that survives to the appointment. Entirely on-device
-/// (`UIGraphicsPDFRenderer` + CoreText, no network, no third-party dependency); the same
-/// "self-tracked record, not a diagnosis" footer that governs every other export applies here
-/// too. Scope note: this first pass paginates the existing text summary (baseline, recent
-/// signals, treatments, tolerability, procedures, labs, triggers, progress check-ins) into a
-/// legible multi-page PDF. Trend charts and photo pairs are a natural follow-up but are out of
-/// scope for this pass — the user still attaches those in-person as before.
+/// (`UIGraphicsPDFRenderer` + CoreText/`ImageRenderer`, no network, no third-party dependency);
+/// the same "self-tracked record, not a diagnosis" footer that governs every other export
+/// applies here too. The text summary (baseline, recent signals, treatments, tolerability,
+/// procedures, labs, triggers, progress check-ins) paginates first, followed by the shedding
+/// and scalp trend charts (the same rolling-mean series TrendsView draws) and one page per
+/// photographed region pairing its baseline and latest capture — so the visit-ready document
+/// really is the one thing to bring, not a placeholder for photos and charts brought separately.
 enum VisitReportPDF {
 
     /// US Letter at 72pt/in — readable on both US and A4 printers with default margins.
@@ -27,9 +29,16 @@ enum VisitReportPDF {
         "LABS", "TRIGGER EVENTS", "PROGRESS CHECK-INS",
     ]
 
-    /// Renders `summaryText` (the output of `ExportService.clinicianSummary`) as a paginated PDF.
+    /// Renders `summaryText` (the output of `ExportService.clinicianSummary`) as a paginated
+    /// PDF, followed by trend charts and photo comparison pages built from the same on-device
+    /// data TrendsView/PhotosView already show — no new math, just assembly. `entries`/`photos`
+    /// default to empty so existing callers (and tests) that only want the text pages still work.
     @MainActor
-    static func render(title: String, summaryText: String, generatedAt: Date = .now) -> Data {
+    static func render(
+        title: String, summaryText: String,
+        entries: [DailyEntry] = [], photos: [PhotoRecord] = [],
+        generatedAt: Date = .now
+    ) -> Data {
         let bodyFont = UIFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         let headerFont = UIFont.monospacedSystemFont(ofSize: 11.5, weight: .bold)
         let bodyColor = UIColor.black
@@ -65,6 +74,26 @@ enum VisitReportPDF {
         let totalLength = attributed.length
         var location = 0
 
+        // Running title/date/page-number header drawn identically on every page, text or
+        // otherwise, so the whole document reads as one continuous report.
+        func drawRunningHeader(_ pageNumber: Int) {
+            (title as NSString).draw(
+                at: CGPoint(x: margin, y: margin),
+                withAttributes: [.font: UIFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: UIColor.black]
+            )
+            let dateLine = "Generated \(generatedAt.formatted(.dateTime.year().month().day())) · page \(pageNumber)"
+            (dateLine as NSString).draw(
+                at: CGPoint(x: margin, y: margin + 18),
+                withAttributes: [.font: UIFont.systemFont(ofSize: 9), .foregroundColor: UIColor.darkGray]
+            )
+        }
+        func drawFooter() {
+            (footer as NSString).draw(
+                at: CGPoint(x: margin, y: pageSize.height - margin - 14),
+                withAttributes: [.font: UIFont.italicSystemFont(ofSize: 8), .foregroundColor: UIColor.darkGray]
+            )
+        }
+
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: pageSize))
         return renderer.pdfData { context in
             var pageNumber = 0
@@ -72,16 +101,7 @@ enum VisitReportPDF {
                 pageNumber += 1
                 context.beginPage()
                 let cg = context.cgContext
-
-                (title as NSString).draw(
-                    at: CGPoint(x: margin, y: margin),
-                    withAttributes: [.font: UIFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: UIColor.black]
-                )
-                let dateLine = "Generated \(generatedAt.formatted(.dateTime.year().month().day())) · page \(pageNumber)"
-                (dateLine as NSString).draw(
-                    at: CGPoint(x: margin, y: margin + 18),
-                    withAttributes: [.font: UIFont.systemFont(ofSize: 9), .foregroundColor: UIColor.darkGray]
-                )
+                drawRunningHeader(pageNumber)
 
                 let path = CGPath(
                     rect: CGRect(
@@ -105,11 +125,178 @@ enum VisitReportPDF {
                 guard visible.length > 0 else { break }   // safety: never spin forever
                 location += visible.length
 
-                (footer as NSString).draw(
-                    at: CGPoint(x: margin, y: pageSize.height - margin - 14),
-                    withAttributes: [.font: UIFont.italicSystemFont(ofSize: 8), .foregroundColor: UIColor.darkGray]
+                drawFooter()
+            }
+
+            // Trend charts — the same rolling-mean shedding/scalp series TrendsView draws,
+            // rasterized once via ImageRenderer and placed on their own page. Skipped when
+            // there's too little data for a trend to mean anything (mirrors TrendsView's own
+            // "not enough data" threshold).
+            let chronological = entries.sorted { $0.date < $1.date }
+            if chronological.count >= 2, let chartsImage = chartsPageImage(entries: chronological) {
+                pageNumber += 1
+                context.beginPage()
+                drawRunningHeader(pageNumber)
+                (
+                    "TREND CHARTS" as NSString
+                ).draw(
+                    at: CGPoint(x: margin, y: margin + contentTopInset),
+                    withAttributes: [.font: UIFont(name: "Menlo-Bold", size: 11.5) ?? UIFont.boldSystemFont(ofSize: 11.5),
+                                     .foregroundColor: headerColor]
+                )
+                let imageRect = CGRect(
+                    x: contentRect.minX, y: margin + contentTopInset + 20,
+                    width: contentRect.width, height: chartsImage.size.height * (contentRect.width / chartsImage.size.width)
+                )
+                chartsImage.draw(in: imageRect)
+                drawFooter()
+            }
+
+            // Photo pairs — one page per region with at least two captures, baseline and
+            // latest side by side with capture date + lighting/wet metadata captioned under
+            // each, so the actual photos a clinician looks at first travel with the report
+            // instead of being left for the user to remember separately.
+            for region in PhotoRegion.allCases {
+                let regionPhotos = photos.filter { $0.region == region }.sorted { $0.createdAt < $1.createdAt }
+                guard let baseline = regionPhotos.first, let latest = regionPhotos.last,
+                      baseline.id != latest.id else { continue }
+                pageNumber += 1
+                context.beginPage()
+                drawRunningHeader(pageNumber)
+                drawPhotoComparisonPage(
+                    region: region, baseline: baseline, latest: latest,
+                    contentRect: contentRect, contentTopInset: contentTopInset,
+                    headerColor: headerColor
+                )
+                drawFooter()
+            }
+        }
+    }
+
+    // MARK: - Trend charts page
+
+    /// Rasterizes the shedding + scalp severity charts (stacked) into one image via
+    /// `ImageRenderer` — SwiftUI/Charts drawing, not new math; same series TrendsView plots.
+    @MainActor
+    private static func chartsPageImage(entries: [DailyEntry]) -> UIImage? {
+        let view = VStack(alignment: .leading, spacing: 18) {
+            PDFTrendChart(
+                caption: "Shedding (0 Low – 3 Heavy)",
+                points: ChartMath.rollingMean(entries.map { Double($0.shed.rawValue) }, window: 7)
+                    .enumerated().map { (entries[$0.offset].date, $0.element) },
+                domain: 0...3, color: Clinical.accent
+            )
+            PDFTrendChart(
+                caption: "Scalp severity (0–16)",
+                points: ChartMath.rollingMean(entries.map { Double($0.scalpTotal) }, window: 7)
+                    .enumerated().map { (entries[$0.offset].date, $0.element) },
+                domain: 0...16, color: Clinical.ink
+            )
+        }
+        .padding(16)
+        .frame(width: 900)
+        .background(Color.white)
+
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        return renderer.uiImage
+    }
+
+    // MARK: - Photo comparison page
+
+    private static func drawPhotoComparisonPage(
+        region: PhotoRegion, baseline: PhotoRecord, latest: PhotoRecord,
+        contentRect: CGRect, contentTopInset: CGFloat, headerColor: UIColor
+    ) {
+        let margin = Self.margin
+        let headerFont = UIFont(name: "Menlo-Bold", size: 11.5) ?? UIFont.boldSystemFont(ofSize: 11.5)
+        ("\(region.title.uppercased()) — BASELINE VS LATEST" as NSString).draw(
+            at: CGPoint(x: margin, y: margin + contentTopInset),
+            withAttributes: [.font: headerFont, .foregroundColor: headerColor]
+        )
+
+        let captionFont = UIFont.systemFont(ofSize: 9)
+        let noteFont = UIFont.systemFont(ofSize: 8)
+        let imageTop = margin + contentTopInset + 24
+        let gap: CGFloat = 16
+        let imageWidth = (contentRect.width - gap) / 2
+        let imageHeight: CGFloat = 420
+
+        for (index, record) in [baseline, latest].enumerated() {
+            let x = contentRect.minX + CGFloat(index) * (imageWidth + gap)
+            let frame = CGRect(x: x, y: imageTop, width: imageWidth, height: imageHeight)
+            if let image = PhotoStore.shared.loadThumbnail(record.imagePath, maxPixel: 1200) {
+                let scaled = aspectFitRect(imageSize: image.size, in: frame)
+                image.draw(in: scaled)
+            }
+            UIBezierPath(rect: frame).stroke()
+
+            let label = index == 0 ? "BASELINE" : "LATEST"
+            let dateString = record.createdAt.formatted(.dateTime.month(.abbreviated).day().year())
+            (("\(label) · \(dateString)") as NSString).draw(
+                at: CGPoint(x: x, y: imageTop + imageHeight + 6),
+                withAttributes: [.font: captionFont, .foregroundColor: UIColor.black]
+            )
+            var meta: [String] = []
+            if !record.lighting.isEmpty { meta.append(record.lighting) }
+            if record.isWet { meta.append("wet") }
+            if !record.parting.isEmpty { meta.append("\(record.parting) parting") }
+            if !meta.isEmpty {
+                (meta.joined(separator: " · ") as NSString).draw(
+                    at: CGPoint(x: x, y: imageTop + imageHeight + 20),
+                    withAttributes: [.font: noteFont, .foregroundColor: UIColor.darkGray]
                 )
             }
+        }
+    }
+
+    /// Scales `imageSize` to fit inside `rect` preserving aspect ratio, centered.
+    private static func aspectFitRect(imageSize: CGSize, in rect: CGRect) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return rect }
+        let scale = min(rect.width / imageSize.width, rect.height / imageSize.height)
+        let width = imageSize.width * scale
+        let height = imageSize.height * scale
+        return CGRect(
+            x: rect.minX + (rect.width - width) / 2,
+            y: rect.minY + (rect.height - height) / 2,
+            width: width, height: height
+        )
+    }
+}
+
+/// One trend line for the PDF charts page — deliberately minimal (no axes chrome beyond a
+/// leading value axis) since it only needs to read clearly on a printed page.
+private struct PDFTrendChart: View {
+    let caption: String
+    let points: [(Date, Double)]
+    let domain: ClosedRange<Double>
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(caption).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+            Chart {
+                ForEach(Array(points.enumerated()), id: \.offset) { _, point in
+                    LineMark(x: .value("Date", point.0), y: .value("Value", point.1))
+                        .interpolationMethod(.monotone)
+                        .lineStyle(.init(lineWidth: 2))
+                        .foregroundStyle(color)
+                }
+            }
+            .chartYScale(domain: domain)
+            .chartYAxis { AxisMarks(position: .leading) }
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                    AxisGridLine()
+                    AxisValueLabel {
+                        if let d = value.as(Date.self) {
+                            Text(d.formatted(.dateTime.month(.abbreviated).day()))
+                                .font(.system(size: 8))
+                        }
+                    }
+                }
+            }
+            .frame(height: 220)
         }
     }
 }

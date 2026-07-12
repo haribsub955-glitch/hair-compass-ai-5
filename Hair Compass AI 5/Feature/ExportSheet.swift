@@ -16,6 +16,7 @@ struct ExportSheet: View {
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
     @Query(sort: \SideEffectLog.date, order: .reverse) private var sideEffects: [SideEffectLog]
     @Query(sort: \ProcedureAppointment.date, order: .reverse) private var procedures: [ProcedureAppointment]
+    @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
 
     @State private var jsonURL: URL?
     @State private var pdfURL: URL?
@@ -52,7 +53,7 @@ struct ExportSheet: View {
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 10) {
                             Eyebrow(text: "Visit report")
-                            Text("The summary above as a print-ready PDF — one document to bring to the appointment instead of a share-sheet message.")
+                            Text("The summary above as a print-ready PDF, with your trend charts and baseline-vs-latest photos — one document to bring to the appointment.")
                                 .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
                             if let pdfURL {
                                 ShareLink(item: pdfURL) {
@@ -107,7 +108,10 @@ struct ExportSheet: View {
     }
 
     private func writePDF() {
-        let data = VisitReportPDF.render(title: "Hair Compass — Visit Report", summaryText: summary)
+        let data = VisitReportPDF.render(
+            title: "Hair Compass — Visit Report", summaryText: summary,
+            entries: entries, photos: photos
+        )
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("HairCompassVisitReport.pdf")
         try? data.write(to: url, options: .atomic)
         pdfURL = url

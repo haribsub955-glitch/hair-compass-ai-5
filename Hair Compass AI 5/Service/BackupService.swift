@@ -46,6 +46,11 @@ enum BackupService {
         var photos: [PhotoDTO] = []
         var snapshots: [SnapshotDTO] = []
         var triggers: [TriggerDTO] = []
+        // Added after v1 shipped — Codable arrays default to empty, so older backup files
+        // (which never wrote these keys) still decode cleanly with no procedures/check-ins,
+        // rather than failing the whole restore.
+        var procedures: [ProcedureDTO] = []
+        var progressCheckIns: [ProgressCheckInDTO] = []
     }
 
     struct ProfileDTO: Codable {
@@ -76,6 +81,8 @@ enum BackupService {
         var alcoholDrinks = 0
         var oiliness = 0
         var note = ""
+        // Defaulted so older backups (without the field) still decode to "not a wash day".
+        var washedHair = false
     }
 
     struct TreatmentDTO: Codable {
@@ -108,6 +115,10 @@ enum BackupService {
         var value = 0.0
         var collectedAt = Date.now
         var note = ""
+        // Defaulted so older backups (without the field) still decode to "no override" — the
+        // built-in default range applies, exactly as before this existed.
+        var refLow: Double?
+        var refHigh: Double?
     }
 
     struct PhotoDTO: Codable {
@@ -139,6 +150,33 @@ enum BackupService {
         var note = ""
     }
 
+    /// In-office / clinic events (transplant, PRP, LLLT session, etc.) — the dated,
+    /// irreplaceable records a lost-phone restore must not silently drop.
+    struct ProcedureDTO: Codable {
+        var typeRaw = ""
+        var date = Date.now
+        var location = ""
+        var isCompleted = false
+        var completedAt: Date?
+        var note = ""
+        var createdAt = Date.now
+    }
+
+    /// Monthly self-reported regrowth/density/shedding/hairline/overall check-in, including
+    /// the scalp-pain red flag.
+    struct ProgressCheckInDTO: Codable {
+        var date = Date.now
+        var regrowthRaw = 0
+        var densityRaw = 0
+        var sheddingRaw = 0
+        var hairlineRaw = 0
+        var overallRaw = 0
+        var scalpPain = false
+        var scalpPainNote = ""
+        var note = ""
+        var createdAt = Date.now
+    }
+
     private struct VersionProbe: Codable { let version: Int }
 
     // MARK: - Export
@@ -153,6 +191,8 @@ enum BackupService {
         photos: [PhotoRecord],
         snapshots: [HealthSnapshot],
         triggers: [TriggerEvent],
+        procedures: [ProcedureAppointment] = [],
+        progressCheckIns: [ProgressCheckIn] = [],
         createdAt: Date = .now,
         photoData: (String) -> Data?
     ) -> Envelope {
@@ -173,7 +213,8 @@ enum BackupService {
             EntryDTO(date: $0.date, shedRaw: $0.shedRaw, flaking: $0.flaking,
                      erythema: $0.erythema, itch: $0.itch, sleepQuality: $0.sleepQuality,
                      stress: $0.stress, cigarettes: $0.cigarettes,
-                     alcoholDrinks: $0.alcoholDrinks, oiliness: $0.oiliness, note: $0.note)
+                     alcoholDrinks: $0.alcoholDrinks, oiliness: $0.oiliness, note: $0.note,
+                     washedHair: $0.washedHair)
         }
 
         envelope.treatments = treatments.map { t in
@@ -191,7 +232,8 @@ enum BackupService {
         }
 
         envelope.labs = labs.map {
-            LabDTO(testRaw: $0.testRaw, value: $0.value, collectedAt: $0.collectedAt, note: $0.note)
+            LabDTO(testRaw: $0.testRaw, value: $0.value, collectedAt: $0.collectedAt, note: $0.note,
+                   refLow: $0.refLow, refHigh: $0.refHigh)
         }
 
         // One photo at a time inside an autorelease pool, so the transient JPEG buffers
@@ -217,6 +259,21 @@ enum BackupService {
 
         envelope.triggers = triggers.map {
             TriggerDTO(typeRaw: $0.typeRaw, date: $0.date, note: $0.note)
+        }
+
+        envelope.procedures = procedures.map {
+            ProcedureDTO(typeRaw: $0.typeRaw, date: $0.date, location: $0.location,
+                         isCompleted: $0.isCompleted, completedAt: $0.completedAt,
+                         note: $0.note, createdAt: $0.createdAt)
+        }
+
+        envelope.progressCheckIns = progressCheckIns.map {
+            ProgressCheckInDTO(
+                date: $0.date, regrowthRaw: $0.regrowthRaw, densityRaw: $0.densityRaw,
+                sheddingRaw: $0.sheddingRaw, hairlineRaw: $0.hairlineRaw, overallRaw: $0.overallRaw,
+                scalpPain: $0.scalpPain, scalpPainNote: $0.scalpPainNote, note: $0.note,
+                createdAt: $0.createdAt
+            )
         }
 
         return envelope
@@ -256,12 +313,15 @@ enum BackupService {
         photos: [PhotoRecord],
         snapshots: [HealthSnapshot],
         triggers: [TriggerEvent],
+        procedures: [ProcedureAppointment] = [],
+        progressCheckIns: [ProgressCheckIn] = [],
         now: Date = .now,
         photoData: (String) -> Data? = { PhotoStore.shared.loadData($0) }
     ) throws -> URL {
         let envelope = makeEnvelope(
             profile: profile, entries: entries, treatments: treatments, labs: labs,
             photos: photos, snapshots: snapshots, triggers: triggers,
+            procedures: procedures, progressCheckIns: progressCheckIns,
             createdAt: now, photoData: photoData
         )
         let data = try encode(envelope)
@@ -308,6 +368,8 @@ enum BackupService {
     /// - PhotoRecord: (createdAt, region) — image bytes written back through `photoWriter`
     /// - HealthSnapshot: calendar day
     /// - TriggerEvent: (type, date)
+    /// - ProcedureAppointment: (type, date)
+    /// - ProgressCheckIn: calendar day
     /// - Profile: overwritten only while the local profile is still untouched (default)
     static func restore(
         _ envelope: Envelope,
@@ -376,6 +438,7 @@ enum BackupService {
             e.alcoholDrinks = dto.alcoholDrinks
             e.oiliness = dto.oiliness
             e.note = dto.note
+            e.washedHair = dto.washedHair
             context.insert(e)
             summary.inserted += 1
         }
@@ -438,7 +501,8 @@ enum BackupService {
             let k = labKey(testRaw: dto.testRaw, collectedAt: dto.collectedAt)
             guard !labKeys.contains(k) else { summary.skipped += 1; continue }
             labKeys.insert(k)
-            let lab = LabResult(value: dto.value, collectedAt: dto.collectedAt, note: dto.note)
+            let lab = LabResult(value: dto.value, collectedAt: dto.collectedAt, note: dto.note,
+                               refLow: dto.refLow, refHigh: dto.refHigh)
             lab.testRaw = dto.testRaw
             context.insert(lab)
             summary.inserted += 1
@@ -502,6 +566,47 @@ enum BackupService {
             summary.inserted += 1
         }
 
+        // Procedures — (type, date). The dated, irreplaceable clinic events (transplant, PRP,
+        // LLLT session, etc.) a phone-loss restore must not silently drop.
+        var procedureKeys = Set(
+            try context.fetch(FetchDescriptor<ProcedureAppointment>())
+                .map { procedureKey(typeRaw: $0.typeRaw, date: $0.date) }
+        )
+        for dto in envelope.procedures {
+            let k = procedureKey(typeRaw: dto.typeRaw, date: dto.date)
+            guard !procedureKeys.contains(k) else { summary.skipped += 1; continue }
+            procedureKeys.insert(k)
+            context.insert(ProcedureAppointment(
+                type: ProcedureType(rawValue: dto.typeRaw) ?? .other,
+                date: dto.date, location: dto.location, isCompleted: dto.isCompleted,
+                completedAt: dto.completedAt, note: dto.note, createdAt: dto.createdAt
+            ))
+            summary.inserted += 1
+        }
+
+        // Monthly progress check-ins — one per calendar day (same rule as daily entries and
+        // health snapshots).
+        var checkInDays = Set(
+            try context.fetch(FetchDescriptor<ProgressCheckIn>())
+                .map { HairAnalytics.dayBounds(for: $0.date, calendar: calendar).lowerBound }
+        )
+        for dto in envelope.progressCheckIns {
+            let day = HairAnalytics.dayBounds(for: dto.date, calendar: calendar).lowerBound
+            guard !checkInDays.contains(day) else { summary.skipped += 1; continue }
+            checkInDays.insert(day)
+            context.insert(ProgressCheckIn(
+                date: dto.date,
+                regrowth: RegrowthLevel(rawValue: dto.regrowthRaw) ?? .none,
+                density: ProgressTrend(rawValue: dto.densityRaw) ?? .same,
+                shedding: ProgressTrend(rawValue: dto.sheddingRaw) ?? .same,
+                hairline: ProgressTrend(rawValue: dto.hairlineRaw) ?? .same,
+                overall: ProgressTrend(rawValue: dto.overallRaw) ?? .same,
+                scalpPain: dto.scalpPain, scalpPainNote: dto.scalpPainNote,
+                note: dto.note, createdAt: dto.createdAt
+            ))
+            summary.inserted += 1
+        }
+
         try context.save()
         return summary
     }
@@ -536,6 +641,10 @@ enum BackupService {
     }
 
     static func triggerKey(typeRaw: String, date: Date) -> String {
+        "\(typeRaw)|\(secondKey(date))"
+    }
+
+    static func procedureKey(typeRaw: String, date: Date) -> String {
         "\(typeRaw)|\(secondKey(date))"
     }
 

@@ -317,6 +317,8 @@ private struct BackupRestoreSection: View {
     @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
     @Query(sort: \TriggerEvent.date) private var triggers: [TriggerEvent]
+    @Query(sort: \ProcedureAppointment.date) private var procedureAppointments: [ProcedureAppointment]
+    @Query(sort: \ProgressCheckIn.date) private var progressCheckIns: [ProgressCheckIn]
 
     @State private var backupURL: URL?
     @State private var isBackingUp = false
@@ -420,7 +422,8 @@ private struct BackupRestoreSection: View {
         do {
             backupURL = try BackupService.exportBackup(
                 profile: profiles.first, entries: entries, treatments: treatments,
-                labs: labs, photos: photos, snapshots: snapshots, triggers: triggers
+                labs: labs, photos: photos, snapshots: snapshots, triggers: triggers,
+                procedures: procedureAppointments, progressCheckIns: progressCheckIns
             )
         } catch {
             errorMessage = error.localizedDescription

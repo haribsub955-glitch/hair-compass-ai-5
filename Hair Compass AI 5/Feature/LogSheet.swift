@@ -35,6 +35,10 @@ struct LogSheet: View {
     @State private var matchedEntry: DailyEntry?
 
     @State private var shed: ShedLevel = .normal
+    /// Shed hair reads far heavier on wash days — this one tap keeps that confound out of the
+    /// honest read on Trends/ProgressReport/Compare instead of a wash day silently masquerading
+    /// as a real change.
+    @State private var washedHair = false
     @State private var flakeI: CGFloat = 0
     @State private var redI: CGFloat = 0
     @State private var itchI: CGFloat = 0
@@ -80,6 +84,7 @@ struct LogSheet: View {
 
                     section(variable: "shedding") {
                         ShedDialField(shed: $shed)
+                        washDayToggle
                     }
                     .id("checkInHair")
 
@@ -231,6 +236,20 @@ struct LogSheet: View {
         AnimatedSeverityReadout(total: scalpTotal, band: scalpBand)
     }
 
+    /// One-tap wash-day flag right beside the shed selector — the single biggest confound on
+    /// a self-reported shed read. Kept to one explainer line so it doesn't compete with the
+    /// dial for attention; Trends/ProgressReport/Compare use it to hedge, never to hide data.
+    private var washDayToggle: some View {
+        Toggle(isOn: $washedHair) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Washed hair today").font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.ink)
+                Text("Shed hairs are far more visible on wash days.")
+                    .font(.system(size: 11)).foregroundStyle(Clinical.secondary)
+            }
+        }
+        .tint(Clinical.accent)
+    }
+
     private func scrollToChapter(_ id: String) {
         if reduceMotion {
             scrollTarget = id
@@ -378,6 +397,7 @@ struct LogSheet: View {
 
     private func load(from e: DailyEntry) {
         shed = e.shed
+        washedHair = e.washedHair
         flakeI = CGFloat(min(max(e.flaking, 0), 3)) / 3
         redI = CGFloat(min(max(e.erythema, 0), 3)) / 3
         itchI = CGFloat(min(max(e.itch, 0), 3)) / 3
@@ -404,6 +424,7 @@ struct LogSheet: View {
 
     private func resetForm() {
         shed = .normal
+        washedHair = false
         flakeI = 0; redI = 0; itchI = 0; oilI = 0
         sleepI = 0.5; stressI = 0.5
         cigarettes = 0; alcoholDrinks = 0
@@ -443,6 +464,7 @@ struct LogSheet: View {
             context.insert(target)
         }
         target.shed = shed
+        target.washedHair = washedHair
         target.flaking = flaking
         target.erythema = erythema
         target.itch = itch

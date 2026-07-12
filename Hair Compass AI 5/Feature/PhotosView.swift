@@ -12,9 +12,41 @@ struct PhotosView: View {
     @State private var comparePosition: CGFloat = 0.5
     @State private var detailRecord: PhotoRecord?
     @State private var journey: JourneyPresentation?
+    /// User-chosen compare pair — nil means "use the chronological first/last", the prior
+    /// default. Falls back automatically (see `compareBaselineResolved`/`compareLatestResolved`)
+    /// if the region changes or the selected record no longer exists.
+    @State private var compareBaseline: PhotoRecord?
+    @State private var compareLatest: PhotoRecord?
 
     private var regionPhotos: [PhotoRecord] {
         photos.filter { $0.region == region }.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    private var compareBaselineResolved: PhotoRecord {
+        (compareBaseline.flatMap { b in regionPhotos.first { $0.id == b.id } }) ?? regionPhotos.first!
+    }
+
+    private var compareLatestResolved: PhotoRecord {
+        (compareLatest.flatMap { l in regionPhotos.first { $0.id == l.id } }) ?? regionPhotos.last!
+    }
+
+    /// The comparability promise PhotosView itself makes ("matched lighting, distance and
+    /// parting") kept honest — a one-line caution whenever the two selected shots actually
+    /// differ on the metadata the app already collects, so a wet-vs-dry or lighting mismatch
+    /// never reads as regrowth. `static` + pure so it's unit-testable without a model context.
+    static func compareMismatchCaption(_ a: PhotoRecord, _ b: PhotoRecord) -> String? {
+        var notes: [String] = []
+        if a.isWet != b.isWet {
+            notes.append("wet vs dry — wet hair looks thinner")
+        }
+        if !a.lighting.isEmpty, !b.lighting.isEmpty, a.lighting != b.lighting {
+            notes.append("different lighting")
+        }
+        if !a.parting.isEmpty, !b.parting.isEmpty, a.parting != b.parting {
+            notes.append("different parting")
+        }
+        guard !notes.isEmpty else { return nil }
+        return "These shots differ: " + notes.joined(separator: ", ")
     }
 
     /// Regions with at least one capture — drives the region-chip coverage dots and the
@@ -39,22 +71,29 @@ struct PhotosView: View {
                     // left undressed.
                     .background(alignment: .topTrailing) { CornerSprig() }
 
-                progressSummary
-                    .staggeredEntrance(index: 0)
-
-                ClinicalCard(padding: 14) {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "camera.metering.center.weighted").font(.system(size: 15)).foregroundStyle(Clinical.accent)
-                        Text("Compare only same-region shots taken under matched lighting, distance and parting. A phone can't do trichoscopy — that needs a clip-on dermatoscope.")
-                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-                    }
+                // Empty state carries its own single instruction + CTA below, so the header
+                // subtitle only earns its place once there's real data to summarize — otherwise
+                // it duplicated the empty-state card's message and ran into the corner sprig.
+                if !photos.isEmpty {
+                    progressSummary
+                        .staggeredEntrance(index: 0)
                 }
-                .staggeredEntrance(index: 1)
+
+                // Lighting/trichoscopy guidance is only actionable once matched lighting is
+                // something to actually match against — demoted to appear after the first
+                // capture instead of competing with the empty-state instruction on day one.
+                if !photos.isEmpty {
+                    ClinicalCard(padding: 14) {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "camera.metering.center.weighted").font(.system(size: 15)).foregroundStyle(Clinical.accent)
+                            Text("Compare only same-region shots taken under matched lighting, distance and parting. A phone can't do trichoscopy — that needs a clip-on dermatoscope.")
+                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                        }
+                    }
+                    .staggeredEntrance(index: 1)
+                }
 
                 regionPicker
-                    .staggeredEntrance(index: 2)
-
-                journeyCard
                     .staggeredEntrance(index: 2)
 
                 if regionPhotos.count >= 2 {
@@ -63,20 +102,11 @@ struct PhotosView: View {
                 }
 
                 if regionPhotos.isEmpty {
-                    ClinicalCard {
-                        VStack(spacing: 14) {
-                            EmptyStateArt()
-                            Eyebrow(text: "No \(region.title.lowercased()) photos")
-                            Text("Capture this region to start a comparable series.")
-                                .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
-                                .multilineTextAlignment(.center)
-                            Button("Capture \(region.title.lowercased())") { showAdd = true }
-                                .buttonStyle(ClinicalButtonStyle())
-                                .padding(.top, 2)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
+                    emptyStateCard
+                        .staggeredEntrance(index: 3)
                 } else {
+                    journeyCard
+                        .staggeredEntrance(index: 3)
                     grid
                 }
             }
@@ -103,14 +133,12 @@ struct PhotosView: View {
         }
     }
 
-    /// "N photos · M of 5 regions · last {relative}", or an invitation when the library is
-    /// empty — recency made visible without guilt.
+    /// "N photos · M of 5 regions · last {relative}" — only shown once the library isn't empty;
+    /// the empty state carries its own single instruction instead (see `emptyStateCard`).
     private var progressSummary: some View {
         Group {
             if let latest = photos.first {
                 Text("\(photos.count) photo\(photos.count == 1 ? "" : "s") · \(regionsWithPhotos.count) of \(PhotoRegion.allCases.count) regions · last \(latest.createdAt.formatted(.relative(presentation: .named)))")
-            } else {
-                Text("Capture your first region to start a comparable series.")
             }
         }
         .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
@@ -156,10 +184,15 @@ struct PhotosView: View {
         .trailingFade()
     }
 
-    /// A draggable before/after slider in place of two side-by-side thumbnails.
+    /// A draggable before/after slider in place of two side-by-side thumbnails. Defaults to the
+    /// chronological first/latest pair, but either date label can be tapped to swap in a
+    /// different shot from the same region's series — e.g. to skip a bad-lighting baseline —
+    /// and a caution line surfaces whenever the chosen pair doesn't actually match on the
+    /// lighting/wet/parting metadata the app collects.
     private var compareCard: some View {
-        let first = regionPhotos.first!
-        let last = regionPhotos.last!
+        let first = compareBaselineResolved
+        let last = compareLatestResolved
+        let mismatch = Self.compareMismatchCaption(first, last)
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -191,13 +224,69 @@ struct PhotosView: View {
                 }
                 .aspectRatio(3.0 / 4.0, contentMode: .fit)
                 HStack {
-                    Text("BASELINE · \(first.createdAt.formatted(.dateTime.month().day().year()))")
-                        .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                    comparePicker(label: "BASELINE", selected: first) { compareBaseline = $0 }
                     Spacer()
-                    Text("LATEST · \(last.createdAt.formatted(.dateTime.month().day().year()))")
-                        .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                    comparePicker(label: "LATEST", selected: last) { compareLatest = $0 }
+                }
+                if let mismatch {
+                    Label(mismatch, systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Clinical.warning)
                 }
             }
+        }
+    }
+
+    /// Tapping either date opens a menu of every capture in the region's series, oldest first —
+    /// the lightweight "pick a different photo" affordance from the round-2 audit.
+    private func comparePicker(label: String, selected: PhotoRecord, onPick: @escaping (PhotoRecord) -> Void) -> some View {
+        Menu {
+            ForEach(regionPhotos) { record in
+                Button {
+                    onPick(record)
+                } label: {
+                    let dateLabel = record.createdAt.formatted(.dateTime.month().day().year())
+                    if record.id == selected.id {
+                        Label(dateLabel, systemImage: "checkmark")
+                    } else {
+                        Text(dateLabel)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text("\(label) · \(selected.createdAt.formatted(.dateTime.month().day().year()))")
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .semibold))
+            }
+            .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+        }
+        .accessibilityLabel("\(label), \(selected.createdAt.formatted(.dateTime.month().day().year()))")
+        .accessibilityHint("Choose a different \(region.title.lowercased()) photo for this side")
+    }
+
+    /// The single empty-state message for a region with zero captures — one instruction, one
+    /// primary action, and the example-journey link folded in as a secondary tap instead of
+    /// living in its own separate card. Replaces what used to be three cards each restating
+    /// "capture a photo" in slightly different words.
+    private var emptyStateCard: some View {
+        ClinicalCard {
+            VStack(spacing: 14) {
+                EmptyStateArt()
+                Eyebrow(text: "No \(region.title.lowercased()) photos")
+                Text("Capture this region to start a comparable series.")
+                    .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Capture \(region.title.lowercased())") { showAdd = true }
+                    .buttonStyle(ClinicalButtonStyle())
+                    .padding(.top, 2)
+                Button("See an example journey") {
+                    journey = JourneyPresentation(frames: exampleFrames(), isExample: true)
+                }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Clinical.accent)
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 

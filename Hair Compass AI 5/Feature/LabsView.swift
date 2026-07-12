@@ -43,36 +43,16 @@ struct LabsView: View {
                 // add button stays tappable and no layout space is taken (no horizontal scroll).
                 .background(alignment: .topTrailing) { CornerSprig() }
 
-                ClinicalCard(padding: 0) {
-                    ZStack {
-                        LivingArtwork(art: BrandArt.labsContextV2, travel: 3.5, zoom: 0.012, phase: 1.7)
-                            .frame(maxWidth: .infinity, minHeight: 140)
-                            .clipped()
-                            .opacity(0.50)
-                        LinearGradient(
-                            stops: [
-                                .init(color: Clinical.surface.opacity(0.99), location: 0),
-                                .init(color: Clinical.surface.opacity(0.94), location: 0.58),
-                                .init(color: Clinical.surface.opacity(0.42), location: 1),
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                        VStack(alignment: .leading, spacing: 7) {
-                            Label("Lab context", systemImage: "testtube.2")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Clinical.ink)
-                            Text("Use reference ranges as context—not a diagnosis. Choose tests with a clinician rather than ordering a blanket panel.")
-                                .font(.system(size: 13))
-                                .foregroundStyle(Clinical.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: 245, alignment: .leading)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                    }
+                // The full illustrated disclaimer only earns its space on a first visit — once
+                // there's real data, a returning user needs results, not ambiance, so it
+                // collapses to a slim one-row banner that still carries the same guidance.
+                if labs.isEmpty {
+                    labContextCard
+                        .staggeredEntrance(index: 0)
+                } else {
+                    labContextBanner
+                        .staggeredEntrance(index: 0)
                 }
-                .staggeredEntrance(index: 0)
 
                 if let proposal = latestProposal {
                     deficiencyBanner(proposal)
@@ -111,6 +91,63 @@ struct LabsView: View {
         }
     }
 
+    /// First-visit-only illustrated disclaimer — full LivingArtwork treatment, shown while the
+    /// list is still empty and there's nothing else competing for the top of the screen.
+    private var labContextCard: some View {
+        ClinicalCard(padding: 0) {
+            ZStack {
+                LivingArtwork(art: BrandArt.labsContextV2, travel: 3.5, zoom: 0.012, phase: 1.7)
+                    .frame(maxWidth: .infinity, minHeight: 140)
+                    .clipped()
+                    .opacity(0.50)
+                LinearGradient(
+                    stops: [
+                        .init(color: Clinical.surface.opacity(0.99), location: 0),
+                        .init(color: Clinical.surface.opacity(0.94), location: 0.58),
+                        .init(color: Clinical.surface.opacity(0.42), location: 1),
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("Lab context", systemImage: "testtube.2")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Clinical.ink)
+                    Text("Use reference ranges as context—not a diagnosis. Choose tests with a clinician rather than ordering a blanket panel.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 245, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+            }
+        }
+    }
+
+    /// Returning-visitor version of the same guidance — one slim row (icon + two short lines,
+    /// no artwork) so results start well above the fold instead of behind a decoration tax paid
+    /// on every visit.
+    private var labContextBanner: some View {
+        ClinicalCard {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "testtube.2")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Clinical.accent)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Context, not a diagnosis")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(Clinical.ink)
+                    Text("Choose tests with a clinician rather than a blanket panel.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Clinical.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
     /// A compact, tappable card for the latest lab-confirmed deficiency or medical finding —
     /// the honest surface that persists after the one-shot pop-up in `AddLabSheet` closes.
     private func deficiencyBanner(_ proposal: LabProposal) -> some View {
@@ -145,16 +182,20 @@ struct LabsView: View {
     /// whole reason to re-test is "is it correcting?", and that question deserves a direct
     /// answer instead of three disconnected cards a user has to compare mentally.
     private func labGroupCard(test: LabTest, results: [LabResult]) -> some View {
-        let lo = test.referenceRange.lowerBound
-        let hi = test.referenceRange.upperBound
-        let domainHi = hi * 1.1               // headroom above the range
         let latest = results.last!
+        // The user's own "range from your lab report" override, when set, is what the gauge,
+        // sparkline and flag all actually judge this draw against — the built-in default only
+        // when there's no override.
+        let range = latest.effectiveRange
+        let lo = range.lowerBound
+        let hi = range.upperBound
+        let domainHi = hi * 1.1               // headroom above the range
         let previous = results.count > 1 ? results[results.count - 2] : nil
         let pct = min(1, max(0, latest.value / domainHi))
         let bandStart = lo / domainHi
         let bandWidth = (hi - lo) / domainHi
         let improving = previous.map {
-            HairAnalytics.labImproving(previous: $0.value, latest: latest.value, range: test.referenceRange)
+            HairAnalytics.labImproving(previous: $0.value, latest: latest.value, range: range)
         } ?? false
 
         return ClinicalCard {
@@ -208,12 +249,16 @@ struct LabsView: View {
                     Spacer()
                     Text("\(domainHi.formatted(.number.precision(.fractionLength(0))))").font(Clinical.number(9)).foregroundStyle(Clinical.tertiary)
                 }
+                if latest.hasCustomRange {
+                    Text("Range from your lab report, not the app default.")
+                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                }
 
                 if results.count > 1 {
                     Divider().overlay(Clinical.hairline)
                     VStack(alignment: .leading, spacing: 6) {
                         Eyebrow(text: "\(results.count) draws since \(results.first!.collectedAt.formatted(.dateTime.month(.abbreviated).year()))")
-                        LabSparkline(results: results, range: test.referenceRange, domainHi: domainHi)
+                        LabSparkline(results: results, range: range, domainHi: domainHi)
                             .frame(height: 36)
                     }
                 }
