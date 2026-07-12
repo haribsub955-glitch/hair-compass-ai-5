@@ -12,6 +12,7 @@ struct TrendsView: View {
     @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
     @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
     @Query(sort: \ProgressCheckIn.date) private var progressCheckIns: [ProgressCheckIn]
+    @Query(sort: \ProcedureAppointment.date) private var procedureAppointments: [ProcedureAppointment]
 
     @State private var showCompare = false
     @State private var showExport = false
@@ -67,6 +68,7 @@ struct TrendsView: View {
                     treatments: treatments,
                     doses: doses,
                     triggers: triggers,
+                    procedures: procedureAppointments,
                     windowDays: range.days
                 )
 

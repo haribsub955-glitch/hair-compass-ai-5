@@ -169,10 +169,10 @@ struct CompassRingsCard: View {
                             .foregroundStyle(Clinical.ink)
                             .fixedSize(horizontal: false, vertical: true)
                         VStack(alignment: .leading, spacing: 6) {
-                            legendRow(.log, label: "Log", state: score.log >= 1 ? "Logged" : "Not yet")
-                            legendRow(.care, label: "Care", state: careState)
-                            legendRow(.lens, label: "Lens",
-                                      state: score.lens >= 1 ? "This week ✓" : "Not this week")
+                            legendRow(.log, label: "Daily log", state: score.log >= 1 ? "Logged today" : "Not yet today")
+                            legendRow(.care, label: "Care steps", state: careState)
+                            legendRow(.lens, label: "Photo check",
+                                      state: score.lens >= 1 ? "Done this week" : "Not yet this week")
                         }
                     }
                 }
@@ -184,7 +184,7 @@ struct CompassRingsCard: View {
 
     private var careState: String {
         guard score.care != nil else { return "No plan yet" }
-        return "\(medsDone) of \(medsTotal)"
+        return "\(medsDone) of \(medsTotal) done"
     }
 
     /// Priority order: the day-one welcome is the rarest and most specific state (it only ever
@@ -214,6 +214,9 @@ struct CompassRingsCard: View {
         return count
     }
 
+    /// Plain nouns matching the tabs/actions each ring points at, with one normalized status
+    /// grammar across all three rows — and a single combined VoiceOver label so the dot color
+    /// coding is never the only carrier of meaning.
     private func legendRow(_ kind: CompassRingKind, label: String, state: String) -> some View {
         HStack(spacing: 8) {
             Circle().fill(kind.color).frame(width: 8, height: 8)
@@ -223,5 +226,7 @@ struct CompassRingsCard: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Clinical.secondary)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(state)")
     }
 }

@@ -1,4 +1,5 @@
 import Charts
+import SwiftData
 import SwiftUI
 
 /// The app's headline visualization: one time-aligned timeline answering "what happened to my
@@ -10,19 +11,25 @@ struct JourneyChart: View {
     let treatments: [Treatment]
     let doses: [TreatmentDose]
     let triggers: [TriggerEvent]
+    /// Completed in-office procedures (PRP, microneedling, a transplant, LLLT…) — drawn as
+    /// `.procedure` markers. Previously that marker kind could only ever come from a
+    /// schedule-less `Treatment` row, which real procedures never are (they're booked through
+    /// `ProcedureAppointment`/`AddProcedureSheet`), so the "Procedure" legend key was
+    /// effectively dead. Defaults to empty so existing call sites keep compiling.
+    var procedures: [ProcedureAppointment] = []
     let windowDays: Int
 
     private static let shedAxisValues: [Double] = [0, 1, 2, 3]
-    private static let shedAxisLabels = ShedLevel.allCases.map {
-        $0 == .minimal ? "Min" : ($0 == .normal ? "Norm" : ($0 == .elevated ? "Elev" : "Heavy"))
-    }
+    // Complete words only — no abbreviations that could read as truncated (the same rule
+    // TrendsView.yAxis already follows). "Elevated" is the widest label, so it sets the gutter.
+    private static let shedAxisLabels = ShedLevel.allCases.map(\.title)
 
     var body: some View {
         let end = Date.now
         let start = Calendar.current.date(byAdding: .day, value: -windowDays, to: end) ?? end
         let data = JourneyData(
             entries: entries, treatments: treatments, doses: doses,
-            triggers: triggers, start: start, end: end
+            triggers: triggers, procedures: procedures, start: start, end: end
         )
         ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
@@ -101,7 +108,7 @@ struct JourneyChart: View {
                         if Self.shedAxisLabels.indices.contains(i) {
                             Text(Self.shedAxisLabels[i])
                                 .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-                                .frame(width: 34, alignment: .trailing)   // pin gutter — stops horizontal breathing
+                                .frame(width: 44, alignment: .trailing)   // pin gutter — stops horizontal breathing
                         }
                     }
                 }
@@ -173,14 +180,14 @@ struct JourneyChart: View {
                 }
             }
             .chartYAxis {
-                // Invisible copy of the top chart's widest y label ("Heavy", same monospaced
+                // Invisible copy of the top chart's widest y label ("Elevated", same monospaced
                 // eyebrow font) reserves an identical leading gutter, so both plot areas share
                 // the same width and the two time axes stay vertically aligned.
                 AxisMarks(position: .leading, values: [0.0]) { _ in
                     AxisValueLabel {
-                        Text("Heavy")
+                        Text("Elevated")
                             .font(Clinical.eyebrow(9)).foregroundStyle(.clear)
-                            .frame(width: 34, alignment: .trailing)   // pin gutter — stops horizontal breathing
+                            .frame(width: 44, alignment: .trailing)   // pin gutter — stops horizontal breathing
                     }
                 }
             }
@@ -320,6 +327,7 @@ private struct JourneyData {
         treatments: [Treatment],
         doses: [TreatmentDose],
         triggers: [TriggerEvent],
+        procedures: [ProcedureAppointment] = [],
         start: Date,
         end: Date
     ) {
@@ -370,6 +378,18 @@ private struct JourneyData {
                 kind: .trigger, date: tr.date,
                 symbol: tr.type.symbol,
                 tag: Self.triggerTag(tr.type)
+            ))
+        }
+        // Completed in-office procedures — dated by when they were actually marked done, which
+        // is the moment worth reading a shedding change against.
+        for p in procedures where p.isCompleted {
+            let date = p.completedAt ?? p.date
+            guard date >= start, date <= end else { continue }
+            built.append(Marker(
+                id: "proc-\(p.persistentModelID.hashValue)",
+                kind: .procedure, date: date,
+                symbol: p.type.symbol,
+                tag: p.type.title
             ))
         }
         built.sort { $0.date < $1.date }

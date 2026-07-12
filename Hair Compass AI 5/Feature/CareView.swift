@@ -7,6 +7,7 @@ import SwiftUI
 struct CareView: View {
     @Environment(\.modelContext) private var context
     @Environment(NotificationService.self) private var notifications
+    @Environment(DeepLinkRouter.self) private var deepLinks
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
@@ -16,6 +17,7 @@ struct CareView: View {
     @Query private var triggerEvents: [TriggerEvent]
     @Query(sort: \ProcedureAppointment.date) private var procedureAppointments: [ProcedureAppointment]
     @Query(sort: \ProgressCheckIn.date, order: .reverse) private var checkIns: [ProgressCheckIn]
+    @Query(sort: \PhotoRecord.createdAt) private var photoRecords: [PhotoRecord]
 
     @State private var showAdd = false
     @State private var showRecommender = false
@@ -25,6 +27,7 @@ struct CareView: View {
     @State private var showReport = false
     @State private var showProcedures = false
     @State private var showProgressCheckIn = false
+    @State private var showAddTrigger = false
 
     /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
     /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
@@ -83,6 +86,13 @@ struct CareView: View {
                 // beat rather than renumbering any index above.
                 progressCheckInCard.staggeredEntrance(index: 14)
 
+                // Same trailing pattern one index later — a life event (illness, crash diet,
+                // childbirth, a new medication…) is the only entry point to `TriggerEvent`
+                // outside onboarding, so every downstream surface that reads dated triggers
+                // (journey markers, insights, the clinician export) stays usable for the whole
+                // life of the record, not just its first day.
+                lifeEventCard.staggeredEntrance(index: 15)
+
                 // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
                 // straight to it and must never catch a mid-fade frame.
                 ScienceProductsSection().id("science")
@@ -95,6 +105,7 @@ struct CareView: View {
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
         .sheet(item: $detailTreatment) { TreatmentDetailSheet(treatment: $0) }
         .sheet(isPresented: $showProcedures) { ProceduresView() }
+        .sheet(isPresented: $showAddTrigger) { AddTriggerSheet() }
         .sheet(isPresented: $showProgressCheckIn) {
             ProgressCheckInSheet(treatmentContext: progressCheckInTreatmentContext)
         }
@@ -148,7 +159,15 @@ struct CareView: View {
             await notifications.reschedule(treatments: notifTreatments, refills: notifRefills)
             await notifications.planProcedureReminders(notifProcedures)
             await notifications.planProgressCheckInReminder(lastCheckIn: checkIns.first?.date)
+            await notifications.planMilestoneReminders(notifMilestoneTreatments)
             await replanEveningCheckIn()
+        }
+        // Tapping a milestone reminder lands here already on Plan (RootView switches tabs) —
+        // just open the report it pointed to.
+        .onChange(of: deepLinks.openProgressReportRequested) { _, requested in
+            guard requested else { return }
+            deepLinks.openProgressReportRequested = false
+            if progressReport != nil { showReport = true }
         }
         // Re-plans whenever today's logged state flips — the "cancel when logged" honesty rule:
         // once today is logged, today's pending reminder id is dropped from the schedule.
@@ -183,6 +202,14 @@ struct CareView: View {
     private var notifRefills: [(name: String, refillBy: Date)] {
         activeTreatments.compactMap { t in
             t.refillBy.map { (t.name.isEmpty ? t.treatmentClass.title : t.name, $0) }
+        }
+    }
+    /// Every active treatment, unfiltered by schedule — the 24-week judging gate applies to any
+    /// treatment (see `gateExplainer`/`treatmentCard`), not just the daily-slot ones the routine
+    /// reminders target.
+    private var notifMilestoneTreatments: [(id: String, name: String, startDate: Date)] {
+        activeTreatments.map {
+            (String($0.persistentModelID.hashValue), $0.name.isEmpty ? $0.treatmentClass.title : $0.name, $0.startDate)
         }
     }
     private var treatmentFingerprint: String {
@@ -263,52 +290,54 @@ struct CareView: View {
 
     // MARK: Coach
 
-    /// Redesign v2: progress reads as a ring on the trailing side, not a bar. Capped and the
-    /// illustration faded well behind the text (round-2 fix) — this card used to run the
-    /// bottle art at near-full opacity across ~178pt, pushing today's actual routine below the
-    /// fold on every visit. Text now drives the height; the artwork is a whisper behind it.
+    /// Redesign v3: the text block now drives the card's height in the normal layout flow —
+    /// the artwork moved to `.background` (round-3 fix) so it can never stretch the card past
+    /// what the copy needs. `msg.detail` used to be clipped mid-word by a fixed-size,
+    /// two-line-capped, 220pt-wide `Text` (round-2 regression): it's one sentence, so it now
+    /// wraps freely at whatever size Dynamic Type asks for.
     private var coachCard: some View {
         let msg = AdherenceCoach.message(doneToday: doneToday, totalToday: dailySteps.count, streak: streak, weeklyAdherence: nil)
         let progress = dailySteps.isEmpty ? 0 : Double(doneToday) / Double(dailySteps.count)
         return ClinicalCard(padding: 0) {
-            ZStack {
-                LivingArtwork(art: BrandArt.planRitualV2, travel: 4, zoom: 0.014, phase: 0.4)
-                    .frame(maxWidth: .infinity, minHeight: 118, maxHeight: 180)
-                    .clipped()
-                    .opacity(0.28)
-
-                LinearGradient(
-                    stops: [
-                        .init(color: Clinical.surface.opacity(0.99), location: 0),
-                        .init(color: Clinical.surface.opacity(0.96), location: 0.52),
-                        .init(color: Clinical.surface.opacity(0.62), location: 1),
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-
-                HStack(alignment: .center, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack(spacing: 8) {
-                            Eyebrow(text: "Coach")
-                            if streak > 0 {
-                                Label("\(streak)d", systemImage: "flame")
-                                    .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
-                            }
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 8) {
+                        Eyebrow(text: "Coach")
+                        if streak > 0 {
+                            Label("\(streak)d", systemImage: "flame")
+                                .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
                         }
-                        Text(msg.headline).font(Clinical.headline(19)).foregroundStyle(Clinical.ink)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(msg.detail).font(.system(size: 12.5)).foregroundStyle(Clinical.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .lineLimit(2)
-                            .frame(maxWidth: 220, alignment: .leading)
                     }
-                    Spacer(minLength: 8)
-                    if dailySteps.count > 0 {
-                        CoachProgressRing(done: doneToday, total: dailySteps.count, progress: progress)
-                    }
+                    Text(msg.headline).font(Clinical.headline(19)).foregroundStyle(Clinical.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(msg.detail).font(.system(size: 12.5)).foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(16)
+                Spacer(minLength: 8)
+                if dailySteps.count > 0 {
+                    CoachProgressRing(done: doneToday, total: dailySteps.count, progress: progress)
+                }
+            }
+            .padding(16)
+            .background {
+                ZStack {
+                    LivingArtwork(art: BrandArt.planRitualV2, travel: 4, zoom: 0.014, phase: 0.4)
+                        .opacity(0.28)
+                    // The ring sits at the trailing edge, so the gradient's most-faded stop now
+                    // sits in the middle (over the artwork, behind neither text nor ring) —
+                    // both the headline/detail on the left and the ring on the right land on a
+                    // near-opaque stop, so neither reads washed-out or fights the illustration.
+                    LinearGradient(
+                        stops: [
+                            .init(color: Clinical.surface.opacity(0.99), location: 0),
+                            .init(color: Clinical.surface.opacity(0.60), location: 0.5),
+                            .init(color: Clinical.surface.opacity(0.94), location: 1),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                }
+                .clipped()
             }
         }
     }
@@ -592,6 +621,46 @@ struct CareView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: Life events (dated TE triggers)
+
+    /// A compact entry card in the same family as `proceduresCard`: the most recent recorded
+    /// event (if any) plus an add action. Kept quiet and optional — this is a record, never a
+    /// prompt suggesting something is wrong.
+    private var lifeEventCard: some View {
+        Button { showAddTrigger = true } label: {
+            ClinicalCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Eyebrow(text: "Life events")
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                    }
+                    if let latest = triggerEvents.sorted(by: { $0.date > $1.date }).first {
+                        HStack(spacing: 10) {
+                            Image(systemName: latest.type.symbol)
+                                .font(.system(size: 13)).foregroundStyle(Clinical.warning)
+                                .frame(width: 28, height: 28)
+                                .background(Clinical.warning.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(latest.type.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                                Text(latest.date.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            }
+                            Spacer()
+                        }
+                    } else {
+                        Text("An illness, a crash diet, childbirth, major stress, or a new medication — dating it lets a shedding change 2–3 months later explain itself instead of looking random.")
+                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text(triggerEvents.isEmpty ? "Log an event" : "Log another")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: Progress check-in
 
     /// "You've been on {name} for {N} weeks." from the first active treatment — read against
@@ -734,11 +803,26 @@ struct CareView: View {
                     Text(t.endDate.map { "Stopped \($0.formatted(.dateTime.month(.abbreviated).day()))" } ?? "Inactive")
                         .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
                 }
+
+                // The strongest evidence for the week-24 judgment is a dated baseline photo set
+                // taken at treatment start (Compare/the Visit PDF both depend on one existing) —
+                // a quiet, easy-to-dismiss nudge rather than a blocking requirement.
+                if t.isActive && !hasBaselinePhoto(for: t) {
+                    Label("No baseline photo on record — the week-24 comparison starts from your earliest one.", systemImage: "camera.badge.ellipsis")
+                        .font(.system(size: 11.5)).foregroundStyle(Clinical.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .opacity(t.isActive ? 1 : 0.6)
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onTapGesture { detailTreatment = t }
+    }
+
+    /// True when a progress photo exists within ±7 days of the treatment's start — close enough
+    /// to count as its baseline set.
+    private func hasBaselinePhoto(for t: Treatment) -> Bool {
+        HairAnalytics.hasNearbyDate(anchor: t.startDate, candidates: photoRecords.map(\.createdAt))
     }
 
     /// Small tinted status pill used on treatment cards (refill countdown, side-effect count).

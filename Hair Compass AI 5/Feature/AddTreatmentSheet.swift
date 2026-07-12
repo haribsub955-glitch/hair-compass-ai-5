@@ -22,6 +22,14 @@ struct AddTreatmentSheet: View {
     @State private var pregnancyInfo: PregnancyCaution.Info? = nil
     @State private var proceedAfterPregnancyCaution = false
 
+    // MARK: Baseline photo nudge
+    /// The strongest evidence for the week-24 judgment is a dated baseline photo set taken at
+    /// treatment start — `CompareView`/the Visit PDF both depend on one existing. Read-only, so
+    /// this needs the existing record, not anything new.
+    @Query(sort: \PhotoRecord.createdAt) private var photoRecords: [PhotoRecord]
+    @State private var showBaselinePrompt = false
+    @State private var showGuidedCapture = false
+
     // MARK: Ingredients photo + AI summary (custom item support)
     @State private var ingredientPickerItem: PhotosPickerItem?
     @State private var ingredientImage: UIImage?
@@ -200,6 +208,21 @@ struct AddTreatmentSheet: View {
                     },
                     onNotNow: { showAIConsent = false }
                 )
+            }
+            // One-time, fully skippable — fires only right after a today-dated save with no
+            // recent photo on record, never blocking or repeating.
+            .confirmationDialog(
+                "Capture a baseline photo set now?",
+                isPresented: $showBaselinePrompt,
+                titleVisibility: .visible
+            ) {
+                Button("Capture now") { showGuidedCapture = true }
+                Button("Not now", role: .cancel) { dismiss() }
+            } message: {
+                Text("The week-24 comparison starts here.")
+            }
+            .sheet(isPresented: $showGuidedCapture, onDismiss: { dismiss() }) {
+                GuidedCaptureView(defaultRegion: .frontal)
             }
         }
     }
@@ -468,6 +491,18 @@ struct AddTreatmentSheet: View {
         )
         context.insert(t)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        dismiss()
+        if shouldPromptBaseline {
+            showBaselinePrompt = true
+        } else {
+            dismiss()
+        }
+    }
+
+    /// Only for a today-dated start (a backfilled/future start date isn't "right now"), and only
+    /// when there's no photo already near it — so a treatment added to a record that already has
+    /// a recent photo set, or backfilled after the fact, is never asked.
+    private var shouldPromptBaseline: Bool {
+        guard Calendar.current.isDateInToday(startDate) else { return false }
+        return !HairAnalytics.hasNearbyDate(anchor: startDate, candidates: photoRecords.map(\.createdAt))
     }
 }

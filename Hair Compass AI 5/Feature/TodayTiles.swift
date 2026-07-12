@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Apple-Weather-style Today components in the warm-gouache language: a living conditions hero
 /// where today's shedding *is* the weather (the signature falling-hair sim is our rain), and a
@@ -213,6 +214,14 @@ struct ConditionsHero: View {
         return SheddingDial.band(dragIntensity) == level.rawValue ? 0.85 : 0.18
     }
 
+    /// Trailing space reserved on the headline so it never renders under `bandTickScale` +
+    /// `dragRailChip`. Scaled through the same `UIFontMetrics` text style the ladder's own
+    /// labels use, so the reservation grows with Dynamic Type roughly in step with what it's
+    /// protecting against instead of a fixed constant that would fall short at larger sizes.
+    private var ladderReservedInset: CGFloat {
+        UIFontMetrics(forTextStyle: .caption2).scaledValue(for: 108)
+    }
+
     // MARK: - Foreground content
 
     private var content: some View {
@@ -245,16 +254,26 @@ struct ConditionsHero: View {
                     chipRow
                 } else if let dragIntensity {
                     // Live preview while the finger is down — same slot the saved band word
-                    // occupies, so nothing reflows when the drag ends.
+                    // occupies, so nothing reflows when the drag ends. Reserves the ladder's
+                    // trailing column (it's on screen throughout the drag) so the band word
+                    // never renders under it.
                     let caption = SheddingDial.bandCaption(dragIntensity)
                     bandWordText(caption.0)
+                        .padding(.trailing, ladderReservedInset)
                     subtitleText(caption.1.prefix(1).uppercased() + caption.1.dropFirst())
                     scalpLine
                     chipRow
                 } else {
+                    // Reserves the same trailing column the tick ladder occupies (visible
+                    // whenever nothing is logged) instead of overlaying it — a fixed single-line
+                    // headline would otherwise span the full width and collide with the ladder's
+                    // top label at large Dynamic Type sizes (round-3 fix). Wrapping to 2 lines
+                    // replaces the old lineLimit(1)+aggressive minimumScaleFactor, which used to
+                    // crush the whole headline down to stay on one line under the same pressure.
                     Text(onShedSet != nil ? "Not logged — drag to set" : "Not logged")
                         .font(Clinical.headline(44)).foregroundStyle(Clinical.tertiary)
-                        .lineLimit(1).minimumScaleFactor(0.5)
+                        .lineLimit(2).minimumScaleFactor(0.65)
+                        .padding(.trailing, onShedSet != nil ? ladderReservedInset : 0)
                     chipRow
                 }
             }
@@ -421,11 +440,17 @@ struct GlanceTile<Motif: View>: View {
     var tint: Color? = nil
     var motifOpacity: Double = 0.38
     var motifHeight: CGFloat = 62
+    /// When true and the tile is in its not-logged state (`value == "—"`), the value/caption
+    /// block centers vertically instead of clustering at the bottom under a dead middle band —
+    /// the tile reads as an intentional, minimal empty state rather than half-finished.
+    var centerWhenEmpty = false
     /// When set, the whole tile is a Button (a shortcut into the log sheet / plan) with the
     /// clinical spring press style.
     var action: (() -> Void)? = nil
     var actionHint: String? = nil
     @ViewBuilder var motif: Motif
+
+    private var isEmptyState: Bool { value == "—" }
 
     var body: some View {
         if let action {
@@ -461,6 +486,7 @@ struct GlanceTile<Motif: View>: View {
                     .font(.system(size: 11)).foregroundStyle(Clinical.secondary)
                     .lineLimit(2).minimumScaleFactor(0.8)
             }
+            if centerWhenEmpty && isEmptyState { Spacer(minLength: 10) }
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 122, alignment: .leading)
@@ -605,12 +631,16 @@ struct TodayTileGrid: View {
             caption = "Not logged"
             intensity = 0
         }
+        let logged = sleepHours != nil || quality != nil
         return GlanceTile(
             title: "Sleep",
             value: value,
             caption: caption,
-            valueColor: (sleepHours != nil || quality != nil) ? Clinical.ink : Clinical.tertiary,
+            valueColor: logged ? Clinical.ink : Clinical.tertiary,
             tint: Clinical.sage,
+            // Quieter wave while empty — centered, it would otherwise cross the "—" baseline.
+            motifOpacity: logged ? 0.38 : 0.16,
+            centerWhenEmpty: true,
             action: onLogTap,
             actionHint: "Edits today's sleep check-in"
         ) {
@@ -642,6 +672,7 @@ struct TodayTileGrid: View {
             valueColor: oil == nil ? Clinical.tertiary : Clinical.ink,
             tint: Clinical.gold,
             motifOpacity: 1,
+            centerWhenEmpty: true,
             action: onLogTap,
             actionHint: "Edits today's oiliness check-in"
         ) {

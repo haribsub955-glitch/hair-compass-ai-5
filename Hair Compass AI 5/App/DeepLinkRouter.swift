@@ -6,4 +6,7 @@ import Foundation
 @Observable
 final class DeepLinkRouter {
     var openLogRequested = false
+    /// Set when a milestone-reminder notification is tapped — CareView opens the progress
+    /// report and resets this.
+    var openProgressReportRequested = false
 }

@@ -13,6 +13,8 @@ final class NotificationService {
 
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
     private let center = UNUserNotificationCenter.current()
+    /// Routes a tap on a milestone reminder back to the app (see `onMilestoneTapped`).
+    private let tapDelegate = NotificationTapDelegate()
 
     private let treatmentPrefix = "treatment."
     private let refillPrefix = "refill."
@@ -20,6 +22,7 @@ final class NotificationService {
     private let eveningCheckInPrefix = "eveningCheckIn."
     private let procedurePrefix = "procedure."
     private let progressCheckInID = "progressCheckIn.0"
+    private let milestonePrefix = "milestone."
 
     /// Coalescing guard for `reschedule()` (audit #5): a second call cancels the first's task
     /// before it starts a fresh remove+add sequence, so a stale removeAll from an old call can
@@ -27,6 +30,18 @@ final class NotificationService {
     private var rescheduleTask: Task<Void, Never>?
 
     var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
+
+    /// Fired on the main actor when the user taps a milestone reminder — `RootView` wires this
+    /// to switch to Plan and open the progress report, the same `DeepLinkRouter` idiom the
+    /// widget's `haircompass://log` URL already uses.
+    var onMilestoneTapped: (() -> Void)? {
+        get { tapDelegate.onMilestoneTapped }
+        set { tapDelegate.onMilestoneTapped = newValue }
+    }
+
+    init() {
+        center.delegate = tapDelegate
+    }
 
     func refreshAuthorization() async {
         authorization = await center.notificationSettings().authorizationStatus
@@ -202,6 +217,60 @@ final class NotificationService {
         try? await center.add(request)
     }
 
+    /// One-shot reminders for the app's central honest promise — "judge treatment response at
+    /// 24 weeks, not sooner." Schedules up to three per active treatment (weeks 4, 12, 24 from
+    /// its start date, at 10:00), so the assessment window opening is a moment the user is told
+    /// about rather than one that only surfaces if they happen to open Plan during that exact
+    /// week. Gated under the same "Reminders" toggle as the treatment/refill/procedure
+    /// reminders. Only ever touches its own `milestone.*` ids (never
+    /// `removeAllPendingNotificationRequests()`), so — like `planProcedureReminders` — it's safe
+    /// to call after `reschedule()` in the same cycle.
+    func planMilestoneReminders(_ treatments: [(id: String, name: String, startDate: Date)]) async {
+        let pending = await center.pendingNotificationRequests()
+        let staleIDs = pending.map(\.identifier).filter { $0.hasPrefix(milestonePrefix) }
+        if !staleIDs.isEmpty { center.removePendingNotificationRequests(withIdentifiers: staleIDs) }
+        guard isEnabled, authorization == .authorized || authorization == .provisional else { return }
+        guard !Task.isCancelled else { return }
+
+        let calendar = Calendar.current
+        for t in treatments {
+            for week in Self.milestoneWeeks {
+                guard let day = calendar.date(byAdding: .weekOfYear, value: week, to: calendar.startOfDay(for: t.startDate))
+                else { continue }
+                var comps = calendar.dateComponents([.year, .month, .day], from: day)
+                comps.hour = 10; comps.minute = 0
+                guard let fireDate = calendar.date(from: comps), fireDate > .now else { continue }
+
+                let content = UNMutableNotificationContent()
+                content.title = "Week \(week) of \(t.name)"
+                content.body = Self.milestoneBody(week: week)
+                content.sound = .default
+                if let art = NotificationArt.attachment() { content.attachments = [art] }
+                let trigger = UNCalendarNotificationTrigger(
+                    dateMatching: calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
+                    repeats: false
+                )
+                let request = UNNotificationRequest(
+                    identifier: "\(milestonePrefix)\(t.id).\(week)", content: content, trigger: trigger
+                )
+                try? await center.add(request)
+            }
+        }
+    }
+
+    /// Same weeks `ProgressReport`'s milestone cadence starts with — 4 · 12 · 24. The report
+    /// keeps naming milestones every 12 weeks after that; the reminder deliberately stops at 24,
+    /// the one moment this feature exists to surface.
+    static let milestoneWeeks = [4, 12, 24]
+
+    static func milestoneBody(week: Int) -> String {
+        switch week {
+        case 24: return "Your assessment window opens — your progress report is ready to bring to your clinician."
+        case 12: return "Halfway to the 24-week assessment window. Your progress report is ready to look at."
+        default: return "A first checkpoint. Your progress report is ready to look at."
+        }
+    }
+
     /// Implementation-intention evening reminder (research: a user-chosen time beats generic
     /// smart timing, and caps at ≤1/day keep retention high). Independent of the routine
     /// "Reminders" toggle above — OFF until the Plan tab's evening-check-in toggle turns it on.
@@ -268,5 +337,33 @@ final class NotificationService {
         guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
         var comps = DateComponents(); comps.hour = h; comps.minute = m
         return comps
+    }
+}
+
+/// A minimal `UNUserNotificationCenterDelegate`: shows banners for foreground notifications
+/// (these are occasional, high-value nudges, not spam) and routes a tap on a `milestone.*`
+/// reminder back into the app via a closure `NotificationService` exposes as `onMilestoneTapped`.
+/// A separate `NSObject` subclass rather than retrofitting `NotificationService` itself, which is
+/// an `@Observable` class with no `NSObject` ancestry.
+private final class NotificationTapDelegate: NSObject, UNUserNotificationCenterDelegate {
+    var onMilestoneTapped: (() -> Void)?
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        if response.notification.request.identifier.hasPrefix("milestone.") {
+            Task { @MainActor [onMilestoneTapped] in onMilestoneTapped?() }
+        }
+        completionHandler()
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
     }
 }

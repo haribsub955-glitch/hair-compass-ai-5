@@ -251,7 +251,16 @@ struct SheddingStatusScene: View {
                 endPoint: .bottomTrailing
             )
 
-            FallingHairView(intensity: profile.displayIntensity)
+            // Suppressed only in the true "nothing logged, no finger down" rest state (round-3
+            // fix): at rest the low-intensity live sim still spawned and fell continuously,
+            // producing stray strand fragments that could cross the eyebrow/headline text or
+            // read as disconnected squiggles behind the drag ladder — with nothing logged there
+            // is no reading for them to represent. The moment a real value exists — logged
+            // (`showsCollection`) or a live drag — the simulation resumes exactly as before, and
+            // `ambientWhenEmpty == false` call sites (e.g. `ShedDialField`) are unaffected.
+            if showsCollection || !ambientWhenEmpty {
+                FallingHairView(intensity: profile.displayIntensity)
+            }
 
             // A quiet resting anchor for the scene's lower edge, present at every band —
             // including "not logged" and Minimal, where the falling simulation and resting

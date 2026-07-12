@@ -25,11 +25,19 @@ struct LogSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \ProcedureAppointment.date, order: .reverse) private var procedureAppointments: [ProcedureAppointment]
+    @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
 
     /// The calendar day this log belongs to. Scrubbable (up to 60 days back) when creating a
     /// new entry; fixed to the entry's own day when editing an existing one.
     @State private var logDate: Date
     @State private var scrollTarget: String?
+    /// Optional, entirely independent of the daily save below — records a dated TE trigger
+    /// (illness, crash diet, major stress, childbirth, a new medication) so a shedding change
+    /// 2–3 months from now has something to explain it.
+    @State private var showAddTrigger = false
+    /// Set to open straight into that treatment's side-effect form — the shortcut that used to
+    /// take Plan → treatment row → detail sheet → "Log side effect" now takes one tap from here.
+    @State private var sideEffectTreatment: Treatment?
     /// When creating a new entry and the scrubbed day already has one, that entry — the form
     /// shows its values and save() writes into it instead of inserting a duplicate.
     @State private var matchedEntry: DailyEntry?
@@ -172,6 +180,31 @@ struct LogSheet: View {
                         section("Procedure") { procedureControl }
                     }
 
+                    // Quiet, easy to skip — the only post-onboarding entry point into a dated
+                    // trigger short of the Plan tab, right where a day's context is already
+                    // top of mind.
+                    Button {
+                        showAddTrigger = true
+                    } label: {
+                        Label("Anything notable happen recently?", systemImage: "calendar.badge.plus")
+                            .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.accent)
+                    }
+                    .buttonStyle(.plain)
+
+                    // A dated side-effect log is "the single most clinically actionable artifact
+                    // in the whole export" — this used to be three taps deep (Plan → treatment
+                    // row → detail sheet → Log side effect); now it's one, right where today's
+                    // context is already in mind.
+                    if let firstActiveDaily {
+                        Button {
+                            sideEffectTreatment = firstActiveDaily
+                        } label: {
+                            Label("Log a side effect", systemImage: "cross.case")
+                                .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.accent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     Button(saveButtonTitle, action: save)
                         .buttonStyle(ClinicalButtonStyle())
                 }
@@ -201,7 +234,15 @@ struct LogSheet: View {
                 guard existing == nil else { return }
                 syncForm(to: newDay)
             }
+            .sheet(isPresented: $showAddTrigger) { AddTriggerSheet() }
+            .sheet(item: $sideEffectTreatment) { TreatmentDetailSheet(treatment: $0, startWithLogForm: true) }
         }
+    }
+
+    /// First active treatment with a daily schedule — the common case this shortcut targets.
+    /// Someone tracking more than one daily treatment can still reach the others from Plan.
+    private var firstActiveDaily: Treatment? {
+        treatments.first { $0.isActive && !$0.slots.isEmpty }
     }
 
     // MARK: Day selection

@@ -14,8 +14,10 @@ struct LabsView: View {
     }
 
     /// Repeat draws of the same test only answer "is it correcting?" when they're read
-    /// together — grouped by test, oldest-first within each group, ordered by whichever test
-    /// was drawn most recently overall (keeping the prior newest-first feel at the group level).
+    /// together — grouped by test, oldest-first within each group. Groups themselves lead with
+    /// whichever test is currently out of range (the exact result the banner above points to),
+    /// then fall back to newest-drawn-first — so the flagged card the banner references is
+    /// always the first one under it, instead of buried behind in-range results.
     private var groupedLabs: [(test: LabTest, results: [LabResult])] {
         let byTest = Dictionary(grouping: labs, by: \.test)
         return LabTest.allCases
@@ -23,7 +25,12 @@ struct LabsView: View {
                 guard let results = byTest[test], !results.isEmpty else { return nil }
                 return (test, results.sorted { $0.collectedAt < $1.collectedAt })
             }
-            .sorted { ($0.1.last?.collectedAt ?? .distantPast) > ($1.1.last?.collectedAt ?? .distantPast) }
+            .sorted { lhs, rhs in
+                let lhsFlagged = lhs.1.last?.flag != .normal
+                let rhsFlagged = rhs.1.last?.flag != .normal
+                if lhsFlagged != rhsFlagged { return lhsFlagged && !rhsFlagged }
+                return (lhs.1.last?.collectedAt ?? .distantPast) > (rhs.1.last?.collectedAt ?? .distantPast)
+            }
     }
 
     var body: some View {

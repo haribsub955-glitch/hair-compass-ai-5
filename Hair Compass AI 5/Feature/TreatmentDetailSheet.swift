@@ -8,11 +8,19 @@ struct TreatmentDetailSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Bindable var treatment: Treatment
+    /// Set by callers that already know the user wants to log a side effect (e.g. LogSheet's
+    /// "Log a side effect" shortcut) so the form is open on first appearance instead of one more
+    /// tap away.
+    var startWithLogForm = false
 
     @State private var showLogForm = false
     @State private var newType: SideEffectType = .scalpIrritation
     @State private var newSeverity: Int = 1
     @State private var newNote = ""
+    /// Side effects are often noticed and recalled days later — defaults to today but is
+    /// backdatable, same ~30-day-back idiom `LogSheet`'s `DateStripPicker` already uses for
+    /// backfill, so a late entry doesn't get mis-dated or skipped.
+    @State private var newDate = Date.now
 
     private var calendar: Calendar { .current }
 
@@ -34,6 +42,9 @@ struct TreatmentDetailSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+            .onAppear {
+                if startWithLogForm { showLogForm = true }
             }
         }
     }
@@ -252,6 +263,8 @@ struct TreatmentDetailSheet: View {
                 Text(caption).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
             }
 
+            DateStripPicker(selection: $newDate, range: sideEffectDateRange)
+
             ClinicalSegmented(
                 options: [1, 2, 3],
                 label: { SeverityBand(rawValue: $0 - 1)?.title ?? "\($0)" },
@@ -282,18 +295,26 @@ struct TreatmentDetailSheet: View {
         .padding(.top, 2)
     }
 
+    /// 30 days back (recalled-late entries) through today — never the future.
+    private var sideEffectDateRange: ClosedRange<Date> {
+        let today = calendar.startOfDay(for: .now)
+        let lower = calendar.date(byAdding: .day, value: -30, to: today) ?? today
+        return lower...today
+    }
+
     private func saveLog() {
         context.insert(SideEffectLog(
             treatment: treatment,
             type: newType,
             severity: newSeverity,
-            date: .now,
+            date: newDate,
             note: newNote.trimmingCharacters(in: .whitespaces)
         ))
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         newType = .scalpIrritation
         newSeverity = 1
         newNote = ""
+        newDate = .now
         withAnimation(.easeOut(duration: 0.18)) { showLogForm = false }
     }
 

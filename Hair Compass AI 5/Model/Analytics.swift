@@ -129,6 +129,24 @@ enum HairAnalytics {
         return logs.contains { $0.severity >= 3 && $0.date >= start && $0.date <= now }
     }
 
+    // MARK: - Baseline photo window
+
+    /// True when any date in `candidates` falls within `windowDays` of `anchor` in either
+    /// direction — e.g. "does a baseline photo set exist near this treatment's start date?".
+    /// Used both to nudge a missing baseline (`CareView`) and to skip the one-time capture
+    /// prompt when a recent set already exists (`AddTreatmentSheet`).
+    static func hasNearbyDate(
+        anchor: Date,
+        candidates: [Date],
+        windowDays: Int = 7,
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let lower = calendar.date(byAdding: .day, value: -windowDays, to: anchor),
+              let upper = calendar.date(byAdding: .day, value: windowDays, to: anchor)
+        else { return true }
+        return candidates.contains { $0 >= lower && $0 <= upper }
+    }
+
     // MARK: - Rapid weight loss (telogen-effluvium trigger)
 
     /// A meaningful weight drop over a short window is a recognized shedding trigger, typically
