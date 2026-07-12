@@ -1,4 +1,6 @@
 import AVFoundation
+import ImageIO
+import Photos
 import PhotosUI
 import SwiftData
 import SwiftUI
@@ -20,6 +22,13 @@ struct GuidedCaptureView: View {
     @State private var captured: UIImage?
     @State private var showGhost = true
     @State private var pickerItem: PhotosPickerItem?
+    /// True only for a library import — camera captures always stay `.now`. Gates the editable
+    /// "Taken on" row in review, so a backfilled old photo can be dated to when it was actually
+    /// taken instead of silently becoming "today's" photo in Compare and the Visit PDF.
+    @State private var isFromLibrary = false
+    /// Best-effort recovered capture date for a library import (PHAsset creation date, falling
+    /// back to EXIF), editable before saving. Only meaningful when `isFromLibrary` is true.
+    @State private var takenOnDate: Date = .now
 
     @State private var lighting = "Daylight"
     @State private var distance = "Arm's length"
@@ -149,7 +158,13 @@ struct GuidedCaptureView: View {
             }
             .accessibilityLabel("Choose from library")
             Button {
-                Task { if let image = await camera.capture() { captured = image } }
+                Task {
+                    if let image = await camera.capture() {
+                        captured = image
+                        isFromLibrary = false
+                        takenOnDate = .now
+                    }
+                }
             } label: {
                 ZStack {
                     Circle().strokeBorder(Clinical.accent, lineWidth: 4).frame(width: 68, height: 68)
@@ -207,6 +222,19 @@ struct GuidedCaptureView: View {
                         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
                         .padding(.horizontal, 24)
                         .frame(maxWidth: .infinity)
+                }
+
+                // Library imports only — a camera capture is always "now" and needs no date
+                // decision. Without this, an old photo pulled from the library silently becomes
+                // "today's" photo, which can invert baseline-vs-latest ordering in Compare and
+                // the Visit PDF for anyone backfilling a photo they've had for months.
+                if isFromLibrary {
+                    section("When") {
+                        DatePicker("Taken on", selection: $takenOnDate, in: ...Date.now, displayedComponents: .date)
+                            .tint(Clinical.accent)
+                        Text("Recovered from the photo automatically when available — adjust it if this is an older photo from your library.")
+                            .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                    }
                 }
 
                 section("Region") {
@@ -278,16 +306,50 @@ struct GuidedCaptureView: View {
     private func loadPicked(_ item: PhotosPickerItem?) {
         guard let item else { return }
         Task {
-            if let data = try? await item.loadTransferable(type: Data.self), let ui = UIImage(data: data) {
-                captured = ui
-            }
+            guard let data = try? await item.loadTransferable(type: Data.self), let ui = UIImage(data: data) else { return }
+            // Recover when the photo was actually taken — not when it was imported — so a photo
+            // someone has had on their phone for months doesn't silently become "today's" photo
+            // in Compare and the Visit PDF. PHAsset's creation date is the source of truth when
+            // reachable; EXIF DateTimeOriginal is the fallback that needs no extra permission.
+            let recovered = await Self.assetCreationDate(for: item) ?? Self.exifCaptureDate(from: data)
+            captured = ui
+            isFromLibrary = true
+            takenOnDate = recovered ?? .now
         }
+    }
+
+    /// `PHAsset.creationDate` for the picked item, only when the app already has photo-library
+    /// read access (a `PhotosPickerItem` itself never grants or prompts for it — fetching
+    /// without access just returns an empty result set, never a crash or a surprise prompt).
+    private static func assetCreationDate(for item: PhotosPickerItem) async -> Date? {
+        guard let identifier = item.itemIdentifier else { return nil }
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else { return nil }
+        return PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject?.creationDate
+    }
+
+    /// EXIF `DateTimeOriginal` (falling back to the TIFF `DateTime` tag), permission-free —
+    /// available even when the app has no photo-library access, which is the common case for a
+    /// `PhotosPickerItem`-only import.
+    private static func exifCaptureDate(from data: Data) -> Date? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        else { return nil }
+        let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any]
+        let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any]
+        guard let dateString = (exif?[kCGImagePropertyExifDateTimeOriginal] as? String)
+            ?? (tiff?[kCGImagePropertyTIFFDateTime] as? String)
+        else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+        formatter.timeZone = .current
+        return formatter.date(from: dateString)
     }
 
     private func save() {
         guard let captured, let path = PhotoStore.shared.save(captured) else { return }
         context.insert(PhotoRecord(
-            region: region, imagePath: path, createdAt: .now,
+            region: region, imagePath: path, createdAt: isFromLibrary ? takenOnDate : .now,
             lighting: lighting, distance: distance, parting: parting, isWet: isWet, note: ""
         ))
         UINotificationFeedbackGenerator().notificationOccurred(.success)

@@ -81,7 +81,11 @@ struct CompassRingsView: View {
         ZStack {
             if let progress {
                 let clamped = shown ? max(0, min(1, progress)) : 0
-                Circle().stroke(color.opacity(0.15), lineWidth: strokeWidth)
+                // Round-4 fix: at 0.15 opacity the three tracks (copper/sage/gold) read as one
+                // washed-out target on the fresh-day state everyone sees first each morning —
+                // bumped to a clearly hued 0.24 so Log/Care/Lens each read as a distinct
+                // color-coded ring before any of them have progress.
+                Circle().stroke(color.opacity(0.24), lineWidth: strokeWidth)
                 Circle()
                     .trim(from: 0, to: clamped)
                     .stroke(color, style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))

@@ -406,6 +406,40 @@ struct Hair_Compass_AI_5Tests {
         #expect(text.contains("Week 20 of 24"))
     }
 
+    // Round 4: pre-treatment logging used to be discarded entirely once a treatment started —
+    // the periodStart anchor meant weeks of baseline logging never appeared anywhere in the one
+    // report meant to answer "how has it gone since I started?".
+    @Test func progressReportShowsThePreTreatmentBaselineWhenItExists() throws {
+        let cal = Calendar.current
+        let now = Date.now
+        let today = cal.startOfDay(for: now)
+        // 4 weeks of heavy pre-treatment logging, then the treatment starts and shedding settles.
+        let start = cal.date(byAdding: .day, value: -56, to: today)!
+        let minox = Treatment(treatmentClass: .minoxidil, startDate: start)
+        var entries: [DailyEntry] = []
+        for offset in stride(from: 84, through: 0, by: -1) {
+            let day = cal.date(byAdding: .day, value: -offset, to: today)!
+            entries.append(DailyEntry(date: day, shed: day < start ? .heavy : .minimal))
+        }
+        let report = try #require(ProgressReport.build(
+            entries: entries, treatments: [minox], doses: [], labs: [],
+            sideEffects: [], triggers: [], now: now
+        ))
+        let shed = try #require(report.shedTrend)
+        let preStart = try #require(shed.preStartMean)
+        #expect(preStart > 2)   // the pre-treatment window was all .heavy (3)
+        #expect(report.honestRead.contains("Before start:"))
+        #expect(report.plainText().contains("Before start:"))
+
+        // No pre-treatment logging at all (treatment starts on day one of tracking) → nil, same
+        // as the existing baseline-report test already covers implicitly.
+        let noBaseline = try #require(ProgressReport.build(
+            entries: [], treatments: [Treatment(treatmentClass: .minoxidil, startDate: cal.date(byAdding: .day, value: -7, to: today)!)],
+            doses: [], labs: [], sideEffects: [], triggers: [], now: now
+        ))
+        #expect(noBaseline.shedTrend == nil || noBaseline.shedTrend?.preStartMean == nil)
+    }
+
     @Test func progressReportOpensTheWindowAtTwentyFourWeeks() throws {
         let cal = Calendar.current
         let now = Date.now

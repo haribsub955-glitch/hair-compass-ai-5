@@ -24,6 +24,12 @@ struct JourneyChart: View {
     // TrendsView.yAxis already follows). "Elevated" is the widest label, so it sets the gutter.
     private static let shedAxisLabels = ShedLevel.allCases.map(\.title)
 
+    /// Measured width of the widest axis label ("Elevated") at the live Dynamic Type size —
+    /// replaces a hard-pinned 44pt gutter that broke "Elevated" onto two lines ("Elevate/d") at
+    /// default size and every label at accessibility sizes. Seeded at 44 so the very first frame
+    /// (before the hidden template below reports its real width) still looks reasonable.
+    @State private var gutterWidth: CGFloat = 44
+
     var body: some View {
         let end = Date.now
         let start = Calendar.current.date(byAdding: .day, value: -windowDays, to: end) ?? end
@@ -46,6 +52,10 @@ struct JourneyChart: View {
                         intakeLane(data: data, domain: start...end)
                     }
                     legend(data: data)
+                    if !data.echoBands.isEmpty {
+                        Text("Faint band = possible echo window — shedding often lags a trigger by 2–3 months.")
+                            .font(.system(size: 10)).foregroundStyle(Clinical.tertiary)
+                    }
                 }
             }
         }
@@ -55,6 +65,20 @@ struct JourneyChart: View {
 
     private func shedChart(data: JourneyData, domain: ClosedRange<Date>) -> some View {
         Chart {
+            // Possible-echo bands — drawn first so every other mark sits above them. Pure
+            // calendar math (trigger/stop date + 8…12 weeks) on data already queried; phrased
+            // as "possible echo", never a prediction, so the honest 2–3-month causal vocabulary
+            // that only ever lived in prose is now visible on the one chart people actually look
+            // at when a shed spike worries them.
+            ForEach(data.echoBands) { band in
+                RectangleMark(
+                    xStart: .value("Start", band.start),
+                    xEnd: .value("End", band.end),
+                    yStart: .value("Low", 0.0),
+                    yEnd: .value("High", 3.0)
+                )
+                .foregroundStyle(Clinical.warning.opacity(0.08))
+            }
             // Faint raw daily levels — the honest reality behind the smoothing.
             ForEach(data.shedPoints) { p in
                 PointMark(x: .value("Date", p.date), y: .value("Shed", p.raw))
@@ -108,7 +132,8 @@ struct JourneyChart: View {
                         if Self.shedAxisLabels.indices.contains(i) {
                             Text(Self.shedAxisLabels[i])
                                 .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-                                .frame(width: 44, alignment: .trailing)   // pin gutter — stops horizontal breathing
+                                .lineLimit(1).fixedSize()   // never wrap mid-word
+                                .frame(width: gutterWidth, alignment: .trailing)
                         }
                     }
                 }
@@ -187,7 +212,14 @@ struct JourneyChart: View {
                     AxisValueLabel {
                         Text("Elevated")
                             .font(Clinical.eyebrow(9)).foregroundStyle(.clear)
-                            .frame(width: 44, alignment: .trailing)   // pin gutter — stops horizontal breathing
+                            .lineLimit(1).fixedSize()
+                            // Measures its own natural (unwrapped) width at the live type size
+                            // and grows the shared gutter to fit — never shrinks, so a transient
+                            // narrower pass (e.g. mid-rotation) can't ping-pong the layout.
+                            .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in
+                                if width > gutterWidth { gutterWidth = width }
+                            }
+                            .frame(width: gutterWidth, alignment: .trailing)
                     }
                 }
             }
@@ -306,8 +338,18 @@ private struct JourneyData {
         var id: String { title }
     }
 
+    /// A shaded "possible echo" window: triggerDate/stopDate + 8…12 weeks, clipped to the chart
+    /// domain. Never a prediction — just the honest calendar math behind the app's recurring
+    /// "shedding often lags a trigger by 2–3 months" line, finally drawn where the eye already is.
+    struct EchoBand: Identifiable {
+        let id: String
+        let start: Date
+        let end: Date
+    }
+
     let shedPoints: [ShedPoint]
     let markers: [Marker]
+    let echoBands: [EchoBand]
     let doseBars: [DoseBar]
     let doseSeries: [DoseSeries]
     let intakeCeiling: Int
@@ -408,6 +450,27 @@ private struct JourneyData {
             }
         }
         markers = built
+
+        // Possible-echo bands: 8…12 weeks after each dated trigger and treatment-stop that's
+        // itself inside the window — the same source events already drawn as `.trigger`/`.stop`
+        // markers above, so a band never appears without the dated event that explains it.
+        // Clipped to [start, end] since the band's far edge can fall past `end`.
+        let week: TimeInterval = 7 * 24 * 3600
+        var bands: [EchoBand] = []
+        func addEchoBand(id: String, anchor: Date) {
+            let bandStart = anchor.addingTimeInterval(8 * week)
+            let bandEnd = anchor.addingTimeInterval(12 * week)
+            guard bandEnd >= start, bandStart <= end else { return }
+            bands.append(EchoBand(id: id, start: max(bandStart, start), end: min(bandEnd, end)))
+        }
+        for tr in triggers where tr.date >= start && tr.date <= end {
+            addEchoBand(id: "trig-echo-\(tr.typeRaw)-\(tr.date.timeIntervalSinceReferenceDate)", anchor: tr.date)
+        }
+        for t in treatments {
+            guard let stopDate = t.endDate, stopDate >= start, stopDate <= end else { continue }
+            addEchoBand(id: "stop-echo-\(t.classRaw)-\(stopDate.timeIntervalSinceReferenceDate)", anchor: stopDate)
+        }
+        echoBands = bands
 
         // Intake lane: doses of daily-med classes, grouped per calendar day and stacked by class.
         let dailyOrder: [TreatmentClass] = [.minoxidil, .finasteride, .dutasteride]

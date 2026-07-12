@@ -95,6 +95,12 @@ struct ProgressReportSheet: View {
                 }
                 miniChart(trend)
                 HStack(spacing: 16) {
+                    // Shown only when there's logging before the treatment started — the
+                    // baseline habit the app tells users buys them an easier-to-judge future
+                    // treatment. A record of change, never a verdict on its own.
+                    if let preStart = trend.preStartMean {
+                        StatBlock(value: fmt(preStart), label: "Before start")
+                    }
                     StatBlock(value: fmt(trend.firstWindowMean), label: "First 4 wks avg")
                     StatBlock(value: fmt(trend.lastWindowMean), label: "Last 4 wks avg")
                 }

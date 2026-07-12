@@ -169,12 +169,25 @@ struct RootView: View {
         .task(id: widgetFingerprint) {
             WidgetBridge.write(WidgetSnapshotBuilder.build(entries: entries, treatments: treatments, doses: doses, photos: photos))
         }
-        // Same DeepLinkRouter idiom the widget's haircompass://log URL uses below — a tap on a
-        // milestone reminder switches to Plan and asks CareView to open the progress report.
+        // Same DeepLinkRouter idiom the widget's haircompass://log URL uses below — routes every
+        // reminder's tap to the tab and action it invited, rather than only milestone taps
+        // (round 4). Dispatched by identifier prefix, mirroring how NotificationService names
+        // its own scheduled requests.
         .task {
-            notifications.onMilestoneTapped = {
-                tab = .care
-                deepLinks.openProgressReportRequested = true
+            notifications.onNotificationTapped = { identifier in
+                if identifier.hasPrefix("milestone.") {
+                    tab = .care
+                    deepLinks.openProgressReportRequested = true
+                } else if identifier.hasPrefix("eveningCheckIn.") {
+                    tab = .today
+                    deepLinks.openLogRequested = true
+                } else if identifier == "photoReminder" {
+                    tab = .photos
+                    deepLinks.openGuidedCaptureRequested = true
+                } else if identifier.hasPrefix("refill.") || identifier.hasPrefix("treatment.") {
+                    tab = .care
+                    deepLinks.openCareRequested = true
+                }
             }
         }
         // Owner-controlled affiliate links: pull the remote catalog once per launch. A no-op

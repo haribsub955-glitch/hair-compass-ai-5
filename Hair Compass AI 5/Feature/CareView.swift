@@ -169,6 +169,13 @@ struct CareView: View {
             deepLinks.openProgressReportRequested = false
             if progressReport != nil { showReport = true }
         }
+        // A refill or treatment-schedule reminder tap lands here already on Plan (RootView
+        // switches tabs) — the tab switch itself is the fix (round 4: these used to dead-end at
+        // the app icon), so this just consumes the flag per the router's consume-once idiom.
+        .onChange(of: deepLinks.openCareRequested) { _, requested in
+            guard requested else { return }
+            deepLinks.openCareRequested = false
+        }
         // Re-plans whenever today's logged state flips — the "cancel when logged" honesty rule:
         // once today is logged, today's pending reminder id is dropped from the schedule.
         .task(id: hasLoggedToday) {
@@ -316,6 +323,13 @@ struct CareView: View {
                 Spacer(minLength: 8)
                 if dailySteps.count > 0 {
                     CoachProgressRing(done: doneToday, total: dailySteps.count, progress: progress)
+                        .background(
+                            // Round-4 fix: the ring used to sit directly on the bottle artwork,
+                            // where its pale track nearly vanished against similarly-valued
+                            // amber. A dedicated surface disc restores figure/ground for the
+                            // ring specifically, on top of the card-wide gradient scrim below.
+                            Circle().fill(Clinical.surface.opacity(0.85)).padding(-6)
+                        )
                 }
             }
             .padding(16)

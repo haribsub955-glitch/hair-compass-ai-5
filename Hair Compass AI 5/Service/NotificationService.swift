@@ -13,7 +13,7 @@ final class NotificationService {
 
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
     private let center = UNUserNotificationCenter.current()
-    /// Routes a tap on a milestone reminder back to the app (see `onMilestoneTapped`).
+    /// Routes a notification tap back to the app by identifier prefix (see `onNotificationTapped`).
     private let tapDelegate = NotificationTapDelegate()
 
     private let treatmentPrefix = "treatment."
@@ -31,12 +31,16 @@ final class NotificationService {
 
     var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
 
-    /// Fired on the main actor when the user taps a milestone reminder — `RootView` wires this
-    /// to switch to Plan and open the progress report, the same `DeepLinkRouter` idiom the
-    /// widget's `haircompass://log` URL already uses.
-    var onMilestoneTapped: (() -> Void)? {
-        get { tapDelegate.onMilestoneTapped }
-        set { tapDelegate.onMilestoneTapped = newValue }
+    /// Fired on the main actor with the tapped notification's identifier — `RootView` wires this
+    /// to switch tabs and set the matching `DeepLinkRouter` flag (milestone → progress report,
+    /// evening check-in → the log sheet, monthly photo → guided capture, refill/treatment →
+    /// Plan), the same consume-once idiom the widget's `haircompass://log` URL already uses.
+    /// Round 4: previously only `milestone.*` taps were routed at all — every other reminder
+    /// (the evening check-in, the monthly photo prompt, a refill heads-up) dead-ended at the app
+    /// icon instead of opening the thing it invited, right at the moment the user said yes.
+    var onNotificationTapped: ((String) -> Void)? {
+        get { tapDelegate.onTapped }
+        set { tapDelegate.onTapped = newValue }
     }
 
     init() {
@@ -341,21 +345,21 @@ final class NotificationService {
 }
 
 /// A minimal `UNUserNotificationCenterDelegate`: shows banners for foreground notifications
-/// (these are occasional, high-value nudges, not spam) and routes a tap on a `milestone.*`
-/// reminder back into the app via a closure `NotificationService` exposes as `onMilestoneTapped`.
-/// A separate `NSObject` subclass rather than retrofitting `NotificationService` itself, which is
-/// an `@Observable` class with no `NSObject` ancestry.
+/// (these are occasional, high-value nudges, not spam) and routes ANY notification tap back into
+/// the app via a closure `NotificationService` exposes as `onNotificationTapped`, passing the raw
+/// identifier so the caller can dispatch by prefix. A separate `NSObject` subclass rather than
+/// retrofitting `NotificationService` itself, which is an `@Observable` class with no `NSObject`
+/// ancestry.
 private final class NotificationTapDelegate: NSObject, UNUserNotificationCenterDelegate {
-    var onMilestoneTapped: (() -> Void)?
+    var onTapped: ((String) -> Void)?
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        if response.notification.request.identifier.hasPrefix("milestone.") {
-            Task { @MainActor [onMilestoneTapped] in onMilestoneTapped?() }
-        }
+        let identifier = response.notification.request.identifier
+        Task { @MainActor [onTapped] in onTapped?(identifier) }
         completionHandler()
     }
 

@@ -38,6 +38,13 @@ struct ProgressReport {
         let scaleMax: Double         // 3 for shed, 16 for the scalp SD total
         let raw: [MetricPoint]       // faint honest reality behind the smoothing
         let smoothed: [MetricPoint]  // 7-day centered rolling mean (ChartMath.rollingMean)
+        /// Mean of the last 4 logged weeks BEFORE `periodStart` (nil when there's no such
+        /// logging, e.g. a treatment started on day one of tracking). This is the baseline the
+        /// app tells users a steady pre-start habit buys them — previously discarded entirely
+        /// once a treatment began, so the one document meant to answer "how has it gone since I
+        /// started?" never actually showed what "since" was measured against. A record of
+        /// change, never a causal verdict.
+        let preStartMean: Double?
     }
 
     /// A 14-day dosing window weak enough to blur what the trend can say (< 60%).
@@ -167,12 +174,20 @@ struct ProgressReport {
         let shedTrend = trend(
             dates: inPeriod.map(\.date),
             values: inPeriod.map { Double($0.shed.rawValue) },
-            deadband: shedDeadband, scaleMax: 3, calendar: calendar
+            deadband: shedDeadband, scaleMax: 3, calendar: calendar,
+            preStartMean: preStartBaseline(
+                dates: sorted.map(\.date), values: sorted.map { Double($0.shed.rawValue) },
+                periodStart: periodStart, calendar: calendar
+            )
         )
         let scalpTrend = trend(
             dates: inPeriod.map(\.date),
             values: inPeriod.map { Double($0.scalpTotal) },
-            deadband: scalpDeadband, scaleMax: 16, calendar: calendar
+            deadband: scalpDeadband, scaleMax: 16, calendar: calendar,
+            preStartMean: preStartBaseline(
+                dates: sorted.map(\.date), values: sorted.map { Double($0.scalpTotal) },
+                periodStart: periodStart, calendar: calendar
+            )
         )
 
         // Adherence since treatment start (existing helper; windowDays = weeks × 7).
@@ -269,7 +284,8 @@ struct ProgressReport {
         values: [Double],
         deadband: Double,
         scaleMax: Double,
-        calendar: Calendar
+        calendar: Calendar,
+        preStartMean: Double? = nil
     ) -> Trend? {
         guard dates.count >= 2, dates.count == values.count,
               let firstDate = dates.first, let lastDate = dates.last,
@@ -292,8 +308,21 @@ struct ProgressReport {
             verdict: verdict(delta: delta, deadband: deadband),
             scaleMax: scaleMax,
             raw: pairs.indices.map { MetricPoint(date: dates[$0], value: values[$0]) },
-            smoothed: pairs.map { MetricPoint(date: $0.0, value: $0.1) }
+            smoothed: pairs.map { MetricPoint(date: $0.0, value: $0.1) },
+            preStartMean: preStartMean
         )
+    }
+
+    /// Mean of the logged values in the 4 weeks strictly BEFORE `periodStart` — the pre-treatment
+    /// baseline the honest read can show alongside the in-period trend. nil when there's no such
+    /// logging (e.g. a treatment started on day one of tracking, or logging began after it).
+    private static func preStartBaseline(
+        dates: [Date], values: [Double], periodStart: Date, calendar: Calendar
+    ) -> Double? {
+        guard let cutoff = calendar.date(byAdding: .day, value: -28, to: periodStart) else { return nil }
+        let window = zip(dates, values).filter { $0.0 >= cutoff && $0.0 < periodStart }.map(\.1)
+        guard !window.isEmpty else { return nil }
+        return HairAnalytics.mean(window)
     }
 
     // MARK: - Weakest 2-week stretch
@@ -358,6 +387,9 @@ struct ProgressReport {
         }
 
         if let shed {
+            if let preStart = shed.preStartMean {
+                sentences.append("Before start: \(fmt(preStart)) → now: \(fmt(shed.lastWindowMean)) of \(fmt(shed.scaleMax)) — a record of change, not a verdict on the treatment.")
+            }
             let numbers = "(\(fmt(shed.firstWindowMean)) → \(fmt(shed.lastWindowMean)) of \(fmt(shed.scaleMax)))"
             switch shed.verdict {
             case .improving:
@@ -417,10 +449,16 @@ struct ProgressReport {
 
         if let shedTrend {
             out += "SHEDDING TRAJECTORY\n"
+            if let preStart = shedTrend.preStartMean {
+                out += "• Before start: \(Self.fmt(preStart))/\(Self.fmt(shedTrend.scaleMax))\n"
+            }
             out += "• First 4 weeks: \(Self.fmt(shedTrend.firstWindowMean))/\(Self.fmt(shedTrend.scaleMax)) · Last 4 weeks: \(Self.fmt(shedTrend.lastWindowMean))/\(Self.fmt(shedTrend.scaleMax)) — \(shedTrend.verdict.rawValue)\n\n"
         }
         if let scalpTrend {
             out += "SCALP SEVERITY\n"
+            if let preStart = scalpTrend.preStartMean {
+                out += "• Before start: \(Self.fmt(preStart))/\(Self.fmt(scalpTrend.scaleMax))\n"
+            }
             out += "• First 4 weeks: \(Self.fmt(scalpTrend.firstWindowMean))/\(Self.fmt(scalpTrend.scaleMax)) · Last 4 weeks: \(Self.fmt(scalpTrend.lastWindowMean))/\(Self.fmt(scalpTrend.scaleMax)) — \(scalpTrend.verdict.rawValue)\n\n"
         }
         if let adherence {

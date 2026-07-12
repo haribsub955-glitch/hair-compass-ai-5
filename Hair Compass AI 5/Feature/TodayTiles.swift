@@ -264,16 +264,23 @@ struct ConditionsHero: View {
                     scalpLine
                     chipRow
                 } else {
-                    // Reserves the same trailing column the tick ladder occupies (visible
-                    // whenever nothing is logged) instead of overlaying it — a fixed single-line
-                    // headline would otherwise span the full width and collide with the ladder's
-                    // top label at large Dynamic Type sizes (round-3 fix). Wrapping to 2 lines
-                    // replaces the old lineLimit(1)+aggressive minimumScaleFactor, which used to
-                    // crush the whole headline down to stay on one line under the same pressure.
-                    Text(onShedSet != nil ? "Not logged — drag to set" : "Not logged")
+                    // Round-4 fix: the headline used to carry the whole instruction ("Not logged
+                    // — drag to set"), which either got clipped mid-word at accessibility sizes
+                    // or wrapped onto a second line starting with a bare em-dash at default size.
+                    // Splitting it — a short headline that always fits one line next to the
+                    // ladder, plus the instruction in the same small subtitle slot the drag-live
+                    // and saved branches above use — lets the instruction wrap freely at body
+                    // size instead of being crushed or truncated at 44pt, and keeps this branch's
+                    // structure (headline + subtitle) identical to theirs so nothing reflows when
+                    // a finger goes down.
+                    Text("Not logged")
                         .font(Clinical.headline(44)).foregroundStyle(Clinical.tertiary)
-                        .lineLimit(2).minimumScaleFactor(0.65)
+                        .lineLimit(1).minimumScaleFactor(0.65)
                         .padding(.trailing, onShedSet != nil ? ladderReservedInset : 0)
+                    if onShedSet != nil {
+                        subtitleText("Drag the ladder to set")
+                            .padding(.trailing, ladderReservedInset)
+                    }
                     chipRow
                 }
             }

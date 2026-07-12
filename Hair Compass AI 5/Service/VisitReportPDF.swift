@@ -152,25 +152,49 @@ enum VisitReportPDF {
                 drawFooter()
             }
 
-            // Photo pairs — one page per region with at least two captures, baseline and
-            // latest side by side with capture date + lighting/wet metadata captioned under
-            // each, so the actual photos a clinician looks at first travel with the report
-            // instead of being left for the user to remember separately.
+            // Photo pairs — one page per region with at least two captures, baseline and the
+            // best-matching later capture side by side with capture date + lighting/wet metadata
+            // captioned under each, so the actual photos a clinician looks at first travel with
+            // the report instead of being left for the user to remember separately.
             for region in PhotoRegion.allCases {
-                let regionPhotos = photos.filter { $0.region == region }.sorted { $0.createdAt < $1.createdAt }
-                guard let baseline = regionPhotos.first, let latest = regionPhotos.last,
-                      baseline.id != latest.id else { continue }
+                let regionPhotos = photos.filter { $0.region == region }
+                guard let pair = Self.comparisonPair(in: regionPhotos) else { continue }
                 pageNumber += 1
                 context.beginPage()
                 drawRunningHeader(pageNumber)
                 drawPhotoComparisonPage(
-                    region: region, baseline: baseline, latest: latest,
+                    region: region, baseline: pair.baseline, latest: pair.latest, caveat: pair.caveat,
                     contentRect: contentRect, contentTopInset: contentTopInset,
                     headerColor: headerColor
                 )
                 drawFooter()
             }
         }
+    }
+
+    // MARK: - Comparable photo selection
+
+    /// Picks the baseline (earliest capture) and the best later capture to pair it with for one
+    /// region's Visit PDF page. Prefers the most recent capture whose lighting/wetness/parting
+    /// agree with the baseline's — the same comparability check `PhotosView.compareMismatchCaption`
+    /// makes for the in-app Compare card — so the highest-stakes document the app produces
+    /// doesn't lead with an apples-to-oranges pair (a wet, differently-lit "latest" reading as
+    /// more or less change than actually happened). Falls back to the true latest capture with a
+    /// printed caveat when nothing later in the series matches. Pure and order-independent, so
+    /// it's unit-testable without rendering a PDF. Returns nil when there's nothing to pair.
+    static func comparisonPair(
+        in regionPhotos: [PhotoRecord]
+    ) -> (baseline: PhotoRecord, latest: PhotoRecord, caveat: String?)? {
+        let sorted = regionPhotos.sorted { $0.createdAt < $1.createdAt }
+        guard let baseline = sorted.first, let trueLatest = sorted.last, sorted.count >= 2,
+              baseline.id != trueLatest.id
+        else { return nil }
+
+        let laterCandidates = sorted.dropFirst().reversed()   // newest first, excludes baseline
+        if let matched = laterCandidates.first(where: { PhotosView.compareMismatchCaption(baseline, $0) == nil }) {
+            return (baseline, matched, nil)
+        }
+        return (baseline, trueLatest, "Conditions differ from baseline — read with care.")
     }
 
     // MARK: - Trend charts page
@@ -205,7 +229,7 @@ enum VisitReportPDF {
     // MARK: - Photo comparison page
 
     private static func drawPhotoComparisonPage(
-        region: PhotoRegion, baseline: PhotoRecord, latest: PhotoRecord,
+        region: PhotoRegion, baseline: PhotoRecord, latest: PhotoRecord, caveat: String?,
         contentRect: CGRect, contentTopInset: CGFloat, headerColor: UIColor
     ) {
         let margin = Self.margin
@@ -217,7 +241,17 @@ enum VisitReportPDF {
 
         let captionFont = UIFont.systemFont(ofSize: 9)
         let noteFont = UIFont.systemFont(ofSize: 8)
-        let imageTop = margin + contentTopInset + 24
+        var imageTop = margin + contentTopInset + 24
+        // Printed when the true latest capture doesn't match the baseline's conditions and no
+        // better-matching earlier capture exists — the same honesty CompareView's mismatch
+        // caption gives on-screen, carried into the clinician-facing document.
+        if let caveat {
+            (caveat as NSString).draw(
+                at: CGPoint(x: margin, y: imageTop),
+                withAttributes: [.font: UIFont.italicSystemFont(ofSize: 9), .foregroundColor: UIColor(Clinical.warning)]
+            )
+            imageTop += 14
+        }
         let gap: CGFloat = 16
         let imageWidth = (contentRect.width - gap) / 2
         let imageHeight: CGFloat = 420

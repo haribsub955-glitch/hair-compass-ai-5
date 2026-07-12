@@ -78,4 +78,50 @@ struct VisitReportPDFTests {
         )
         #expect(pageCount(singlePhoto) == pageCount(textOnly))
     }
+
+    // MARK: - Comparable photo selection (round 4)
+    //
+    // The photo page used to always pair the chronological first vs. last capture, even when the
+    // "latest" was shot under different conditions than the baseline — the exact confound
+    // PhotosView's Compare card already guards against on-screen. These verify the Visit PDF now
+    // makes the same honest choice.
+
+    private func photo(daysAgo: Double, lighting: String = "daylight", isWet: Bool = false, parting: String = "center") -> PhotoRecord {
+        PhotoRecord(
+            region: .frontal, imagePath: "x.jpg",
+            createdAt: Date.now.addingTimeInterval(-daysAgo * 86_400),
+            lighting: lighting, distance: "arm's length", parting: parting, isWet: isWet
+        )
+    }
+
+    @Test func pairsBaselineWithTrueLatestWhenConditionsMatch() {
+        let baseline = photo(daysAgo: 60)
+        let latest = photo(daysAgo: 0)
+        let pair = try! #require(VisitReportPDF.comparisonPair(in: [baseline, latest]))
+        #expect(pair.baseline.createdAt == baseline.createdAt)
+        #expect(pair.latest.createdAt == latest.createdAt)
+        #expect(pair.caveat == nil)
+    }
+
+    @Test func prefersAnEarlierMatchingCaptureOverAMismatchedTrueLatest() {
+        let baseline = photo(daysAgo: 60, lighting: "daylight", isWet: false)
+        let matching = photo(daysAgo: 30, lighting: "daylight", isWet: false)
+        let mismatchedLatest = photo(daysAgo: 0, lighting: "daylight", isWet: true)   // wet vs dry
+        let pair = try! #require(VisitReportPDF.comparisonPair(in: [baseline, matching, mismatchedLatest]))
+        #expect(pair.latest.createdAt == matching.createdAt)
+        #expect(pair.caveat == nil)
+    }
+
+    @Test func fallsBackToTrueLatestWithACaveatWhenNothingMatches() {
+        let baseline = photo(daysAgo: 30, lighting: "daylight", isWet: false)
+        let mismatchedLatest = photo(daysAgo: 0, lighting: "lamp", isWet: true)
+        let pair = try! #require(VisitReportPDF.comparisonPair(in: [baseline, mismatchedLatest]))
+        #expect(pair.latest.createdAt == mismatchedLatest.createdAt)
+        #expect(pair.caveat != nil)
+    }
+
+    @Test func returnsNilWithFewerThanTwoPhotos() {
+        #expect(VisitReportPDF.comparisonPair(in: []) == nil)
+        #expect(VisitReportPDF.comparisonPair(in: [photo(daysAgo: 0)]) == nil)
+    }
 }

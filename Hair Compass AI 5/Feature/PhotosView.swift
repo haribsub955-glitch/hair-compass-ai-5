@@ -5,6 +5,7 @@ import SwiftUI
 struct PhotosView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(DeepLinkRouter.self) private var deepLinks
     @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
 
     @State private var region: PhotoRegion = .frontal
@@ -68,8 +69,12 @@ struct PhotosView: View {
                     )
                 ).padding(.top, 8)
                     // Same corner-sprig family as Trends/Labs/Plan — Photos was the last header
-                    // left undressed.
-                    .background(alignment: .topTrailing) { CornerSprig() }
+                    // left undressed. Narrower than the shared default: Photos' header sits
+                    // directly above an interactive, horizontally-scrolling region-chip row (no
+                    // buffer card in between the way Labs/Plan have), so the default 210pt bleed
+                    // reached down far enough to clip leaf shapes across the chips' trailing
+                    // edge. Shortened to end above that row instead.
+                    .background(alignment: .topTrailing) { CornerSprig(width: 150) }
 
                 // Empty state carries its own single instruction + CTA below, so the header
                 // subtitle only earns its place once there's real data to summarize — otherwise
@@ -130,6 +135,13 @@ struct PhotosView: View {
                 journey = JourneyPresentation(frames: exampleFrames(), isExample: true)
             }
             #endif
+        }
+        // Tapping the monthly photo reminder lands here already on Photos (RootView switches
+        // tabs) — just open guided capture, the thing the notification invited.
+        .onChange(of: deepLinks.openGuidedCaptureRequested) { _, requested in
+            guard requested else { return }
+            deepLinks.openGuidedCaptureRequested = false
+            showAdd = true
         }
     }
 
@@ -280,6 +292,13 @@ struct PhotosView: View {
                 Button("Capture \(region.title.lowercased())") { showAdd = true }
                     .buttonStyle(ClinicalButtonStyle())
                     .padding(.top, 2)
+                // The whole point of a baseline is that it can predate the app — this surfaces
+                // the library-import path (which now recovers the photo's real date, not
+                // today's) right where someone with a year of worry and old camera-roll photos
+                // would otherwise never think to look for it.
+                Button("Add older photos from your library") { showAdd = true }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Clinical.accent)
                 Button("See an example journey") {
                     journey = JourneyPresentation(frames: exampleFrames(), isExample: true)
                 }
