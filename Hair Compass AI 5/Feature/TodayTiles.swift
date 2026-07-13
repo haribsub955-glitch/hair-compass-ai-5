@@ -140,14 +140,21 @@ struct ConditionsHero: View {
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0),
-                    .init(color: .clear, location: 0.20),
-                    .init(color: .black, location: 0.36),
+                    .init(color: .clear, location: max(0, strandMaskTop - 0.16)),
+                    .init(color: .black, location: strandMaskTop),
                     .init(color: .black, location: 1),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
         )
+    }
+
+    /// Where falling strands become fully visible, as a fraction of hero height. At the calmest
+    /// band (Minimal) the few strands are pushed below the band word, so one never drifts across
+    /// the headline; busier bands keep the higher default and let the simulation fill the scene.
+    private var strandMaskTop: CGFloat {
+        SheddingDial.band(displayIntensity) == ShedLevel.minimal.rawValue ? 0.56 : 0.36
     }
 
     private func dragGesture(height: CGFloat, set: @escaping (ShedLevel) -> Void) -> some Gesture {

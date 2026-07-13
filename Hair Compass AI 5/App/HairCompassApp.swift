@@ -53,6 +53,10 @@ struct HairCompassApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                // The design is deliberately single-appearance: every Clinical token is a fixed
+                // warm colour. Pin Light so the invariant is explicit — any future system-adaptive
+                // colour or default sheet/list background can't silently break in dark mode.
+                .preferredColorScheme(.light)
         }
         .modelContainer(container)
     }

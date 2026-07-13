@@ -271,7 +271,14 @@ struct TodayView: View {
     // MARK: - Insight (hybrid: on-device AI, deterministic fallback)
 
     private var insightFingerprint: String {
-        "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(snapshots.count)-\(treatments.count)-\(labs.count)"
+        // Include the latest entry's *content*, not just the count/date — editing today's check-in
+        // in place (the hero drag or the Log sheet's Edit path) mutates the existing DailyEntry
+        // without changing the count, so a count-only key would leave the insight describing a shed
+        // level the user just changed.
+        let latest = entries.first.map {
+            "\($0.shedRaw)-\($0.flaking)-\($0.erythema)-\($0.itch)-\($0.date.timeIntervalSince1970)"
+        } ?? "none"
+        return "\(entries.count)-\(latest)-\(snapshots.count)-\(treatments.count)-\(labs.count)"
     }
 
     @MainActor

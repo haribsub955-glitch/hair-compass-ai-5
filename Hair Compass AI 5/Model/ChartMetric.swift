@@ -103,8 +103,19 @@ enum ChartMath {
         guard hair.count == lifestyle.count else { return .insufficient(need: minPairs) }
         guard hair.count >= minPairs else { return .insufficient(need: minPairs) }
         guard let r = correlation(hair, lifestyle) else { return .unclear }
-        if abs(r) < 0.25 { return .unclear }
+        // Scale the clarity gate with sample size. At n=8 a correlation must clear ~0.71 to read as
+        // a pattern — |r|=0.25 on a handful of days is indistinguishable from noise, and a worried
+        // user anchors on the direction, not the hedge. The bound eases to the 0.25 floor by n≈64.
+        if abs(r) < clarityThreshold(pairs: hair.count) { return .unclear }
         return r > 0 ? .together : .opposite
+    }
+
+    /// The minimum |correlation| that reads as a directional pattern for a given number of
+    /// overlapping day-pairs: an approximate significance-shaped bound `max(0.25, 2/√n)`, never
+    /// below the 0.25 floor. Larger samples earn a looser gate; tiny ones must show a strong signal.
+    static func clarityThreshold(pairs: Int) -> Double {
+        guard pairs > 0 else { return 1 }
+        return max(0.25, 2.0 / Double(pairs).squareRoot())
     }
 
     /// Pair a hair-fall day series with a lifestyle series shifted `lagDays` earlier — i.e. compare

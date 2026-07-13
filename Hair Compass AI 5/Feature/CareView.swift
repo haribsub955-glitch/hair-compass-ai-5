@@ -366,7 +366,9 @@ struct CareView: View {
                     LinearGradient(
                         stops: [
                             .init(color: Clinical.surface.opacity(0.99), location: 0),
-                            .init(color: Clinical.surface.opacity(0.60), location: 0.5),
+                            // Mid stop kept fairly solid (0.72) so a long two-line detail that
+                            // reaches toward centre never sits on washed-out artwork.
+                            .init(color: Clinical.surface.opacity(0.72), location: 0.5),
                             .init(color: Clinical.surface.opacity(0.94), location: 1),
                         ],
                         startPoint: .leading,
