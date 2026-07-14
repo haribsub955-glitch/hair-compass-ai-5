@@ -8,6 +8,7 @@ struct ProcedureDetailSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Bindable var appointment: ProcedureAppointment
+    @State private var showEdit = false
 
     var body: some View {
         NavigationStack {
@@ -31,8 +32,10 @@ struct ProcedureDetailSheet: View {
             .navigationTitle(appointment.type.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Edit") { showEdit = true } }
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
+            .sheet(isPresented: $showEdit) { AddProcedureSheet(existing: appointment) }
         }
     }
 

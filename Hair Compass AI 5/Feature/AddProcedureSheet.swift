@@ -5,14 +5,28 @@ import SwiftUI
 /// custom "other" procedure. Same Clinical form idiom as `AddTreatmentSheet`/`AddLabSheet`: a
 /// chip picker, a date strip, a compact time picker, two optional text fields, one save button.
 struct AddProcedureSheet: View {
+    /// nil = booking a new procedure; non-nil = editing that one in place (same form, prefilled).
+    var existing: ProcedureAppointment?
+
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
-    @State private var type: ProcedureType = .prp
-    @State private var date = Date.now
-    @State private var time = Date.now
-    @State private var location = ""
-    @State private var note = ""
+    @State private var type: ProcedureType
+    @State private var date: Date
+    @State private var time: Date
+    @State private var location: String
+    @State private var note: String
+
+    init(existing: ProcedureAppointment? = nil) {
+        self.existing = existing
+        // The date-strip day and the time picker both read the one stored instant.
+        let instant = existing?.date ?? .now
+        _type = State(initialValue: existing?.type ?? .prp)
+        _date = State(initialValue: instant)
+        _time = State(initialValue: instant)
+        _location = State(initialValue: existing?.location ?? "")
+        _note = State(initialValue: existing?.note ?? "")
+    }
 
     var body: some View {
         NavigationStack {
@@ -56,13 +70,13 @@ struct AddProcedureSheet: View {
                         textField("Anything worth remembering", text: $note)
                     }
 
-                    Button("Add procedure", action: save)
+                    Button(existing == nil ? "Add procedure" : "Save changes", action: save)
                         .buttonStyle(ClinicalButtonStyle())
                 }
                 .padding(20)
             }
             .clinicalScreen()
-            .navigationTitle("New procedure")
+            .navigationTitle(existing == nil ? "New procedure" : "Edit procedure")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -109,13 +123,22 @@ struct AddProcedureSheet: View {
         combined.hour = timeComps.hour
         combined.minute = timeComps.minute
         let combinedDate = calendar.date(from: combined) ?? date
+        let trimmedLocation = location.trimmingCharacters(in: .whitespaces)
+        let trimmedNote = note.trimmingCharacters(in: .whitespaces)
 
-        context.insert(ProcedureAppointment(
-            type: type,
-            date: combinedDate,
-            location: location.trimmingCharacters(in: .whitespaces),
-            note: note.trimmingCharacters(in: .whitespaces)
-        ))
+        if let existing {
+            existing.type = type
+            existing.date = combinedDate
+            existing.location = trimmedLocation
+            existing.note = trimmedNote
+        } else {
+            context.insert(ProcedureAppointment(
+                type: type,
+                date: combinedDate,
+                location: trimmedLocation,
+                note: trimmedNote
+            ))
+        }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
     }
