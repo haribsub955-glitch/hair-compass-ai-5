@@ -35,7 +35,12 @@ struct TodayView: View {
         entries.first { calendar.isDateInToday($0.date) }
     }
     private var activeDaily: [Treatment] {
-        treatments.filter { $0.isActive && !$0.slots.isEmpty }
+        treatments.filter { $0.isActive && !$0.slots.isEmpty && $0.isDueToday() }
+    }
+    /// Periodic care products (a shampoo/oil with no clock time) scheduled for today — shown in
+    /// the routine as an "As scheduled" step so a day-scheduled shampoo appears on its days.
+    private var dueCareProducts: [Treatment] {
+        treatments.filter { $0.isActive && $0.slots.isEmpty && $0.treatmentClass.isCareProduct && $0.isDueToday() }
     }
     /// Displayed streak with Duolingo-style shields — see `HairAnalytics.shieldedStreak`. Only
     /// what's shown changes; XP/badge math (`CheckInReward`) still runs off the plain,
@@ -60,9 +65,11 @@ struct TodayView: View {
         snapshots.first { calendar.isDateInToday($0.date) }?.sleepHours
     }
 
-    /// Every daily (treatment, slot) step — the same universe treatmentRows renders.
+    /// Every routine step due today — clock-timed medication/supplement slots, then periodic
+    /// care products scheduled for today (rendered with an empty "" slot). This is the universe
+    /// the routine list renders and the Compass "care" ring counts.
     private var dailySlots: [(Treatment, String)] {
-        activeDaily.flatMap { t in t.slots.map { (t, $0) } }
+        activeDaily.flatMap { t in t.slots.map { (t, $0) } } + dueCareProducts.map { ($0, "") }
     }
     private var medsDone: Int {
         dailySlots.filter { isLogged($0.0, slot: $0.1) }.count
@@ -387,15 +394,13 @@ struct TodayView: View {
                 .buttonStyle(.plain)
                 .accessibilityHint(todayEntry == nil ? "Opens today's check-in" : "Edits today's check-in")
 
-                if !activeDaily.isEmpty {
+                if !dailySlots.isEmpty {
                     Divider().overlay(Clinical.hairline).padding(.vertical, 2)
                     Eyebrow(text: "Today's routine")
-                    ForEach(activeDaily) { treatment in
-                        ForEach(treatment.slots, id: \.self) { slot in
-                            treatmentRow(treatment, slot: slot)
-                            if !(treatment.id == activeDaily.last?.id && slot == treatment.slots.last) {
-                                Divider().overlay(Clinical.hairline)
-                            }
+                    ForEach(Array(dailySlots.enumerated()), id: \.offset) { index, step in
+                        treatmentRow(step.0, slot: step.1)
+                        if index != dailySlots.count - 1 {
+                            Divider().overlay(Clinical.hairline)
                         }
                     }
                 }
@@ -424,7 +429,9 @@ struct TodayView: View {
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Clinical.ink)
                         .strikethrough(done, color: Clinical.tertiary)
-                    Text("\(slot) · \(treatment.treatmentClass.title)")
+                    Text(slot.isEmpty
+                         ? "As scheduled · \(treatment.treatmentClass.title)"
+                         : "\(slot) · \(treatment.treatmentClass.title)")
                         .font(.system(size: 12))
                         .foregroundStyle(Clinical.secondary)
                 }

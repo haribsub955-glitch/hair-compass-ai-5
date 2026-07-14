@@ -306,6 +306,9 @@ struct CareView: View {
     private var routine: [(block: RoutineBlock, steps: [(treatment: Treatment, slot: String)])] {
         var map: [RoutineBlock: [(Treatment, String)]] = [:]
         for t in activeTreatments {
+            // Day-scheduled care products (a shampoo set to Mon/Thu) only join today's routine on
+            // their days; medications and un-scheduled items have an empty schedule → always due.
+            guard t.isDueToday() else { continue }
             if t.slots.isEmpty {
                 map[.periodic, default: []].append((t, ""))
             } else {

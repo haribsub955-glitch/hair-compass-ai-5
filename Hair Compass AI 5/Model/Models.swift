@@ -140,6 +140,11 @@ final class Treatment {
     var classRaw: String = TreatmentClass.other.rawValue
     var dose: String = ""
     var scheduleTimes: String = ""   // "08:00,21:00"
+    /// Which weekdays a care product is used (Calendar weekday numbers 1=Sun…7=Sat),
+    /// comma-separated; empty = every day. Meaningful for periodic care products (shampoo/oil) so
+    /// they only appear in the day's routine on their days; medications keep it empty and run
+    /// daily. Schema-safe (String default).
+    var scheduledWeekdaysRaw: String = ""
     var startDate: Date = Date.now
     var isActive: Bool = true
     /// When the current supply is expected to run out. Optional — unset means "not tracked".
@@ -167,6 +172,7 @@ final class Treatment {
         treatmentClass: TreatmentClass = .other,
         dose: String = "",
         scheduleTimes: String = "",
+        scheduledWeekdays: Set<Int> = [],
         startDate: Date = .now,
         isActive: Bool = true,
         refillBy: Date? = nil,
@@ -177,6 +183,7 @@ final class Treatment {
         self.classRaw = treatmentClass.rawValue
         self.dose = dose
         self.scheduleTimes = scheduleTimes
+        self.scheduledWeekdaysRaw = Self.encodeWeekdays(scheduledWeekdays)
         self.startDate = startDate
         self.isActive = isActive
         self.refillBy = refillBy
@@ -187,6 +194,26 @@ final class Treatment {
     var treatmentClass: TreatmentClass {
         get { TreatmentClass(rawValue: classRaw) ?? .other }
         set { classRaw = newValue.rawValue }
+    }
+
+    /// The weekdays this item is scheduled for (Calendar weekday numbers 1=Sun…7=Sat).
+    /// Empty = every day.
+    var scheduledWeekdays: Set<Int> {
+        get { Set(scheduledWeekdaysRaw.split(separator: ",").compactMap { Int($0) }) }
+        set { scheduledWeekdaysRaw = Self.encodeWeekdays(newValue) }
+    }
+
+    static func encodeWeekdays(_ days: Set<Int>) -> String {
+        days.sorted().map(String.init).joined(separator: ",")
+    }
+
+    /// True when this item is due on `now`'s weekday — today's weekday is in the schedule, or the
+    /// schedule is empty (every day). Medications (empty schedule) are always due; a shampoo set
+    /// to Mon/Thu is due only on those days.
+    func isDueToday(now: Date = .now, calendar: Calendar = .current) -> Bool {
+        let days = scheduledWeekdays
+        guard !days.isEmpty else { return true }
+        return days.contains(calendar.component(.weekday, from: now))
     }
 
     /// Whole days from today until `refillBy` (start-of-day to start-of-day). nil when unset;

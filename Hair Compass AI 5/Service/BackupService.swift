@@ -90,6 +90,8 @@ enum BackupService {
         var classRaw = ""
         var dose = ""
         var scheduleTimes = ""
+        // Defaulted so older backups (without the field) restore to "every day".
+        var scheduledWeekdaysRaw = ""
         var startDate = Date.now
         var isActive = true
         var refillBy: Date?
@@ -220,7 +222,8 @@ enum BackupService {
         envelope.treatments = treatments.map { t in
             TreatmentDTO(
                 name: t.name, classRaw: t.classRaw, dose: t.dose,
-                scheduleTimes: t.scheduleTimes, startDate: t.startDate,
+                scheduleTimes: t.scheduleTimes, scheduledWeekdaysRaw: t.scheduledWeekdaysRaw,
+                startDate: t.startDate,
                 isActive: t.isActive, refillBy: t.refillBy, endDate: t.endDate,
                 doses: t.doses
                     .sorted { $0.loggedAt < $1.loggedAt }
@@ -461,6 +464,7 @@ enum BackupService {
                 t.classRaw = dto.classRaw
                 t.dose = dto.dose
                 t.scheduleTimes = dto.scheduleTimes
+                t.scheduledWeekdaysRaw = dto.scheduledWeekdaysRaw
                 t.startDate = dto.startDate
                 t.isActive = dto.isActive
                 t.refillBy = dto.refillBy
