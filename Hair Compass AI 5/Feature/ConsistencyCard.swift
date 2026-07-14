@@ -114,7 +114,7 @@ struct ConsistencyCard: View {
 
     private func badgeChip(_ badge: Achievement) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: badge.symbol).font(.system(size: 11, weight: .medium))
+            BadgeIcon(badge: badge, size: 11, tint: Clinical.gold)
             Text(badge.title).font(.system(size: 12, weight: .medium))
         }
         .foregroundStyle(Clinical.gold)
@@ -149,6 +149,34 @@ struct ConsistencyCard: View {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 6_000_000_000)
             withAnimation(.easeOut(duration: 0.4)) { freshBadges = [] }
+        }
+    }
+}
+
+// MARK: - Badge icon
+
+/// A badge's icon: the custom gouache illustration when its `art` asset is present in the bundle,
+/// otherwise the SF-symbol fallback — so the app looks correct before any illustration ships, and
+/// each drops in simply by adding its imageset. The tint applies to the symbol path only; a
+/// full-colour illustration renders as-is (desaturated + faded when the badge is still locked).
+struct BadgeIcon: View {
+    let badge: Achievement
+    var size: CGFloat = 18
+    var tint: Color = Clinical.gold
+    var dimmed: Bool = false
+
+    var body: some View {
+        if let art = UIImage(named: badge.art) {
+            Image(uiImage: art)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size * 1.55, height: size * 1.55)
+                .saturation(dimmed ? 0.4 : 1)
+                .opacity(dimmed ? 0.45 : 1)
+        } else {
+            Image(systemName: badge.symbol)
+                .font(.system(size: size, weight: .medium))
+                .foregroundStyle(dimmed ? Clinical.tertiary.opacity(0.6) : tint)
         }
     }
 }
@@ -218,9 +246,7 @@ struct AchievementsSheet: View {
     private func badgeCell(_ badge: Achievement, earnedOn: Date?) -> some View {
         let isEarned = earnedOn != nil
         return VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: badge.symbol)
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(isEarned ? Clinical.gold : Clinical.tertiary.opacity(0.6))
+            BadgeIcon(badge: badge, size: 18, tint: Clinical.gold, dimmed: !isEarned)
                 .frame(width: 40, height: 40)
                 .background(
                     (isEarned ? Clinical.gold.opacity(0.14) : Clinical.canvas),

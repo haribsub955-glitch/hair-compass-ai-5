@@ -218,6 +218,27 @@ enum Achievement: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Asset name for the badge's custom gouache illustration. The UI (`BadgeIcon`) shows this
+    /// when the asset is present in the bundle and falls back to `symbol` when it isn't — so the
+    /// app looks correct before any illustration ships, and each drops in by adding its imageset.
+    var art: String {
+        switch self {
+        case .firstLog: return "badge-first-log"
+        case .streak7: return "badge-streak-7"
+        case .streak30: return "badge-streak-30"
+        case .streak90: return "badge-streak-90"
+        case .entryCount30: return "badge-entry-count-30"
+        case .firstPhoto: return "badge-first-photo"
+        case .fullPhotoSet: return "badge-full-photo-set"
+        case .firstLab: return "badge-first-lab"
+        case .firstTreatment: return "badge-first-treatment"
+        case .adherence4w90: return "badge-adherence-4w-90"
+        case .sideEffectAware: return "badge-side-effect-aware"
+        case .week12: return "badge-week-12"
+        case .week24: return "badge-week-24"
+        }
+    }
+
     /// The moment this badge was earned, or nil if it hasn't been. Pure — arrays in,
     /// a date out; events after `now` are ignored so the result is replayable.
     func earnedDate(
