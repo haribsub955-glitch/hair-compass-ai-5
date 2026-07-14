@@ -114,18 +114,30 @@ final class NotificationService {
         center.removeAllPendingNotificationRequests()
         guard !Task.isCancelled else { return }
 
-        for (i, t) in treatments.enumerated() {
-            for slot in t.slots {
-                guard let comps = Self.components(from: slot) else { continue }
-                let content = UNMutableNotificationContent()
-                content.title = t.name
-                content.body = "A tap when it's done."
-                content.sound = .default
-                if let art = NotificationArt.attachment() { content.attachments = [art] }
-                let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
-                let request = UNNotificationRequest(identifier: "\(treatmentPrefix)\(i).\(slot)", content: content, trigger: trigger)
-                try? await center.add(request)
+        // Coalesce every treatment that shares a time slot into ONE notification: a 21:00 regimen
+        // of three items becomes a single "Evening routine — 3 steps" banner instead of three
+        // separate pings at the same minute — the biggest fatigue win. One request per distinct
+        // slot, keyed `treatment.<slot>` so the tap router's `treatment.` prefix still routes to Plan.
+        // `.passive` (a repeating daily nudge shouldn't light up the screen) and a shared thread so
+        // Notification Center groups them.
+        var namesBySlot: [String: [String]] = [:]
+        for t in treatments {
+            for slot in t.slots where Self.components(from: slot) != nil {
+                namesBySlot[slot, default: []].append(t.name)
             }
+        }
+        for (slot, names) in namesBySlot {
+            guard let comps = Self.components(from: slot) else { continue }
+            let content = UNMutableNotificationContent()
+            content.title = Self.routineTitle(slot: slot, stepCount: names.count, firstName: names[0])
+            content.body = Self.routineBody(names: names)
+            content.sound = .default
+            content.threadIdentifier = "routine"
+            content.interruptionLevel = .passive
+            if let art = NotificationArt.attachment() { content.attachments = [art] }
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
+            let request = UNNotificationRequest(identifier: "\(treatmentPrefix)\(slot)", content: content, trigger: trigger)
+            try? await center.add(request)
         }
 
         // One-off refill heads-up, 7 days before each refill-by date at 10:00. Skipped when
@@ -136,6 +148,8 @@ final class NotificationService {
             content.title = "Running low"
             content.body = "Time to reorder \(r.name)."
             content.sound = .default
+            content.threadIdentifier = "refill"
+            content.interruptionLevel = .passive
             if let art = NotificationArt.attachment() { content.attachments = [art] }
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
@@ -149,6 +163,8 @@ final class NotificationService {
         photo.title = "Monthly photo"
         photo.body = "Same light, same spot."
         photo.sound = .default
+        photo.threadIdentifier = "photo"
+        photo.interruptionLevel = .passive
         if let art = NotificationArt.attachment() { photo.attachments = [art] }
         let photoRequest = UNNotificationRequest(
             identifier: photoReminderID,
@@ -179,6 +195,7 @@ final class NotificationService {
             content.title = "Upcoming: \(item.title)"
             content.body = Self.procedureReminderBody(fireDate: fireDate, appointmentDate: item.date)
             content.sound = .default
+            content.threadIdentifier = "procedure"   // day-before, time-relevant — default (active) level
             if let art = NotificationArt.attachment() { content.attachments = [art] }
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
@@ -212,6 +229,8 @@ final class NotificationService {
         content.title = "Monthly progress check-in"
         content.body = "A minute on how it's going."
         content.sound = .default
+        content.threadIdentifier = "progress"
+        content.interruptionLevel = .passive   // a gentle monthly nudge, never an interruption
         if let art = NotificationArt.attachment() { content.attachments = [art] }
         let trigger = UNCalendarNotificationTrigger(
             dateMatching: calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
@@ -249,6 +268,7 @@ final class NotificationService {
                 content.title = "Week \(week) of \(t.name)"
                 content.body = Self.milestoneBody(week: week)
                 content.sound = .default
+                content.threadIdentifier = "milestone"   // the assessment-window moment — default (active) level
                 if let art = NotificationArt.attachment() { content.attachments = [art] }
                 let trigger = UNCalendarNotificationTrigger(
                     dateMatching: calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
@@ -303,6 +323,7 @@ final class NotificationService {
             content.title = "Tonight's check-in"
             content.body = body
             content.sound = .default
+            content.threadIdentifier = "checkin"   // the user picked this time — default (active) level
             if let art = NotificationArt.attachment() { content.attachments = [art] }
             let trigger = UNCalendarNotificationTrigger(
                 dateMatching: calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
@@ -333,6 +354,25 @@ final class NotificationService {
     /// "Tomorrow"/"Today" reads correctly whichever branch `procedureReminderDate` took.
     static func procedureReminderBody(fireDate: Date, appointmentDate: Date, calendar: Calendar = .current) -> String {
         calendar.isDate(fireDate, inSameDayAs: appointmentDate) ? "Today at your clinic." : "Tomorrow at your clinic."
+    }
+
+    /// A coalesced routine reminder's title: one step keeps its own name; several read as the
+    /// time-of-day block, so a 21:00 stack of three items becomes "Evening routine".
+    static func routineTitle(slot: String, stepCount: Int, firstName: String) -> String {
+        guard stepCount > 1 else { return firstName }
+        let hour = Int(slot.split(separator: ":").first ?? "") ?? 12
+        switch hour {
+        case 0..<12: return "Morning routine"
+        case 12..<17: return "Afternoon routine"
+        default: return "Evening routine"
+        }
+    }
+
+    /// One step keeps the calm "A tap when it's done."; several list the names so the single
+    /// banner still says exactly what's due.
+    static func routineBody(names: [String]) -> String {
+        guard names.count > 1 else { return "A tap when it's done." }
+        return "\(names.count) steps: \(names.joined(separator: " · "))"
     }
 
     /// "08:00" → hour/minute DateComponents for a repeating daily trigger.
