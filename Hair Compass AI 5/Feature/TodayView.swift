@@ -149,10 +149,13 @@ struct TodayView: View {
                         medsDone: medsDone,
                         medsTotal: dailySlots.count,
                         triggerWeeks: watchTriggerWeeks,
+                        routineSteps: dailySlots,
+                        isSlotLogged: { isLogged($0, slot: $1) },
+                        onToggleSlot: { toggle($0, slot: $1, currentlyDone: isLogged($0, slot: $1)) },
                         onLogTap: { showLog = true },
-                        onOpenPlan: onOpenPlan
+                        onOpenPlan: onOpenPlan,
+                        onBackfill: { showBackfill = true }
                     )
-                    logCard.staggeredEntrance(index: 8)
                     insightCard.staggeredEntrance(index: 9)
                     StrandDivider()
                     learnStrip.staggeredEntrance(index: 10)
@@ -351,95 +354,6 @@ struct TodayView: View {
         let hour = calendar.component(.hour, from: .now)
         let part = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening")
         return name.isEmpty ? part : "\(part), \(name)"
-    }
-
-    /// A compact checklist: check-in and routine steps share one scannable surface. The primary
-    /// log action also lives in the hero, so this row confirms state without another full CTA.
-    private var logCard: some View {
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Eyebrow(text: "Today's checklist")
-                    Spacer()
-                    Button("Past day") { showBackfill = true }
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Clinical.accent)
-                }
-
-                Button { showLog = true } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: todayEntry == nil ? "circle.dashed" : "checkmark.circle.fill")
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundStyle(todayEntry == nil ? Clinical.tertiary : Clinical.positive)
-                            .frame(width: 28)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Daily check-in")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Clinical.ink)
-                            Text(todayEntry == nil ? "About 20 seconds" : "Completed today")
-                                .font(.system(size: 12))
-                                .foregroundStyle(Clinical.secondary)
-                        }
-                        Spacer()
-                        Text(todayEntry == nil ? "Log" : "Edit")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Clinical.accent)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Clinical.tertiary)
-                    }
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint(todayEntry == nil ? "Opens today's check-in" : "Edits today's check-in")
-
-                if !dailySlots.isEmpty {
-                    Divider().overlay(Clinical.hairline).padding(.vertical, 2)
-                    Eyebrow(text: "Today's routine")
-                    ForEach(Array(dailySlots.enumerated()), id: \.offset) { index, step in
-                        treatmentRow(step.0, slot: step.1)
-                        if index != dailySlots.count - 1 {
-                            Divider().overlay(Clinical.hairline)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func treatmentRow(_ treatment: Treatment, slot: String) -> some View {
-        let done = isLogged(treatment, slot: slot)
-        return Button {
-            toggle(treatment, slot: slot, currentlyDone: done)
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .strokeBorder(done ? Clinical.accent : Clinical.hairline, lineWidth: 1.5)
-                        .frame(width: 22, height: 22)
-                    if done {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Clinical.accent)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(treatment.name)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Clinical.ink)
-                        .strikethrough(done, color: Clinical.tertiary)
-                    Text(slot.isEmpty
-                         ? "As scheduled · \(treatment.treatmentClass.title)"
-                         : "\(slot) · \(treatment.treatmentClass.title)")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Clinical.secondary)
-                }
-                Spacer()
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     /// A quiet footer confirming the app is current — not decorative copy, an honest

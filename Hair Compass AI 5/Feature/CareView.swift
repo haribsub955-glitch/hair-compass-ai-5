@@ -23,6 +23,10 @@ struct CareView: View {
     @State private var showAdd = false
     @State private var showRecommender = false
     @State private var remindersOn = false
+    /// Whether the collapsed "Reminders · Off" footnote is sprung open to its two toggles —
+    /// starts collapsed every fresh appearance of the screen, same as the ledger's own
+    /// collapsed-unlogged row.
+    @State private var remindersExpanded = false
     @State private var expandedSteps: Set<String> = []
     @State private var detailTreatment: Treatment?
     @State private var showReport = false
@@ -340,10 +344,7 @@ struct CareView: View {
         let fraction = dailySteps.isEmpty ? 0 : Double(doneToday) / Double(dailySteps.count)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text(routineStatusText(remaining: remaining, isComplete: isComplete))
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Clinical.ink)
-                    .contentTransition(.opacity)
+                routineStatusLine(remaining: remaining, isComplete: isComplete)
                 if streak > 0 {
                     Text("\(streak)d streak")
                         .font(Clinical.eyebrow(10))
@@ -355,12 +356,32 @@ struct CareView: View {
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: isComplete)
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8), value: remaining)
     }
 
-    private func routineStatusText(remaining: Int, isComplete: Bool) -> String {
-        if dailySteps.isEmpty { return "No routine steps today" }
-        if isComplete { return "Today's routine is done · \(dailySteps.count) of \(dailySteps.count)" }
-        return "\(remaining) step\(remaining == 1 ? "" : "s") left today"
+    /// Checking a step off used to answer with a silent count change — the digit now genuinely
+    /// counts down via `.numericText()`, isolated in its own `Text` so only the number itself
+    /// (not the surrounding words, whose plural can flip) gets the rolling-digit transition.
+    @ViewBuilder
+    private func routineStatusLine(remaining: Int, isComplete: Bool) -> some View {
+        Group {
+            if dailySteps.isEmpty {
+                Text("No routine steps today")
+            } else if isComplete {
+                Text("Today's routine is done · \(dailySteps.count) of \(dailySteps.count)")
+                    .contentTransition(.opacity)
+            } else {
+                HStack(spacing: 4) {
+                    Text("\(remaining)")
+                        .contentTransition(.numericText(value: Double(remaining)))
+                        .monospacedDigit()
+                    Text(remaining == 1 ? "step left today" : "steps left today")
+                        .contentTransition(.opacity)
+                }
+            }
+        }
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(Clinical.ink)
     }
 
     /// Fraction toward the milestone's own next marker, derived from the same data
@@ -390,7 +411,6 @@ struct CareView: View {
     private var routineSection: some View {
         let milestone = Milestones.achieved(streak: streak, treatments: treatmentWeeks).first
         return VStack(alignment: .leading, spacing: 0) {
-            Eyebrow(text: "Today's routine").padding(.bottom, 12)
             ForEach(Array(routine.enumerated()), id: \.element.block.id) { index, entry in
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow(text: entry.block.title)
@@ -495,13 +515,60 @@ struct CareView: View {
 
     // MARK: Reminders
 
-    /// Un-boxed: two hairline-separated toggle rows in the ritual list's own geometry, bounded by
-    /// its own leading/trailing rules — the last piece of card chrome the page used to end on.
+    /// A one-line footnote — "Reminders · Off" — in the same family as the Evidence row above it,
+    /// replacing the permanent two-toggle settings block that used to sit on this doing-page every
+    /// visit. Springs open inline (opacity-only under Reduce Motion) to reveal the same two toggles,
+    /// unchanged, so nothing about the reminder controls themselves is lost — only their default
+    /// visibility.
+    private var remindersSummaryLabel: String {
+        switch (remindersOn, eveningCheckInEnabled) {
+        case (true, true): return "Routine + evening"
+        case (true, false): return "Routine"
+        case (false, true): return "Evening"
+        case (false, false): return "Off"
+        }
+    }
+
     private var remindersCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Divider().overlay(Clinical.hairline).padding(.bottom, 12)
-            Eyebrow(text: "Reminders").padding(.bottom, 10)
+            Divider().overlay(Clinical.hairline)
+            Button {
+                UISelectionFeedbackGenerator().selectionChanged()
+                if reduceMotion {
+                    remindersExpanded.toggle()
+                } else {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { remindersExpanded.toggle() }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Text("Reminders · \(remindersSummaryLabel)")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Clinical.ink)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Clinical.accent)
+                        .rotationEffect(.degrees(remindersExpanded ? 90 : 0))
+                }
+                .padding(.vertical, 13)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.clinicalPressable)
+            .accessibilityLabel("Reminders, \(remindersSummaryLabel)")
+            .accessibilityHint(remindersExpanded ? "Collapses reminder settings" : "Expands reminder settings")
 
+            if remindersExpanded {
+                remindersDetail
+                    .padding(.bottom, 12)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+
+            Divider().overlay(Clinical.hairline)
+        }
+    }
+
+    private var remindersDetail: some View {
+        VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle(isOn: $remindersOn) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -526,6 +593,7 @@ struct CareView: View {
                         .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
                 }
             }
+            .padding(.top, 4)
             .padding(.bottom, 12)
 
             Divider().overlay(Clinical.hairline).padding(.bottom, 12)
@@ -545,8 +613,6 @@ struct CareView: View {
                         .tint(Clinical.accent)
                 }
             }
-
-            Divider().overlay(Clinical.hairline).padding(.top, 12)
         }
     }
 

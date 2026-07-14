@@ -62,13 +62,10 @@ struct ConsistencyCard: View {
                 .buttonStyle(.plain)
             }
 
-            Text(level.name)
-                .font(Clinical.headline(26)).foregroundStyle(Clinical.ink)
+            Text(footnote(level: level, progress: progress, xp: xp, streak: streak))
+                .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
 
             ConsistencyHairline(fraction: progress.fraction)
-
-            Text(footnote(level: level, progress: progress, xp: xp, streak: streak))
-                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
         }
         .onAppear { registerNewBadges(earned.map(\.achievement)) }
         .accessibilityElement(children: .combine)
@@ -76,15 +73,16 @@ struct ConsistencyCard: View {
 
     // MARK: Pieces
 
-    /// "Level 4 · 177 XP to Grove · 1-day streak" — one line replacing the fraction, the
-    /// XP-to-next line and the streak row that used to fire three at once.
+    /// "Sapling · Level 4 · 177 XP to Grove · 1-day streak" — one line replacing the old
+    /// display-serif level name, the fraction, the XP-to-next line and the streak row that used
+    /// to fire four at once.
     private func footnote(
         level: GamificationLevel,
         progress: (fraction: Double, remaining: Int, next: GamificationLevel?),
         xp: Int,
         streak: Int
     ) -> String {
-        var parts = ["Level \(level.index)"]
+        var parts = [level.name, "Level \(level.index)"]
         if let next = progress.next {
             parts.append("\(progress.remaining) XP to \(next.name)")
         } else {

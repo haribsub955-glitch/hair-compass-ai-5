@@ -55,12 +55,7 @@ struct JourneyChart: View {
                     shedChart(data: data, domain: start...end)
                     intakeLane(data: data, domain: start...end)
                 }
-                legend(data: data)
                 if let selectedMarker { markerDisclosure(selectedMarker) }
-                if !data.echoBands.isEmpty {
-                    Text("Faint band = possible echo window — shedding often lags a trigger by 2–3 months.")
-                        .font(.system(size: 10)).foregroundStyle(Clinical.tertiary)
-                }
             }
         }
     }
@@ -82,7 +77,7 @@ struct JourneyChart: View {
                 // phrased as "possible echo", never a prediction, so the honest 2–3-month causal
                 // vocabulary that only ever lived in prose is now visible on the one chart
                 // people actually look at when a shed spike worries them.
-                ForEach(data.echoBands) { band in
+                ForEach(Array(data.echoBands.enumerated()), id: \.1.id) { index, band in
                     RectangleMark(
                         xStart: .value("Start", band.start),
                         xEnd: .value("End", band.end),
@@ -90,6 +85,17 @@ struct JourneyChart: View {
                         yEnd: .value("High", 3.0)
                     )
                     .foregroundStyle(Clinical.warning.opacity(0.08))
+                    // The old full-width "Faint band = possible echo window…" paragraph now
+                    // lives here instead — one small annotation tucked under the first band's
+                    // own x-position, only when a band is actually on screen.
+                    .annotation(position: .bottom, alignment: .leading, spacing: 2,
+                                overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                        if index == 0 {
+                            Text("Possible echo window")
+                                .font(Clinical.eyebrow(8))
+                                .foregroundStyle(Clinical.warning.opacity(0.85))
+                        }
+                    }
                 }
                 // Faint raw daily levels — the honest reality behind the smoothing.
                 ForEach(data.shedPoints) { p in
@@ -111,6 +117,18 @@ struct JourneyChart: View {
                         .interpolationMethod(.monotone)
                         .lineStyle(StrokeStyle(lineWidth: 2.5))
                         .foregroundStyle(Clinical.accent)
+                }
+                // The line labels itself at its own terminal point — replaces the legend row's
+                // "Shedding" key with an inline small-caps tag right where the ink actually is.
+                if let last = data.shedPoints.last {
+                    PointMark(x: .value("Date", last.date), y: .value("Shed", last.smoothed))
+                        .symbolSize(0)
+                        .annotation(position: .top, alignment: .trailing, spacing: 3,
+                                    overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                            Text("SHEDDING")
+                                .font(Clinical.eyebrow(8)).tracking(0.8)
+                                .foregroundStyle(Clinical.accent)
+                        }
                 }
                 // Dashed verticals anchor each dated event to the trend.
                 ForEach(data.markers) { m in
@@ -269,8 +287,15 @@ struct JourneyChart: View {
                 .cornerRadius(1)
             }
             .chartForegroundStyleScale(domain: data.doseSeriesTitles, range: data.doseSeriesColors)
-            .chartLegend(.hidden) // the shared keyed legend below covers the lane
+            .chartLegend(.hidden) // a per-medication key would repeat what the routine list already names
             .frame(height: 52)
+            // The lane names itself at its own left edge — replaces the legend row's "Doses" key.
+            .overlay(alignment: .topLeading) {
+                Text("DOSES")
+                    .font(Clinical.eyebrow(8)).tracking(0.8)
+                    .foregroundStyle(Clinical.tertiary)
+                    .padding(.leading, gutterWidth + 4)
+            }
             .chartXScale(domain: domain)
             .chartYScale(domain: 0...Double(data.intakeCeiling))
             .chartXAxis {
@@ -320,47 +345,6 @@ struct JourneyChart: View {
         if windowDays <= 31 { return .dateTime.month(.abbreviated).day() }
         if windowDays <= 200 { return .dateTime.month(.abbreviated) }
         return .dateTime.month(.abbreviated).year(.twoDigits)
-    }
-
-    // MARK: Legend — two ink-critical keys; marker meanings live in the tap-to-reveal disclosure
-
-    /// Reduced from a five-marker-key legend (which used to clip at the fold, "Procedure /
-    /// Trigger" cut off) to the two keys that actually need reading at a glance — what the line
-    /// is, and that the bars are doses. Every marker's own meaning is now one tap away instead
-    /// of permanently spelled out here.
-    private func legend(data: JourneyData) -> some View {
-        HStack(spacing: 14) {
-            legendKey(.line, color: Clinical.accent, label: "Shedding")
-            if !data.doseSeries.isEmpty {
-                legendKey(.bar, color: Clinical.gold, label: "Doses")
-            }
-            Spacer(minLength: 8)
-            if !data.markers.isEmpty {
-                Text("Tap a marker for details")
-                    .font(Clinical.eyebrow(8))
-                    .foregroundStyle(Clinical.tertiary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.top, 2)
-    }
-
-    private enum KeyStyle { case line, bar }
-
-    private func legendKey(_ style: KeyStyle, color: Color, label: String) -> some View {
-        HStack(spacing: 5) {
-            switch style {
-            case .line:
-                Capsule().fill(color).frame(width: 14, height: 3)
-            case .bar:
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(color).frame(width: 8, height: 10)
-            }
-            Text(label)
-                .font(Clinical.eyebrow(9))
-                .foregroundStyle(Clinical.secondary)
-                .lineLimit(1)
-        }
     }
 
     // MARK: Thin-data placeholder

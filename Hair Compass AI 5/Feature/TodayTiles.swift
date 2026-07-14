@@ -33,6 +33,12 @@ struct ConditionsHero: View {
     var onShedSet: ((ShedLevel) -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// True once the user has ever successfully dragged the ladder to set a shedding level —
+    /// persists across launches so the visual drag hint (subtitle while unlogged, "Drag to set"
+    /// beside the button once logged) is a one-time teach, not a permanent utterance competing
+    /// with "+ Log today" on every visit. VoiceOver users keep the instruction regardless, via
+    /// `logButton`'s accessibility hint.
+    @AppStorage("hasCompletedShedDrag") private var hasCompletedShedDrag = false
     /// Drives the headline's accessibility-size fallback: at .accessibility1+ Dynamic Type the
     /// 44–50pt serif headline stops fighting for one crushed/truncated line — it drops the
     /// ladder's trailing reservation and wraps onto up to two lines at word boundaries instead
@@ -158,6 +164,9 @@ struct ConditionsHero: View {
                 set(SheddingDial.shedLevel(clamped))
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 dragIntensity = nil
+                if !hasCompletedShedDrag {
+                    withAnimation(.easeOut(duration: 0.4)) { hasCompletedShedDrag = true }
+                }
             }
     }
 
@@ -229,7 +238,7 @@ struct ConditionsHero: View {
                         .font(Clinical.headline(44)).foregroundStyle(Clinical.tertiary)
                         .lineLimit(isAccessibilitySize ? 2 : 1)
                         .minimumScaleFactor(isAccessibilitySize ? 1 : 0.65)
-                    if onShedSet != nil {
+                    if onShedSet != nil && !hasCompletedShedDrag {
                         subtitleText("Drag the ladder to set")
                     }
                     chipRow
@@ -332,7 +341,7 @@ struct ConditionsHero: View {
     private var controlsRow: some View {
         HStack(spacing: 16) {
             logButton
-            if onShedSet != nil && !isNotLoggedState { setHint }
+            if onShedSet != nil && !isNotLoggedState && !hasCompletedShedDrag { setHint }
         }
     }
 
@@ -348,7 +357,16 @@ struct ConditionsHero: View {
                 .shadow(color: Clinical.accent.opacity(0.24), radius: 8, y: 3)
         }
         .buttonStyle(.clinicalPressable)
-        .accessibilityHint(hasLoggedToday ? "Edits today's check-in" : "Opens today's check-in")
+        .accessibilityHint(logButtonAccessibilityHint)
+    }
+
+    /// Carries the drag-to-set instruction for VoiceOver permanently — sighted users lose the
+    /// visual hint after their first successful drag (`hasCompletedShedDrag`), but this hint
+    /// never fades, since VoiceOver users can't rediscover a gesture from a vanished caption.
+    private var logButtonAccessibilityHint: String {
+        let base = hasLoggedToday ? "Edits today's check-in" : "Opens today's check-in"
+        guard onShedSet != nil else { return base }
+        return base + ". Or drag the scene above to set today's shedding level directly."
     }
 
     /// The drag-to-set affordance, demoted from a floating edge-hugging capsule to a small
@@ -381,10 +399,18 @@ struct TodayTileGrid: View {
     var medsDone: Int
     var medsTotal: Int
     var triggerWeeks: Int?
+    /// Today's due routine steps (treatment + slot), rendered as checkable continuation rows of
+    /// this same ledger — the checklist card they replaced used to sit in its own boxed card
+    /// below the hero, duplicating the "Meds" summary row above with the exact same data.
+    var routineSteps: [(Treatment, String)] = []
+    var isSlotLogged: (Treatment, String) -> Bool = { _, _ in false }
+    var onToggleSlot: (Treatment, String) -> Void = { _, _ in }
     /// The four self-report rows are shortcuts into the daily log sheet.
     var onLogTap: () -> Void = {}
     /// The meds row jumps to the Plan tab's full routine; nil leaves it a plain readout.
     var onOpenPlan: (() -> Void)? = nil
+    /// Quiet copper footnote at the very end of the ledger — backfills a past day's entry.
+    var onBackfill: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// True once the folded "not noted" row has been tapped open — the four self-report rows
@@ -439,7 +465,58 @@ struct TodayTileGrid: View {
         if !expandedUnlogged && !unloggedLabels.isEmpty { add(collapsedUnloggedRow) }
         if medsTotal > 0 { add(medsRow) }
         if let triggerWeeks { add(triggerRow(weeks: triggerWeeks)) }
+        if !routineSteps.isEmpty {
+            add(routineHeaderRow)
+            for step in routineSteps { add(routineStepRow(step.0, slot: step.1)) }
+        }
+        if let onBackfill { add(backfillFootnoteRow(onBackfill)) }
         return rows
+    }
+
+    // MARK: Routine (absorbed from the old boxed checklist card)
+
+    /// One small-caps label row — replaces the boxed "Today's checklist" card's Eyebrow, now a
+    /// continuation of the same hairline-ruled ledger instead of its own heading over its own box.
+    private var routineHeaderRow: some View {
+        HStack {
+            Text("ROUTINE")
+                .font(Clinical.eyebrow(10)).tracking(1.2)
+                .foregroundStyle(Clinical.tertiary)
+            Spacer()
+        }
+        .padding(.vertical, 13)
+    }
+
+    private func routineStepRow(_ treatment: Treatment, slot: String) -> some View {
+        let done = isSlotLogged(treatment, slot)
+        return RoutineLedgerRow(
+            name: treatment.name,
+            subtitle: slot.isEmpty
+                ? "As scheduled · \(treatment.treatmentClass.title)"
+                : "\(slot) · \(treatment.treatmentClass.title)",
+            done: done,
+            action: { onToggleSlot(treatment, slot) }
+        )
+    }
+
+    /// "Past day" backfill, demoted from a header-row button on the old checklist card to the
+    /// quiet copper line that closes the whole ledger.
+    private func backfillFootnoteRow(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text("Log a past day")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Clinical.accent)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Clinical.accent.opacity(0.5))
+            }
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.clinicalPressable)
+        .accessibilityHint("Backfills a check-in for an earlier day")
     }
 
     private var rule: some View {
@@ -642,6 +719,62 @@ private struct AnnotationRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label): \(value)")
+    }
+}
+
+/// One checkable routine step, styled to continue the ledger's rows: a small hairline circle
+/// leading (fills copper with a check when logged), the step name + subtitle, no card, no
+/// strikethrough — a current-treatment list reads a struck-through name as "discontinued", which
+/// this app must never imply (see `RoutineStepRow` on the Plan tab for the same rule).
+private struct RoutineLedgerRow: View {
+    let name: String
+    let subtitle: String
+    let done: Bool
+    let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pop = false
+
+    var body: some View {
+        Button {
+            let willCheck = !done
+            action()
+            guard willCheck, !reduceMotion else { return }
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
+                pop = true
+            } completion: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pop = false }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().fill(done ? Clinical.accent : Clinical.accent.opacity(0.06))
+                    Circle().strokeBorder(done ? Clinical.accent : Clinical.accent.opacity(0.4), lineWidth: 1.5)
+                    if done {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Clinical.surface)
+                    }
+                }
+                .frame(width: 20, height: 20)
+                .scaleEffect(pop ? 1.15 : 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.system(size: 14, weight: done ? .regular : .medium))
+                        .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
+                    Text(subtitle)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Clinical.tertiary)
+                }
+                Spacer(minLength: 8)
+            }
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.clinicalPressable)
+        .accessibilityLabel("\(name), \(subtitle)")
+        .accessibilityValue(done ? "Logged" : "Not logged")
+        .accessibilityHint("Toggles today's dose as logged")
     }
 }
 
