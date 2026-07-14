@@ -338,19 +338,17 @@ struct CareView: View {
     /// saying up top ("N steps left today") as a living subtitle beneath the header, and a
     /// single copper hairline that fills left-to-right as steps complete instead of a separate
     /// ring widget.
+    ///
+    /// Round-5: the "Nd streak" chip that used to ride beside the status line is gone — it was
+    /// the same fact Today's hero footnote and Trends' `ConsistencyCard` were already saying.
+    /// Consistency now has exactly one home (Trends), so `streak` here only feeds the milestone
+    /// math below, never its own on-screen chip.
     private var routineProgressHeader: some View {
         let remaining = max(0, dailySteps.count - doneToday)
         let isComplete = !dailySteps.isEmpty && remaining == 0
         let fraction = dailySteps.isEmpty ? 0 : Double(doneToday) / Double(dailySteps.count)
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                routineStatusLine(remaining: remaining, isComplete: isComplete)
-                if streak > 0 {
-                    Text("\(streak)d streak")
-                        .font(Clinical.eyebrow(10))
-                        .foregroundStyle(Clinical.accent)
-                }
-            }
+            routineStatusLine(remaining: remaining, isComplete: isComplete)
             if !dailySteps.isEmpty {
                 RoutineHairlineProgress(fraction: fraction)
             }
@@ -618,14 +616,16 @@ struct CareView: View {
 
     // MARK: 24-week gate + treatments (unchanged evidence framing)
 
+    /// Round-5: demoted from a boxed `ClinicalCard` with its own icon tile — the page's last
+    /// surviving box — to a plain hairline-ruled footnote row in the same family as
+    /// `guidanceCard`/`remindersCard`. Same exact 24-week copy, unstyled by any container edge.
     private var gateExplainer: some View {
-        ClinicalCard(padding: 14) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "clock.badge.checkmark")
-                    .font(.system(size: 16)).foregroundStyle(Clinical.accent)
-                Text("Hair-density change is judged at 24 weeks in clinical trials. Each treatment shows its progress toward that milestone — resist judging sooner.")
-                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-            }
+        VStack(spacing: 0) {
+            Divider().overlay(Clinical.hairline)
+            Text("Hair-density change is judged at 24 weeks in clinical trials. Each treatment shows its progress toward that milestone — resist judging sooner.")
+                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 13)
         }
     }
 
@@ -1025,6 +1025,12 @@ private struct RoutineStepRow: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pop = false
+    /// Round-5: the row's one purposeful "ink" gesture on completion — a copper underline draws
+    /// itself in beneath the step's name, holds while the text settles to its dimmed secondary
+    /// color, then fades for good. `underlineDraw` is the 0…1 draw-in scale, `underlineOpacity`
+    /// the fade-out. Never fires on uncheck (see `runInkFlourish`).
+    @State private var underlineDraw: CGFloat = 0
+    @State private var underlineOpacity: Double = 0
     /// The check circle's diameter, scaled with Dynamic Type so the actual tap target grows
     /// alongside the surrounding row text instead of staying a fixed 24pt dot.
     @ScaledMetric(relativeTo: .body) private var checkDiameter: CGFloat = 24
@@ -1069,10 +1075,22 @@ private struct RoutineStepRow: View {
                             // No strikethrough: this is a current-medication list, and a
                             // struck-through drug name reads clinically as "discontinued" —
                             // precisely what this app must never imply. Done-ness is conveyed by
-                            // the filled check + dimmed text only.
+                            // the filled check + dimmed text, animated so the settle itself reads
+                            // as purposeful, plus the transient copper underline flourish below
+                            // (never permanent, so it can't be misread as a strike).
                             Text(name)
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
+                                .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: done)
+                                .overlay(alignment: .bottomLeading) {
+                                    Capsule()
+                                        .fill(Clinical.accent.opacity(0.55))
+                                        .frame(height: 1.5)
+                                        .scaleEffect(x: underlineDraw, y: 1, anchor: .leading)
+                                        .opacity(underlineOpacity)
+                                        .offset(y: 2)
+                                        .allowsHitTesting(false)
+                                }
                             Text(subtitle)
                                 .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
                         }
@@ -1093,6 +1111,23 @@ private struct RoutineStepRow: View {
         }
     }
 
+    /// Runs the name underline's draw-in → hold → fade sequence once, only on a genuine
+    /// check-off (never on uncheck, and never under Reduce Motion — the caller already guards
+    /// that). Purely decorative, so it never leaves lasting state beyond the row's own
+    /// `underlineDraw`/`underlineOpacity`, both reset to their rest value once the fade ends.
+    private func runInkFlourish() {
+        withAnimation(.smooth(duration: 0.4)) {
+            underlineDraw = 1
+            underlineOpacity = 1
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            withAnimation(.easeOut(duration: 0.45)) { underlineOpacity = 0 }
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            underlineDraw = 0
+        }
+    }
+
     private var checkButton: some View {
         Button {
             let willCheck = !done
@@ -1103,6 +1138,7 @@ private struct RoutineStepRow: View {
             } completion: {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pop = false }
             }
+            runInkFlourish()
         } label: {
             ZStack {
                 // Unchecked reads as an actionable empty checkbox — a faint copper fill plus a

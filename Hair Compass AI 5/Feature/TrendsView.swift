@@ -109,8 +109,6 @@ struct TrendsView: View {
                     showAllBadges: $showBadges
                 )
 
-                StrandDivider()
-
                 BodySignalsDashboard(
                     snapshots: snapshots,
                     windowDays: range.days,

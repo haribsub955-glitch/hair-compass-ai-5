@@ -136,8 +136,9 @@ struct JourneyChart: View {
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 4]))
                         .foregroundStyle(m.color.opacity(0.45))
                 }
-                // Event badges — staggered onto a second row when two events land close together,
-                // and tagged with a short label only while there are few enough to stay readable.
+                // Event dots — staggered onto a second row when two events land close together.
+                // Meaning is tap-to-reveal only now (see `markerBadge`), so there's no permanent
+                // tag label competing with the trend line for attention.
                 ForEach(data.markers) { m in
                     PointMark(x: .value("Date", m.date), y: .value("Shed", m.level == 0 ? 2.82 : 2.28))
                         .symbolSize(0)
@@ -145,7 +146,7 @@ struct JourneyChart: View {
                             position: .overlay,
                             overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
                         ) {
-                            markerBadge(m, showTag: data.showMarkerTags)
+                            markerBadge(m)
                                 .modifier(MarkerPop(elapsed: elapsed, delay: markerDelay(m, domain: domain)))
                         }
                 }
@@ -192,40 +193,29 @@ struct JourneyChart: View {
         return fraction * RevealTiming.duration
     }
 
-    private func markerBadge(_ m: JourneyData.Marker, showTag: Bool) -> some View {
-        // Every marker kind is tap-to-reveal now — the meanings that used to live permanently
-        // in a five-key legend (Procedure/Med start/Stopped/Trigger/Note) now surface on demand
-        // in `markerDisclosure`, so the legend itself only needs two keys.
+    /// Round-5: shrunk from a 20×20 "balloon" (white disc, stroked ring, drop shadow, permanent
+    /// tag label) to a small solid glyph dot sitting right on its dashed vertical — the trend
+    /// line stays the one thing the eye reads at a glance, and every marker's meaning still
+    /// surfaces on tap via `markerDisclosure`. Its kind's own color is kept (procedure copper,
+    /// start gold, stop grey, trigger warning, note sage) since that's real information, not
+    /// decoration — collapsing every kind to one hue would cost the chart its only way to tell
+    /// "started" from "life event" at a glance.
+    private func markerBadge(_ m: JourneyData.Marker) -> some View {
         Button {
             withAnimation(.easeOut(duration: 0.15)) {
                 selectedMarker = (selectedMarker?.id == m.id) ? nil : m
             }
             UISelectionFeedbackGenerator().selectionChanged()
         } label: {
-            badgeContent(m, showTag: showTag)
+            ZStack {
+                Circle().fill(m.color.opacity(0.16)).frame(width: 14, height: 14)
+                Circle().fill(m.color).frame(width: 7, height: 7)
+            }
+            .contentShape(Circle().inset(by: -8)) // keeps a comfortable tap target on the tiny dot
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(markerKindLabel(m)) on \(m.date.formatted(date: .abbreviated, time: .omitted))")
         .accessibilityHint("Double-tap for details")
-    }
-
-    private func badgeContent(_ m: JourneyData.Marker, showTag: Bool) -> some View {
-        VStack(spacing: 2) {
-            Image(systemName: m.symbol)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(m.color)
-                .frame(width: 20, height: 20)
-                .background(Clinical.surface, in: Circle())
-                .overlay(Circle().strokeBorder(m.color.opacity(0.45), lineWidth: 1))
-                .shadow(color: Clinical.cardShadow, radius: 3, y: 1)
-            if showTag {
-                Text(m.tag)
-                    .font(Clinical.eyebrow(8))
-                    .foregroundStyle(Clinical.secondary)
-                    .lineLimit(1)
-                    .fixedSize()
-            }
-        }
     }
 
     /// The disclosed marker's date + meaning, dismissible by re-tapping its badge. Sits below
@@ -278,21 +268,26 @@ struct JourneyChart: View {
             .padding(.vertical, 9)
             .background(Clinical.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         } else {
+            // Round-5: the lane used to color every bar by medication class (a two-color
+            // "barcode" competing with the trend chart above it). It's now a single muted ink —
+            // the honest record of "doses were taken" — with copper reserved for the current
+            // window only (the trailing 7 days), so the eye still finds "am I keeping up right
+            // now" without every past week shouting in saturated color.
+            let recentCutoff = Calendar.current.date(byAdding: .day, value: -7, to: domain.upperBound) ?? domain.upperBound
             Chart(data.doseBars) { bar in
                 BarMark(
                     x: .value("Day", bar.day, unit: .day),
                     y: .value("Doses", bar.count)
                 )
-                .foregroundStyle(by: .value("Medication", bar.seriesTitle))
+                .foregroundStyle(bar.day >= recentCutoff ? Clinical.accent : Clinical.ink.opacity(0.25))
                 .cornerRadius(1)
             }
-            .chartForegroundStyleScale(domain: data.doseSeriesTitles, range: data.doseSeriesColors)
-            .chartLegend(.hidden) // a per-medication key would repeat what the routine list already names
             .frame(height: 52)
-            // The lane names itself at its own left edge — replaces the legend row's "Doses" key.
+            // The lane names itself at its own left edge, in the same quiet margin-ink caption
+            // as every other chart label here — replaces the legend row's "Doses" key.
             .overlay(alignment: .topLeading) {
-                Text("DOSES")
-                    .font(Clinical.eyebrow(8)).tracking(0.8)
+                Text("Doses")
+                    .font(Clinical.eyebrow(8)).tracking(0.6)
                     .foregroundStyle(Clinical.tertiary)
                     .padding(.leading, gutterWidth + 4)
             }
@@ -501,12 +496,6 @@ private struct JourneyData {
     let doseBars: [DoseBar]
     let doseSeries: [DoseSeries]
     let intakeCeiling: Int
-
-    /// Short tags fit alongside the badges only while the chart stays uncrowded; past that the
-    /// markers fall back to symbol-only and the legend carries the meaning.
-    var showMarkerTags: Bool { markers.count <= 3 }
-    var doseSeriesTitles: [String] { doseSeries.map(\.title) }
-    var doseSeriesColors: [Color] { doseSeries.map(\.color) }
 
     init(
         entries: [DailyEntry],

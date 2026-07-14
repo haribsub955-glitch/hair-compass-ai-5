@@ -66,24 +66,39 @@ struct ConditionsHero: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            LinearGradient(colors: [Clinical.canvas, Clinical.surface],
-                           startPoint: .top, endPoint: .bottom)
+            // Round-5 fix: the wash used to bottom out at a solid `Clinical.surface` fill,
+            // clipped by an `UnevenRoundedRectangle` with a shadow — reading as one big card
+            // floating over the page, exactly the container chrome the field-journal vision
+            // forbids. The wash now fades back out to the bare canvas by the bottom of the
+            // frame, so the falling-hair backdrop breathes directly onto the page with no
+            // edge, no corner radius, no shadow to announce a boundary.
+            LinearGradient(stops: [
+                .init(color: Clinical.canvas, location: 0),
+                .init(color: Clinical.surface.opacity(0.9), location: 0.55),
+                .init(color: Clinical.canvas, location: 1),
+            ], startPoint: .top, endPoint: .bottom)
             sceneLayer
-            // Legibility scrim: soft at the top (greeting), stronger at the bottom (band word),
-            // clear through the middle so the simulation stays the hero.
+            // Legibility scrim: soft at the top (greeting), stronger over the band word,
+            // clear through the middle so the simulation stays the hero — now fading through
+            // canvas tones (not surface) so it never reintroduces the dissolved card edge.
             LinearGradient(stops: [
                 .init(color: Clinical.canvas.opacity(0.72), location: 0),
                 .init(color: Clinical.canvas.opacity(0), location: 0.30),
-                .init(color: Clinical.surface.opacity(0), location: 0.52),
-                .init(color: Clinical.surface.opacity(0.88), location: 1),
+                .init(color: Clinical.canvas.opacity(0), location: 0.52),
+                .init(color: Clinical.canvas.opacity(0.85), location: 0.86),
+                .init(color: Clinical.canvas.opacity(0.3), location: 1),
             ], startPoint: .top, endPoint: .bottom)
             .allowsHitTesting(false)
             content
+            if onShedSet != nil && !hasCompletedShedDrag {
+                LadderHintRail()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, 22)
+                    .padding(.bottom, 26)
+                    .allowsHitTesting(false)
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 304, alignment: .topLeading)
-        .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 28, bottomTrailingRadius: 28,
-                                          style: .continuous))
-        .shadow(color: Clinical.cardShadow, radius: 14, y: 6)
     }
 
     // MARK: - Scene (backdrop + drag-to-set)
@@ -209,7 +224,7 @@ struct ConditionsHero: View {
                     bandWordText(shed.title)
                     subtitleText(reflection.detail)
                     scalpLine
-                    chipRow
+                    controlsRow
                 } else if let dragIntensity {
                     // Live preview while the finger is down — same slot the saved band word
                     // occupies, so nothing reflows when the drag ends.
@@ -217,7 +232,7 @@ struct ConditionsHero: View {
                     bandWordText(caption.0)
                     subtitleText(caption.1.prefix(1).uppercased() + caption.1.dropFirst())
                     scalpLine
-                    chipRow
+                    controlsRow
                 } else {
                     // Round-4 fix: the headline used to carry the whole instruction ("Not logged
                     // — drag to set"), which either got clipped mid-word at accessibility sizes
@@ -238,10 +253,11 @@ struct ConditionsHero: View {
                         .font(Clinical.headline(44)).foregroundStyle(Clinical.tertiary)
                         .lineLimit(isAccessibilitySize ? 2 : 1)
                         .minimumScaleFactor(isAccessibilitySize ? 1 : 0.65)
-                    if onShedSet != nil && !hasCompletedShedDrag {
-                        subtitleText("Drag the ladder to set")
-                    }
-                    chipRow
+                    // Round-5: the permanent "Drag the ladder to set" caption is gone — the
+                    // gesture is now taught once by the copper shimmer on `LadderHintRail`
+                    // (see `body`), so the unlogged state carries exactly one subtitle line
+                    // (none, here) and one action (`logButton` in `controlsRow`).
+                    controlsRow
                 }
             }
         }
@@ -283,66 +299,14 @@ struct ConditionsHero: View {
         }
     }
 
-    /// Falls back to a stacked layout when the row can't fit at large Dynamic Type instead of
-    /// Everything that used to be four competing pill-shaped objects (streak chip, XP/level
-    /// chip, copper Edit-log pill, floating SET stepper) is now one quiet annotation line plus
-    /// one control row: a hairline of muted text stating streak/XP/level, and — directly below
-    /// it — the sole button (Edit log) with the drag-to-set hint sitting beside it instead of
-    /// hugging the screen edge. Falls back to a stacked layout only if Dynamic Type can't fit
-    /// the annotation line on one row.
-    private var chipRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            annotationLine
-            controlsRow
-        }
-    }
-
-    /// "1-day streak · Sapling" — one quiet footnote, no capsule strokes, no ring. The raw XP
-    /// figure used to ride along here too, but it already lives with the badges/celebration
-    /// sheet — saying it a second time on every visit to Today was the third of three competing
-    /// footnotes this line used to fire at once.
-    private var annotationLine: some View {
-        HStack(spacing: 0) {
-            Text(streakText)
-            if let levelName {
-                dotSeparator
-                Text(levelName)
-            }
-        }
-        .font(Clinical.eyebrow(10))
-        .tracking(1.0)
-        .foregroundStyle(Clinical.secondary)
-        .lineLimit(1)
-        .minimumScaleFactor(0.75)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(annotationAccessibilityLabel)
-    }
-
-    private var dotSeparator: some View {
-        Text("  ·  ")
-    }
-
-    private var streakText: String {
-        shields > 0 ? "\(streak)-day streak (\(shields) shield\(shields == 1 ? "" : "s"))" : "\(streak)-day streak"
-    }
-
-    private var annotationAccessibilityLabel: String {
-        var parts = [streakText]
-        if let levelName { parts.append("\(levelName) level") }
-        return parts.joined(separator: ", ")
-    }
-
-    /// True while nothing is logged yet and no finger is down — the same state whose headline
-    /// subtitle already reads "Drag the ladder to set". `controlsRow` skips the copper hint in
-    /// this one state so the instruction is never said twice; once something's logged (or being
-    /// dragged), the hint is the only surviving cue that the scene is still draggable.
-    private var isNotLoggedState: Bool { shed == nil && dragIntensity == nil }
-
+    /// Round-5: the streak/level footnote that used to live here is gone — the whole app now
+    /// says that fact exactly once, on Trends' `ConsistencyCard` (see its "Sapling · Level 4 ·
+    /// 177 XP to Grove · 1-day streak" footnote). `streak`/`shields`/`levelName`/`xp`/
+    /// `levelProgress` stay on this view's interface — the celebration flow and XP mechanics
+    /// that read them elsewhere are untouched — only the duplicate on-hero display is gone. What
+    /// remains here is the single control row: the sole action (Log/Edit today).
     private var controlsRow: some View {
-        HStack(spacing: 16) {
-            logButton
-            if onShedSet != nil && !isNotLoggedState && !hasCompletedShedDrag { setHint }
-        }
+        logButton
     }
 
     private var logButton: some View {
@@ -369,18 +333,64 @@ struct ConditionsHero: View {
         return base + ". Or drag the scene above to set today's shedding level directly."
     }
 
-    /// The drag-to-set affordance, demoted from a floating edge-hugging capsule to a small
-    /// inline copper text control that sits quietly beside Edit log — same discoverability,
-    /// none of the edge clutter. Purely a visual hint (the gesture lives on the scene itself),
-    /// so it stays decorative/non-interactive here too.
-    private var setHint: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "arrow.up.and.down")
-                .font(.system(size: 9, weight: .semibold))
-            Text("Drag to set")
-                .font(Clinical.eyebrow(10)).tracking(0.6)
+}
+
+/// Round-5: the sighted teach for the drag-to-set gesture, demoted from a permanent text
+/// caption ("Drag the ladder to set" / "Drag to set") to a small vertical rail of four hairline
+/// ticks — one per shed band — sitting quietly at the hero's trailing edge. A single copper dot
+/// travels once from the bottom tick to the top ("the ladder"), then the whole rail fades away;
+/// it never repeats and never returns once `hasCompletedShedDrag` flips true. VoiceOver keeps
+/// its own permanent instruction via `logButtonAccessibilityHint` regardless — this rail is
+/// purely decorative motion, so it stays hidden from the accessibility tree. Under Reduce
+/// Motion the rail never appears at all: the gesture is still reachable via the accessibility
+/// adjustable action and the log sheet, just not taught by an animation.
+private struct LadderHintRail: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var trigger = false
+    @State private var visible = true
+
+    private enum Phase: CaseIterable { case rest, rise, gone }
+
+    var body: some View {
+        Group {
+            if !reduceMotion && visible {
+                GeometryReader { geo in
+                    let h = geo.size.height
+                    ZStack(alignment: .bottom) {
+                        VStack(spacing: (h - 4 * 3) / 3) {
+                            ForEach(0..<4, id: \.self) { _ in
+                                Circle().fill(Clinical.hairline).frame(width: 3, height: 3)
+                            }
+                        }
+                        PhaseAnimator(Phase.allCases, trigger: trigger) { phase in
+                            Circle()
+                                .fill(Clinical.accent)
+                                .frame(width: 6, height: 6)
+                                .shadow(color: Clinical.accent.opacity(0.35), radius: 3)
+                                .offset(y: phase == .rest ? 0 : -(h - 6))
+                                .opacity(phase == .gone ? 0 : 1)
+                        } animation: { phase in
+                            switch phase {
+                            case .rest: return nil
+                            case .rise: return .easeInOut(duration: 1.1)
+                            case .gone: return .easeOut(duration: 0.4)
+                            }
+                        }
+                    }
+                }
+                .frame(width: 10, height: 88)
+                .onAppear {
+                    // "First idle": give the hero a beat to settle before teaching the gesture,
+                    // then run the one pass and let the rail dissolve for good.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                        trigger.toggle()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) {
+                            withAnimation(.easeOut(duration: 0.5)) { visible = false }
+                        }
+                    }
+                }
+            }
         }
-        .foregroundStyle(Clinical.accent)
         .accessibilityHidden(true)
     }
 }

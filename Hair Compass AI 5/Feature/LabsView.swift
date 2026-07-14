@@ -3,9 +3,13 @@ import SwiftUI
 
 struct LabsView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \LabResult.collectedAt, order: .reverse) private var labs: [LabResult]
     @State private var showAdd = false
     @State private var showProposalDetail = false
+    /// Sprung open by tapping the "Tests derms order for hair loss" footnote row — collapsed on
+    /// every fresh appearance of the screen, same as the routine's own collapsed footnote rows.
+    @State private var referenceExpanded = false
     /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
     /// directly from the ScrollView's own content offset.
     @State private var headerCondense: CGFloat = 0
@@ -40,6 +44,18 @@ struct LabsView: View {
             }
     }
 
+    /// When every visible test's most recent draw happened on the same calendar day (the common
+    /// case — one panel, one blood draw), the date is worth saying exactly once, up top, instead
+    /// of on every single-draw row underneath (`labLedgerRow`'s own fallback date line skips
+    /// itself whenever this is non-nil). nil the moment draws span more than one day, so the
+    /// per-row "since <date>" and single-draw date lines carry the full story again.
+    private var sharedDrawDate: Date? {
+        let calendar = Calendar.current
+        let latestDates = groupedLabs.map { calendar.startOfDay(for: $0.results.last!.collectedAt) }
+        guard let first = latestDates.first, Set(latestDates).count == 1 else { return nil }
+        return first
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
@@ -69,6 +85,10 @@ struct LabsView: View {
                     // three near-identical cards. The flagged lab's own row still carries the
                     // "what this may mean" disclosure inline, and the "context, not a diagnosis"
                     // line stays a footnote at the very bottom.
+                    if let sharedDrawDate {
+                        Text("Drawn \(sharedDrawDate.formatted(.dateTime.day().month(.abbreviated).year()))")
+                            .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                    }
                     labLedger
                     referenceFootnote
                         .staggeredEntrance(index: min(groupedLabs.count, 9))
@@ -194,7 +214,10 @@ struct LabsView: View {
                     if let previous {
                         Text("\(oneDecimal(previous.value)) → \(oneDecimal(latest.value)) \(test.unit) since \(previous.collectedAt.formatted(.dateTime.month(.abbreviated).day()))")
                             .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                    } else {
+                    } else if sharedDrawDate == nil {
+                        // When every visible test shares one draw date, it's already said once
+                        // at the top of the ledger (see `sharedDrawDate`) — repeating it on every
+                        // single-draw row below would say the same date three times down the page.
                         Text(latest.collectedAt.formatted(.dateTime.month().day().year()))
                             .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
                     }
@@ -310,28 +333,60 @@ struct LabsView: View {
     /// The same reference list, collapsed into a footnote disclosure at the ledger's end once
     /// there's real data to lead with — a full always-open card only earns its place on the
     /// empty first visit (`reference`, above).
+    ///
+    /// Round-5: restyled from a `DisclosureGroup` with a shouting all-caps mono
+    /// "TESTS DERMS ORDER FOR HAIR LOSS" label to the same quiet footnote-row family as Plan's
+    /// "Reminders" row — plain-weight sentence case, no caps, one hairline top and bottom.
     private var referenceFootnote: some View {
-        DisclosureGroup {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(LabTest.allCases) { test in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(test.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-                            Spacer()
-                            Text("\(test.referenceRange.lowerBound.formatted())–\(test.referenceRange.upperBound.formatted()) \(test.unit)")
-                                .font(Clinical.number(12)).foregroundStyle(Clinical.secondary)
-                        }
-                        Text(test.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
-                    }
-                    if test != LabTest.allCases.last { Divider().overlay(Clinical.hairline) }
+        VStack(alignment: .leading, spacing: 0) {
+            // No leading hairline here — `labLedger`'s last row already closes with one, so this
+            // row continues straight from it instead of doubling the rule.
+            Button {
+                UISelectionFeedbackGenerator().selectionChanged()
+                if reduceMotion {
+                    referenceExpanded.toggle()
+                } else {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { referenceExpanded.toggle() }
                 }
+            } label: {
+                HStack(spacing: 10) {
+                    Text("Tests derms order for hair loss")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Clinical.ink)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Clinical.accent)
+                        .rotationEffect(.degrees(referenceExpanded ? 90 : 0))
+                }
+                .padding(.vertical, 13)
+                .contentShape(Rectangle())
             }
-            .padding(.top, 10)
-        } label: {
-            Eyebrow(text: "Tests derms order for hair loss")
+            .buttonStyle(.clinicalPressable)
+            .accessibilityLabel("Tests derms order for hair loss")
+            .accessibilityHint(referenceExpanded ? "Collapses the list" : "Expands the list")
+
+            if referenceExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(LabTest.allCases) { test in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(test.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                                Spacer()
+                                Text("\(test.referenceRange.lowerBound.formatted())–\(test.referenceRange.upperBound.formatted()) \(test.unit)")
+                                    .font(Clinical.number(12)).foregroundStyle(Clinical.secondary)
+                            }
+                            Text(test.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        }
+                        if test != LabTest.allCases.last { Divider().overlay(Clinical.hairline) }
+                    }
+                }
+                .padding(.bottom, 12)
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+
+            Divider().overlay(Clinical.hairline)
         }
-        .tint(Clinical.accent)
-        .padding(.top, 6)
     }
 }
 

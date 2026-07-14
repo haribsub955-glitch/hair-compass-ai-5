@@ -63,19 +63,15 @@ struct PhotosView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
+                // Round-5: the header "+" is gone — Capture (empty state) and "Add older
+                // photos" already cover both paths to adding a photo, and this tab's empty
+                // screen used to say "add a photo" three ways at once (header +, Capture
+                // button, Add-older link). One header, no trailing control.
                 ScreenHeader(
                     eyebrow: "Documentation",
                     title: "Photos",
-                    trailing: AnyView(
-                        HeaderActionButton(systemName: "plus", accessibilityLabel: "Capture progress photo") {
-                            showAdd = true
-                        }
-                    ),
                     condensed: headerCondense
                 ).padding(.top, 8)
-                    // The header sprig used to bleed into the + button's corner — no ornament
-                    // collides with a control anymore. Photos' own empty-state illustration is
-                    // still the screen's signature artwork, so nothing decorative was lost.
 
                 // Empty state carries its own single instruction + CTA below, so the header
                 // subtitle only earns its place once there's real data to summarize — otherwise
@@ -449,25 +445,27 @@ private struct ViewfinderBrackets: Shape {
     }
 }
 
-/// The empty-state signature motif: a copper viewfinder framing a quiet camera glyph, like a
-/// focus reticle — the invitation itself (frame the shot), not a restatement of which region is
-/// selected (that's already the tab above). The frame draws itself in once from the corners on
-/// first appearance — an animated `trim`, the app's one earned ornament for this screen — then
-/// holds still; Reduce Motion gets a plain fade to the fully-drawn frame instead.
+/// The empty-state signature motif: a copper viewfinder framing a quiet crosshair, the reticle a
+/// viewfinder actually focuses on — the invitation itself (frame the shot), not a restatement of
+/// which region is selected (that's already the tab above). The frame draws itself in once from
+/// the corners on first appearance — an animated `trim`, the app's one earned ornament for this
+/// screen — then holds still; Reduce Motion gets a plain fade to the fully-drawn frame instead.
+///
+/// Round-5: the crosshair replaces a literal camera glyph here — the third camera icon on one
+/// otherwise-empty screen, alongside the Capture button and the tab bar's own icon.
 private struct ViewfinderFrame: View {
     var size: CGFloat = 140
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var revealed = false
+    @State private var breatheTrigger = false
 
     var body: some View {
         ZStack {
             ViewfinderBrackets(armLength: 20)
                 .trim(from: 0, to: revealed ? 1 : 0)
                 .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-            Image(systemName: "camera")
-                .font(.system(size: 22, weight: .light))
-                .foregroundStyle(Clinical.accent.opacity(0.65))
+            crosshair
                 .opacity(revealed ? 1 : 0)
         }
         .frame(width: size, height: size)
@@ -477,8 +475,45 @@ private struct ViewfinderFrame: View {
                 revealed = true
             } else {
                 withAnimation(.easeOut(duration: 0.65)) { revealed = true }
+                // Lets the brackets finish drawing in before the crosshair takes its one breath.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { breatheTrigger.toggle() }
             }
         }
         .accessibilityHidden(true)
+    }
+
+    private enum BreathPhase: CaseIterable { case rest, expand, settle }
+
+    /// A small copper crosshair that breathes once — grows gently, then settles back to rest —
+    /// right after the frame finishes drawing in. Static under Reduce Motion (no `PhaseAnimator`
+    /// at all, just the resting dot).
+    private var crosshair: some View {
+        Group {
+            if reduceMotion {
+                crosshairDot(scale: 1)
+            } else {
+                PhaseAnimator(BreathPhase.allCases, trigger: breatheTrigger) { phase in
+                    crosshairDot(scale: phase == .expand ? 1.3 : 1)
+                } animation: { phase in
+                    switch phase {
+                    case .rest: return nil
+                    case .expand: return .easeOut(duration: 0.45)
+                    case .settle: return .easeInOut(duration: 0.5)
+                    }
+                }
+            }
+        }
+    }
+
+    private func crosshairDot(scale: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .stroke(Clinical.accent.opacity(0.4), lineWidth: 1)
+                .frame(width: 18, height: 18)
+            Circle()
+                .fill(Clinical.accent)
+                .frame(width: 5, height: 5)
+        }
+        .scaleEffect(scale)
     }
 }

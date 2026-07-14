@@ -180,34 +180,36 @@ struct BodySignalsDashboard: View {
 
     @Environment(HealthKitService.self) private var healthKit
     @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var connecting = false
     @State private var refreshing = false
 
+    /// Round-5: dissolved out of its `ClinicalCard` — the largest remaining boxed dashboard
+    /// module in the app — into the same un-boxed, hairline-ruled ledger language as Today's
+    /// signal ledger and Labs' lab ledger. Same rows, same data, no card edge.
     var body: some View {
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 12) {
-                header
-                signalContent
-                refreshRow
-                contextNotes
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            signalContent
+            refreshRow
+            contextNotes
         }
     }
 
     // MARK: Header
 
+    /// One eyebrow line instead of the old display-serif headline ("What your body's saying")
+    /// over its own sub-eyebrow — "BODY SIGNALS · from Apple Health" says the same thing once,
+    /// matching the margin-ink caption every other screen's section header now uses.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Eyebrow(text: "Body signals")
-                Spacer()
-                if !visibleSignals.isEmpty || healthKit.authorization.isUsable {
-                    Label("from Apple Health", systemImage: "heart.text.square")
-                        .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
-                }
+        HStack {
+            Eyebrow(text: "Body signals")
+            if !visibleSignals.isEmpty || healthKit.authorization.isUsable {
+                Text("·").foregroundStyle(Clinical.tertiary)
+                Text("from Apple Health")
+                    .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
             }
-            Text("What your body's saying")
-                .font(Clinical.headline(22)).foregroundStyle(Clinical.ink)
+            Spacer()
         }
     }
 
@@ -244,9 +246,11 @@ struct BodySignalsDashboard: View {
         let visible = visibleSignals
         if !visible.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
+                Divider().overlay(Clinical.hairline)
                 ForEach(visible) { signal in
                     signalRow(signal)
-                    if signal != visible.last { Divider() }
+                        .rowFadeIn(reduceMotion: reduceMotion)
+                    Divider().overlay(Clinical.hairline)
                 }
             }
         } else {
@@ -390,6 +394,27 @@ struct BodySignalsDashboard: View {
             Text(text).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
         }
         .padding(.top, 2)
+    }
+}
+
+// MARK: - Row entrance
+
+private extension View {
+    /// Round-5: each un-boxed signal row fades and softens as it crosses into view while
+    /// scrolling, then settles fully sharp/opaque once past the threshold — a quiet "the ledger
+    /// writes itself as you read down the page" cue in place of the card's old static reveal.
+    /// Reduce Motion drops this entirely: rows are simply visible, no transition at all.
+    @ViewBuilder
+    func rowFadeIn(reduceMotion: Bool) -> some View {
+        if reduceMotion {
+            self
+        } else {
+            self.scrollTransition(axis: .vertical) { content, phase in
+                content
+                    .opacity(phase.isIdentity ? 1 : 0.35)
+                    .blur(radius: phase.isIdentity ? 0 : 2)
+            }
+        }
     }
 }
 
