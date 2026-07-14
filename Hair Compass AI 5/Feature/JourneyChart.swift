@@ -29,10 +29,11 @@ struct JourneyChart: View {
     /// default size and every label at accessibility sizes. Seeded at 44 so the very first frame
     /// (before the hidden template below reports its real width) still looks reasonable.
     @State private var gutterWidth: CGFloat = 44
-    /// The note marker currently disclosed (tap-to-reveal) — reset on tap-away or re-tap of the
-    /// same marker. Notes are the richest causal context a person records ("switched shampoo",
-    /// "started keto") and used to be write-only outside the exact day's log sheet.
-    @State private var selectedNoteMarker: JourneyData.Marker?
+    /// The marker currently disclosed (tap-to-reveal) — any kind, not just notes — reset on
+    /// tap-away or re-tap of the same marker. This is where the marker legend's old
+    /// Procedure/Med-start/Stopped/Trigger/Note meanings now live, read on demand instead of
+    /// permanently spelled out in a five-key legend.
+    @State private var selectedMarker: JourneyData.Marker?
 
     var body: some View {
         let end = Date.now
@@ -41,26 +42,26 @@ struct JourneyChart: View {
             entries: entries, treatments: treatments, doses: doses,
             triggers: triggers, procedures: procedures, start: start, end: end
         )
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Eyebrow(text: "Your journey")
-                Text("Shedding & treatment timeline")
-                    .font(Clinical.headline(19))
-                    .foregroundStyle(Clinical.ink)
+        // Full-bleed on the canvas — the app's headline visualization earns the whole width
+        // instead of sitting boxed inside another card.
+        VStack(alignment: .leading, spacing: 12) {
+            Eyebrow(text: "Your journey")
+            Text("Shedding & treatment timeline")
+                .font(Clinical.headline(19))
+                .foregroundStyle(Clinical.ink)
 
-                if data.shedPoints.count < 2 {
-                    thinDataPlaceholder
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        shedChart(data: data, domain: start...end)
-                        intakeLane(data: data, domain: start...end)
-                    }
-                    legend(data: data)
-                    if let selectedNoteMarker { noteDisclosure(selectedNoteMarker) }
-                    if !data.echoBands.isEmpty {
-                        Text("Faint band = possible echo window — shedding often lags a trigger by 2–3 months.")
-                            .font(.system(size: 10)).foregroundStyle(Clinical.tertiary)
-                    }
+            if data.shedPoints.count < 2 {
+                thinDataPlaceholder
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    shedChart(data: data, domain: start...end)
+                    intakeLane(data: data, domain: start...end)
+                }
+                legend(data: data)
+                if let selectedMarker { markerDisclosure(selectedMarker) }
+                if !data.echoBands.isEmpty {
+                    Text("Faint band = possible echo window — shedding often lags a trigger by 2–3 months.")
+                        .font(.system(size: 10)).foregroundStyle(Clinical.tertiary)
                 }
             }
         }
@@ -68,105 +69,124 @@ struct JourneyChart: View {
 
     // MARK: Top chart — smoothed shed trend + dated event markers
 
+    /// The chart draws itself in once on appear — the shedding line inks across left-to-right
+    /// and each event marker pops in as the ink passes its date. Driven by wall-clock elapsed
+    /// time (`RevealOnce`) rather than SwiftUI's animation/transaction system, since this chart
+    /// sits inside `TrendsView`'s `.transaction { $0.animation = nil }` subtree — deliberately
+    /// applied there so Swift Charts' own marks never interpolate when the range picker changes.
+    /// An ordinary `withAnimation` reveal would be silently cancelled by that ancestor; ticking
+    /// a plain elapsed-time value instead sidesteps the transaction system entirely.
     private func shedChart(data: JourneyData, domain: ClosedRange<Date>) -> some View {
-        Chart {
-            // Possible-echo bands — drawn first so every other mark sits above them. Pure
-            // calendar math (trigger/stop date + 8…12 weeks) on data already queried; phrased
-            // as "possible echo", never a prediction, so the honest 2–3-month causal vocabulary
-            // that only ever lived in prose is now visible on the one chart people actually look
-            // at when a shed spike worries them.
-            ForEach(data.echoBands) { band in
-                RectangleMark(
-                    xStart: .value("Start", band.start),
-                    xEnd: .value("End", band.end),
-                    yStart: .value("Low", 0.0),
-                    yEnd: .value("High", 3.0)
-                )
-                .foregroundStyle(Clinical.warning.opacity(0.08))
-            }
-            // Faint raw daily levels — the honest reality behind the smoothing.
-            ForEach(data.shedPoints) { p in
-                PointMark(x: .value("Date", p.date), y: .value("Shed", p.raw))
-                    .symbolSize(12)
-                    .foregroundStyle(Clinical.accent.opacity(0.22))
-            }
-            // 7-day centered rolling mean — the trend the eye should follow.
-            ForEach(data.shedPoints) { p in
-                AreaMark(x: .value("Date", p.date), y: .value("Shed", p.smoothed))
-                    .interpolationMethod(.monotone)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Clinical.accent.opacity(0.14), .clear],
-                            startPoint: .top, endPoint: .bottom
-                        )
+        RevealOnce { progress, elapsed in
+            Chart {
+                // Possible-echo bands — drawn first so every other mark sits above them. Pure
+                // calendar math (trigger/stop date + 8…12 weeks) on data already queried;
+                // phrased as "possible echo", never a prediction, so the honest 2–3-month causal
+                // vocabulary that only ever lived in prose is now visible on the one chart
+                // people actually look at when a shed spike worries them.
+                ForEach(data.echoBands) { band in
+                    RectangleMark(
+                        xStart: .value("Start", band.start),
+                        xEnd: .value("End", band.end),
+                        yStart: .value("Low", 0.0),
+                        yEnd: .value("High", 3.0)
                     )
-                LineMark(x: .value("Date", p.date), y: .value("Shed", p.smoothed))
-                    .interpolationMethod(.monotone)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .foregroundStyle(Clinical.accent)
+                    .foregroundStyle(Clinical.warning.opacity(0.08))
+                }
+                // Faint raw daily levels — the honest reality behind the smoothing.
+                ForEach(data.shedPoints) { p in
+                    PointMark(x: .value("Date", p.date), y: .value("Shed", p.raw))
+                        .symbolSize(12)
+                        .foregroundStyle(Clinical.accent.opacity(0.22))
+                }
+                // 7-day centered rolling mean — the trend the eye should follow.
+                ForEach(data.shedPoints) { p in
+                    AreaMark(x: .value("Date", p.date), y: .value("Shed", p.smoothed))
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Clinical.accent.opacity(0.14), .clear],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                    LineMark(x: .value("Date", p.date), y: .value("Shed", p.smoothed))
+                        .interpolationMethod(.monotone)
+                        .lineStyle(StrokeStyle(lineWidth: 2.5))
+                        .foregroundStyle(Clinical.accent)
+                }
+                // Dashed verticals anchor each dated event to the trend.
+                ForEach(data.markers) { m in
+                    RuleMark(x: .value("Date", m.date))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 4]))
+                        .foregroundStyle(m.color.opacity(0.45))
+                }
+                // Event badges — staggered onto a second row when two events land close together,
+                // and tagged with a short label only while there are few enough to stay readable.
+                ForEach(data.markers) { m in
+                    PointMark(x: .value("Date", m.date), y: .value("Shed", m.level == 0 ? 2.82 : 2.28))
+                        .symbolSize(0)
+                        .annotation(
+                            position: .overlay,
+                            overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                        ) {
+                            markerBadge(m, showTag: data.showMarkerTags)
+                                .modifier(MarkerPop(elapsed: elapsed, delay: markerDelay(m, domain: domain)))
+                        }
+                }
             }
-            // Dashed verticals anchor each dated event to the trend.
-            ForEach(data.markers) { m in
-                RuleMark(x: .value("Date", m.date))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 4]))
-                    .foregroundStyle(m.color.opacity(0.45))
-            }
-            // Event badges — staggered onto a second row when two events land close together,
-            // and tagged with a short label only while there are few enough to stay readable.
-            ForEach(data.markers) { m in
-                PointMark(x: .value("Date", m.date), y: .value("Shed", m.level == 0 ? 2.82 : 2.28))
-                    .symbolSize(0)
-                    .annotation(
-                        position: .overlay,
-                        overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
-                    ) {
-                        markerBadge(m, showTag: data.showMarkerTags)
-                    }
-            }
-        }
-        .frame(height: 180)
-        .chartXScale(domain: domain)
-        .chartYScale(domain: 0...3)
-        .chartXAxis(.hidden) // the intake lane below owns the shared time axis
-        .chartYAxis {
-            AxisMarks(position: .leading, values: Self.shedAxisValues) { value in
-                AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
-                AxisValueLabel {
-                    if let v = value.as(Double.self) {
-                        let i = Int(v)
-                        if Self.shedAxisLabels.indices.contains(i) {
-                            Text(Self.shedAxisLabels[i])
-                                .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-                                .lineLimit(1).fixedSize()   // never wrap mid-word
-                                .frame(width: gutterWidth, alignment: .trailing)
+            .frame(height: 180)
+            .chartXScale(domain: domain)
+            .chartYScale(domain: 0...3)
+            .chartXAxis(.hidden) // the intake lane below owns the shared time axis
+            .chartYAxis {
+                AxisMarks(position: .leading, values: Self.shedAxisValues) { value in
+                    AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
+                    AxisValueLabel {
+                        if let v = value.as(Double.self) {
+                            let i = Int(v)
+                            if Self.shedAxisLabels.indices.contains(i) {
+                                Text(Self.shedAxisLabels[i])
+                                    .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                                    .lineLimit(1).fixedSize()   // never wrap mid-word
+                                    .frame(width: gutterWidth, alignment: .trailing)
+                            }
                         }
                     }
+                }
+            }
+            .mask(alignment: .leading) {
+                GeometryReader { geo in
+                    Rectangle().frame(width: max(0, geo.size.width * progress))
                 }
             }
         }
     }
 
+    /// Normalized 0…1 position of a marker's date within the chart's domain — used both to
+    /// stagger its pop-in delay against `RevealOnce`'s reveal duration and (were it needed) to
+    /// place it relative to the mask.
+    private func markerDelay(_ m: JourneyData.Marker, domain: ClosedRange<Date>) -> Double {
+        let total = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        guard total > 0 else { return 0 }
+        let fraction = max(0, min(1, m.date.timeIntervalSince(domain.lowerBound) / total))
+        return fraction * RevealTiming.duration
+    }
+
     private func markerBadge(_ m: JourneyData.Marker, showTag: Bool) -> some View {
-        Group {
-            if m.kind == .note {
-                // SwiftUI Charts annotations render as regular overlaid views, so a Button here
-                // works exactly like it would anywhere else — this is the tap-to-reveal
-                // affordance for the note text (see `noteDisclosure` below).
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        selectedNoteMarker = (selectedNoteMarker?.id == m.id) ? nil : m
-                    }
-                    UISelectionFeedbackGenerator().selectionChanged()
-                } label: {
-                    badgeContent(m, showTag: showTag)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Note on \(m.date.formatted(date: .abbreviated, time: .omitted))")
-                .accessibilityHint("Double-tap to read the note")
-            } else {
-                badgeContent(m, showTag: showTag)
+        // Every marker kind is tap-to-reveal now — the meanings that used to live permanently
+        // in a five-key legend (Procedure/Med start/Stopped/Trigger/Note) now surface on demand
+        // in `markerDisclosure`, so the legend itself only needs two keys.
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) {
+                selectedMarker = (selectedMarker?.id == m.id) ? nil : m
             }
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            badgeContent(m, showTag: showTag)
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(markerKindLabel(m)) on \(m.date.formatted(date: .abbreviated, time: .omitted))")
+        .accessibilityHint("Double-tap for details")
     }
 
     private func badgeContent(_ m: JourneyData.Marker, showTag: Bool) -> some View {
@@ -188,18 +208,19 @@ struct JourneyChart: View {
         }
     }
 
-    /// The disclosed note's date + full text, dismissible by re-tapping its marker. Sits below
-    /// the legend, inside the same card, so nothing about the chart's layout shifts when a note
-    /// opens or closes.
-    private func noteDisclosure(_ marker: JourneyData.Marker) -> some View {
+    /// The disclosed marker's date + meaning, dismissible by re-tapping its badge. Sits below
+    /// the legend so nothing about the chart's layout shifts when a marker opens or closes —
+    /// this is now where every marker kind's meaning lives (see `markerKindLabel`), not just
+    /// notes, since the legend itself dropped its five marker keys.
+    private func markerDisclosure(_ marker: JourneyData.Marker) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "text.bubble")
-                .font(.system(size: 12)).foregroundStyle(Clinical.sage)
+            Image(systemName: marker.symbol)
+                .font(.system(size: 12)).foregroundStyle(marker.color)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 2) {
                 Text(marker.date.formatted(date: .abbreviated, time: .omitted))
                     .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-                Text(marker.noteText ?? "")
+                Text(markerKindLabel(marker))
                     .font(.system(size: 12)).foregroundStyle(Clinical.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -207,6 +228,18 @@ struct JourneyChart: View {
         }
         .padding(10)
         .background(Clinical.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    /// Plain-language meaning for a marker — what the old five-key legend used to spell out
+    /// permanently now lives here, read on tap instead of taking up screen space on every visit.
+    private func markerKindLabel(_ m: JourneyData.Marker) -> String {
+        switch m.kind {
+        case .procedure: return "Procedure — \(m.tag)"
+        case .start: return "Started — \(m.tag)"
+        case .stop: return "Stopped — \(m.tag)"
+        case .trigger: return "Life event — \(m.tag)"
+        case .note: return m.noteText ?? "Note"
+        }
     }
 
     // MARK: Bottom lane — day-by-day medication intake
@@ -287,34 +320,30 @@ struct JourneyChart: View {
         return .dateTime.month(.abbreviated).year(.twoDigits)
     }
 
-    // MARK: Legend — only keys that actually appear
+    // MARK: Legend — two ink-critical keys; marker meanings live in the tap-to-reveal disclosure
 
+    /// Reduced from a five-marker-key legend (which used to clip at the fold, "Procedure /
+    /// Trigger" cut off) to the two keys that actually need reading at a glance — what the line
+    /// is, and that the bars are doses. Every marker's own meaning is now one tap away instead
+    /// of permanently spelled out here.
     private func legend(data: JourneyData) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 86), spacing: 10)], alignment: .leading, spacing: 6) {
+        HStack(spacing: 14) {
             legendKey(.line, color: Clinical.accent, label: "Shedding")
-            ForEach(data.doseSeries) { s in
-                legendKey(.bar, color: s.color, label: s.title)
+            if !data.doseSeries.isEmpty {
+                legendKey(.bar, color: Clinical.gold, label: "Doses")
             }
-            if let symbol = data.firstSymbol(of: .procedure) {
-                legendKey(.marker(symbol), color: Clinical.accent, label: "Procedure")
-            }
-            if let symbol = data.firstSymbol(of: .start) {
-                legendKey(.marker(symbol), color: Clinical.gold, label: "Med start")
-            }
-            if let symbol = data.firstSymbol(of: .stop) {
-                legendKey(.marker(symbol), color: Clinical.tertiary, label: "Stopped")
-            }
-            if let symbol = data.firstSymbol(of: .trigger) {
-                legendKey(.marker(symbol), color: Clinical.warning, label: "Trigger")
-            }
-            if let symbol = data.firstSymbol(of: .note) {
-                legendKey(.marker(symbol), color: Clinical.sage, label: "Note · tap to read")
+            Spacer(minLength: 8)
+            if !data.markers.isEmpty {
+                Text("Tap a marker for details")
+                    .font(Clinical.eyebrow(8))
+                    .foregroundStyle(Clinical.tertiary)
+                    .lineLimit(1)
             }
         }
         .padding(.top, 2)
     }
 
-    private enum KeyStyle { case line, bar, marker(String) }
+    private enum KeyStyle { case line, bar }
 
     private func legendKey(_ style: KeyStyle, color: Color, label: String) -> some View {
         HStack(spacing: 5) {
@@ -324,13 +353,6 @@ struct JourneyChart: View {
             case .bar:
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(color).frame(width: 8, height: 10)
-            case .marker(let symbol):
-                Image(systemName: symbol)
-                    .font(.system(size: 7, weight: .semibold))
-                    .foregroundStyle(color)
-                    .frame(width: 14, height: 14)
-                    .background(Clinical.surface, in: Circle())
-                    .overlay(Circle().strokeBorder(color.opacity(0.45), lineWidth: 1))
             }
             Text(label)
                 .font(Clinical.eyebrow(9))
@@ -353,6 +375,76 @@ struct JourneyChart: View {
                 .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
         }
         .padding(.vertical, 8)
+    }
+}
+
+// MARK: - Draw-in reveal (wall-clock, transaction-proof)
+
+/// Shared timing for the shed-chart reveal and its marker pop-ins.
+private enum RevealTiming {
+    static let duration: TimeInterval = 0.9
+}
+
+/// Reveals `content` once on appear, reporting a 0…1 eased `progress` and the raw `elapsed`
+/// seconds since it started. Driven by a `TimelineView` ticking real elapsed time rather than
+/// SwiftUI's animation/transaction system — see `JourneyChart.shedChart` for why an ordinary
+/// `withAnimation` can't be trusted here. Freezes to a fully-revealed static frame under Reduce
+/// Motion, and stops ticking for good once the reveal completes so the chart "settles completely
+/// still" instead of burning frames forever.
+private struct RevealOnce<Content: View>: View {
+    private let content: (_ progress: CGFloat, _ elapsed: TimeInterval) -> Content
+
+    init(@ViewBuilder content: @escaping (_ progress: CGFloat, _ elapsed: TimeInterval) -> Content) {
+        self.content = content
+    }
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var startDate: Date?
+    @State private var done = false
+
+    var body: some View {
+        Group {
+            if reduceMotion || done {
+                content(1, .greatestFiniteMagnitude)
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+                    let elapsed = startDate.map { timeline.date.timeIntervalSince($0) } ?? 0
+                    let t = max(0, min(1, elapsed / RevealTiming.duration))
+                    let eased = 1 - pow(1 - t, 3) // ease-out cubic
+                    content(CGFloat(eased), elapsed)
+                        .onChange(of: t) { _, new in
+                            if new >= 1 { done = true }
+                        }
+                }
+            }
+        }
+        .onAppear {
+            guard startDate == nil else { return }
+            if reduceMotion {
+                done = true
+            } else {
+                startDate = .now
+            }
+        }
+    }
+}
+
+/// Pops an event-marker badge in once the reveal's elapsed time passes its own delay — a quick
+/// smoothstep fade + scale computed directly from elapsed time (no `Animation`/`Transaction`
+/// involved, for the same reason `RevealOnce` avoids them). Fully visible immediately once the
+/// reveal is done or under Reduce Motion.
+private struct MarkerPop: ViewModifier {
+    let elapsed: TimeInterval
+    let delay: Double
+    private static let popDuration: Double = 0.22
+
+    func body(content: Content) -> some View {
+        let local = max(0, elapsed - delay)
+        let t = max(0, min(1, local / Self.popDuration))
+        let eased = t * t * (3 - 2 * t) // smoothstep
+        content
+            .opacity(eased)
+            .scaleEffect(0.55 + 0.45 * eased)
     }
 }
 
@@ -429,10 +521,6 @@ private struct JourneyData {
     var showMarkerTags: Bool { markers.count <= 3 }
     var doseSeriesTitles: [String] { doseSeries.map(\.title) }
     var doseSeriesColors: [Color] { doseSeries.map(\.color) }
-
-    func firstSymbol(of kind: Marker.Kind) -> String? {
-        markers.first { $0.kind == kind }?.symbol
-    }
 
     init(
         entries: [DailyEntry],

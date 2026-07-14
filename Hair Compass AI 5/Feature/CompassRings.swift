@@ -146,13 +146,13 @@ struct CompassRingsView: View {
     }
 }
 
-/// The Today rings card: `CompassRingsView` plus an identity-toned status line and a legend of
-/// the three rings' raw state. Tapping anywhere opens today's check-in — the same action as the
-/// hero's own log button — so the card reads as one more entry point into logging, not a
-/// separate destination.
+/// The Today rings card, dissolved out of its card box: the triple ring sits directly on the
+/// canvas with one summary line beside it — no table restating what the ring already encodes.
+/// Tapping the ring expands the three detail rows in place (collapse on second tap); tapping the
+/// summary text opens today's check-in, same destination the old whole-card button used to open.
 struct CompassRingsCard: View {
     let score: CompassScore
-    /// Raw counts behind the Care ring, needed only for the legend's "2 of 3" readout — the
+    /// Raw counts behind the Care ring, needed only for the detail row's "2 of 3" readout — the
     /// ring itself only needs the fraction already folded into `score`.
     let medsDone: Int
     let medsTotal: Int
@@ -161,29 +161,56 @@ struct CompassRingsCard: View {
     var isDayOneSeed: Bool = false
     let onLog: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var expanded = false
+
     var body: some View {
-        Button(action: onLog) {
-            ClinicalCard {
-                HStack(alignment: .center, spacing: 18) {
-                    CompassRingsView(score: score, size: 120)
-                    VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 18) {
+                ringButton
+                Button(action: onLog) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Eyebrow(text: "Compass score")
-                        Text(statusLine)
+                        summaryLine
                             .font(.system(size: 14))
-                            .foregroundStyle(Clinical.ink)
                             .fixedSize(horizontal: false, vertical: true)
-                        VStack(alignment: .leading, spacing: 6) {
-                            legendRow(.log, label: "Daily log", state: score.log >= 1 ? "Logged today" : "Not yet today")
-                            legendRow(.care, label: "Care steps", state: careState)
-                            legendRow(.lens, label: "Photo check",
-                                      state: score.lens >= 1 ? "Done this week" : "Not yet this week")
-                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Compass score summary: \(statusLine)")
+                .accessibilityHint("Opens today's check-in")
+            }
+            if expanded {
+                VStack(alignment: .leading, spacing: 6) {
+                    legendRow(.log, label: "Daily log", state: score.log >= 1 ? "Logged today" : "Not yet today")
+                    legendRow(.care, label: "Care steps", state: careState)
+                    legendRow(.lens, label: "Photo check",
+                              state: score.lens >= 1 ? "Done this week" : "Not yet this week")
+                }
+                .padding(.leading, 2)
+                .transition(reduceMotion
+                            ? .opacity
+                            : .asymmetric(insertion: .opacity.combined(with: .move(edge: .top)),
+                                          removal: .opacity))
             }
         }
+    }
+
+    private var ringButton: some View {
+        Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(reduceMotion ? .easeInOut(duration: 0.18) : .spring(response: 0.4, dampingFraction: 0.78)) {
+                expanded.toggle()
+            }
+        } label: {
+            CompassRingsView(score: score, size: 104)
+        }
         .buttonStyle(.plain)
-        .accessibilityHint("Opens today's check-in")
+        .accessibilityLabel("Compass score \(score.score) of 100")
+        .accessibilityValue(expanded ? "Detail shown" : "Detail hidden")
+        .accessibilityHint(expanded ? "Double-tap to hide the detail" : "Double-tap to show the detail")
     }
 
     private var careState: String {
@@ -191,10 +218,39 @@ struct CompassRingsCard: View {
         return "\(medsDone) of \(medsTotal) done"
     }
 
-    /// Priority order: the day-one welcome is the rarest and most specific state (it only ever
-    /// applies once, the first calendar day the app has any data), so it's checked ahead of the
-    /// generic buckets — otherwise a seeded day-one log would always read as the plain
-    /// "Logged. N ring(s) to go." line and the welcome would never show.
+    /// One line replacing the old three-row table — the pending item (whichever open ring is
+    /// closest to view) reads in gold instead of a separate row spelling it out.
+    private var summaryLine: Text {
+        if isDayOneSeed && score.score > 0 {
+            return Text("Day 1 already on the board — logged during setup.")
+                .foregroundStyle(Clinical.ink)
+        }
+        if score.allClosed {
+            return Text("All rings closed. You showed up today.")
+                .foregroundStyle(Clinical.ink)
+        }
+        let dot = Text("  ·  ").foregroundStyle(Clinical.tertiary)
+        var pieces: [Text] = []
+        pieces.append(
+            Text(score.log >= 1 ? "Logged today" : "Not logged")
+                .foregroundStyle(score.log >= 1 ? Clinical.ink : Clinical.gold)
+        )
+        if let care = score.care {
+            let done = care >= 1
+            pieces.append(
+                Text("Care \(medsDone)/\(medsTotal)")
+                    .foregroundStyle(done ? Clinical.ink : Clinical.gold)
+            )
+        }
+        pieces.append(
+            Text(score.lens >= 1 ? "Photo done" : "Photo pending")
+                .foregroundStyle(score.lens >= 1 ? Clinical.ink : Clinical.gold)
+        )
+        return pieces.dropFirst().reduce(pieces[0]) { $0 + dot + $1 }
+    }
+
+    /// Plain-language accessibility mirror of `summaryLine` — VoiceOver reads one sentence
+    /// instead of walking a `Text` concatenation.
     private var statusLine: String {
         if isDayOneSeed && score.score > 0 {
             return "Day 1 is already on the board — you logged it during setup."
@@ -202,20 +258,10 @@ struct CompassRingsCard: View {
         if score.allClosed {
             return "All rings closed. You showed up today."
         }
-        if score.log < 1 {
-            return "The check-in takes 20 seconds — it closes the copper ring."
-        }
-        let remaining = ringsRemaining
-        return "Logged. \(remaining) ring\(remaining == 1 ? "" : "s") to go."
-    }
-
-    /// Open rings other than Log (which is already closed in every branch that reads this) —
-    /// Care only counts when a plan actually exists today.
-    private var ringsRemaining: Int {
-        var count = 0
-        if score.lens < 1 { count += 1 }
-        if let care = score.care, care < 1 { count += 1 }
-        return count
+        var parts = [score.log >= 1 ? "Logged today" : "Not logged"]
+        if score.care != nil { parts.append("Care \(medsDone) of \(medsTotal)") }
+        parts.append(score.lens >= 1 ? "Photo done" : "Photo pending")
+        return parts.joined(separator: ", ")
     }
 
     /// Plain nouns matching the tabs/actions each ring points at, with one normalized status

@@ -36,6 +36,10 @@ struct TrendsView: View {
         }
     }
     @State private var range: Range = .m3
+    /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
+    /// directly from the ScrollView's own content offset, so the title tracks the finger 1:1
+    /// exactly like a native large-title collapse rather than a separate animated effect.
+    @State private var headerCondense: CGFloat = 0
 
     private var windowEntries: [DailyEntry] {
         let cutoff = Calendar.current.date(byAdding: .day, value: -range.days, to: .now) ?? .now
@@ -55,27 +59,20 @@ struct TrendsView: View {
                     eyebrow: "Longitudinal",
                     title: "Trends",
                     trailing: AnyView(
-                        // Solid ink disc — same treatment as the + buttons on Plan/Labs — so
-                        // the icon reads clearly on top of the sprig's densest leaf cluster
-                        // instead of a bare glyph losing contrast against the artwork.
                         HeaderActionButton(
                             systemName: "square.and.arrow.up",
                             accessibilityLabel: "Export trends"
                         ) {
                             showExport = true
                         }
-                    )
+                    ),
+                    condensed: headerCondense
                 )
                 .padding(.top, 8)
-                // Unboxed brand accent: the sprig bleeds from the screen's top-right behind the
-                // header. Background views take no layout space (no horizontal scroll), and the
-                // share button stays tappable — the art never hit-tests. Inset smaller than the
-                // other tabs' default so it clears the 1M/3M/6M segmented control just below.
-                .background(alignment: .topTrailing) { CornerSprig(width: 150) }
 
                 ClinicalSegmented(options: Range.allCases, label: { $0.rawValue }, selection: $range)
 
-                trajectoryCard
+                trajectoryAnnotation
 
                 JourneyChart(
                     entries: entries,
@@ -122,6 +119,11 @@ struct TrendsView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+        }
+        // Condenses the header's serif title as the page scrolls — direct 1:1 offset tracking,
+        // no `withAnimation`, so it's unaffected by the `.transaction` nil below.
+        .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, newY in
+            headerCondense = Clinical.headerCondenseFraction(newY)
         }
         // Trends is a reference surface, not a motion surface: the user reported chart elements
         // sliding "left and right" on interaction. The outer scroll is width-locked (content ==
@@ -296,60 +298,22 @@ struct TrendsView: View {
 
     // MARK: At-a-glance trajectory
 
-    /// Plain-language orientation before the denser timeline. The chart remains the evidence
-    /// surface; this card makes direction and data coverage understandable in a few seconds.
-    private var trajectoryCard: some View {
+    /// One quiet annotation line ahead of the chart — a direction glyph plus a single sentence
+    /// (direction, delta, coverage) — replacing the old four-part card (icon tile, headline,
+    /// body sentence, footer row) that used to say the same fact four ways before the actual
+    /// star of the screen. The journey chart below remains the evidence surface.
+    private var trajectoryAnnotation: some View {
         let summary = TrajectorySummary(entries: windowEntries)
-        return ClinicalCard(padding: 16) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 14) {
-                    Image(systemName: summary.symbol)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(summary.tint)
-                        .frame(width: 42, height: 42)
-                        .background(
-                            summary.tint.opacity(0.11),
-                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        )
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Eyebrow(text: "At a glance")
-                        Text(summary.headline)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Clinical.ink)
-                        Text(summary.detail)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Clinical.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    if let stat = summary.heroStat {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(stat.value)
-                                .font(Clinical.number(22))
-                                .foregroundStyle(stat.isDelta ? summary.tint : Clinical.ink)
-                            Text(stat.caption)
-                                .font(Clinical.eyebrow(8))
-                                .foregroundStyle(Clinical.tertiary)
-                        }
-                    }
-                }
-
-                Divider()
-                    .overlay(Clinical.hairline)
-                    .padding(.vertical, 11)
-
-                HStack(spacing: 14) {
-                    Label(summary.coverageLabel, systemImage: "calendar.badge.checkmark")
-                    Spacer(minLength: 4)
-                    Label(summary.confidenceLabel, systemImage: "waveform.path.ecg")
-                }
-                .font(Clinical.eyebrow(9))
-                .foregroundStyle(Clinical.tertiary)
-            }
+        return HStack(spacing: 7) {
+            Image(systemName: summary.symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(summary.tint)
+            Text(summary.oneLiner)
+                .font(.system(size: 13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(.horizontal, 2)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(summary.accessibilityLabel)
     }
@@ -697,6 +661,24 @@ struct TrajectorySummary {
 
     var accessibilityLabel: String {
         "At a glance. \(headline). \(detail) \(coverageLabel). \(confidenceLabel)."
+    }
+
+    /// The decongested Trends header: direction, delta and coverage in one breath, replacing
+    /// the old four-part card (icon tile, headline, detail sentence, footer row). Never
+    /// contradicts `headline`/`heroStat` — same underlying numbers, just one sentence.
+    var oneLiner: String {
+        guard currentAverage != nil else {
+            return "Log today to start your seven-day view."
+        }
+        guard let delta, currentCount >= 2, previousCount >= 2 else {
+            return "Your baseline is forming · \(coverageLabel)."
+        }
+        if abs(delta) < 0.15 {
+            return "Shedding steady this week · \(coverageLabel)."
+        }
+        let direction = delta <= -0.15 ? "lower" : "higher"
+        let magnitude = String(format: "%+.1f", delta)
+        return "Shedding \(direction) this week · \(magnitude) vs last wk · \(coverageLabel)."
     }
 
     private static func average(_ entries: [DailyEntry]) -> Double? {

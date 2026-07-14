@@ -18,6 +18,9 @@ struct PhotosView: View {
     /// if the region changes or the selected record no longer exists.
     @State private var compareBaseline: PhotoRecord?
     @State private var compareLatest: PhotoRecord?
+    /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
+    /// directly from the ScrollView's own content offset.
+    @State private var headerCondense: CGFloat = 0
 
     private var regionPhotos: [PhotoRecord] {
         photos.filter { $0.region == region }.sorted { $0.createdAt < $1.createdAt }
@@ -66,14 +69,17 @@ struct PhotosView: View {
                         HeaderActionButton(systemName: "plus", accessibilityLabel: "Capture progress photo") {
                             showAdd = true
                         }
-                    )
+                    ),
+                    condensed: headerCondense
                 ).padding(.top, 8)
-                    // Same corner-sprig family as Trends/Labs/Plan — Photos was the last header
-                    // left undressed. Narrower than the shared default: Photos' header sits
-                    // directly above an interactive, horizontally-scrolling region-chip row (no
-                    // buffer card in between the way Labs/Plan have), so the default 210pt bleed
-                    // reached down far enough to clip leaf shapes across the chips' trailing
-                    // edge. Shortened to end above that row instead.
+                    // Photos keeps the app's one remaining header sprig — Trends/Plan/Labs
+                    // dropped theirs (a decoration repeated on three tabs stopped earning its
+                    // place); Photos' empty-state illustration is the signature placement
+                    // elsewhere on this screen, so this is the last spot the motif still lives.
+                    // Narrower than the old shared default: Photos' header sits directly above
+                    // an interactive, horizontally-scrolling region-chip row (no buffer card in
+                    // between), so the wider bleed used to clip leaf shapes across the chips'
+                    // trailing edge.
                     .background(alignment: .topTrailing) { CornerSprig(width: 150) }
 
                 // Empty state carries its own single instruction + CTA below, so the header
@@ -118,6 +124,10 @@ struct PhotosView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+        }
+        // Condenses the header's serif title as the page scrolls — direct 1:1 offset tracking.
+        .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, newY in
+            headerCondense = Clinical.headerCondenseFraction(newY)
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { GuidedCaptureView(defaultRegion: region) }

@@ -73,21 +73,6 @@ struct ConditionsHero: View {
             ], startPoint: .top, endPoint: .bottom)
             .allowsHitTesting(false)
             content
-            if onShedSet != nil {
-                // Decorative only — allowsHitTesting(false) so it never competes with the
-                // scene's own drag gesture underneath it. Centered on the trailing edge of the
-                // scene band (clear of both the greeting/avatar row above and the band-word/chip
-                // row below) so it never collides with the 44pt avatar button.
-                HStack(alignment: .center, spacing: 10) {
-                    if shed == nil {
-                        bandTickScale
-                    }
-                    dragRailChip
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                .padding(.trailing, 14)
-                .allowsHitTesting(false)
-            }
         }
         .frame(maxWidth: .infinity, minHeight: 304, alignment: .topLeading)
         .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 28, bottomTrailingRadius: 28,
@@ -186,62 +171,6 @@ struct ConditionsHero: View {
         set(level)
     }
 
-    /// Trailing vertical "drag rail" affordance — chevron/SET/chevron — so the gesture is
-    /// discoverable. Mirrors ShedDialField's "Live portrait" chip styling.
-    private var dragRailChip: some View {
-        VStack(spacing: 5) {
-            Image(systemName: "chevron.up").font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Clinical.accent)
-            Text("SET").font(Clinical.eyebrow(9)).tracking(1.0)
-                .foregroundStyle(Clinical.secondary)
-            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Clinical.accent)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 10)
-        .background(Clinical.surface, in: Capsule())
-        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
-        .shadow(color: Clinical.cardShadow, radius: 6, y: 2)
-        .accessibilityHidden(true)
-    }
-
-    /// Ghosted band-name ticks along the drag path, shown only before anything is logged so the
-    /// void between the greeting and the headline reads as an intentional scale rather than
-    /// empty space with a lone rail chip floating in it. Sits at a low, non-competing opacity —
-    /// decorative only, same as the rail chip it sits beside — and brightens the row nearest a
-    /// live drag so the scale doubles as feedback once a finger is down.
-    private var bandTickScale: some View {
-        VStack(alignment: .trailing, spacing: 13) {
-            ForEach(ShedLevel.allCases.reversed()) { level in
-                Text(level.title.uppercased())
-                    .font(Clinical.eyebrow(8)).tracking(0.8)
-                    .foregroundStyle(Clinical.ink)
-                    .opacity(tickOpacity(for: level))
-            }
-        }
-        .accessibilityHidden(true)
-    }
-
-    private func tickOpacity(for level: ShedLevel) -> Double {
-        guard let dragIntensity else { return 0.30 }
-        return SheddingDial.band(dragIntensity) == level.rawValue ? 0.85 : 0.18
-    }
-
-    /// Trailing space reserved on the headline so it never renders under `bandTickScale` +
-    /// `dragRailChip`. Scaled through the same `UIFontMetrics` text style the ladder's own
-    /// labels use, so the reservation grows with Dynamic Type roughly in step with what it's
-    /// protecting against instead of a fixed constant that would fall short at larger sizes.
-    private var ladderReservedInset: CGFloat {
-        UIFontMetrics(forTextStyle: .caption2).scaledValue(for: 108)
-    }
-
-    /// The inset actually applied to headline/subtitle content: zero at accessibility sizes,
-    /// where the headline is allowed to wrap onto a second line instead of squeezing beside the
-    /// ladder (see round-5 fix in `content`/`bandWordText`).
-    private var ladderInset: CGFloat {
-        isAccessibilitySize ? 0 : ladderReservedInset
-    }
-
     // MARK: - Foreground content
 
     private var content: some View {
@@ -274,14 +203,9 @@ struct ConditionsHero: View {
                     chipRow
                 } else if let dragIntensity {
                     // Live preview while the finger is down — same slot the saved band word
-                    // occupies, so nothing reflows when the drag ends. Reserves the ladder's
-                    // trailing column (it's on screen throughout the drag) so the band word
-                    // never renders under it — except at accessibility sizes, where the ladder
-                    // reservation is dropped in favor of letting the headline wrap (see
-                    // `bandWordText`/`ladderInset(...)` below).
+                    // occupies, so nothing reflows when the drag ends.
                     let caption = SheddingDial.bandCaption(dragIntensity)
                     bandWordText(caption.0)
-                        .padding(.trailing, ladderInset)
                     subtitleText(caption.1.prefix(1).uppercased() + caption.1.dropFirst())
                     scalpLine
                     chipRow
@@ -289,27 +213,24 @@ struct ConditionsHero: View {
                     // Round-4 fix: the headline used to carry the whole instruction ("Not logged
                     // — drag to set"), which either got clipped mid-word at accessibility sizes
                     // or wrapped onto a second line starting with a bare em-dash at default size.
-                    // Splitting it — a short headline that always fits one line next to the
-                    // ladder, plus the instruction in the same small subtitle slot the drag-live
-                    // and saved branches above use — lets the instruction wrap freely at body
-                    // size instead of being crushed or truncated at 44pt, and keeps this branch's
-                    // structure (headline + subtitle) identical to theirs so nothing reflows when
-                    // a finger goes down.
+                    // Splitting it — a short headline that always fits one line, plus the
+                    // instruction in the same small subtitle slot the drag-live and saved
+                    // branches above use — lets the instruction wrap freely at body size instead
+                    // of being crushed or truncated at 44pt, and keeps this branch's structure
+                    // (headline + subtitle) identical to theirs so nothing reflows when a finger
+                    // goes down.
                     //
                     // Round-5 fix: at .accessibility1+ Dynamic Type, `lineLimit(1) +
                     // minimumScaleFactor(0.65)` still couldn't fit "Not logged" and truncated to
                     // "Not lo…" — the one word this screen exists to show, unreadable. At those
-                    // sizes we drop the ladder's trailing reservation (nothing to protect against
-                    // once the ladder no longer sits this close) and let the headline wrap onto
-                    // up to two lines at a natural word boundary instead of scaling/truncating.
+                    // sizes the headline wraps onto up to two lines at a natural word boundary
+                    // instead of scaling/truncating.
                     Text("Not logged")
                         .font(Clinical.headline(44)).foregroundStyle(Clinical.tertiary)
                         .lineLimit(isAccessibilitySize ? 2 : 1)
                         .minimumScaleFactor(isAccessibilitySize ? 1 : 0.65)
-                        .padding(.trailing, onShedSet != nil ? ladderInset : 0)
                     if onShedSet != nil {
                         subtitleText("Drag the ladder to set")
-                            .padding(.trailing, ladderInset)
                     }
                     chipRow
                 }
@@ -354,22 +275,61 @@ struct ConditionsHero: View {
     }
 
     /// Falls back to a stacked layout when the row can't fit at large Dynamic Type instead of
-    /// crushing every chip into an unreadable sliver.
+    /// Everything that used to be four competing pill-shaped objects (streak chip, XP/level
+    /// chip, copper Edit-log pill, floating SET stepper) is now one quiet annotation line plus
+    /// one control row: a hairline of muted text stating streak/XP/level, and — directly below
+    /// it — the sole button (Edit log) with the drag-to-set hint sitting beside it instead of
+    /// hugging the screen edge. Falls back to a stacked layout only if Dynamic Type can't fit
+    /// the annotation line on one row.
     private var chipRow: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                streakChip
-                xpChip
-                Spacer(minLength: 0)
-                logButton
+        VStack(alignment: .leading, spacing: 8) {
+            annotationLine
+            controlsRow
+        }
+    }
+
+    /// "1-day streak · 1,623 XP · Sapling" — no capsule strokes, no ring, just muted eyebrow
+    /// text. The XP figure still rolls with `.numericText()` on change.
+    private var annotationLine: some View {
+        HStack(spacing: 0) {
+            Text(streakText)
+            dotSeparator
+            Text("\(xp)")
+                .contentTransition(.numericText())
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: xp)
+            Text(" XP")
+            if let levelName {
+                dotSeparator
+                Text(levelName)
             }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    streakChip
-                    xpChip
-                }
-                logButton
-            }
+        }
+        .font(Clinical.eyebrow(10))
+        .tracking(1.0)
+        .foregroundStyle(Clinical.secondary)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(annotationAccessibilityLabel)
+    }
+
+    private var dotSeparator: some View {
+        Text("  ·  ")
+    }
+
+    private var streakText: String {
+        shields > 0 ? "\(streak)-day streak (\(shields) shield\(shields == 1 ? "" : "s"))" : "\(streak)-day streak"
+    }
+
+    private var annotationAccessibilityLabel: String {
+        var parts = [streakText, "\(xp) XP"]
+        if let levelName { parts.append("\(levelName) level") }
+        return parts.joined(separator: ", ")
+    }
+
+    private var controlsRow: some View {
+        HStack(spacing: 16) {
+            logButton
+            if onShedSet != nil { setHint }
         }
     }
 
@@ -388,90 +348,18 @@ struct ConditionsHero: View {
         .accessibilityHint(hasLoggedToday ? "Edits today's check-in" : "Opens today's check-in")
     }
 
-    private var streakChip: some View {
-        HStack(spacing: 5) {
-            Label("\(streak)-day streak", systemImage: "flame.fill")
-            if shields > 0 {
-                Label("\(shields)", systemImage: "shield.fill")
-                    .foregroundStyle(Clinical.sage)
-            }
+    /// The drag-to-set affordance, demoted from a floating edge-hugging capsule to a small
+    /// inline copper text control that sits quietly beside Edit log — same discoverability,
+    /// none of the edge clutter. Purely a visual hint (the gesture lives on the scene itself),
+    /// so it stays decorative/non-interactive here too.
+    private var setHint: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "arrow.up.and.down")
+                .font(.system(size: 9, weight: .semibold))
+            Text("Drag to set")
+                .font(Clinical.eyebrow(10)).tracking(0.6)
         }
-        .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)
-        .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
-        .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(Clinical.surface.opacity(0.85), in: Capsule())
-        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            shields > 0
-                ? "\(streak)-day streak, \(shields) streak shield\(shields == 1 ? "" : "s") held"
-                : "\(streak)-day streak"
-        )
-    }
-
-    /// Ring (progress to next level) + XP total + level name, all in one chip so the row stays
-    /// to one line. `ViewThatFits` picks the fullest label ("1,623 XP · Sapling") that fits the
-    /// available width and falls back to the number-only label ("1,623 XP") rather than letting
-    /// the level name ellipsize into gibberish — the level name always stays in the
-    /// accessibility label either way. `.numericText()` only wraps the number itself, so a
-    /// level-up's longer name doesn't fight the digit-roll transition.
-    private var xpChip: some View {
-        HStack(spacing: 6) {
-            XPProgressRing(progress: levelProgress)
-            ViewThatFits(in: .horizontal) {
-                xpLabel(showsLevel: true)
-                xpLabel(showsLevel: false)
-            }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(Clinical.surface.opacity(0.85), in: Capsule())
-        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(levelName.map { "\(xp) XP, \($0) level" } ?? "\(xp) XP")
-    }
-
-    private func xpLabel(showsLevel: Bool) -> some View {
-        HStack(spacing: 2) {
-            Text("\(xp)")
-                .contentTransition(.numericText())
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: xp)
-            Text("XP" + (showsLevel ? (levelName.map { " · \($0)" } ?? "") : ""))
-        }
-        .font(Clinical.eyebrow(10))
         .foregroundStyle(Clinical.accent)
-        .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)
-    }
-}
-
-/// Small copper progress ring — accent fill on an accentSoft track, same language as
-/// `MedsArcRing` below but sized for an inline chip. Draws once with a spring on appear (instant
-/// under Reduce Motion); later XP changes spring to the new fraction.
-private struct XPProgressRing: View {
-    let progress: Double
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var shown = false
-
-    var body: some View {
-        let clamped = max(0, min(1, progress))
-        ZStack {
-            Circle().stroke(Clinical.accentSoft, lineWidth: 3)
-            Circle()
-                .trim(from: 0, to: shown ? clamped : 0)
-                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-        }
-        .frame(width: 16, height: 16)
-        .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.8), value: clamped)
-        .onAppear {
-            guard !shown else { return }
-            if reduceMotion {
-                shown = true
-            } else {
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { shown = true }
-            }
-        }
         .accessibilityHidden(true)
     }
 }

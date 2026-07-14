@@ -33,6 +33,9 @@ struct CareView: View {
     @State private var showProcedures = false
     @State private var showProgressCheckIn = false
     @State private var showAddTrigger = false
+    /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
+    /// directly from the ScrollView's own content offset.
+    @State private var headerCondense: CGFloat = 0
 
     /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
     /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
@@ -54,11 +57,9 @@ struct CareView: View {
                         HeaderActionButton(systemName: "plus", accessibilityLabel: "Add treatment") {
                             showAdd = true
                         }
-                    )
+                    ),
+                    condensed: headerCondense
                 ).padding(.top, 8)
-                    // Same corner-sprig family as Trends/Labs — Plan and Photos were the two
-                    // headers left undressed.
-                    .background(alignment: .topTrailing) { CornerSprig() }
                     .staggeredEntrance(index: 0)
 
                 // One entrance sequence down the card stack; indices are fixed positions, so a
@@ -105,6 +106,10 @@ struct CareView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+        }
+        // Condenses the header's serif title as the page scrolls — direct 1:1 offset tracking.
+        .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, newY in
+            headerCondense = Clinical.headerCondenseFraction(newY)
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
@@ -322,12 +327,45 @@ struct CareView: View {
 
     // MARK: Coach
 
+    /// The coach card, the milestone banner and the routine list used to each restate the same
+    /// "you're done" fact once everything was complete. Once every step is actually done, the
+    /// coach card dissolves to a single canvas-level line with a small ring — the full card
+    /// (with its artwork and progress ring) only earns its place while there's still something
+    /// left to do today.
+    private var coachCard: some View {
+        let isComplete = !dailySteps.isEmpty && doneToday >= dailySteps.count
+        return Group {
+            if isComplete {
+                compactCoachLine
+            } else {
+                fullCoachCard
+            }
+        }
+    }
+
+    private var compactCoachLine: some View {
+        HStack(spacing: 10) {
+            SmallDoneRing()
+            Text("Today's routine is done  ·  \(dailySteps.count) of \(dailySteps.count)")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Clinical.ink)
+            Spacer(minLength: 0)
+            if streak > 0 {
+                Text("\(streak)d streak")
+                    .font(Clinical.eyebrow(10))
+                    .foregroundStyle(Clinical.accent)
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+    }
+
     /// Redesign v3: the text block now drives the card's height in the normal layout flow —
     /// the artwork moved to `.background` (round-3 fix) so it can never stretch the card past
     /// what the copy needs. `msg.detail` used to be clipped mid-word by a fixed-size,
     /// two-line-capped, 220pt-wide `Text` (round-2 regression): it's one sentence, so it now
     /// wraps freely at whatever size Dynamic Type asks for.
-    private var coachCard: some View {
+    private var fullCoachCard: some View {
         let msg = AdherenceCoach.message(doneToday: doneToday, totalToday: dailySteps.count, streak: streak, weeklyAdherence: nil)
         let progress = dailySteps.isEmpty ? 0 : Double(doneToday) / Double(dailySteps.count)
         return ClinicalCard(padding: 0) {
@@ -419,19 +457,46 @@ struct CareView: View {
         }
     }
 
+    /// Demoted from a full icon card to one line + a thin progress bar — the milestone's own
+    /// body text moves to the accessibility label instead of taking a second visible line, and
+    /// the bar makes "how close" legible at a glance instead of needing to read the sentence.
     private func milestoneCard(_ m: Milestone) -> some View {
-        ClinicalCard {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: m.symbol)
-                    .font(.system(size: 18)).foregroundStyle(Clinical.gold)
-                    .frame(width: 40, height: 40)
-                    .background(Clinical.gold.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(m.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
-                    Text(m.body).font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-                }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Clinical.gold)
+                Text(m.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Clinical.ink)
+                Spacer(minLength: 0)
+            }
+            if let progress = milestoneProgress(m) {
+                ProgressBar(value: progress, tint: Clinical.gold).frame(height: 4)
             }
         }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(m.title). \(m.body)")
+    }
+
+    /// Fraction toward the milestone's own next marker, derived from the same data
+    /// (`treatmentWeeks`/`streak`) the milestone was built from — `Milestone` itself carries no
+    /// numeric progress, only an id whose prefix identifies which kind it is.
+    private func milestoneProgress(_ m: Milestone) -> Double? {
+        if m.id.hasPrefix("ready-") { return 1 }
+        if m.id.hasPrefix("half-") {
+            let name = String(m.id.dropFirst("half-".count))
+            guard let weeks = treatmentWeeks.first(where: { $0.name == name })?.weeks else { return nil }
+            return min(1, Double(weeks) / 24)
+        }
+        if m.id.hasPrefix("streak-") {
+            guard let next = Milestones.streakThresholds.first(where: { $0 > streak }) else { return 1 }
+            let prevTier = Milestones.streakThresholds.last(where: { $0 <= streak }) ?? 0
+            let span = Double(next - prevTier)
+            return span > 0 ? min(1, Double(streak - prevTier) / span) : 1
+        }
+        return nil
     }
 
     // MARK: Routine
@@ -442,28 +507,13 @@ struct CareView: View {
                 Eyebrow(text: "Today's routine")
                 ForEach(routine, id: \.block.id) { entry in
                     VStack(alignment: .leading, spacing: 10) {
-                        Label {
-                            Text(entry.block.title)
-                        } icon: {
-                            Image(systemName: entry.block.symbol)
-                                .foregroundStyle(Self.blockTint(entry.block))
-                        }
-                        .font(Clinical.eyebrow(11)).foregroundStyle(Clinical.tertiary)
+                        Eyebrow(text: entry.block.title)
                         ForEach(Array(entry.steps.enumerated()), id: \.offset) { _, step in
                             routineRow(step.treatment, slot: step.slot, periodic: entry.block == .periodic)
                         }
                     }
                 }
             }
-        }
-    }
-
-    /// Morning sunrise reads gold, evening moon reads sage; the periodic calendar stays quiet.
-    private static func blockTint(_ block: RoutineBlock) -> Color {
-        switch block {
-        case .morning: return Clinical.gold
-        case .evening: return Clinical.sage
-        case .periodic: return Clinical.tertiary
         }
     }
 
@@ -965,35 +1015,41 @@ private struct RoutineStepRow: View {
         return name.localizedCaseInsensitiveContains(cls) ? lead : "\(lead) · \(cls)"
     }
 
+    /// Round: dropped the separate (i) button — every row used to carry a filled checkmark AND
+    /// an (i) button, redundant chrome on every single step. The whole leading content (icon +
+    /// name + subtitle) is now the tap target for the dosing-instruction disclosure; the
+    /// checkmark stays its own trailing tap target for logging the dose.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                Image(systemName: treatment.treatmentClass.symbol)
-                    .font(.system(size: 14))
-                    .foregroundStyle(classTint)
-                    .frame(width: 31, height: 31)
-                    .background(classTint.opacity(done ? 0.06 : 0.12),
-                                in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .opacity(done ? 0.6 : 1)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    // No strikethrough: this is a current-medication list, and a struck-through
-                    // drug name reads clinically as "discontinued" — precisely what this app must
-                    // never imply. Done-ness is conveyed by the filled check + dimmed text only.
-                    Text(name)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
-                    Text(subtitle)
-                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                }
-                Spacer()
                 Button(action: onInfo) {
-                    Image(systemName: "info.circle").font(.system(size: 15)).foregroundStyle(Clinical.tertiary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                    HStack(spacing: 12) {
+                        Image(systemName: treatment.treatmentClass.symbol)
+                            .font(.system(size: 14))
+                            .foregroundStyle(classTint)
+                            .frame(width: 31, height: 31)
+                            .background(classTint.opacity(done ? 0.06 : 0.12),
+                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .opacity(done ? 0.6 : 1)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            // No strikethrough: this is a current-medication list, and a
+                            // struck-through drug name reads clinically as "discontinued" —
+                            // precisely what this app must never imply. Done-ness is conveyed by
+                            // the filled check + dimmed text only.
+                            Text(name)
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
+                            Text(subtitle)
+                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("About this step")
+                .accessibilityLabel("\(name), \(subtitle)")
+                .accessibilityHint("Shows dosing instructions")
+                Spacer()
                 checkButton
             }
             if expanded {
@@ -1073,6 +1129,38 @@ private struct CoachProgressRing: View {
                 withAnimation(.spring(response: 0.7, dampingFraction: 0.8).delay(0.3)) { shown = true }
             }
         }
+    }
+}
+
+/// A small "all done" ring for the collapsed coach line — draws its checkmark once with a soft
+/// spring on appear, instant under Reduce Motion. Deliberately tiny (22pt): once the coach card
+/// has dissolved to one canvas line, this is the whole "ring" it keeps.
+private struct SmallDoneRing: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Clinical.accent.opacity(0.18), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: shown ? 1 : 0)
+                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Image(systemName: "checkmark")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Clinical.accent)
+                .opacity(shown ? 1 : 0)
+        }
+        .frame(width: 22, height: 22)
+        .onAppear {
+            guard !shown else { return }
+            if reduceMotion {
+                shown = true
+            } else {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.75).delay(0.1)) { shown = true }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

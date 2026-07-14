@@ -6,11 +6,18 @@ struct LabsView: View {
     @Query(sort: \LabResult.collectedAt, order: .reverse) private var labs: [LabResult]
     @State private var showAdd = false
     @State private var showProposalDetail = false
+    /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
+    /// directly from the ScrollView's own content offset.
+    @State private var headerCondense: CGFloat = 0
 
-    /// The most recent result (labs are sorted newest-first) that maps to a proposal — so the
-    /// banner surfaces the latest thing actually worth acting on, not just the latest draw.
+    /// The most recent result (labs are sorted newest-first) that maps to a proposal — kept as
+    /// the result itself, not just the derived proposal, so the matching test's card
+    /// (`labGroupCard`) can attach the annotation inline instead of a standalone banner.
+    private var latestFlaggedResult: LabResult? {
+        labs.first { LabProposal.for($0) != nil }
+    }
     private var latestProposal: LabProposal? {
-        labs.lazy.compactMap { LabProposal.for($0) }.first
+        latestFlaggedResult.flatMap { LabProposal.for($0) }
     }
 
     /// Repeat draws of the same test only answer "is it correcting?" when they're read
@@ -43,44 +50,40 @@ struct LabsView: View {
                         HeaderActionButton(systemName: "plus", accessibilityLabel: "Add lab result") {
                             showAdd = true
                         }
-                    )
+                    ),
+                    condensed: headerCondense
                 )
                 .padding(.top, 8)
-                // Unboxed brand accent bleeding from the top-right — behind the header, so the
-                // add button stays tappable and no layout space is taken (no horizontal scroll).
-                .background(alignment: .topTrailing) { CornerSprig() }
 
-                // The full illustrated disclaimer only earns its space on a first visit — once
-                // there's real data, a returning user needs results, not ambiance, so it
-                // collapses to a slim one-row banner that still carries the same guidance.
+                // The full illustrated disclaimer only earns its space on a first visit, before
+                // there's any data to compete with it.
                 if labs.isEmpty {
                     labContextCard
                         .staggeredEntrance(index: 0)
-                } else {
-                    labContextBanner
-                        .staggeredEntrance(index: 0)
-                }
-
-                if let proposal = latestProposal {
-                    deficiencyBanner(proposal)
-                        .staggeredEntrance(index: 1)
-                }
-
-                if labs.isEmpty {
                     reference
                         .staggeredEntrance(index: 1)
                 } else {
+                    // Data leads now — no disclaimer banner and no standalone "what this may
+                    // mean" card occupying the prime viewport before any result. The flagged
+                    // lab's own card carries that disclosure inline (see `labGroupCard`), and
+                    // the "context, not a diagnosis" line moves to a footnote at the bottom.
                     ForEach(Array(groupedLabs.enumerated()), id: \.element.test) { index, group in
-                        labGroupCard(test: group.test, results: group.results)
-                            .staggeredEntrance(index: min(index + 1, 8))
+                        labGroupCard(test: group.test, results: group.results, index: index)
+                            .staggeredEntrance(index: min(index, 8))
                     }
                     reference
-                        .staggeredEntrance(index: min(groupedLabs.count + 1, 9))
+                        .staggeredEntrance(index: min(groupedLabs.count, 9))
+                    contextFootnote
+                        .staggeredEntrance(index: min(groupedLabs.count + 1, 10))
                 }
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+        }
+        // Condenses the header's serif title as the page scrolls — direct 1:1 offset tracking.
+        .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, newY in
+            headerCondense = Clinical.headerCondenseFraction(newY)
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddLabSheet() }
@@ -132,63 +135,29 @@ struct LabsView: View {
         }
     }
 
-    /// Returning-visitor version of the same guidance — one slim row (icon + two short lines,
-    /// no artwork) so results start well above the fold instead of behind a decoration tax paid
-    /// on every visit.
-    private var labContextBanner: some View {
-        ClinicalCard {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "testtube.2")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Clinical.accent)
-                    .frame(width: 18)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Context, not a diagnosis")
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundStyle(Clinical.ink)
-                    Text("Choose tests with a clinician rather than a blanket panel.")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Clinical.secondary)
-                }
-                Spacer(minLength: 0)
-            }
+    /// The disclaimer that used to lead every returning visit as its own banner is now a
+    /// one-line footnote at the bottom of the list — data leads, honesty still gets said, just
+    /// not ahead of every result on every visit.
+    private var contextFootnote: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "testtube.2")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Clinical.tertiary)
+            Text("Context, not a diagnosis — choose tests with a clinician rather than a blanket panel.")
+                .font(Clinical.eyebrow(9))
+                .foregroundStyle(Clinical.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    /// A compact, tappable card for the latest lab-confirmed deficiency or medical finding —
-    /// the honest surface that persists after the one-shot pop-up in `AddLabSheet` closes.
-    private func deficiencyBanner(_ proposal: LabProposal) -> some View {
-        Button {
-            showProposalDetail = true
-        } label: {
-            ClinicalCard {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: proposal.kind == .clinician ? "stethoscope" : "leaf.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Clinical.accent)
-                        .frame(width: 22)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Eyebrow(text: "What this may mean")
-                        Text(proposal.deficiency)
-                            .font(.system(size: 13.5, weight: .medium))
-                            .foregroundStyle(Clinical.ink)
-                    }
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Clinical.tertiary)
-                        .padding(.top, 3)
-                }
-            }
-        }
-        .buttonStyle(.clinicalPressable)
+        .padding(.top, 4)
     }
 
     /// One card per test: the latest draw reads as a gauge exactly as before, but when there's
     /// a history it leads with the delta since the prior draw and a compact sparkline — the
     /// whole reason to re-test is "is it correcting?", and that question deserves a direct
-    /// answer instead of three disconnected cards a user has to compare mentally.
-    private func labGroupCard(test: LabTest, results: [LabResult]) -> some View {
+    /// answer instead of three disconnected cards a user has to compare mentally. The flagged
+    /// lab's own card additionally carries the "what this may mean" disclosure inline — it used
+    /// to be a standalone banner disconnected from the very card it described.
+    private func labGroupCard(test: LabTest, results: [LabResult], index: Int) -> some View {
         let latest = results.last!
         // The user's own "range from your lab report" override, when set, is what the gauge,
         // sparkline and flag all actually judge this draw against — the built-in default only
@@ -234,18 +203,17 @@ struct LabsView: View {
                         Capsule().fill(Clinical.positive.opacity(0.22))
                             .frame(width: geo.size.width * bandWidth, height: 6)
                             .offset(x: geo.size.width * bandStart, y: 4)
-                        Circle().fill(Clinical.flagColor(latest.flag))
-                            .frame(width: 14, height: 14)
-                            .overlay(Circle().stroke(Clinical.surface, lineWidth: 2.5))
-                            // Soft halo behind the reading — the same flag color at whisper
-                            // opacity, drawn as a background so it takes no layout space and
-                            // the gauge math above is untouched.
-                            .background(
-                                Circle()
-                                    .fill(Clinical.flagColor(latest.flag).opacity(0.18))
-                                    .frame(width: 26, height: 26)
-                            )
-                            .offset(x: min(geo.size.width - 14, max(0, geo.size.width * pct - 7)))
+                        // The dot slides in from the range's own start to its actual reading —
+                        // draws once with a soft spring on appear, staggered per card so a
+                        // multi-card list settles in sequence rather than all at once.
+                        AnimatedGaugeDot(
+                            color: Clinical.flagColor(latest.flag),
+                            width: geo.size.width,
+                            finalPct: pct,
+                            startPct: bandStart,
+                            pulseBelowRange: latest.flag == .low,
+                            delay: Double(index) * 0.08
+                        )
                     }
                 }
                 .frame(height: 14)
@@ -274,6 +242,32 @@ struct LabsView: View {
                     Label("Moving toward range — worth confirming with your clinician.", systemImage: "arrow.up.forward")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Clinical.positive)
+                }
+
+                // "What this may mean" used to be a standalone banner disconnected from the
+                // exact card it described — it now attaches here, inline on the flagged test's
+                // own card, still tapping through to the same detail sheet.
+                if test == latestFlaggedResult?.test, let proposal = latestProposal {
+                    Divider().overlay(Clinical.hairline)
+                    Button { showProposalDetail = true } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: proposal.kind == .clinician ? "stethoscope" : "leaf.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Clinical.accent)
+                            Text(proposal.deficiency)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Clinical.accent)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 4)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Clinical.accent.opacity(0.7))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("What this may mean: \(proposal.deficiency)")
+                    .accessibilityHint("Opens more detail")
                 }
             }
         }
@@ -304,6 +298,58 @@ struct LabsView: View {
                 }
             }
         }
+    }
+}
+
+/// The gauge's reading dot, drawn sliding in from the range's own lower bound to its actual
+/// resting position — one spring on appear (staggered per card via `delay`), instant under
+/// Reduce Motion. A below-range reading gets one subtle gold pulse once it settles, so a
+/// low result reads as *measured*, not just printed.
+private struct AnimatedGaugeDot: View {
+    let color: Color
+    let width: CGFloat
+    /// 0…1 fraction of `width` for the dot's final resting x.
+    let finalPct: CGFloat
+    /// 0…1 fraction of `width` for the range's own lower bound — the dot's starting position.
+    let startPct: CGFloat
+    let pulseBelowRange: Bool
+    var delay: Double = 0
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+    @State private var pulsed = false
+
+    private func x(for pct: CGFloat) -> CGFloat {
+        min(width - 14, max(0, width * pct - 7))
+    }
+
+    var body: some View {
+        Circle().fill(color)
+            .frame(width: 14, height: 14)
+            .overlay(Circle().stroke(Clinical.surface, lineWidth: 2.5))
+            // Soft halo behind the reading — the same flag color at whisper opacity, drawn as a
+            // background so it takes no layout space and the gauge math above is untouched.
+            .background(Circle().fill(color.opacity(0.18)).frame(width: 26, height: 26))
+            .scaleEffect(pulsed ? 1.22 : 1)
+            .shadow(color: Clinical.gold.opacity(pulsed ? 0.75 : 0), radius: pulsed ? 9 : 0)
+            .offset(x: shown ? x(for: finalPct) : x(for: startPct))
+            .onAppear {
+                guard !shown else { return }
+                if reduceMotion {
+                    shown = true
+                    return
+                }
+                withAnimation(.spring(response: 0.65, dampingFraction: 0.78).delay(delay)) {
+                    shown = true
+                }
+                guard pulseBelowRange else { return }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: UInt64((delay + 0.65) * 1_000_000_000))
+                    withAnimation(.easeOut(duration: 0.3)) { pulsed = true }
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    withAnimation(.easeOut(duration: 0.3)) { pulsed = false }
+                }
+            }
     }
 }
 

@@ -42,6 +42,13 @@ enum Clinical {
         LinearGradient(colors: [surface, surfaceWarm], startPoint: .top, endPoint: .bottom)
     }
 
+    /// Maps a scroll content offset to a 0…1 header-condense fraction for `ScreenHeader`'s
+    /// title — the serif title shrinks toward its eyebrow as the first ~64pt of content scrolls
+    /// under it, then holds condensed for the rest of the scroll.
+    static func headerCondenseFraction(_ offsetY: CGFloat, threshold: CGFloat = 64) -> CGFloat {
+        max(0, min(1, offsetY / threshold))
+    }
+
     static func bandColor(_ band: SeverityBand) -> Color {
         switch band {
         case .mild: return positive
@@ -405,19 +412,29 @@ struct Eyebrow: View {
     }
 }
 
-/// A screen title block: eyebrow + warm serif headline.
+/// A screen title block: eyebrow + warm serif headline. The title condenses as content scrolls
+/// beneath it — pass `condensed` (0 = fully expanded, 1 = fully condensed) driven by the hosting
+/// screen's own `.onScrollGeometryChange` (see `Clinical.headerCondenseFraction`). Direct,
+/// 1:1-with-the-finger scroll coupling like this mirrors a native large-title collapse, which
+/// isn't gated by Reduce Motion (it's the user's own gesture moving it, not an autonomous
+/// animation) — so `condensed` applies unconditionally.
 struct ScreenHeader: View {
     let eyebrow: String
     let title: String
     var trailing: AnyView? = nil
+    var condensed: CGFloat = 0
+
+    private var titleSize: CGFloat { 30 - 9 * condensed }
+    private var titleOpacity: Double { 1 - 0.25 * Double(condensed) }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 6) {
                 Eyebrow(text: eyebrow)
                 Text(title)
-                    .font(Clinical.headline(30))
+                    .font(Clinical.headline(titleSize))
                     .foregroundStyle(Clinical.ink)
+                    .opacity(titleOpacity)
             }
             Spacer()
             if let trailing { trailing }
