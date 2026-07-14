@@ -4,7 +4,6 @@ import SwiftUI
 
 struct PhotosView: View {
     @Environment(\.modelContext) private var context
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(DeepLinkRouter.self) private var deepLinks
     @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
 
@@ -21,6 +20,8 @@ struct PhotosView: View {
     /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
     /// directly from the ScrollView's own content offset.
     @State private var headerCondense: CGFloat = 0
+    /// Drives the region picker's sliding copper underline — see `InkTabs`.
+    @Namespace private var regionNamespace
 
     private var regionPhotos: [PhotoRecord] {
         photos.filter { $0.region == region }.sorted { $0.createdAt < $1.createdAt }
@@ -72,15 +73,9 @@ struct PhotosView: View {
                     ),
                     condensed: headerCondense
                 ).padding(.top, 8)
-                    // Photos keeps the app's one remaining header sprig — Trends/Plan/Labs
-                    // dropped theirs (a decoration repeated on three tabs stopped earning its
-                    // place); Photos' empty-state illustration is the signature placement
-                    // elsewhere on this screen, so this is the last spot the motif still lives.
-                    // Narrower than the old shared default: Photos' header sits directly above
-                    // an interactive, horizontally-scrolling region-chip row (no buffer card in
-                    // between), so the wider bleed used to clip leaf shapes across the chips'
-                    // trailing edge.
-                    .background(alignment: .topTrailing) { CornerSprig(width: 150) }
+                    // The header sprig used to bleed into the + button's corner — no ornament
+                    // collides with a control anymore. Photos' own empty-state illustration is
+                    // still the screen's signature artwork, so nothing decorative was lost.
 
                 // Empty state carries its own single instruction + CTA below, so the header
                 // subtitle only earns its place once there's real data to summarize — otherwise
@@ -113,7 +108,7 @@ struct PhotosView: View {
                 }
 
                 if regionPhotos.isEmpty {
-                    emptyStateCard
+                    emptyState
                         .staggeredEntrance(index: 3)
                 } else {
                     journeyCard
@@ -166,49 +161,33 @@ struct PhotosView: View {
         .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
     }
 
+    /// The same quiet text-tab language as Trends' range picker: plain region names with a
+    /// sliding copper underline, replacing the boxed ink-pill filter chips.
     private var regionPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                // A little top clearance keeps the row below the header's CornerSprig leaves,
-                // and the trailing padding below gives the last chip full breathing room at the
-                // scroll's end instead of butting straight against the fade mask's edge.
-                ForEach(PhotoRegion.allCases) { r in
-                    let on = r == region
-                    let hasPhotos = regionsWithPhotos.contains(r)
-                    Button { withAnimation(.easeOut(duration: 0.15)) { region = r } } label: {
-                        Label(r.title, systemImage: r.symbol)
-                            .font(.system(size: 13, weight: on ? .semibold : .regular))
-                            .foregroundStyle(on ? Clinical.surface : Clinical.ink)
-                            .padding(.horizontal, 13).padding(.vertical, 8)
-                            .background(on ? Clinical.ink : Clinical.surface)
-                            .clipShape(Capsule())
-                            .overlay(Capsule().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
-                            .overlay(alignment: .topTrailing) {
-                                if hasPhotos {
-                                    Circle()
-                                        .fill(Clinical.accent)
-                                        .frame(width: 6, height: 6)
-                                        .overlay(Circle().strokeBorder(Clinical.surface, lineWidth: 1))
-                                        .offset(x: -2, y: 2)
-                                        .allowsHitTesting(false)
-                                }
-                            }
-                    }
-                    .buttonStyle(.clinicalPressable)
-                    .accessibilityAddTraits(on ? .isSelected : [])
-                    .accessibilityHint((on ? "Selected region" : "Shows \(r.title.lowercased()) progress photos") + (hasPhotos ? ", has photos" : ""))
+            InkTabs(
+                options: PhotoRegion.allCases,
+                selection: $region,
+                namespace: regionNamespace,
+                spacing: 22,
+                accessibilityLabel: { $0.title },
+                accessibilityHint: { r in
+                    (r == region ? "Selected region" : "Shows \(r.title.lowercased()) progress photos")
+                        + (regionsWithPhotos.contains(r) ? ", has photos" : "")
                 }
-                // Trailing breathing room so the last chip lands clear of the fade mask's edge
-                // at full scroll instead of having its glyph bisected right at the boundary.
-                Spacer(minLength: 12)
+            ) { r, isOn in
+                HStack(spacing: 5) {
+                    Text(r.title)
+                        .font(.system(size: 13, weight: isOn ? .semibold : .regular))
+                        .foregroundStyle(isOn ? Clinical.ink : Clinical.secondary)
+                    if regionsWithPhotos.contains(r) {
+                        Circle().fill(Clinical.accent).frame(width: 5, height: 5)
+                    }
+                }
             }
+            .padding(.horizontal, 2)
             .padding(.top, 3)
-            // Spring the ink pill from chip to chip on selection; Reduce Motion keeps the
-            // original quick ease instead.
-            .animation(
-                reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.3, dampingFraction: 0.75),
-                value: region
-            )
+            .padding(.trailing, 12)
         }
         .trailingFade(width: 36)
     }
@@ -294,36 +273,36 @@ struct PhotosView: View {
         .accessibilityHint("Choose a different \(region.title.lowercased()) photo for this side")
     }
 
-    /// The single empty-state message for a region with zero captures — one instruction, one
-    /// primary action, and the example-journey link folded in as a secondary tap instead of
-    /// living in its own separate card. Replaces what used to be three cards each restating
-    /// "capture a photo" in slightly different words.
-    private var emptyStateCard: some View {
-        ClinicalCard {
-            VStack(spacing: 14) {
-                EmptyStateArt()
-                Eyebrow(text: "No \(region.title.lowercased()) photos")
-                Text("Capture this region to start a comparable series.")
-                    .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
-                    .multilineTextAlignment(.center)
-                Button("Capture \(region.title.lowercased())") { showAdd = true }
-                    .buttonStyle(ClinicalButtonStyle())
-                    .padding(.top, 2)
-                // The whole point of a baseline is that it can predate the app — this surfaces
-                // the library-import path (which now recovers the photo's real date, not
-                // today's) right where someone with a year of worry and old camera-roll photos
-                // would otherwise never think to look for it.
-                Button("Add older photos from your library") { showAdd = true }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Clinical.accent)
+    /// The single empty-state message for a region with zero captures, lifted off a card and
+    /// onto the canvas itself: a smaller illustration, the caption, one primary Capture action,
+    /// and the two secondary links merged onto a single line — no giant boxed card, the last one
+    /// left in the app's empty states.
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            EmptyStateArt(size: 140)
+            Eyebrow(text: "No \(region.title.lowercased()) photos")
+            Text("Capture this region to start a comparable series.")
+                .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                .multilineTextAlignment(.center)
+            Button("Capture \(region.title.lowercased())") { showAdd = true }
+                .buttonStyle(ClinicalButtonStyle())
+                .padding(.top, 2)
+            // The whole point of a baseline is that it can predate the app, and an example
+            // journey shows the payoff before someone's built their own — both still one tap
+            // away, now sharing a single quiet secondary line instead of two stacked links.
+            HStack(spacing: 6) {
+                Button("Add older photos") { showAdd = true }
+                Text("·").foregroundStyle(Clinical.tertiary)
                 Button("See an example journey") {
                     journey = JourneyPresentation(frames: exampleFrames(), isExample: true)
                 }
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Clinical.accent)
             }
-            .frame(maxWidth: .infinity)
+            .buttonStyle(.plain)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(Clinical.accent)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
     }
 
     /// Invites playing the region's photos as a scrubbable timelapse — the real series once
@@ -435,6 +414,7 @@ private struct JourneyPresentation: Identifiable {
 /// Design V2 capture guidance: the new phone-and-mirror artwork drifts on the shared low-cost
 /// decorative cadence and freezes automatically under Reduce Motion.
 private struct EmptyStateArt: View {
+    var size: CGFloat = 178
     var body: some View {
         LivingArtwork(
             art: BrandArt.photoCaptureV2,
@@ -443,6 +423,6 @@ private struct EmptyStateArt: View {
             zoom: 0.015,
             phase: 2.4
         )
-        .frame(width: 178, height: 178)
+        .frame(width: size, height: size)
     }
 }

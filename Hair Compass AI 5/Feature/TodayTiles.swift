@@ -288,16 +288,13 @@ struct ConditionsHero: View {
         }
     }
 
-    /// "1-day streak · 1,623 XP · Sapling" — no capsule strokes, no ring, just muted eyebrow
-    /// text. The XP figure still rolls with `.numericText()` on change.
+    /// "1-day streak · Sapling" — one quiet footnote, no capsule strokes, no ring. The raw XP
+    /// figure used to ride along here too, but it already lives with the badges/celebration
+    /// sheet — saying it a second time on every visit to Today was the third of three competing
+    /// footnotes this line used to fire at once.
     private var annotationLine: some View {
         HStack(spacing: 0) {
             Text(streakText)
-            dotSeparator
-            Text("\(xp)")
-                .contentTransition(.numericText())
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: xp)
-            Text(" XP")
             if let levelName {
                 dotSeparator
                 Text(levelName)
@@ -321,15 +318,21 @@ struct ConditionsHero: View {
     }
 
     private var annotationAccessibilityLabel: String {
-        var parts = [streakText, "\(xp) XP"]
+        var parts = [streakText]
         if let levelName { parts.append("\(levelName) level") }
         return parts.joined(separator: ", ")
     }
 
+    /// True while nothing is logged yet and no finger is down — the same state whose headline
+    /// subtitle already reads "Drag the ladder to set". `controlsRow` skips the copper hint in
+    /// this one state so the instruction is never said twice; once something's logged (or being
+    /// dragged), the hint is the only surviving cue that the scene is still draggable.
+    private var isNotLoggedState: Bool { shed == nil && dragIntensity == nil }
+
     private var controlsRow: some View {
         HStack(spacing: 16) {
             logButton
-            if onShedSet != nil { setHint }
+            if onShedSet != nil && !isNotLoggedState { setHint }
         }
     }
 
@@ -364,296 +367,148 @@ struct ConditionsHero: View {
     }
 }
 
-// MARK: - Glance tile
+// MARK: - Signal ledger (margin-note rows)
 
-/// A small Weather-style tile: mono eyebrow, big tabular value, short caption, and a live mini
-/// motif washed into the lower band at reduced opacity so the text always stays legible.
-struct GlanceTile<Motif: View>: View {
-    let title: String
-    let value: String
-    var caption: String? = nil
-    var valueColor: Color = Clinical.ink
-    /// Whisper of identity: a barely-there wash keyed to the tile's metric, settling toward the
-    /// bottom edge like `Clinical.surfaceWash`. Peaks at 0.06 opacity — the tile must still read
-    /// ivory; this is a whisper, not a paint job.
-    var tint: Color? = nil
-    var motifOpacity: Double = 0.38
-    var motifHeight: CGFloat = 62
-    /// When true and the tile is in its not-logged state (`value == "—"`), the value/caption
-    /// block centers vertically instead of clustering at the bottom under a dead middle band —
-    /// the tile reads as an intentional, minimal empty state rather than half-finished.
-    var centerWhenEmpty = false
-    /// When set, the whole tile is a Button (a shortcut into the log sheet / plan) with the
-    /// clinical spring press style.
-    var action: (() -> Void)? = nil
-    var actionHint: String? = nil
-    @ViewBuilder var motif: Motif
-
-    private var isEmptyState: Bool { value == "—" }
-
-    var body: some View {
-        if let action {
-            Button(action: action) { card }
-                .buttonStyle(.clinicalPressable)
-                .accessibilityHint(actionHint ?? "Opens this item")
-        } else {
-            card
-        }
-    }
-
-    private var card: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(title.uppercased())
-                    .font(Clinical.eyebrow(10)).tracking(1.2)
-                    .foregroundStyle(Clinical.tertiary)
-                Spacer(minLength: 0)
-                if action != nil {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(Clinical.accent.opacity(0.75))
-                        .accessibilityHidden(true)
-                }
-            }
-            Spacer(minLength: 10)
-            Text(value)
-                .font(Clinical.number(24))
-                .foregroundStyle(valueColor)
-                .lineLimit(1).minimumScaleFactor(0.6)
-            if let caption {
-                Text(caption)
-                    .font(.system(size: 11)).foregroundStyle(Clinical.secondary)
-                    .lineLimit(2).minimumScaleFactor(0.8)
-            }
-            if centerWhenEmpty && isEmptyState { Spacer(minLength: 10) }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 122, alignment: .leading)
-        .background(alignment: .bottom) {
-            motif
-                .frame(height: motifHeight)
-                .opacity(motifOpacity)
-                .allowsHitTesting(false)
-        }
-        .background {
-            // Identity wash sits between the motif and the ivory surface — over the paper,
-            // under the ink.
-            if let tint {
-                LinearGradient(colors: [tint.opacity(0.02), tint.opacity(0.06)],
-                               startPoint: .top, endPoint: .bottom)
-            }
-        }
-        .background(Clinical.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Clinical.hairline, lineWidth: 1)
-        )
-        .shadow(color: Clinical.cardShadow, radius: 10, y: 4)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title): \(value)\(caption.map { ", \($0)" } ?? "")")
-    }
-}
-
-// MARK: - Tile grid
-
-/// The 2-column glanceable grid under the hero — every tile is real data, and tiles whose data
-/// doesn't exist today (meds with no routine, no recent trigger) simply don't appear.
+/// The margin-note ledger that replaces the old boxed glance-tile grid: one hairline-ruled column
+/// of quiet annotation rows directly on the canvas instead of stacked cards. Every signal is one
+/// line — small-caps label, a state word in ink, and (only once something's actually logged) a
+/// tiny inline trace on the right. An unlogged signal is nothing but its own "not noted" line —
+/// no ghost chips, no idle decorative motif standing in for data that doesn't exist yet. Tapping
+/// a row opens the same destination its predecessor tile did.
 struct TodayTileGrid: View {
     var entry: DailyEntry?
     var sleepHours: Double?
     var medsDone: Int
     var medsTotal: Int
     var triggerWeeks: Int?
-    /// The four self-report tiles are shortcuts into the daily log sheet.
+    /// The four self-report rows are shortcuts into the daily log sheet.
     var onLogTap: () -> Void = {}
-    /// The meds tile jumps to the Plan tab's full routine; nil leaves it a plain readout.
+    /// The meds row jumps to the Plan tab's full routine; nil leaves it a plain readout.
     var onOpenPlan: (() -> Void)? = nil
 
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-
     var body: some View {
-        // Entrance sequence continues from the hero (index 0); TodayView's cards pick up at 7.
-        LazyVGrid(columns: columns, spacing: 12) {
-            scalpTile.staggeredEntrance(index: 1)
-            sleepTile.staggeredEntrance(index: 2)
-            stressTile.staggeredEntrance(index: 3)
-            oilTile.staggeredEntrance(index: 4)
-            if medsTotal > 0 { medsTile.staggeredEntrance(index: 5) }
-            if let triggerWeeks {
-                triggerTile(weeks: triggerWeeks)
-                    .staggeredEntrance(index: medsTotal > 0 ? 6 : 5)
+        // Entrance sequence continues from the hero (index 0), at a tighter 40ms step than the
+        // rest of the page's cards — a short ledger of rows should settle quickly, not read as
+        // its own slow reveal. TodayView's cards below pick up at their own indices/step.
+        VStack(alignment: .leading, spacing: 0) {
+            rule
+            scalpRow.staggeredEntrance(index: 1, step: 0.04)
+            rule
+            sleepRow.staggeredEntrance(index: 2, step: 0.04)
+            rule
+            stressRow.staggeredEntrance(index: 3, step: 0.04)
+            rule
+            oilRow.staggeredEntrance(index: 4, step: 0.04)
+            if medsTotal > 0 {
+                rule
+                medsRow.staggeredEntrance(index: 5, step: 0.04)
             }
+            if let triggerWeeks {
+                rule
+                triggerRow(weeks: triggerWeeks)
+                    .staggeredEntrance(index: medsTotal > 0 ? 6 : 5, step: 0.04)
+            }
+            rule
         }
     }
 
-    // Whisper tints — every wash is an existing Clinical token (or a blend of two), peaking at
-    // 0.06 opacity inside GlanceTile so the grid still reads ivory at a glance.
+    private var rule: some View {
+        Divider().overlay(Clinical.hairline)
+    }
+
+    // Whisper tint kept from the old tile grid for Stress's trace dots.
     private static let roseGrey = Clinical.critical.mix(with: Clinical.secondary, by: 0.55)
 
-    // Individual tiles — unlogged days show "—" in tertiary with the motif idling at zero.
+    // MARK: Rows — unlogged signals show only their "Not noted" line, no trace.
 
-    /// Unlike the other three self-report tiles, Scalp's total is a composite of three
-    /// components — the tile earns its place by breaking the total down (Flake/Red/Itch bars)
-    /// instead of just repeating the "\(total)/16 · \(band)" line the hero subline already shows.
-    ///
-    /// This is a bespoke layout rather than `GlanceTile` because the bar cluster needs its own
-    /// row in the normal flow: GlanceTile's background-motif layering (built for a light wash
-    /// behind the text) let the not-logged caption visually collide with the Flake/Red/Itch
-    /// labels underneath it. Explicit rows with real spacing keep the two apart at every state.
-    private var scalpTile: some View {
+    private var scalpRow: some View {
         let total = entry?.scalpTotal
         let logged = total != nil
-        return Button(action: onLogTap) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text("SCALP")
-                        .font(Clinical.eyebrow(10)).tracking(1.2)
-                        .foregroundStyle(Clinical.tertiary)
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(Clinical.accent.opacity(0.75))
-                        .accessibilityHidden(true)
-                }
-                Text(total.map { "\($0)/16" } ?? "—")
-                    .font(Clinical.number(24))
-                    .foregroundStyle(entry.map { Clinical.bandColor($0.scalpBand) } ?? Clinical.tertiary)
-                    .lineLimit(1).minimumScaleFactor(0.6)
-                Text(entry?.scalpBand.title ?? "Not logged")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 10)
-                ScalpComponentBars(
-                    flaking: entry?.flaking ?? 0,
-                    erythema: entry?.erythema ?? 0,
-                    itch: entry?.itch ?? 0,
-                    logged: logged
-                )
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 122, alignment: .leading)
-            .background {
-                // Identity wash — the redness/rose family, same whisper the other tiles use.
-                LinearGradient(colors: [Clinical.critical.opacity(0.02), Clinical.critical.opacity(0.06)],
-                               startPoint: .top, endPoint: .bottom)
-            }
-            .background(Clinical.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Clinical.hairline, lineWidth: 1)
-            )
-            .shadow(color: Clinical.cardShadow, radius: 10, y: 4)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Scalp: \(total.map { "\($0)/16" } ?? "not logged"), \(entry?.scalpBand.title ?? "not logged")")
-        }
-        .buttonStyle(.clinicalPressable)
-        .accessibilityHint("Edits today's scalp check-in")
+        let value = total.map { "\($0)/16 · \(entry!.scalpBand.title)" } ?? "Not noted"
+        return AnnotationRow(
+            label: "Scalp",
+            value: value,
+            logged: logged,
+            action: onLogTap,
+            actionHint: "Edits today's scalp check-in",
+            trace: logged
+                ? AnyView(ScalpTrace(flaking: entry?.flaking ?? 0, erythema: entry?.erythema ?? 0, itch: entry?.itch ?? 0))
+                : nil
+        )
     }
 
-    private var sleepTile: some View {
+    private var sleepRow: some View {
         let quality = entry?.sleepQuality
         let value: String
-        let caption: String
-        let intensity: CGFloat
+        let fraction: CGFloat
         if let sleepHours {
             value = String(format: "%.1fh", sleepHours)
-            caption = "Hours · from Health"
-            intensity = min(1, max(0, CGFloat(sleepHours) / 8))
+            fraction = min(1, max(0, CGFloat(sleepHours) / 8))
         } else if let quality {
             value = "\(quality)/5"
-            caption = "Self-reported quality"
-            intensity = CGFloat(quality - 1) / 4
+            fraction = CGFloat(quality - 1) / 4
         } else {
-            value = "—"
-            caption = "Not logged"
-            intensity = 0
+            value = "Not noted"
+            fraction = 0
         }
         let logged = sleepHours != nil || quality != nil
-        return GlanceTile(
-            title: "Sleep",
+        return AnnotationRow(
+            label: "Sleep",
             value: value,
-            caption: caption,
-            valueColor: logged ? Clinical.ink : Clinical.tertiary,
-            tint: Clinical.sage,
-            // Quieter wave while empty — centered, it would otherwise cross the "—" baseline.
-            motifOpacity: logged ? 0.38 : 0.16,
-            centerWhenEmpty: true,
+            logged: logged,
             action: onLogTap,
-            actionHint: "Edits today's sleep check-in"
-        ) {
-            SleepMotif(intensity: intensity)
-        }
+            actionHint: "Edits today's sleep check-in",
+            trace: logged ? AnyView(MiniTrace(fraction: fraction, color: Clinical.sage)) : nil
+        )
     }
 
-    private var stressTile: some View {
+    private var stressRow: some View {
         let stress = entry?.stress
-        return GlanceTile(
-            title: "Stress",
-            value: stress.map { "\($0)/5" } ?? "—",
-            caption: stress.map(Self.stressWord) ?? "Not logged",
-            valueColor: stress == nil ? Clinical.tertiary : Clinical.ink,
-            tint: Self.roseGrey,
+        return AnnotationRow(
+            label: "Stress",
+            value: stress.map { "\($0)/5 · \(Self.stressWord($0))" } ?? "Not noted",
+            logged: stress != nil,
             action: onLogTap,
-            actionHint: "Edits today's stress check-in"
-        ) {
-            StressMotif(intensity: stress.map { CGFloat($0 - 1) / 4 } ?? 0)
-        }
+            actionHint: "Edits today's stress check-in",
+            trace: stress.map { AnyView(LevelDots(filled: $0, total: 5, color: Self.roseGrey)) }
+        )
     }
 
-    private var oilTile: some View {
+    private var oilRow: some View {
         let oil = entry?.oiliness
-        return GlanceTile(
-            title: "Oil",
-            value: oil.map { "\($0)/3" } ?? "—",
-            caption: oil.map(Self.oilWord) ?? "Not logged",
-            valueColor: oil == nil ? Clinical.tertiary : Clinical.ink,
-            tint: Clinical.gold,
-            motifOpacity: 1,
-            centerWhenEmpty: true,
+        return AnnotationRow(
+            label: "Oil",
+            value: oil.map { "\($0)/3 · \(Self.oilWord($0))" } ?? "Not noted",
+            logged: oil != nil,
             action: onLogTap,
-            actionHint: "Edits today's oiliness check-in"
-        ) {
-            OilLevelGauge(level: oil ?? 0)
-        }
+            actionHint: "Edits today's oiliness check-in",
+            trace: oil.map { AnyView(LevelDots(filled: $0, total: 3, color: Clinical.gold)) }
+        )
     }
 
-    /// The copper adherence arc IS the visualization here — same ring language as CareView's coach.
-    private var medsTile: some View {
-        GlanceTile(
-            title: "Meds",
-            value: "\(medsDone)/\(medsTotal)",
-            caption: medsDone >= medsTotal ? "Routine done" : "\(medsTotal - medsDone) left today",
+    private var medsRow: some View {
+        AnnotationRow(
+            label: "Meds",
+            value: "\(medsDone)/\(medsTotal) · \(medsDone >= medsTotal ? "done" : "\(medsTotal - medsDone) left")",
+            logged: true,
             valueColor: medsDone >= medsTotal ? Clinical.positive : Clinical.ink,
-            tint: Clinical.accent,
-            motifOpacity: 1,
             action: onOpenPlan,
-            actionHint: "Opens today's treatment plan"
-        ) {
-            HStack {
-                Spacer()
-                MedsArcRing(done: medsDone, total: medsTotal)
-                    .padding(.trailing, 14)
-                    .padding(.bottom, 12)
-            }
-            .frame(maxHeight: .infinity, alignment: .bottom)
-        }
+            actionHint: "Opens today's treatment plan",
+            trace: AnyView(LevelDots(filled: medsDone, total: min(max(medsTotal, 1), 8), color: Clinical.accent))
+        )
     }
 
-    /// Telogen-effluvium watch: the bar spans a 16-week watch period with the 8–12 week
-    /// expected-shedding window shaded — the fill shows where today sits.
-    private func triggerTile(weeks: Int) -> some View {
-        GlanceTile(
-            title: "Trigger watch",
-            value: "Wk \(weeks)",
-            caption: "Shedding window 8–12 wk",
+    /// Telogen-effluvium watch: the trace's shaded band marks the 8–12 week window where
+    /// trigger-driven shedding typically peaks; the dot marks where today sits in the 16-week watch.
+    private func triggerRow(weeks: Int) -> some View {
+        AnnotationRow(
+            label: "Trigger watch",
+            value: "Week \(weeks) of 16",
+            logged: true,
             valueColor: Clinical.warning,
-            tint: Clinical.gold,
-            motifOpacity: 1
-        ) {
-            TriggerWindowBar(weeks: weeks)
-        }
+            trace: AnyView(MiniTrace(fraction: min(1, CGFloat(weeks) / 16), color: Clinical.warning,
+                                      bandStart: 0.5, bandWidth: 0.25))
+        )
     }
 
     nonisolated private static func stressWord(_ s: Int) -> String {
@@ -676,117 +531,122 @@ struct TodayTileGrid: View {
     }
 }
 
-// MARK: - Tile accessories
+// MARK: - Ledger row + traces
 
-/// Small copper progress arc, the same ring language as CareView's coach ring: full-strength
-/// copper over an accent-0.15 track (a hairline track read as washed beige). The fill draws once
-/// with a spring on appear — under Reduce Motion it renders instantly — and later dose toggles
-/// spring to the new value.
-private struct MedsArcRing: View {
-    let done: Int
-    let total: Int
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var shown = false
+/// One quiet ledger row: small-caps label, a state word in ink (or "not noted" in faded ink when
+/// unlogged), and — only when logged — a tiny inline trace on the right. No card surface, no
+/// stroke, no shadow; hairline `Divider`s drawn by the ledger above separate rows.
+private struct AnnotationRow: View {
+    let label: String
+    let value: String
+    var logged: Bool
+    var valueColor: Color = Clinical.ink
+    var action: (() -> Void)? = nil
+    var actionHint: String? = nil
+    var trace: AnyView? = nil
 
     var body: some View {
-        let progress = total == 0 ? 0 : Double(done) / Double(total)
-        ZStack {
-            Circle().stroke(Clinical.accent.opacity(0.15), lineWidth: 5)
-            Circle()
-                .trim(from: 0, to: shown ? progress : 0)
-                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
+        if let action {
+            Button(action: action) { rowContent }
+                .buttonStyle(.clinicalPressable)
+                .accessibilityHint(actionHint ?? "Opens this item")
+        } else {
+            rowContent
         }
-        .frame(width: 42, height: 42)
-        .animation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.8), value: progress)
-        .onAppear {
-            guard !shown else { return }
-            if reduceMotion {
-                shown = true
-            } else {
-                // Delayed past the tile's own entrance so the ring draws after the card lands.
-                withAnimation(.spring(response: 0.7, dampingFraction: 0.8).delay(0.4)) { shown = true }
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: 10) {
+            Text(label.uppercased())
+                .font(Clinical.eyebrow(10)).tracking(1.2)
+                .foregroundStyle(Clinical.tertiary)
+                .frame(minWidth: 82, alignment: .leading)
+            Text(value)
+                .font(.system(size: 14, weight: logged ? .medium : .regular))
+                .foregroundStyle(logged ? valueColor : Clinical.tertiary.opacity(0.65))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            Spacer(minLength: 8)
+            if let trace { trace }
+            if action != nil {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Clinical.accent.opacity(0.5))
             }
         }
+        .padding(.vertical, 13)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(value)")
     }
 }
 
-/// Three small component bars — Flake / Red / Itch, each 0–3 — so the Scalp tile shows the
-/// makeup of its 16-point total instead of leaving the middle band empty. Bottoms align like a
-/// tiny bar chart; an unflagged component still draws a faint track so the trio always reads as
-/// one composed visual, not a sometimes-empty one. Sits in the normal VStack flow below the
-/// value/caption (not layered as a background motif), so it never overlaps the text above it.
-/// When nothing is logged yet, the bars ghost to a flat zero-height track — an intentional
-/// empty state rather than a bare "—" — and the caption above already reads "Not logged" once,
-/// so the bars themselves stay silent rather than repeating it.
-private struct ScalpComponentBars: View {
-    let flaking: Int
-    let erythema: Int
-    let itch: Int
-    var logged: Bool = true
-
-    private var components: [(label: String, value: Int)] {
-        [("Flake", flaking), ("Red", erythema), ("Itch", itch)]
-    }
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            ForEach(components, id: \.label) { component in
-                VStack(spacing: 4) {
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(Clinical.critical.opacity(logged ? (component.value > 0 ? 0.7 : 0.16) : 0.10))
-                        .frame(width: 12, height: logged ? 6 + CGFloat(min(3, max(0, component.value))) * 9 : 6)
-                    Text(component.label)
-                        .font(Clinical.eyebrow(7))
-                        .foregroundStyle(Clinical.tertiary.opacity(logged ? 1 : 0.55))
-                }
-            }
-        }
-    }
-}
-
-/// A 3-segment fuel-gauge matching Oil's 0–3 self-report scale — filled segments show the
-/// logged level at a glance instead of leaving the tile's middle band blank.
-private struct OilLevelGauge: View {
-    let level: Int
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(0..<3, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(index < level ? Clinical.gold : Clinical.hairline)
-                    .frame(height: 10)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-    }
-}
-
-/// Thin TE-window bar: track = 16-week watch period, shaded band = the 8–12 week window where
-/// trigger-driven shedding typically peaks, fill = weeks elapsed.
-private struct TriggerWindowBar: View {
-    let weeks: Int
+/// A tiny 40×6pt inline trace: a hairline track with a colored dot marking today's position — the
+/// ledger's whole reply to what used to be a full-size background motif. An optional shaded band
+/// (used by the trigger-watch row) marks a window of interest along the track.
+private struct MiniTrace: View {
+    let fraction: CGFloat
+    var color: Color = Clinical.accent
+    var bandStart: CGFloat? = nil
+    var bandWidth: CGFloat? = nil
 
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width
             ZStack(alignment: .leading) {
-                Capsule().fill(Clinical.hairline)
-                // Expected-shedding window (8–12 of 16 weeks).
-                RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                    .fill(Clinical.warning.opacity(0.25))
-                    .frame(width: w * 0.25)
-                    .offset(x: w * 0.5)
-                Capsule()
-                    .fill(Clinical.warning.opacity(0.85))
-                    .frame(width: max(5, w * min(1, CGFloat(weeks) / 16)))
+                Capsule().fill(Clinical.hairline).frame(height: 3)
+                if let bandStart, let bandWidth {
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                        .fill(color.opacity(0.22))
+                        .frame(width: w * bandWidth, height: 3)
+                        .offset(x: w * bandStart)
+                }
+                Circle().fill(color)
+                    .frame(width: 6, height: 6)
+                    .offset(x: max(0, min(w - 6, w * fraction - 3)))
             }
         }
-        .frame(height: 5)
-        .padding(.horizontal, 14)
-        .padding(.bottom, 7)   // an edge strip below the caption text — never through it
-        .frame(maxHeight: .infinity, alignment: .bottom)
+        .frame(width: 40, height: 6)
+    }
+}
+
+/// A row of small filled/unfilled dots — the ledger's reply to a pip stepper, used by Stress
+/// (0–5), Oil (0–3) and Meds (done of total).
+private struct LevelDots: View {
+    let filled: Int
+    let total: Int
+    var color: Color = Clinical.accent
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<max(total, 1), id: \.self) { i in
+                Circle()
+                    .fill(i < filled ? color : Clinical.hairline)
+                    .frame(width: 5, height: 5)
+            }
+        }
+    }
+}
+
+/// Three tiny dots — Flake / Red / Itch — so Scalp's ledger row still shows the makeup of its
+/// 16-point total instead of only the sum. Opacity (not height) carries each component's 0–3
+/// value, keeping the trace to the same 3-dot footprint as every other row's trace.
+private struct ScalpTrace: View {
+    let flaking: Int
+    let erythema: Int
+    let itch: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            dot(flaking)
+            dot(erythema)
+            dot(itch)
+        }
+    }
+
+    private func dot(_ v: Int) -> some View {
+        Circle()
+            .fill(Clinical.critical.opacity(v > 0 ? min(1, 0.35 + Double(v) * 0.2) : 0.15))
+            .frame(width: 6, height: 6)
     }
 }

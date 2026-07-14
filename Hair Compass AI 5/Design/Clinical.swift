@@ -365,12 +365,13 @@ struct MotionTimeline<Content: View>: View {
     }
 }
 
-/// One-shot entrance: fade from 0 and rise ~10pt, staggered by `index` (50ms per step), with a
-/// soft spring settle. Runs once per appearance (guarded by @State — a revisit of a live view
-/// never re-triggers). Under Reduce Motion it becomes a plain fade. Cheap by design: no
-/// TimelineView, no repeating animation.
+/// One-shot entrance: fade from 0 and rise ~10pt, staggered by `index` (50ms per step by
+/// default), with a soft spring settle. Runs once per appearance (guarded by @State — a revisit
+/// of a live view never re-triggers). Under Reduce Motion it becomes a plain fade. Cheap by
+/// design: no TimelineView, no repeating animation.
 private struct StaggeredEntrance: ViewModifier {
     let index: Int
+    var step: Double = 0.05
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
 
@@ -380,7 +381,7 @@ private struct StaggeredEntrance: ViewModifier {
             .offset(y: shown || reduceMotion ? 0 : 10)
             .onAppear {
                 guard !shown else { return }
-                let delay = Double(index) * 0.05
+                let delay = Double(index) * step
                 if reduceMotion {
                     withAnimation(.easeOut(duration: 0.28).delay(delay)) { shown = true }
                 } else {
@@ -391,9 +392,76 @@ private struct StaggeredEntrance: ViewModifier {
 }
 
 extension View {
-    /// Staggered card entrance — pass the card's position in its stack (0, 1, 2, …).
-    func staggeredEntrance(index: Int) -> some View {
-        modifier(StaggeredEntrance(index: index))
+    /// Staggered card entrance — pass the card's position in its stack (0, 1, 2, …). `step`
+    /// (seconds between items) defaults to 50ms; a tighter ledger of quiet rows (e.g. Today's
+    /// signal ledger) can pass a smaller step so a longer list still settles quickly.
+    func staggeredEntrance(index: Int, step: Double = 0.05) -> some View {
+        modifier(StaggeredEntrance(index: index, step: step))
+    }
+}
+
+/// A quiet text-tab selector: plain labels with a sliding copper underline driven by
+/// `matchedGeometryEffect` — the shared selector language that replaces bordered segmented
+/// capsules and boxed filter pills (Trends' range picker, Photos' region picker). Crossfades
+/// instead of sliding under Reduce Motion (the underline's `matchedGeometryEffect` move is itself
+/// gated by the spring/easeInOut choice below, not a separate transition, so there's nothing
+/// further to disable).
+struct InkTabs<T: Hashable, TabLabel: View>: View {
+    let options: [T]
+    @Binding var selection: T
+    var namespace: Namespace.ID
+    var spacing: CGFloat = 20
+    var accessibilityLabel: (T) -> String
+    var accessibilityHint: (T) -> String = { _ in "" }
+    @ViewBuilder var label: (T, Bool) -> TabLabel
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: spacing) {
+            ForEach(options, id: \.self) { option in
+                tab(option)
+            }
+        }
+    }
+
+    private func tab(_ option: T) -> some View {
+        let isOn = option == selection
+        return Button {
+            guard option != selection else { return }
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(tabAnimation) {
+                selection = option
+            }
+        } label: {
+            VStack(spacing: 6) {
+                label(option, isOn)
+                ZStack {
+                    if isOn {
+                        Capsule()
+                            .fill(Clinical.accent)
+                            .frame(height: 2)
+                            .matchedGeometryEffect(id: "inkTabsUnderline", in: namespace)
+                    }
+                }
+                .frame(height: 2)
+            }
+        }
+        .buttonStyle(.plain)
+        // Trends hosts this picker inside a `.transaction { $0.animation = nil }` subtree (it
+        // keeps Swift Charts' marks from interpolating on range changes — see TrendsView) which
+        // would otherwise silently cancel the `withAnimation` above. Re-asserting the animation
+        // here, closer to the leaf, wins back the underline's slide for this view specifically
+        // without touching that ancestor's chart-stabilizing transaction.
+        .transaction { $0.animation = tabAnimation }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel(option))
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+        .accessibilityHint(accessibilityHint(option))
+    }
+
+    private var tabAnimation: Animation {
+        reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.82)
     }
 }
 

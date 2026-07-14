@@ -64,14 +64,13 @@ struct LabsView: View {
                         .staggeredEntrance(index: 1)
                 } else {
                     // Data leads now — no disclaimer banner and no standalone "what this may
-                    // mean" card occupying the prime viewport before any result. The flagged
-                    // lab's own card carries that disclosure inline (see `labGroupCard`), and
-                    // the "context, not a diagnosis" line moves to a footnote at the bottom.
-                    ForEach(Array(groupedLabs.enumerated()), id: \.element.test) { index, group in
-                        labGroupCard(test: group.test, results: group.results, index: index)
-                            .staggeredEntrance(index: min(index, 8))
-                    }
-                    reference
+                    // mean" card occupying the prime viewport before any result, and no stacked
+                    // per-test boxes either: one continuous hairline-ruled ledger instead of
+                    // three near-identical cards. The flagged lab's own row still carries the
+                    // "what this may mean" disclosure inline, and the "context, not a diagnosis"
+                    // line stays a footnote at the very bottom.
+                    labLedger
+                    referenceFootnote
                         .staggeredEntrance(index: min(groupedLabs.count, 9))
                     contextFootnote
                         .staggeredEntrance(index: min(groupedLabs.count + 1, 10))
@@ -151,13 +150,26 @@ struct LabsView: View {
         .padding(.top, 4)
     }
 
-    /// One card per test: the latest draw reads as a gauge exactly as before, but when there's
-    /// a history it leads with the delta since the prior draw and a compact sparkline — the
-    /// whole reason to re-test is "is it correcting?", and that question deserves a direct
-    /// answer instead of three disconnected cards a user has to compare mentally. The flagged
-    /// lab's own card additionally carries the "what this may mean" disclosure inline — it used
-    /// to be a standalone banner disconnected from the very card it described.
-    private func labGroupCard(test: LabTest, results: [LabResult], index: Int) -> some View {
+    /// One continuous ledger instead of three near-identical card boxes: every lab is a row on
+    /// the ivory, separated by full-width hairlines top and between entries.
+    private var labLedger: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(Clinical.hairline)
+            ForEach(Array(groupedLabs.enumerated()), id: \.element.test) { index, group in
+                labLedgerRow(test: group.test, results: group.results, index: index)
+                    .staggeredEntrance(index: min(index, 8))
+                Divider().overlay(Clinical.hairline)
+            }
+        }
+    }
+
+    /// One ledger row per test: the latest draw's name/value share a baseline, the gauge line +
+    /// dot sit directly beneath with range endpoints in small ink, and — when there's a
+    /// history — the delta since the prior draw plus a compact sparkline answer the whole reason
+    /// to re-test: "is it correcting?" In-range rows carry no status badge text at all (the
+    /// sage-vs-copper dot position already says it); only the one flagged lab additionally
+    /// carries the "what this may mean" disclosure, inline on its own row.
+    private func labLedgerRow(test: LabTest, results: [LabResult], index: Int) -> some View {
         let latest = results.last!
         // The user's own "range from your lab report" override, when set, is what the gauge,
         // sparkline and flag all actually judge this draw against — the built-in default only
@@ -173,104 +185,99 @@ struct LabsView: View {
         let improving = previous.map {
             HairAnalytics.labImproving(previous: $0.value, latest: latest.value, range: range)
         } ?? false
+        let isFlagged = test == latestFlaggedResult?.test
 
-        return ClinicalCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(test.title).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(Clinical.ink)
-                        if let previous {
-                            Text("\(oneDecimal(previous.value)) → \(oneDecimal(latest.value)) \(test.unit) since \(previous.collectedAt.formatted(.dateTime.month(.abbreviated).day()))")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                        } else {
-                            Text(latest.collectedAt.formatted(.dateTime.month().day().year()))
-                                .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
-                        }
-                        if !latest.note.isEmpty {
-                            Text(latest.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
-                        }
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(test.title).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(Clinical.ink)
+                    if let previous {
+                        Text("\(oneDecimal(previous.value)) → \(oneDecimal(latest.value)) \(test.unit) since \(previous.collectedAt.formatted(.dateTime.month(.abbreviated).day()))")
+                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    } else {
+                        Text(latest.collectedAt.formatted(.dateTime.month().day().year()))
+                            .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
                     }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text("\(oneDecimal(latest.value)) \(test.unit)")
-                            .font(Clinical.number(17)).foregroundStyle(Clinical.ink)
-                        Text(latest.flag.title).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.flagColor(latest.flag))
+                    if !latest.note.isEmpty {
+                        Text(latest.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
                     }
                 }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Clinical.hairline.opacity(0.5)).frame(height: 6).offset(y: 4)
-                        Capsule().fill(Clinical.positive.opacity(0.22))
-                            .frame(width: geo.size.width * bandWidth, height: 6)
-                            .offset(x: geo.size.width * bandStart, y: 4)
-                        // The dot slides in from the range's own start to its actual reading —
-                        // draws once with a soft spring on appear, staggered per card so a
-                        // multi-card list settles in sequence rather than all at once.
-                        AnimatedGaugeDot(
-                            color: Clinical.flagColor(latest.flag),
-                            width: geo.size.width,
-                            finalPct: pct,
-                            startPct: bandStart,
-                            pulseBelowRange: latest.flag == .low,
-                            delay: Double(index) * 0.08
-                        )
-                    }
-                }
-                .frame(height: 14)
-                HStack {
-                    Text("0").font(Clinical.number(9)).foregroundStyle(Clinical.tertiary)
-                    Spacer()
-                    Text("RANGE \(lo.formatted())–\(hi.formatted())").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.secondary)
-                    Spacer()
-                    Text("\(domainHi.formatted(.number.precision(.fractionLength(0))))").font(Clinical.number(9)).foregroundStyle(Clinical.tertiary)
-                }
-                if latest.hasCustomRange {
-                    Text("Range from your lab report, not the app default.")
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
-                }
-
-                if results.count > 1 {
-                    Divider().overlay(Clinical.hairline)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Eyebrow(text: "\(results.count) draws since \(results.first!.collectedAt.formatted(.dateTime.month(.abbreviated).year()))")
-                        LabSparkline(results: results, range: range, domainHi: domainHi)
-                            .frame(height: 36)
-                    }
-                }
-
-                if improving {
-                    Label("Moving toward range — worth confirming with your clinician.", systemImage: "arrow.up.forward")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Clinical.positive)
-                }
-
-                // "What this may mean" used to be a standalone banner disconnected from the
-                // exact card it described — it now attaches here, inline on the flagged test's
-                // own card, still tapping through to the same detail sheet.
-                if test == latestFlaggedResult?.test, let proposal = latestProposal {
-                    Divider().overlay(Clinical.hairline)
-                    Button { showProposalDetail = true } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: proposal.kind == .clinician ? "stethoscope" : "leaf.fill")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Clinical.accent)
-                            Text(proposal.deficiency)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Clinical.accent)
-                                .lineLimit(2)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 4)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(Clinical.accent.opacity(0.7))
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("What this may mean: \(proposal.deficiency)")
-                    .accessibilityHint("Opens more detail")
+                Spacer()
+                Text("\(oneDecimal(latest.value)) \(test.unit)")
+                    .font(Clinical.number(17)).foregroundStyle(Clinical.ink)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Clinical.hairline.opacity(0.5)).frame(height: 6).offset(y: 4)
+                    Capsule().fill(Clinical.positive.opacity(0.22))
+                        .frame(width: geo.size.width * bandWidth, height: 6)
+                        .offset(x: geo.size.width * bandStart, y: 4)
+                    // The dot slides in from the range's own start to its actual reading —
+                    // draws once with a soft spring on appear, staggered per row so the ledger
+                    // settles in sequence rather than all at once.
+                    AnimatedGaugeDot(
+                        color: Clinical.flagColor(latest.flag),
+                        width: geo.size.width,
+                        finalPct: pct,
+                        startPct: bandStart,
+                        pulseBelowRange: latest.flag == .low,
+                        delay: Double(index) * 0.08
+                    )
                 }
             }
+            .frame(height: 14)
+            HStack {
+                Text(lo.formatted()).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                Spacer()
+                Text("RANGE").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.secondary)
+                Spacer()
+                Text(hi.formatted()).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+            }
+            if latest.hasCustomRange {
+                Text("Range from your lab report, not the app default.")
+                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+            }
+
+            if results.count > 1 {
+                VStack(alignment: .leading, spacing: 6) {
+                    Eyebrow(text: "\(results.count) draws since \(results.first!.collectedAt.formatted(.dateTime.month(.abbreviated).year()))")
+                    LabSparkline(results: results, range: range, domainHi: domainHi)
+                        .frame(height: 32)
+                }
+            }
+
+            if improving {
+                Label("Moving toward range — worth confirming with your clinician.", systemImage: "arrow.up.forward")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Clinical.positive)
+            }
+
+            // The only lab that speaks in copper: the flagged result's "what this may mean"
+            // disclosure, inline on its own row instead of a standalone banner disconnected
+            // from the card it described.
+            if isFlagged, let proposal = latestProposal {
+                Button { showProposalDetail = true } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: proposal.kind == .clinician ? "stethoscope" : "leaf.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Clinical.accent)
+                        Text(proposal.deficiency)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Clinical.accent)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 4)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Clinical.accent.opacity(0.7))
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("What this may mean: \(proposal.deficiency)")
+                .accessibilityHint("Opens more detail")
+            }
         }
+        .padding(.vertical, 16)
         .contextMenu {
             Button("Delete latest draw", role: .destructive) { context.delete(latest) }
         }
@@ -298,6 +305,33 @@ struct LabsView: View {
                 }
             }
         }
+    }
+
+    /// The same reference list, collapsed into a footnote disclosure at the ledger's end once
+    /// there's real data to lead with — a full always-open card only earns its place on the
+    /// empty first visit (`reference`, above).
+    private var referenceFootnote: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(LabTest.allCases) { test in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(test.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                            Spacer()
+                            Text("\(test.referenceRange.lowerBound.formatted())–\(test.referenceRange.upperBound.formatted()) \(test.unit)")
+                                .font(Clinical.number(12)).foregroundStyle(Clinical.secondary)
+                        }
+                        Text(test.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                    }
+                    if test != LabTest.allCases.last { Divider().overlay(Clinical.hairline) }
+                }
+            }
+            .padding(.top, 10)
+        } label: {
+            Eyebrow(text: "Tests derms order for hair loss")
+        }
+        .tint(Clinical.accent)
+        .padding(.top, 6)
     }
 }
 

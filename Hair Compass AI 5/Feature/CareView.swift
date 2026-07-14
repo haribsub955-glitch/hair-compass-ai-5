@@ -8,6 +8,7 @@ struct CareView: View {
     @Environment(\.modelContext) private var context
     @Environment(NotificationService.self) private var notifications
     @Environment(DeepLinkRouter.self) private var deepLinks
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
@@ -63,41 +64,42 @@ struct CareView: View {
                     .staggeredEntrance(index: 0)
 
                 // One entrance sequence down the card stack; indices are fixed positions, so a
-                // missing conditional card just leaves an invisible 50ms gap.
-                if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 1) }
-                coachCard.staggeredEntrance(index: 2)
-                if let milestone = Milestones.achieved(streak: streak, treatments: treatmentWeeks).first {
-                    milestoneCard(milestone).staggeredEntrance(index: 3)
-                }
-                if !routine.isEmpty { routineCard.staggeredEntrance(index: 4) }
-                guidanceCard.staggeredEntrance(index: 5)
-                remindersCard.staggeredEntrance(index: 6)
-                gateExplainer.staggeredEntrance(index: 7)
-                if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 8) }
+                // missing conditional card just leaves an invisible 50ms gap. The coach card is
+                // gone — its one fact ("N steps left today") now lives as a living subtitle
+                // right under the header, above a hairline that fills as steps complete, so the
+                // actual ritual (the routine list) is the first thing the page shows instead of
+                // a card that just restated what's below it.
+                routineProgressHeader.staggeredEntrance(index: 1)
+                if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
+                if !routine.isEmpty { routineSection.staggeredEntrance(index: 3) }
+                guidanceCard.staggeredEntrance(index: 4)
+                remindersCard.staggeredEntrance(index: 5)
+                gateExplainer.staggeredEntrance(index: 6)
+                if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
 
                 if treatments.isEmpty {
-                    empty.staggeredEntrance(index: 9)
+                    empty.staggeredEntrance(index: 8)
                 } else {
                     ForEach(Array(treatments.enumerated()), id: \.element.id) { i, t in
                         // Capped: everything past here is below the fold at load anyway.
-                        treatmentCard(t).staggeredEntrance(index: min(9 + i, 13))
+                        treatmentCard(t).staggeredEntrance(index: min(8 + i, 12))
                     }
                 }
 
                 // Same cap as the last treatment card above — lands in the same beat, no
                 // renumbering of the fixed indices elsewhere in this stack required.
-                proceduresCard.staggeredEntrance(index: 13)
+                proceduresCard.staggeredEntrance(index: 12)
 
                 // New card, new trailing index — appended past the capped treatment/procedures
                 // beat rather than renumbering any index above.
-                progressCheckInCard.staggeredEntrance(index: 14)
+                progressCheckInCard.staggeredEntrance(index: 13)
 
                 // Same trailing pattern one index later — a life event (illness, crash diet,
                 // childbirth, a new medication…) is the only entry point to `TriggerEvent`
                 // outside onboarding, so every downstream surface that reads dated triggers
                 // (journey markers, insights, the clinician export) stays usable for the whole
                 // life of the record, not just its first day.
-                lifeEventCard.staggeredEntrance(index: 15)
+                lifeEventCard.staggeredEntrance(index: 14)
 
                 // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
                 // straight to it and must never catch a mid-fade frame.
@@ -325,100 +327,108 @@ struct CareView: View {
     private var dailySteps: [(Treatment, String)] { routine.filter { $0.block != .periodic }.flatMap { $0.steps } }
     private var doneToday: Int { dailySteps.filter { isLogged($0.0, slot: $0.1) }.count }
 
-    // MARK: Coach
+    // MARK: Routine progress (the coach card's one surviving fact)
 
-    /// The coach card, the milestone banner and the routine list used to each restate the same
-    /// "you're done" fact once everything was complete. Once every step is actually done, the
-    /// coach card dissolves to a single canvas-level line with a small ring — the full card
-    /// (with its artwork and progress ring) only earns its place while there's still something
-    /// left to do today.
-    private var coachCard: some View {
-        let isComplete = !dailySteps.isEmpty && doneToday >= dailySteps.count
-        return Group {
-            if isComplete {
-                compactCoachLine
-            } else {
-                fullCoachCard
+    /// Replaces the old coach card — its illustration, flame streak and motivational copy used
+    /// to merely restate the list sitting right under it. What's left is the one fact worth
+    /// saying up top ("N steps left today") as a living subtitle beneath the header, and a
+    /// single copper hairline that fills left-to-right as steps complete instead of a separate
+    /// ring widget.
+    private var routineProgressHeader: some View {
+        let remaining = max(0, dailySteps.count - doneToday)
+        let isComplete = !dailySteps.isEmpty && remaining == 0
+        let fraction = dailySteps.isEmpty ? 0 : Double(doneToday) / Double(dailySteps.count)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(routineStatusText(remaining: remaining, isComplete: isComplete))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Clinical.ink)
+                    .contentTransition(.opacity)
+                if streak > 0 {
+                    Text("\(streak)d streak")
+                        .font(Clinical.eyebrow(10))
+                        .foregroundStyle(Clinical.accent)
+                }
+            }
+            if !dailySteps.isEmpty {
+                RoutineHairlineProgress(fraction: fraction)
             }
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: isComplete)
     }
 
-    private var compactCoachLine: some View {
-        HStack(spacing: 10) {
-            SmallDoneRing()
-            Text("Today's routine is done  ·  \(dailySteps.count) of \(dailySteps.count)")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Clinical.ink)
-            Spacer(minLength: 0)
-            if streak > 0 {
-                Text("\(streak)d streak")
-                    .font(Clinical.eyebrow(10))
-                    .foregroundStyle(Clinical.accent)
-            }
+    private func routineStatusText(remaining: Int, isComplete: Bool) -> String {
+        if dailySteps.isEmpty { return "No routine steps today" }
+        if isComplete { return "Today's routine is done · \(dailySteps.count) of \(dailySteps.count)" }
+        return "\(remaining) step\(remaining == 1 ? "" : "s") left today"
+    }
+
+    /// Fraction toward the milestone's own next marker, derived from the same data
+    /// (`treatmentWeeks`/`streak`) the milestone was built from — `Milestone` itself carries no
+    /// numeric progress, only an id whose prefix identifies which kind it is.
+    private func milestoneProgress(_ m: Milestone) -> Double? {
+        if m.id.hasPrefix("ready-") { return 1 }
+        if m.id.hasPrefix("half-") {
+            let name = String(m.id.dropFirst("half-".count))
+            guard let weeks = treatmentWeeks.first(where: { $0.name == name })?.weeks else { return nil }
+            return min(1, Double(weeks) / 24)
         }
-        .padding(.vertical, 2)
-        .accessibilityElement(children: .combine)
+        if m.id.hasPrefix("streak-") {
+            guard let next = Milestones.streakThresholds.first(where: { $0 > streak }) else { return 1 }
+            let prevTier = Milestones.streakThresholds.last(where: { $0 <= streak }) ?? 0
+            let span = Double(next - prevTier)
+            return span > 0 ? min(1, Double(streak - prevTier) / span) : 1
+        }
+        return nil
     }
 
-    /// Redesign v3: the text block now drives the card's height in the normal layout flow —
-    /// the artwork moved to `.background` (round-3 fix) so it can never stretch the card past
-    /// what the copy needs. `msg.detail` used to be clipped mid-word by a fixed-size,
-    /// two-line-capped, 220pt-wide `Text` (round-2 regression): it's one sentence, so it now
-    /// wraps freely at whatever size Dynamic Type asks for.
-    private var fullCoachCard: some View {
-        let msg = AdherenceCoach.message(doneToday: doneToday, totalToday: dailySteps.count, streak: streak, weeklyAdherence: nil)
-        let progress = dailySteps.isEmpty ? 0 : Double(doneToday) / Double(dailySteps.count)
-        return ClinicalCard(padding: 0) {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 8) {
-                        Eyebrow(text: "Coach")
-                        if streak > 0 {
-                            Label("\(streak)d", systemImage: "flame")
-                                .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
-                        }
+    // MARK: Routine — the ritual is the page, so it sits directly on the canvas
+
+    /// No enclosing card — MORNING/EVENING/PERIODIC blocks sit on the ivory under hairline
+    /// section rules, and the gold milestone (formerly its own separate card in the stack) closes
+    /// the list as a one-line footnote instead of a fourth competing widget.
+    private var routineSection: some View {
+        let milestone = Milestones.achieved(streak: streak, treatments: treatmentWeeks).first
+        return VStack(alignment: .leading, spacing: 0) {
+            Eyebrow(text: "Today's routine").padding(.bottom, 12)
+            ForEach(Array(routine.enumerated()), id: \.element.block.id) { index, entry in
+                VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow(text: entry.block.title)
+                    ForEach(Array(entry.steps.enumerated()), id: \.offset) { _, step in
+                        routineRow(step.treatment, slot: step.slot, periodic: entry.block == .periodic)
                     }
-                    Text(msg.headline).font(Clinical.headline(19)).foregroundStyle(Clinical.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(msg.detail).font(.system(size: 12.5)).foregroundStyle(Clinical.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 8)
-                if dailySteps.count > 0 {
-                    CoachProgressRing(done: doneToday, total: dailySteps.count, progress: progress)
-                        .background(
-                            // Round-4 fix: the ring used to sit directly on the bottle artwork,
-                            // where its pale track nearly vanished against similarly-valued
-                            // amber. A dedicated surface disc restores figure/ground for the
-                            // ring specifically, on top of the card-wide gradient scrim below.
-                            Circle().fill(Clinical.surface.opacity(0.85)).padding(-6)
-                        )
+                .padding(.bottom, 14)
+                if index != routine.count - 1 {
+                    Divider().overlay(Clinical.hairline).padding(.bottom, 14)
                 }
             }
-            .padding(16)
-            .background {
-                ZStack {
-                    LivingArtwork(art: BrandArt.planRitualV2, travel: 4, zoom: 0.014, phase: 0.4)
-                        .opacity(0.28)
-                    // The ring sits at the trailing edge, so the gradient's most-faded stop now
-                    // sits in the middle (over the artwork, behind neither text nor ring) —
-                    // both the headline/detail on the left and the ring on the right land on a
-                    // near-opaque stop, so neither reads washed-out or fights the illustration.
-                    LinearGradient(
-                        stops: [
-                            .init(color: Clinical.surface.opacity(0.99), location: 0),
-                            // Mid stop kept fairly solid (0.72) so a long two-line detail that
-                            // reaches toward centre never sits on washed-out artwork.
-                            .init(color: Clinical.surface.opacity(0.72), location: 0.5),
-                            .init(color: Clinical.surface.opacity(0.94), location: 1),
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                }
-                .clipped()
+            if let milestone {
+                Divider().overlay(Clinical.hairline).padding(.bottom, 10)
+                milestoneFootnote(milestone)
             }
         }
+    }
+
+    /// The gold milestone bar, demoted from its own card to the one-line annotation that closes
+    /// the routine list — its full body text still reaches VoiceOver via the accessibility label.
+    private func milestoneFootnote(_ m: Milestone) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: m.symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Clinical.gold)
+            Text(m.title)
+                .font(Clinical.eyebrow(10))
+                .foregroundStyle(Clinical.secondary)
+                .lineLimit(1)
+            if let progress = milestoneProgress(m), progress < 1 {
+                Text("· \(Int((progress * 100).rounded()))% there")
+                    .font(Clinical.eyebrow(10))
+                    .foregroundStyle(Clinical.tertiary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(m.title). \(m.body)")
     }
 
     private var guidanceCard: some View {
@@ -457,65 +467,7 @@ struct CareView: View {
         }
     }
 
-    /// Demoted from a full icon card to one line + a thin progress bar — the milestone's own
-    /// body text moves to the accessibility label instead of taking a second visible line, and
-    /// the bar makes "how close" legible at a glance instead of needing to read the sentence.
-    private func milestoneCard(_ m: Milestone) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: m.symbol)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Clinical.gold)
-                Text(m.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Clinical.ink)
-                Spacer(minLength: 0)
-            }
-            if let progress = milestoneProgress(m) {
-                ProgressBar(value: progress, tint: Clinical.gold).frame(height: 4)
-            }
-        }
-        .padding(.vertical, 2)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(m.title). \(m.body)")
-    }
-
-    /// Fraction toward the milestone's own next marker, derived from the same data
-    /// (`treatmentWeeks`/`streak`) the milestone was built from — `Milestone` itself carries no
-    /// numeric progress, only an id whose prefix identifies which kind it is.
-    private func milestoneProgress(_ m: Milestone) -> Double? {
-        if m.id.hasPrefix("ready-") { return 1 }
-        if m.id.hasPrefix("half-") {
-            let name = String(m.id.dropFirst("half-".count))
-            guard let weeks = treatmentWeeks.first(where: { $0.name == name })?.weeks else { return nil }
-            return min(1, Double(weeks) / 24)
-        }
-        if m.id.hasPrefix("streak-") {
-            guard let next = Milestones.streakThresholds.first(where: { $0 > streak }) else { return 1 }
-            let prevTier = Milestones.streakThresholds.last(where: { $0 <= streak }) ?? 0
-            let span = Double(next - prevTier)
-            return span > 0 ? min(1, Double(streak - prevTier) / span) : 1
-        }
-        return nil
-    }
-
-    // MARK: Routine
-
-    private var routineCard: some View {
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 16) {
-                Eyebrow(text: "Today's routine")
-                ForEach(routine, id: \.block.id) { entry in
-                    VStack(alignment: .leading, spacing: 10) {
-                        Eyebrow(text: entry.block.title)
-                        ForEach(Array(entry.steps.enumerated()), id: \.offset) { _, step in
-                            routineRow(step.treatment, slot: step.slot, periodic: entry.block == .periodic)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // MARK: Routine rows
 
     private func routineRow(_ t: Treatment, slot: String, periodic: Bool) -> some View {
         let key = "\(t.persistentModelID.hashValue)|\(slot)"
@@ -1096,71 +1048,33 @@ private struct RoutineStepRow: View {
     }
 }
 
-/// The coach's adherence ring: full-strength copper over an accent-0.15 track — the same recipe
-/// as the Today MEDS tile. Draws once with a spring on appear (Reduce Motion renders instantly);
-/// checking a step springs the fill to the new value.
-private struct CoachProgressRing: View {
-    let done: Int
-    let total: Int
-    let progress: Double
+/// A copper hairline that fills left-to-right as today's routine steps complete — the coach
+/// card's one surviving progress visual, now a single living line instead of a separate ring
+/// widget. Draws in once with a spring on appear (instant under Reduce Motion), then springs to
+/// each new value as steps get checked off.
+private struct RoutineHairlineProgress: View {
+    let fraction: Double
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
 
     var body: some View {
-        ZStack {
-            Circle().stroke(Clinical.accent.opacity(0.15), lineWidth: 7)
-            Circle()
-                .trim(from: 0, to: shown ? progress : 0)
-                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 1) {
-                Text("\(done)").font(Clinical.headline(17)).foregroundStyle(Clinical.ink)
-                Text("OF \(total)").font(Clinical.eyebrow(8)).foregroundStyle(Clinical.tertiary)
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Clinical.hairline).frame(height: 2)
+                Capsule().fill(Clinical.accent)
+                    .frame(width: geo.size.width * (shown ? fraction : 0), height: 2)
             }
         }
-        .frame(width: 60, height: 60)
-        .animation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.8), value: progress)
+        .frame(height: 2)
+        .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.8), value: fraction)
         .onAppear {
             guard !shown else { return }
             if reduceMotion {
                 shown = true
             } else {
-                // Delayed past the coach card's own entrance so the ring draws after it lands.
-                withAnimation(.spring(response: 0.7, dampingFraction: 0.8).delay(0.3)) { shown = true }
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2)) { shown = true }
             }
         }
-    }
-}
-
-/// A small "all done" ring for the collapsed coach line — draws its checkmark once with a soft
-/// spring on appear, instant under Reduce Motion. Deliberately tiny (22pt): once the coach card
-/// has dissolved to one canvas line, this is the whole "ring" it keeps.
-private struct SmallDoneRing: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var shown = false
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(Clinical.accent.opacity(0.18), lineWidth: 3)
-            Circle()
-                .trim(from: 0, to: shown ? 1 : 0)
-                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            Image(systemName: "checkmark")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Clinical.accent)
-                .opacity(shown ? 1 : 0)
-        }
-        .frame(width: 22, height: 22)
-        .onAppear {
-            guard !shown else { return }
-            if reduceMotion {
-                shown = true
-            } else {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.75).delay(0.1)) { shown = true }
-            }
-        }
-        .accessibilityHidden(true)
     }
 }
 

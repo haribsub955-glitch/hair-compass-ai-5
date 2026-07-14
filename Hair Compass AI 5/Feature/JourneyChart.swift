@@ -43,13 +43,11 @@ struct JourneyChart: View {
             triggers: triggers, procedures: procedures, start: start, end: end
         )
         // Full-bleed on the canvas — the app's headline visualization earns the whole width
-        // instead of sitting boxed inside another card.
+        // instead of sitting boxed inside another card. No "Your journey" eyebrow + serif title
+        // here anymore: Trends' own page title plus its one-line trajectory annotation above
+        // this view already say what the chart is, so this used to be a double heading that
+        // pushed the chart itself below the fold's midline.
         VStack(alignment: .leading, spacing: 12) {
-            Eyebrow(text: "Your journey")
-            Text("Shedding & treatment timeline")
-                .font(Clinical.headline(19))
-                .foregroundStyle(Clinical.ink)
-
             if data.shedPoints.count < 2 {
                 thinDataPlaceholder
             } else {
@@ -136,7 +134,11 @@ struct JourneyChart: View {
             }
             .frame(height: 180)
             .chartXScale(domain: domain)
-            .chartYScale(domain: 0...3)
+            // Padded past the data's real 0...3 range so the top ("Heavy") and bottom
+            // ("Minimal") axis-label text has room to render in full instead of being clipped
+            // by the plot's own edge — the data itself (and the echo bands, which still span
+            // exactly 0...3) simply sits with a little breathing room inside the frame.
+            .chartYScale(domain: -0.3...3.3)
             .chartXAxis(.hidden) // the intake lane below owns the shared time axis
             .chartYAxis {
                 AxisMarks(position: .leading, values: Self.shedAxisValues) { value in

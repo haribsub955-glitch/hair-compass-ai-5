@@ -40,6 +40,8 @@ struct TrendsView: View {
     /// directly from the ScrollView's own content offset, so the title tracks the finger 1:1
     /// exactly like a native large-title collapse rather than a separate animated effect.
     @State private var headerCondense: CGFloat = 0
+    /// Drives the range picker's sliding copper underline — see `InkTabs`.
+    @Namespace private var rangeNamespace
 
     private var windowEntries: [DailyEntry] {
         let cutoff = Calendar.current.date(byAdding: .day, value: -range.days, to: .now) ?? .now
@@ -70,7 +72,19 @@ struct TrendsView: View {
                 )
                 .padding(.top, 8)
 
-                ClinicalSegmented(options: Range.allCases, label: { $0.rawValue }, selection: $range)
+                // A quiet text-tab row instead of a bordered 5-segment capsule — the active
+                // range reads by weight + a sliding copper underline, not a filled pill.
+                InkTabs(
+                    options: Range.allCases,
+                    selection: $range,
+                    namespace: rangeNamespace,
+                    spacing: 22,
+                    accessibilityLabel: { $0.rawValue }
+                ) { option, isOn in
+                    Text(option.rawValue)
+                        .font(.system(size: 13, weight: isOn ? .semibold : .regular))
+                        .foregroundStyle(isOn ? Clinical.ink : Clinical.secondary)
+                }
 
                 trajectoryAnnotation
 
