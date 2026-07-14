@@ -279,14 +279,24 @@ struct PhotosView: View {
     /// left in the app's empty states.
     private var emptyState: some View {
         VStack(spacing: 12) {
-            EmptyStateArt(size: 140)
+            ViewfinderFrame(title: region.title, size: 140)
             Eyebrow(text: "No \(region.title.lowercased()) photos")
             Text("Capture this region to start a comparable series.")
                 .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)
-            Button("Capture \(region.title.lowercased())") { showAdd = true }
-                .buttonStyle(ClinicalButtonStyle())
-                .padding(.top, 2)
+            Button {
+                showAdd = true
+            } label: {
+                Label("Capture \(region.title.lowercased())", systemImage: "camera")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Clinical.surface)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 34)
+                    .background(Clinical.accent, in: Capsule())
+                    .shadow(color: Clinical.accent.opacity(0.24), radius: 8, y: 3)
+            }
+            .buttonStyle(.clinicalPressable)
+            .padding(.top, 2)
             // The whole point of a baseline is that it can predate the app, and an example
             // journey shows the payoff before someone's built their own — both still one tap
             // away, now sharing a single quiet secondary line instead of two stacked links.
@@ -411,18 +421,81 @@ private struct JourneyPresentation: Identifiable {
     let isExample: Bool
 }
 
-/// Design V2 capture guidance: the new phone-and-mirror artwork drifts on the shared low-cost
-/// decorative cadence and freezes automatically under Reduce Motion.
-private struct EmptyStateArt: View {
-    var size: CGFloat = 178
+/// Four thin corner brackets, drawn from the app's own copper hairlines — a camera viewfinder
+/// framing a rect, in place of the last piece of stock illustration in the app. `breath` is the
+/// outward expansion in points; kept as `animatableData` so the phase animator below can spring
+/// it smoothly rather than snapping between values.
+private struct ViewfinderBrackets: Shape {
+    var armLength: CGFloat = 20
+    var breath: CGFloat = 0
+
+    var animatableData: CGFloat {
+        get { breath }
+        set { breath = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: -breath, dy: -breath)
+        var path = Path()
+        // Top-leading
+        path.move(to: CGPoint(x: r.minX, y: r.minY + armLength))
+        path.addLine(to: CGPoint(x: r.minX, y: r.minY))
+        path.addLine(to: CGPoint(x: r.minX + armLength, y: r.minY))
+        // Top-trailing
+        path.move(to: CGPoint(x: r.maxX - armLength, y: r.minY))
+        path.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+        path.addLine(to: CGPoint(x: r.maxX, y: r.minY + armLength))
+        // Bottom-trailing
+        path.move(to: CGPoint(x: r.maxX, y: r.maxY - armLength))
+        path.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        path.addLine(to: CGPoint(x: r.maxX - armLength, y: r.maxY))
+        // Bottom-leading
+        path.move(to: CGPoint(x: r.minX + armLength, y: r.maxY))
+        path.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+        path.addLine(to: CGPoint(x: r.minX, y: r.maxY - armLength))
+        return path
+    }
+}
+
+/// The empty-state signature motif: a breathing copper viewfinder framing the region's serif
+/// title word, like a camera's focus reticle — an empty state that shows what to do (frame the
+/// shot) instead of picturing it with stock art. On first appearance the brackets expand ~4pt and
+/// settle back once, then hold still; static under Reduce Motion.
+private struct ViewfinderFrame: View {
+    let title: String
+    var size: CGFloat = 140
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Changing this value is what makes `PhaseAnimator` step through its phases once — the
+    /// one-shot "breathe on appear" trigger.
+    @State private var breatheTrigger = 0
+
     var body: some View {
-        LivingArtwork(
-            art: BrandArt.photoCaptureV2,
-            contentMode: .fit,
-            travel: 3,
-            zoom: 0.015,
-            phase: 2.4
-        )
+        Group {
+            if reduceMotion {
+                brackets(breath: 0)
+            } else {
+                PhaseAnimator([0, 1, 2], trigger: breatheTrigger) { phase in
+                    brackets(breath: phase == 1 ? 4 : 0)
+                } animation: { phase in
+                    phase == 1 ? .easeOut(duration: 0.45) : .spring(response: 0.55, dampingFraction: 0.7)
+                }
+            }
+        }
+        .onAppear { breatheTrigger += 1 }
+        .accessibilityHidden(true)
+    }
+
+    private func brackets(breath: CGFloat) -> some View {
+        ZStack {
+            ViewfinderBrackets(armLength: 20, breath: breath)
+                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            Text(title)
+                .font(Clinical.headline(20))
+                .foregroundStyle(Clinical.ink)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 26)
+        }
         .frame(width: size, height: size)
     }
 }

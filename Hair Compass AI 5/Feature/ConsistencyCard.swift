@@ -1,8 +1,11 @@
 import SwiftUI
 
-/// The Trends consistency card — the gamification surface. Level, XP progress, streak and
-/// the most recent badges, all computed purely from the tracked record via `Gamification.swift`.
-/// Everything here rewards the effort of tracking; nothing reads the hair outcome.
+/// The Trends consistency margin note — the gamification surface, dissolved out of its boxed XP
+/// widget into the same ink-and-copper annotation language as the rest of the journal. Level, XP
+/// progress and streak collapse into one quiet footnote line under a single copper hairline that
+/// draws itself in once; the badge wall lives one tap away behind "All badges" instead of
+/// inlining its own chip row. Everything here rewards the effort of tracking; nothing reads the
+/// hair outcome.
 struct ConsistencyCard: View {
     let entries: [DailyEntry]
     let treatments: [Treatment]
@@ -39,88 +42,56 @@ struct ConsistencyCard: View {
         let streak = HairAnalytics.loggingStreak(entryDates: entries.map(\.date))
         let earned = self.earned
 
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 12) {
-                if let fresh = freshBadges.first {
-                    newBadgeCapsule(fresh, extra: freshBadges.count - 1)
-                }
-
-                HStack {
-                    Eyebrow(text: "Consistency")
-                    Spacer()
-                    Button {
-                        showAllBadges = true
-                    } label: {
-                        HStack(spacing: 3) {
-                            Text("All badges").font(Clinical.eyebrow(10))
-                            Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
-                        }
-                        .foregroundStyle(Clinical.accent)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(level.name)
-                        .font(Clinical.headline(24)).foregroundStyle(Clinical.ink)
-                    Text("Level \(level.index)")
-                        .font(Clinical.eyebrow(10)).tracking(1)
-                        .foregroundStyle(Clinical.tertiary)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    ProgressBar(value: progress.fraction, tint: Clinical.gold)
-                        .frame(height: 8)
-                    HStack {
-                        if let next = progress.next {
-                            Text("\(xp) / \(next.threshold)")
-                                .font(Clinical.number(13)).foregroundStyle(Clinical.ink)
-                            Spacer()
-                            Text("\(progress.remaining) XP to \(next.name)")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                        } else {
-                            Text("\(xp) XP")
-                                .font(Clinical.number(13)).foregroundStyle(Clinical.ink)
-                            Spacer()
-                            Text("Top of the ladder")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                        }
-                    }
-                }
-
-                Label(
-                    streak > 0
-                        ? "\(streak)-day logging streak"
-                        : "No current streak — any day you log starts one",
-                    systemImage: "flame"
-                )
-                .font(.system(size: 12)).foregroundStyle(streak > 0 ? Clinical.accent : Clinical.tertiary)
-
-                if !earned.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(earned.suffix(3).reversed(), id: \.achievement) { item in
-                                badgeChip(item.achievement)
-                            }
-                        }
-                    }
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            if let fresh = freshBadges.first {
+                newBadgeCapsule(fresh, extra: freshBadges.count - 1)
             }
+
+            HStack {
+                Eyebrow(text: "Consistency")
+                Spacer()
+                Button {
+                    showAllBadges = true
+                } label: {
+                    HStack(spacing: 3) {
+                        Text("All badges").font(Clinical.eyebrow(10))
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(Clinical.accent)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(level.name)
+                .font(Clinical.headline(26)).foregroundStyle(Clinical.ink)
+
+            ConsistencyHairline(fraction: progress.fraction)
+
+            Text(footnote(level: level, progress: progress, xp: xp, streak: streak))
+                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
         }
         .onAppear { registerNewBadges(earned.map(\.achievement)) }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Pieces
 
-    private func badgeChip(_ badge: Achievement) -> some View {
-        HStack(spacing: 6) {
-            BadgeIcon(badge: badge, size: 11, tint: Clinical.gold)
-            Text(badge.title).font(.system(size: 12, weight: .medium))
+    /// "Level 4 · 177 XP to Grove · 1-day streak" — one line replacing the fraction, the
+    /// XP-to-next line and the streak row that used to fire three at once.
+    private func footnote(
+        level: GamificationLevel,
+        progress: (fraction: Double, remaining: Int, next: GamificationLevel?),
+        xp: Int,
+        streak: Int
+    ) -> String {
+        var parts = ["Level \(level.index)"]
+        if let next = progress.next {
+            parts.append("\(progress.remaining) XP to \(next.name)")
+        } else {
+            parts.append("\(xp) XP · top of the ladder")
         }
-        .foregroundStyle(Clinical.gold)
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(Clinical.gold.opacity(0.12), in: Capsule())
-        .overlay(Capsule().strokeBorder(Clinical.gold.opacity(0.35), lineWidth: 1))
+        parts.append(streak > 0 ? "\(streak)-day streak" : "no streak yet")
+        return parts.joined(separator: " · ")
     }
 
     /// The quiet celebration: a small gold capsule, a success haptic, no modal, no confetti.
@@ -149,6 +120,35 @@ struct ConsistencyCard: View {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 6_000_000_000)
             withAnimation(.easeOut(duration: 0.4)) { freshBadges = [] }
+        }
+    }
+}
+
+/// A single copper hairline that fills left-to-right to the XP fraction — the consistency card's
+/// entire progress visual now that the thick gold bar and its fraction/remaining-XP lines have
+/// collapsed into one footnote sentence. Draws itself in once on first appearance with a soft
+/// spring; under Reduce Motion it jumps straight to the final width with no fill animation.
+private struct ConsistencyHairline: View {
+    let fraction: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var filled = false
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Clinical.hairline)
+                Capsule().fill(Clinical.accent)
+                    .frame(width: geo.size.width * (filled ? min(1, max(0, fraction)) : 0))
+            }
+        }
+        .frame(height: 2)
+        .onAppear {
+            guard !filled else { return }
+            if reduceMotion {
+                filled = true
+            } else {
+                withAnimation(.spring(response: 0.9, dampingFraction: 0.85).delay(0.1)) { filled = true }
+            }
         }
     }
 }

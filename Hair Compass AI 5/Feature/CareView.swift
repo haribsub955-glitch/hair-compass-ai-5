@@ -422,7 +422,9 @@ struct CareView: View {
                 .foregroundStyle(Clinical.secondary)
                 .lineLimit(1)
             if let progress = milestoneProgress(m), progress < 1 {
-                Text("· \(Int((progress * 100).rounded()))% there")
+                // Just the number — some milestone titles ("halfway there") already end in
+                // "there"; appending "% there" a second time read as "halfway there · 83% there".
+                Text("· \(Int((progress * 100).rounded()))%")
                     .font(Clinical.eyebrow(10))
                     .foregroundStyle(Clinical.tertiary)
             }
@@ -431,26 +433,33 @@ struct CareView: View {
         .accessibilityLabel("\(m.title). \(m.body)")
     }
 
+    /// A single hairline-ruled footnote row — decongested from an icon-tile card with its own
+    /// subtitle. "Education, not a prescription" now lives inside the sheet this opens (see
+    /// `TreatmentRecommender.disclaimer` in `RecommenderView`) instead of being said twice.
     private var guidanceCard: some View {
         Button { showRecommender = true } label: {
-            ClinicalCard(padding: 16) {
-                HStack(spacing: 12) {
+            VStack(spacing: 0) {
+                Divider().overlay(Clinical.hairline)
+                HStack(spacing: 10) {
                     Image(systemName: "stethoscope")
-                        .font(.system(size: 16)).foregroundStyle(Clinical.accent)
-                        .frame(width: 38, height: 38)
-                        .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("What the evidence supports for you")
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
-                        Text("Ranked options for \(profile?.condition.title.lowercased() ?? "your pattern") — education, not a prescription.")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Clinical.accent)
+                        .frame(width: 20, alignment: .leading)
+                    Text("What the evidence supports for you")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Clinical.ink)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Clinical.tertiary)
                 }
+                .padding(.vertical, 13)
             }
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.clinicalPressable)
+        .accessibilityLabel("What the evidence supports for you")
+        .accessibilityHint("Opens ranked treatment options for your pattern — education, not a prescription")
     }
 
     /// One calm, non-blocking nudge when a severity-3 side effect was logged in the last 14 days.
@@ -486,52 +495,58 @@ struct CareView: View {
 
     // MARK: Reminders
 
+    /// Un-boxed: two hairline-separated toggle rows in the ritual list's own geometry, bounded by
+    /// its own leading/trailing rules — the last piece of card chrome the page used to end on.
     private var remindersCard: some View {
-        ClinicalCard(padding: 16) {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle(isOn: $remindersOn) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Reminders").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
-                            Text("Nudge me at my routine times.")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                        }
-                    }
-                    .tint(Clinical.accent)
-                    .onChange(of: remindersOn) { _, on in
-                        Task {
-                            if on {
-                                let granted = await notifications.enable(treatments: notifTreatments, refills: notifRefills)
-                                if !granted { remindersOn = false }
-                            } else {
-                                notifications.disable()
-                            }
-                        }
-                    }
-                    if remindersOn && notifTreatments.isEmpty {
-                        Text("Add a daily treatment with times to get routine reminders.")
-                            .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(Clinical.hairline).padding(.bottom, 12)
+            Eyebrow(text: "Reminders").padding(.bottom, 10)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(isOn: $remindersOn) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Routine reminders").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                        Text("Nudge me at my routine times.")
+                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
                     }
                 }
-
-                Divider().overlay(Clinical.hairline)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle(isOn: $eveningCheckInEnabled) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Evening check-in").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
-                            Text("One invite at a time you pick — off until you turn it on.")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                .tint(Clinical.accent)
+                .onChange(of: remindersOn) { _, on in
+                    Task {
+                        if on {
+                            let granted = await notifications.enable(treatments: notifTreatments, refills: notifRefills)
+                            if !granted { remindersOn = false }
+                        } else {
+                            notifications.disable()
                         }
                     }
-                    .tint(Clinical.accent)
-                    if eveningCheckInEnabled {
-                        DatePicker("Reminder time", selection: eveningCheckInTime, displayedComponents: .hourAndMinute)
-                            .font(.system(size: 13))
-                            .tint(Clinical.accent)
-                    }
+                }
+                if remindersOn && notifTreatments.isEmpty {
+                    Text("Add a daily treatment with times to get routine reminders.")
+                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
                 }
             }
+            .padding(.bottom, 12)
+
+            Divider().overlay(Clinical.hairline).padding(.bottom, 12)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(isOn: $eveningCheckInEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Evening check-in").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                        Text("One invite at a time you pick — off until you turn it on.")
+                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    }
+                }
+                .tint(Clinical.accent)
+                if eveningCheckInEnabled {
+                    DatePicker("Reminder time", selection: eveningCheckInTime, displayedComponents: .hourAndMinute)
+                        .font(.system(size: 13))
+                        .tint(Clinical.accent)
+                }
+            }
+
+            Divider().overlay(Clinical.hairline).padding(.top, 12)
         }
     }
 

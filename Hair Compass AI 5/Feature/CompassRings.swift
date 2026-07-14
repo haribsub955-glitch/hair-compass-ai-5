@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// The three concentric rings of the Compass Score — an Apple-Fitness-style daily *effort*
-/// readout. Outer **Log** (copper) closes on today's check-in; middle **Care** (sage) tracks
-/// today's dose completion, or renders as a faint dotted hairline when nothing is scheduled;
-/// inner **Lens** (antique gold) closes on a progress photo captured this calendar week. Every
-/// ring reflects only effort the user directly controls — shedding/scalp severity never touch
-/// it (see `CompassScore`).
+/// The colors behind the Compass Score's three effort inputs — used by the detail-row legend
+/// tapping the ring reveals. Outer **Log** (copper) closes on today's check-in; **Care** (sage)
+/// tracks today's dose completion, or reads as "no plan today" when nothing is scheduled;
+/// **Lens** (antique gold) closes on a progress photo captured this calendar week. Every input
+/// reflects only effort the user directly controls — shedding/scalp severity never touch it (see
+/// `CompassScore`).
 enum CompassRingKind: CaseIterable, Hashable {
     case log, care, lens
 
@@ -18,43 +18,47 @@ enum CompassRingKind: CaseIterable, Hashable {
     }
 }
 
-/// Draws the three rings and the center score. Reuses the app's established ring recipe
-/// (`CoachProgressRing`/`XPProgressRing`/`MedsArcRing` in CareView.swift/TodayTiles.swift): a
-/// faint track, a rounded-cap fill stroked from 12 o'clock, a spring on value change, and a
-/// one-shot draw-in on first appearance. Adds a closure moment on top: when a ring first reaches
-/// 1.0 it pulses a brief ring-colored glow and fires a success haptic.
-struct CompassRingsView: View {
+/// A single thin-stroke ring — the Compass Score said once, in margin scale, instead of a
+/// hero-sized bullseye of three concentric pastel bands. Draws its arc in once on first
+/// appearance (Reduce Motion: fades straight to the final reading, no trim animation) and pulses
+/// a brief copper glow with a success haptic the moment every input closes for the day.
+struct CompassRingView: View {
     let score: CompassScore
-    var size: CGFloat
+    var size: CGFloat = 64
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Gates the initial 0 → value draw-in so the rings animate once on first appearance,
-    /// instantly under Reduce Motion — same idiom as the other rings in this app.
+    /// Gates the initial 0 → value draw-in so the ring animates once on first appearance,
+    /// instantly under Reduce Motion.
     @State private var shown = false
-    /// Held explicitly (rather than relying solely on `onChange`'s old-value parameter) so the
-    /// very first appearance never reads as a "closure" — only a real change after the rings
-    /// are already on screen can trigger the glow.
+    /// Held explicitly so the very first appearance never reads as a "closure" — only a real
+    /// change after the ring is already on screen can trigger the glow.
     @State private var previousScore: CompassScore?
-    @State private var glowingRings: Set<CompassRingKind> = []
+    @State private var glowing = false
 
-    private var strokeWidth: CGFloat { size / 9 }
+    private var strokeWidth: CGFloat { size / 11 }
+    private var fraction: Double { Double(score.score) / 100 }
 
     var body: some View {
         ZStack {
-            ringLayer(.log, diameter: size, progress: score.log)
-            ringLayer(.care, diameter: size * 0.7, progress: score.care)
-            ringLayer(.lens, diameter: size * 0.4, progress: score.lens)
+            let clamped = shown ? max(0, min(1, fraction)) : 0
+            Circle().stroke(Clinical.accent.opacity(0.18), lineWidth: strokeWidth)
+            Circle()
+                .trim(from: 0, to: clamped)
+                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.8), value: clamped)
+                .opacity(reduceMotion ? (shown ? 1 : 0) : 1)
+                .animation(reduceMotion ? .easeOut(duration: 0.3) : nil, value: shown)
 
-            VStack(spacing: 2) {
-                Text("\(score.score)")
-                    .font(Clinical.number(28))
-                    .foregroundStyle(Clinical.ink)
-                    .contentTransition(.numericText())
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: score.score)
-                Eyebrow(text: "Today")
-            }
+            Text("\(score.score)")
+                .font(Clinical.number(17, weight: .semibold))
+                .foregroundStyle(Clinical.ink)
+                .contentTransition(.numericText())
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: score.score)
         }
         .frame(width: size, height: size)
+        .shadow(color: Clinical.accent.opacity(glowing ? 0.8 : 0), radius: glowing ? 14 : 0)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.9), value: glowing)
         .onAppear {
             guard previousScore == nil else { return }
             previousScore = score
@@ -65,91 +69,27 @@ struct CompassRingsView: View {
             }
         }
         .onChange(of: score) { _, new in
-            if let previousScore { handleClosure(from: previousScore, to: new) }
+            if let previousScore, !previousScore.allClosed, new.allClosed {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                if !reduceMotion {
+                    glowing = true
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 900_000_000)
+                        glowing = false
+                    }
+                }
+            }
             previousScore = new
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Compass score \(score.score) of 100")
-        .accessibilityValue(ringsAccessibilityValue)
-    }
-
-    // MARK: - Ring drawing
-
-    @ViewBuilder
-    private func ringLayer(_ kind: CompassRingKind, diameter: CGFloat, progress: Double?) -> some View {
-        let color = kind.color
-        ZStack {
-            if let progress {
-                let clamped = shown ? max(0, min(1, progress)) : 0
-                // Round-4 fix: at 0.15 opacity the three tracks (copper/sage/gold) read as one
-                // washed-out target on the fresh-day state everyone sees first each morning —
-                // bumped to a clearly hued 0.24 so Log/Care/Lens each read as a distinct
-                // color-coded ring before any of them have progress.
-                Circle().stroke(color.opacity(0.24), lineWidth: strokeWidth)
-                Circle()
-                    .trim(from: 0, to: clamped)
-                    .stroke(color, style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.8), value: clamped)
-            } else {
-                // No plan today: a quiet dotted hairline, no fill — this ring is excluded from
-                // the score entirely rather than reading as "0 of something".
-                Circle()
-                    .stroke(Clinical.hairline, style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
-            }
-        }
-        .frame(width: diameter, height: diameter)
-        .shadow(
-            color: color.opacity(glowingRings.contains(kind) ? 0.85 : 0),
-            radius: glowingRings.contains(kind) ? 16 : 0
-        )
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.9), value: glowingRings.contains(kind))
-    }
-
-    // MARK: - Closure moment
-
-    /// One-shot glow + success haptic when a ring first reaches 1.0 (or all three close at
-    /// once). The haptic always fires; the visual pulse is skipped under Reduce Motion.
-    private func handleClosure(from old: CompassScore, to new: CompassScore) {
-        var crossed: Set<CompassRingKind> = []
-        if !old.allClosed && new.allClosed {
-            crossed = Set(CompassRingKind.allCases)
-        } else {
-            if old.log < 1 && new.log >= 1 { crossed.insert(.log) }
-            if let oldCare = old.care, let newCare = new.care, oldCare < 1 && newCare >= 1 {
-                crossed.insert(.care)
-            }
-            if old.lens < 1 && new.lens >= 1 { crossed.insert(.lens) }
-        }
-        guard !crossed.isEmpty else { return }
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        guard !reduceMotion else { return }
-        glowingRings = crossed
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 900_000_000)
-            glowingRings.subtract(crossed)
-        }
-    }
-
-    // MARK: - Accessibility
-
-    private var ringsAccessibilityValue: String {
-        let logState = score.log >= 1 ? "logged" : "not yet"
-        let careState: String = {
-            guard let care = score.care else { return "no plan today" }
-            if care >= 1 { return "complete" }
-            if care > 0 { return "in progress" }
-            return "not started"
-        }()
-        let lensState = score.lens >= 1 ? "captured this week" : "not yet this week"
-        return "Log \(logState). Care \(careState). Lens \(lensState)."
+        .accessibilityHidden(true)
     }
 }
 
-/// The Today rings card, dissolved out of its card box: the triple ring sits directly on the
-/// canvas with one summary line beside it — no table restating what the ring already encodes.
-/// Tapping the ring expands the three detail rows in place (collapse on second tap); tapping the
-/// summary text opens today's check-in, same destination the old whole-card button used to open.
+/// The Today rings card, un-boxed and decongested to a margin annotation: a small ring at the
+/// head of the ledger with one line naming whatever's still open today — no three-part status
+/// caption restating what the hero (log) and the Plan tab (care) already say. Tapping the ring
+/// still expands the three detail rows in place (collapse on second tap) for anyone who wants the
+/// breakdown; tapping the summary text opens today's check-in, same destination as before.
 struct CompassRingsCard: View {
     let score: CompassScore
     /// Raw counts behind the Care ring, needed only for the detail row's "2 of 3" readout — the
@@ -166,20 +106,21 @@ struct CompassRingsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 18) {
+            HStack(alignment: .center, spacing: 14) {
                 ringButton
                 Button(action: onLog) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Eyebrow(text: "Compass score")
-                        summaryLine
+                        Text(openLine)
                             .font(.system(size: 14))
+                            .foregroundStyle(Clinical.ink)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Compass score summary: \(statusLine)")
+                .accessibilityLabel("Compass score summary: \(openLine)")
                 .accessibilityHint("Opens today's check-in")
             }
             if expanded {
@@ -205,7 +146,7 @@ struct CompassRingsCard: View {
                 expanded.toggle()
             }
         } label: {
-            CompassRingsView(score: score, size: 104)
+            CompassRingView(score: score, size: 64)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Compass score \(score.score) of 100")
@@ -218,53 +159,27 @@ struct CompassRingsCard: View {
         return "\(medsDone) of \(medsTotal) done"
     }
 
-    /// One line replacing the old three-row table — the pending item (whichever open ring is
-    /// closest to view) reads in gold instead of a separate row spelling it out.
-    private var summaryLine: Text {
+    /// One line replacing the old three-part status caption ("Not logged · Care 0/3 · Photo
+    /// pending") — the hero already names today's log state and the Plan tab owns care, so this
+    /// names only what the ring itself still needs.
+    private var openLine: String {
         if isDayOneSeed && score.score > 0 {
-            return Text("Day 1 already on the board — logged during setup.")
-                .foregroundStyle(Clinical.ink)
-        }
-        if score.allClosed {
-            return Text("All rings closed. You showed up today.")
-                .foregroundStyle(Clinical.ink)
-        }
-        let dot = Text("  ·  ").foregroundStyle(Clinical.tertiary)
-        var pieces: [Text] = []
-        pieces.append(
-            Text(score.log >= 1 ? "Logged today" : "Not logged")
-                .foregroundStyle(score.log >= 1 ? Clinical.ink : Clinical.gold)
-        )
-        if let care = score.care {
-            let done = care >= 1
-            pieces.append(
-                Text("Care \(medsDone)/\(medsTotal)")
-                    .foregroundStyle(done ? Clinical.ink : Clinical.gold)
-            )
-        }
-        pieces.append(
-            Text(score.lens >= 1 ? "Photo done" : "Photo pending")
-                .foregroundStyle(score.lens >= 1 ? Clinical.ink : Clinical.gold)
-        )
-        return pieces.dropFirst().reduce(pieces[0]) { $0 + dot + $1 }
-    }
-
-    /// Plain-language accessibility mirror of `summaryLine` — VoiceOver reads one sentence
-    /// instead of walking a `Text` concatenation.
-    private var statusLine: String {
-        if isDayOneSeed && score.score > 0 {
-            return "Day 1 is already on the board — you logged it during setup."
+            return "Day 1 already on the board — logged during setup."
         }
         if score.allClosed {
             return "All rings closed. You showed up today."
         }
-        var parts = [score.log >= 1 ? "Logged today" : "Not logged"]
-        if score.care != nil { parts.append("Care \(medsDone) of \(medsTotal)") }
-        parts.append(score.lens >= 1 ? "Photo done" : "Photo pending")
-        return parts.joined(separator: ", ")
+        var open: [String] = []
+        if let care = score.care, care < 1 { open.append("Care") }
+        if score.lens < 1 { open.append("Photo") }
+        if open.isEmpty {
+            return "Just today's check-in still open."
+        }
+        let joined = open.count > 1 ? "\(open[0]) and \(open[1].lowercased())" : open[0]
+        return "\(joined) still open today."
     }
 
-    /// Plain nouns matching the tabs/actions each ring points at, with one normalized status
+    /// Plain nouns matching the tabs/actions each input points at, with one normalized status
     /// grammar across all three rows — and a single combined VoiceOver label so the dot color
     /// coding is never the only carrier of meaning.
     private func legendRow(_ kind: CompassRingKind, label: String, state: String) -> some View {

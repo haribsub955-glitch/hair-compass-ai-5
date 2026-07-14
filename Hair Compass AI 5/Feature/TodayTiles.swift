@@ -386,34 +386,98 @@ struct TodayTileGrid: View {
     /// The meds row jumps to the Plan tab's full routine; nil leaves it a plain readout.
     var onOpenPlan: (() -> Void)? = nil
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// True once the folded "not noted" row has been tapped open — the four self-report rows
+    /// then show individually for the rest of this view's lifetime (never auto re-collapses
+    /// while the user is working; a fresh appearance of the screen starts folded again).
+    @State private var expandedUnlogged = false
+
+    private var scalpLogged: Bool { entry?.scalpTotal != nil }
+    private var sleepLogged: Bool { sleepHours != nil || entry?.sleepQuality != nil }
+    private var stressLogged: Bool { entry?.stress != nil }
+    private var oilLogged: Bool { entry?.oiliness != nil }
+
+    /// Short labels for whichever of the four self-report signals have nothing logged today —
+    /// what the folded row lists.
+    private var unloggedLabels: [String] {
+        var labels: [String] = []
+        if !scalpLogged { labels.append("scalp") }
+        if !sleepLogged { labels.append("sleep") }
+        if !stressLogged { labels.append("stress") }
+        if !oilLogged { labels.append("oil") }
+        return labels
+    }
+
     var body: some View {
         // Entrance sequence continues from the hero (index 0), at a tighter 40ms step than the
         // rest of the page's cards — a short ledger of rows should settle quickly, not read as
         // its own slow reveal. TodayView's cards below pick up at their own indices/step.
         VStack(alignment: .leading, spacing: 0) {
             rule
-            scalpRow.staggeredEntrance(index: 1, step: 0.04)
-            rule
-            sleepRow.staggeredEntrance(index: 2, step: 0.04)
-            rule
-            stressRow.staggeredEntrance(index: 3, step: 0.04)
-            rule
-            oilRow.staggeredEntrance(index: 4, step: 0.04)
-            if medsTotal > 0 {
+            ForEach(Array(visibleRows.enumerated()), id: \.offset) { _, row in
+                row
                 rule
-                medsRow.staggeredEntrance(index: 5, step: 0.04)
             }
-            if let triggerWeeks {
-                rule
-                triggerRow(weeks: triggerWeeks)
-                    .staggeredEntrance(index: medsTotal > 0 ? 6 : 5, step: 0.04)
-            }
-            rule
         }
+    }
+
+    /// Logged signals always show their own full row; unlogged ones among scalp/sleep/stress/oil
+    /// fold into a single "not noted yet" row instead of four consecutive empty placeholders —
+    /// congestion made of absence, on an unlogged morning. Tapping the folded row expands the
+    /// remaining rows in place with a staggered cascade.
+    private var visibleRows: [AnyView] {
+        var rows: [AnyView] = []
+        var index = 1
+        func add<V: View>(_ view: V) {
+            rows.append(AnyView(view.staggeredEntrance(index: index, step: 0.04)))
+            index += 1
+        }
+        if scalpLogged || expandedUnlogged { add(scalpRow) }
+        if sleepLogged || expandedUnlogged { add(sleepRow) }
+        if stressLogged || expandedUnlogged { add(stressRow) }
+        if oilLogged || expandedUnlogged { add(oilRow) }
+        if !expandedUnlogged && !unloggedLabels.isEmpty { add(collapsedUnloggedRow) }
+        if medsTotal > 0 { add(medsRow) }
+        if let triggerWeeks { add(triggerRow(weeks: triggerWeeks)) }
+        return rows
     }
 
     private var rule: some View {
         Divider().overlay(Clinical.hairline)
+    }
+
+    /// One quiet row folding every currently-unlogged self-report signal into a single line —
+    /// "Not noted yet — scalp · sleep · stress · oil" — with a small copper "add" affordance.
+    /// Tapping expands the folded rows in place so every existing control stays reachable.
+    private var collapsedUnloggedRow: some View {
+        Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            if reduceMotion {
+                expandedUnlogged = true
+            } else {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { expandedUnlogged = true }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Text("Not noted yet")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Clinical.tertiary.opacity(0.7))
+                Text(unloggedLabels.joined(separator: " · "))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Clinical.tertiary.opacity(0.55))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Label("Add", systemImage: "plus")
+                    .font(Clinical.eyebrow(10)).tracking(0.6)
+                    .foregroundStyle(Clinical.accent)
+            }
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.clinicalPressable)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Not noted yet: \(unloggedLabels.joined(separator: ", "))")
+        .accessibilityHint("Expands to log these")
     }
 
     // Whisper tint kept from the old tile grid for Stress's trace dots.
