@@ -47,28 +47,34 @@ struct ConsistencyCard: View {
                 newBadgeCapsule(fresh, extra: freshBadges.count - 1)
             }
 
-            HStack {
-                Eyebrow(text: "Consistency")
-                Spacer()
-                Button {
-                    showAllBadges = true
-                } label: {
-                    HStack(spacing: 3) {
-                        Text("All badges").font(Clinical.eyebrow(10))
-                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+            // Round-11: the eyebrow used to carry its own embedded copper "All badges ›" mini-
+            // button — the last margin note in the app still speaking two voices in one line
+            // (plain footnote sentence + a button costume). The whole footnote (eyebrow + value
+            // line + hairline) is now one tap target with a single quiet trailing chevron —
+            // the same row-with-trailing-chevron grammar Labs' "Tests derms order for hair loss"
+            // row and Today's "Log a past day" row already use.
+            Button {
+                showAllBadges = true
+            } label: {
+                VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow(text: "Consistency")
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(footnote(level: level, progress: progress, streak: streak))
+                            .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Clinical.tertiary)
                     }
-                    .foregroundStyle(Clinical.accent)
+                    ConsistencyHairline(fraction: progress.fraction)
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
             }
-
-            Text(footnote(level: level, progress: progress, streak: streak))
-                .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-
-            ConsistencyHairline(fraction: progress.fraction)
+            .buttonStyle(.clinicalPressable)
+            .accessibilityLabel("Consistency — all badges")
+            .accessibilityHint("Opens the full badge wall")
         }
         .onAppear { registerNewBadges(earned.map(\.achievement)) }
-        .accessibilityElement(children: .combine)
     }
 
     // MARK: Pieces

@@ -417,66 +417,107 @@ private struct JourneyPresentation: Identifiable {
     let isExample: Bool
 }
 
-/// Four thin corner brackets, drawn from the app's own copper hairlines — a camera viewfinder
-/// framing a rect, in place of the last piece of stock illustration in the app.
-private struct ViewfinderBrackets: Shape {
+/// One thin corner bracket, drawn from the app's own copper hairlines — a camera viewfinder
+/// framing a rect, in place of the last piece of stock illustration in the app. Split into a
+/// per-corner `Shape` (round-11) so `ViewfinderFrame` can trim and stagger each corner's own
+/// ink-in independently instead of tracing one combined four-corner path in a single sweep.
+private struct ViewfinderCorner: Shape {
+    enum Position { case topLeading, topTrailing, bottomTrailing, bottomLeading }
+    var position: Position
     var armLength: CGFloat = 20
 
     func path(in rect: CGRect) -> Path {
         let r = rect
         var path = Path()
-        // Top-leading
-        path.move(to: CGPoint(x: r.minX, y: r.minY + armLength))
-        path.addLine(to: CGPoint(x: r.minX, y: r.minY))
-        path.addLine(to: CGPoint(x: r.minX + armLength, y: r.minY))
-        // Top-trailing
-        path.move(to: CGPoint(x: r.maxX - armLength, y: r.minY))
-        path.addLine(to: CGPoint(x: r.maxX, y: r.minY))
-        path.addLine(to: CGPoint(x: r.maxX, y: r.minY + armLength))
-        // Bottom-trailing
-        path.move(to: CGPoint(x: r.maxX, y: r.maxY - armLength))
-        path.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
-        path.addLine(to: CGPoint(x: r.maxX - armLength, y: r.maxY))
-        // Bottom-leading
-        path.move(to: CGPoint(x: r.minX + armLength, y: r.maxY))
-        path.addLine(to: CGPoint(x: r.minX, y: r.maxY))
-        path.addLine(to: CGPoint(x: r.minX, y: r.maxY - armLength))
+        switch position {
+        case .topLeading:
+            path.move(to: CGPoint(x: r.minX, y: r.minY + armLength))
+            path.addLine(to: CGPoint(x: r.minX, y: r.minY))
+            path.addLine(to: CGPoint(x: r.minX + armLength, y: r.minY))
+        case .topTrailing:
+            path.move(to: CGPoint(x: r.maxX - armLength, y: r.minY))
+            path.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+            path.addLine(to: CGPoint(x: r.maxX, y: r.minY + armLength))
+        case .bottomTrailing:
+            path.move(to: CGPoint(x: r.maxX, y: r.maxY - armLength))
+            path.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+            path.addLine(to: CGPoint(x: r.maxX - armLength, y: r.maxY))
+        case .bottomLeading:
+            path.move(to: CGPoint(x: r.minX + armLength, y: r.maxY))
+            path.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+            path.addLine(to: CGPoint(x: r.minX, y: r.maxY - armLength))
+        }
         return path
     }
 }
 
 /// The empty-state signature motif: a copper viewfinder framing a quiet crosshair, the reticle a
 /// viewfinder actually focuses on — the invitation itself (frame the shot), not a restatement of
-/// which region is selected (that's already the tab above). The frame draws itself in once from
-/// the corners on first appearance — an animated `trim`, the app's one earned ornament for this
-/// screen — then holds still; Reduce Motion gets a plain fade to the fully-drawn frame instead.
+/// which region is selected (that's already the tab above). The four corners ink themselves in
+/// once, staggered ~80ms apart, then the center dot fades up last and takes one soft settle
+/// breath before everything holds still; Reduce Motion gets a calm crossfade to the fully-drawn
+/// frame instead of any per-corner motion.
 ///
 /// Round-5: the crosshair replaces a literal camera glyph here — the third camera icon on one
 /// otherwise-empty screen, alongside the Capture button and the tab bar's own icon.
+/// Round-11: the reveal used to start on `onAppear` at the exact same moment as the surrounding
+/// `emptyState`'s own `staggeredEntrance` fade-in (0.15s delay + ~0.5s spring) — so by the time
+/// the container was actually visible, the trim was already most of the way drawn and the whole
+/// motif read as a static pop-in. The reveal now waits until that outer fade has settled before
+/// it starts, so the ink-in plays where the eye can actually see it.
 private struct ViewfinderFrame: View {
     var size: CGFloat = 140
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var revealed = false
+    @State private var dotVisible = false
+    @State private var staticVisible = false
     @State private var breatheTrigger = false
+
+    private static let corners: [ViewfinderCorner.Position] = [.topLeading, .topTrailing, .bottomTrailing, .bottomLeading]
+    private static let cornerStagger: Double = 0.08
+    private static let cornerDraw: Double = 0.5
+    /// Lets the outer `staggeredEntrance` fade (index 3 ≈ 0.15s delay + ~0.5s spring settle)
+    /// finish before this view's own ink-in starts.
+    private static let startDelay: Double = 0.4
 
     var body: some View {
         ZStack {
-            ViewfinderBrackets(armLength: 20)
-                .trim(from: 0, to: revealed ? 1 : 0)
-                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            ForEach(Array(Self.corners.enumerated()), id: \.offset) { index, corner in
+                ViewfinderCorner(position: corner, armLength: 20)
+                    .trim(from: 0, to: revealed ? 1 : 0)
+                    .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .animation(
+                        .spring(response: Self.cornerDraw, dampingFraction: 0.82)
+                            .delay(Double(index) * Self.cornerStagger),
+                        value: revealed
+                    )
+            }
             crosshair
-                .opacity(revealed ? 1 : 0)
+                .opacity(dotVisible ? 1 : 0)
         }
         .frame(width: size, height: size)
+        // Reduce Motion: every mark below is already fully drawn/opaque; only this outer opacity
+        // crossfades the whole frame in, once, with no per-corner or per-dot motion.
+        .opacity(reduceMotion ? (staticVisible ? 1 : 0) : 1)
         .onAppear {
             guard !revealed else { return }
             if reduceMotion {
                 revealed = true
+                dotVisible = true
+                withAnimation(.easeOut(duration: 0.3)) { staticVisible = true }
             } else {
-                withAnimation(.easeOut(duration: 0.65)) { revealed = true }
-                // Lets the brackets finish drawing in before the crosshair takes its one breath.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { breatheTrigger.toggle() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.startDelay) {
+                    revealed = true
+                    let lastCornerDelay = Double(Self.corners.count - 1) * Self.cornerStagger
+                    let dotDelay = lastCornerDelay + Self.cornerDraw * 0.7
+                    withAnimation(.easeOut(duration: 0.3).delay(dotDelay)) { dotVisible = true }
+                    // One soft settle breath right after the dot fades up, then everything holds
+                    // completely still.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + dotDelay + 0.3) {
+                        breatheTrigger.toggle()
+                    }
+                }
             }
         }
         .accessibilityHidden(true)

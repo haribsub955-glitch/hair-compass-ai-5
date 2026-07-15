@@ -72,21 +72,30 @@ struct ConditionsHero: View {
             // forbids. The wash now fades back out to the bare canvas by the bottom of the
             // frame, so the falling-hair backdrop breathes directly onto the page with no
             // edge, no corner radius, no shadow to announce a boundary.
+            // Round-11: the return-to-canvas stop used to sit right at the frame's bottom edge
+            // (location 1), which — stacked with the legibility scrim's own last stop still
+            // re-tinting at canvas 0.3 — landed both layers on the exact same seam, reading as a
+            // crisp tonal line where the 304pt hero frame ends. Finishing the wash's return by
+            // ~0.88 and holding bare canvas the rest of the way dissolves that edge entirely.
             LinearGradient(stops: [
                 .init(color: Clinical.canvas, location: 0),
                 .init(color: Clinical.surface.opacity(0.9), location: 0.55),
+                .init(color: Clinical.canvas, location: 0.88),
                 .init(color: Clinical.canvas, location: 1),
             ], startPoint: .top, endPoint: .bottom)
             sceneLayer
             // Legibility scrim: soft at the top (greeting), stronger over the band word,
             // clear through the middle so the simulation stays the hero — now fading through
             // canvas tones (not surface) so it never reintroduces the dissolved card edge.
+            // Round-11: the legibility peak moved slightly earlier (0.86 → 0.80) and its trailing
+            // stop now settles at fully transparent instead of canvas 0.3, so nothing re-tints
+            // the page past the band word and the hero's bottom edge disappears into bare canvas.
             LinearGradient(stops: [
                 .init(color: Clinical.canvas.opacity(0.72), location: 0),
                 .init(color: Clinical.canvas.opacity(0), location: 0.30),
                 .init(color: Clinical.canvas.opacity(0), location: 0.52),
-                .init(color: Clinical.canvas.opacity(0.85), location: 0.86),
-                .init(color: Clinical.canvas.opacity(0.3), location: 1),
+                .init(color: Clinical.canvas.opacity(0.85), location: 0.80),
+                .init(color: Clinical.canvas.opacity(0), location: 1),
             ], startPoint: .top, endPoint: .bottom)
             .allowsHitTesting(false)
             content

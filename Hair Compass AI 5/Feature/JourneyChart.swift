@@ -111,11 +111,18 @@ struct JourneyChart: View {
                     )
                     .foregroundStyle(Clinical.warning.opacity(0.08))
                 }
-                // Faint raw daily levels — the honest reality behind the smoothing.
-                ForEach(data.shedPoints) { p in
-                    PointMark(x: .value("Date", p.date), y: .value("Shed", p.raw))
-                        .symbolSize(12)
-                        .foregroundStyle(Clinical.accent.opacity(0.22))
+                // Faint raw daily levels — the honest reality behind the smoothing. Thins as the
+                // window widens: at reading distance (1M) each day is still visible; beyond that
+                // the per-day dots at discrete shed levels start fusing into dotted stripes along
+                // the gridlines, so they shrink at 3M/6M and drop out entirely at 1Y/All, leaving
+                // the smoothed line (below) as the sole carrier of long-range trend. No data is
+                // removed from the model — only this raw-dot layer scales back.
+                if let rawDotStyle {
+                    ForEach(data.shedPoints) { p in
+                        PointMark(x: .value("Date", p.date), y: .value("Shed", p.raw))
+                            .symbolSize(rawDotStyle.size)
+                            .foregroundStyle(Clinical.accent.opacity(rawDotStyle.opacity))
+                    }
                 }
                 // 7-day centered rolling mean — the trend the eye should follow.
                 ForEach(data.shedPoints) { p in
@@ -131,21 +138,6 @@ struct JourneyChart: View {
                         .interpolationMethod(.monotone)
                         .lineStyle(StrokeStyle(lineWidth: 2.5))
                         .foregroundStyle(Clinical.accent)
-                }
-                // The line labels itself at its own starting point — round-7 moved this from the
-                // line's *end* (top/trailing), where it used to collide with the echo band's own
-                // caption and, on windows with a recent trigger, the band itself. Anchoring to the
-                // first point instead keeps one label per zone: "SHEDDING" up front where the line
-                // begins, "Possible echo window" wherever its band actually falls.
-                if let first = data.shedPoints.first {
-                    PointMark(x: .value("Date", first.date), y: .value("Shed", first.smoothed))
-                        .symbolSize(0)
-                        .annotation(position: .top, alignment: .leading, spacing: 3,
-                                    overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
-                            Text("SHEDDING")
-                                .font(Clinical.eyebrow(8)).tracking(0.8)
-                                .foregroundStyle(Clinical.accent)
-                        }
                 }
                 // Dashed verticals anchor each dated event to the trend — lightened to 0.35
                 // opacity (round-7) now that the marker itself is a tick rather than a heavy dot.
@@ -198,6 +190,11 @@ struct JourneyChart: View {
                     Rectangle().frame(width: max(0, geo.size.width * progress))
                 }
             }
+            // The on-plot "SHEDDING" caps label is gone (round-11) — the series was already
+            // named twice above the chart (page context + the trajectory sentence), so a third
+            // on-plot utterance broke the "said exactly once" rule. VoiceOver still hears what
+            // the chart is via this label instead of the removed visual text.
+            .accessibilityLabel("Shedding trend, 7-day average")
         }
     }
 
@@ -367,6 +364,16 @@ struct JourneyChart: View {
                 }
             }
         }
+    }
+
+    /// Raw-dot size/opacity for the current window, or `nil` to omit the layer entirely. Reading
+    /// distance (1M) keeps the full honest-reality dot; 3M/6M thin it so it recedes behind the
+    /// trend line instead of striping the gridlines; 1Y/All drop it — the smoothed line and area
+    /// carry those journal-length windows alone.
+    private var rawDotStyle: (size: CGFloat, opacity: Double)? {
+        if windowDays <= 31 { return (12, 0.22) }
+        if windowDays <= 200 { return (7, 0.10) }
+        return nil
     }
 
     private var axisStride: Calendar.Component {
