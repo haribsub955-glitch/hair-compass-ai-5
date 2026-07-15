@@ -158,8 +158,7 @@ struct TodayView: View {
                     )
                     insightCard.staggeredEntrance(index: 9)
                     StrandDivider()
-                    learnStrip.staggeredEntrance(index: 10)
-                    statusCard.staggeredEntrance(index: 11)
+                    learnFootnote.staggeredEntrance(index: 10)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
@@ -173,6 +172,14 @@ struct TodayView: View {
                     .frame(maxWidth: .infinity)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
+
+                // A colophon, not a card: the one honest "is this current" line closes the page
+                // like the last line of a journal entry, under the garland rather than boxed
+                // above it — "System status" restated nothing the ledger above didn't already say.
+                statusCaption
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .staggeredEntrance(index: 11)
             }
             .padding(.bottom, 24)
         }
@@ -254,28 +261,42 @@ struct TodayView: View {
         celebrationReward = reward
     }
 
-    // MARK: - Learn strip (flash cards)
+    // MARK: - Learn (one rotating ink line, replacing the flash-card carousel)
 
-    private var learnStrip: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Eyebrow(text: "Learn")
-                Spacer()
-                Button("See all") { showLearn = true }
-                    .font(Clinical.eyebrow(11)).foregroundStyle(Clinical.accent)
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(learnPreview) { card in
-                        FlashCardView(card: card).frame(width: 250)
-                    }
+    /// One quiet, daily-changing invitation instead of a six-card horizontal carousel — the most
+    /// conventional dashboard idiom left on the page. The pick is deterministic (the day of year
+    /// modulo the library size), so it's the same all day and different tomorrow: the page feels
+    /// subtly alive across days without any decoration pretending to be new data. Tapping it opens
+    /// the full `LearnView` sheet — the whole library is still one tap away, nothing is lost.
+    private var learnFootnote: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Eyebrow(text: "Learn")
+            Button { showLearn = true } label: {
+                HStack(alignment: .top, spacing: 6) {
+                    Text(dailyLearnCard.question)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Clinical.accent)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Clinical.accent.opacity(0.6))
+                        .padding(.top, 2)
                 }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.clinicalPressable)
+            .accessibilityLabel("Today's learn card: \(dailyLearnCard.question)")
+            .accessibilityHint("Opens the full library")
         }
     }
 
-    private var learnPreview: [FlashCard] {
-        Array(LearnLibrary.cards.prefix(6))
+    /// Deterministic day-of-year pick — same card all day, a different one tomorrow. The library
+    /// is never empty (it's a large static literal), so the index is always in range.
+    private var dailyLearnCard: FlashCard {
+        let day = Calendar.current.ordinality(of: .day, in: .year, for: .now) ?? 1
+        return LearnLibrary.cards[day % LearnLibrary.cards.count]
     }
 
     // MARK: - Insight (hybrid: on-device AI, deterministic fallback)
@@ -317,36 +338,54 @@ struct TodayView: View {
         return images
     }
 
+    /// An unboxed margin note — the last ClinicalCard on the page's tail became this: an eyebrow,
+    /// the insight sentence directly on canvas, a hairline, then one footnote line that says the
+    /// source, the honesty caption, and the deep-analysis affordance together instead of stacking
+    /// three separate lines inside a card.
     private var insightCard: some View {
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Eyebrow(text: "Today's insight")
-                    Spacer()
-                    if let source = insight?.source {
-                        Label(source.label, systemImage: source == .onDevice ? "cpu" : "checkmark.seal")
-                            .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
-                    }
-                }
-                Text(insight?.text ?? "Reading your recent entries…")
-                    .font(.system(size: 15))
-                    .foregroundStyle(insight == nil ? Clinical.tertiary : Clinical.ink)
-                Text("For record-keeping, not diagnosis.")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
-                Button("Deep analysis with photos") {
-                    // Consent gate: the deep analysis sends scalp photos off-device, so the first
-                    // tap asks in plain language. Once granted (revocable in Privacy), straight in.
-                    if AIConsent.isGranted() {
-                        showDeepAnalysis = true
-                    } else {
-                        showAIConsent = true
-                    }
-                }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Clinical.accent)
-                    .padding(.top, 2)
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(text: "Today's insight")
+            Text(insight?.text ?? "Reading your recent entries…")
+                .font(.system(size: 15))
+                .foregroundStyle(insight == nil ? Clinical.tertiary : Clinical.ink)
+            Divider().overlay(Clinical.hairline)
+            insightFootnote
         }
+    }
+
+    /// Source label + "record-keeping, not diagnosis" + the deep-analysis affordance, said once
+    /// on one line instead of three separate statements down a card.
+    private var insightFootnote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(insightFootnoteText)
+                .font(.system(size: 11))
+                .foregroundStyle(Clinical.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button {
+                // Consent gate: the deep analysis sends scalp photos off-device, so the first
+                // tap asks in plain language. Once granted (revocable in Privacy), straight in.
+                if AIConsent.isGranted() {
+                    showDeepAnalysis = true
+                } else {
+                    showAIConsent = true
+                }
+            } label: {
+                HStack(spacing: 2) {
+                    Text("Deep analysis")
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Clinical.accent)
+            }
+            .buttonStyle(.clinicalPressable)
+        }
+    }
+
+    private var insightFootnoteText: String {
+        let base = "For record-keeping, not diagnosis."
+        guard let source = insight?.source else { return base }
+        return "\(source.label) · \(base)"
     }
 
     private var greeting: String {
@@ -356,21 +395,18 @@ struct TodayView: View {
         return name.isEmpty ? part : "\(part), \(name)"
     }
 
-    /// A quiet footer confirming the app is current — not decorative copy, an honest
-    /// reflection of when data last changed, so silence never reads as staleness.
-    private var statusCard: some View {
+    /// A quiet colophon confirming the app is current — not decorative copy, an honest
+    /// reflection of when data last changed, so silence never reads as staleness. Demoted from
+    /// its own "System status" card to a single centered caption under the meadow, the way a
+    /// book's last page carries one small printer's line instead of another heading.
+    private var statusCaption: some View {
         let lastActivity = [entries.first?.date, doses.map(\.loggedAt).max()].compactMap { $0 }.max()
-        return ClinicalCard(padding: 14) {
-            VStack(alignment: .center, spacing: 4) {
-                Eyebrow(text: "System status")
-                Text(lastActivity.map { "Up to date · last entry \($0.formatted(.relative(presentation: .named)))" }
-                     ?? "Ready for your first entry")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Clinical.secondary)
-                    .multilineTextAlignment(.center)
-            }
+        return Text(lastActivity.map { "Up to date · last entry \($0.formatted(.relative(presentation: .named)))" }
+                    ?? "Ready for your first entry")
+            .font(.system(size: 11))
+            .foregroundStyle(Clinical.tertiary)
+            .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
-        }
     }
 
     // MARK: - Dose logging

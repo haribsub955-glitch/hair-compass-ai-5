@@ -686,8 +686,10 @@ struct TodayTileGrid: View {
 
 /// One quiet ledger row: small-caps label, a state word in ink (or "not noted" in faded ink when
 /// unlogged), and — only when logged — a tiny inline trace on the right. No card surface, no
-/// stroke, no shadow; hairline `Divider`s drawn by the ledger above separate rows.
-private struct AnnotationRow: View {
+/// stroke, no shadow; hairline `Divider`s drawn by the ledger above separate rows. Internal (not
+/// file-private) so Trends' own margin-note rows (scalp/adherence) can reuse the same language
+/// instead of duplicating it.
+struct AnnotationRow: View {
     let label: String
     let value: String
     var logged: Bool
@@ -790,8 +792,9 @@ private struct RoutineLedgerRow: View {
 
 /// A tiny 40×6pt inline trace: a hairline track with a colored dot marking today's position — the
 /// ledger's whole reply to what used to be a full-size background motif. An optional shaded band
-/// (used by the trigger-watch row) marks a window of interest along the track.
-private struct MiniTrace: View {
+/// (used by the trigger-watch row) marks a window of interest along the track. Internal so Trends'
+/// scalp/adherence rows can share it.
+struct MiniTrace: View {
     let fraction: CGFloat
     var color: Color = Clinical.accent
     var bandStart: CGFloat? = nil

@@ -1,4 +1,3 @@
-import Charts
 import SwiftData
 import SwiftUI
 
@@ -116,17 +115,20 @@ struct TrendsView: View {
                     recentTrigger: triggers.first
                 )
                 .id("body-signals")
-                compareEntryCard
+                compareFootnoteRow
 
                 if windowEntries.count < 2 {
                     emptyState
                 } else {
-                    sheddingCard
-                    scalpCard
-                    adherenceCard
+                    // The hero JourneyChart above already IS the shedding chart — a second
+                    // shedding card here used to re-plot the exact same fact. Scalp and
+                    // adherence continue as quiet ledger rows instead of their own boxed charts,
+                    // in the same margin-note language as Today's signal ledger.
+                    scalpRow
+                    adherenceRows
                 }
 
-                excludedCard
+                excludedFootnote
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -174,25 +176,30 @@ struct TrendsView: View {
         }
     }
 
-    private var compareEntryCard: some View {
-        Button { showCompare = true } label: {
-            ClinicalCard(padding: 16) {
-                HStack(spacing: 12) {
-                    Image(systemName: "chart.xyaxis.line")
-                        .font(.system(size: 16)).foregroundStyle(Clinical.accent)
-                        .frame(width: 38, height: 38)
-                        .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Compare signals").font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
-                        Text("Overlay a hair-fall variable against a lifestyle statistic.")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+    /// A plain ink footnote row — replaces the boxed icon-tile card. Same destination
+    /// (`showCompare`), same overlay feature, just said once in the margin instead of inside a
+    /// card with its own 38pt tinted icon square.
+    private var compareFootnoteRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(Clinical.hairline)
+            Button { showCompare = true } label: {
+                HStack(spacing: 10) {
+                    Text("Compare signals")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Clinical.accent)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Clinical.accent.opacity(0.6))
                 }
+                .padding(.vertical, 13)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.clinicalPressable)
+            .accessibilityLabel("Compare signals")
+            .accessibilityHint("Overlays a hair-fall variable against a lifestyle statistic")
+            Divider().overlay(Clinical.hairline)
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Monthly check-ins (slow-moving, self-reported)
@@ -332,231 +339,92 @@ struct TrendsView: View {
 
     // MARK: Explicitly-not-tracked (honesty made visible)
 
-    private var excludedCard: some View {
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Eyebrow(text: "Explicitly not tracked")
-                Text("Left out on purpose — the evidence doesn't support them.")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+    /// The app's honesty made visible, demoted from its own card to a quiet small-caps footnote
+    /// block that closes the page — every excluded myth's title and reason is unchanged, only the
+    /// card edge is gone.
+    private var excludedFootnote: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider().overlay(Clinical.hairline)
+            Eyebrow(text: "Explicitly not tracked", color: Clinical.tertiary)
+            Text("Left out on purpose — the evidence doesn't support them.")
+                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+            VStack(alignment: .leading, spacing: 6) {
                 ForEach(ExcludedMyth.allCases) { myth in
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "xmark.circle").font(.system(size: 12)).foregroundStyle(Clinical.tertiary).padding(.top, 1)
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("·").font(.system(size: 12, weight: .bold)).foregroundStyle(Clinical.tertiary)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(myth.title).font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.ink)
-                            Text(myth.reason).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            Text(myth.title).font(.system(size: 12, weight: .medium)).foregroundStyle(Clinical.secondary)
+                            Text(myth.reason).font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
                         }
                     }
                 }
             }
         }
+        .padding(.top, 2)
     }
 
-    // MARK: Shedding trend
+    // MARK: Scalp severity (unboxed ledger row — the shedding chart above no longer needs an echo)
 
-    private var sheddingCard: some View {
-        let raw = windowEntries.map { Double($0.shed.rawValue) }
-        let smoothed = ChartMath.rollingMean(raw, window: 7)
-        let dir = HairAnalytics.direction(raw)
-        let points = Array(zip(windowEntries.map(\.date), smoothed))
-        let rawPoints = Array(zip(windowEntries.map(\.date), raw))
-        // Wash days read heavier for reasons that have nothing to do with a real change — marked
-        // hollow on the actual daily reading so the honest reason for a spike stays visible
-        // instead of silently blending into "shedding has been higher."
-        let washPoints: [(Date, Double)] = windowEntries.compactMap {
-            $0.washedHair ? ($0.date, Double($0.shed.rawValue)) : nil
-        }
-        return ClinicalCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Eyebrow(text: "Shedding")
-                    Spacer()
-                    directionTag(dir, invert: true)
-                }
-                Chart {
-                    // Faint raw daily values behind the trend — the honest reality.
-                    ForEach(rawPoints, id: \.0) { date, value in
-                        PointMark(x: .value("Date", date), y: .value("Shed", value))
-                            .symbolSize(12)
-                            .foregroundStyle(Clinical.accent.opacity(0.25))
-                    }
-                    ForEach(points, id: \.0) { date, value in
-                        AreaMark(x: .value("Date", date), y: .value("Shed", value))
-                            .interpolationMethod(.monotone)
-                            .foregroundStyle(LinearGradient(colors: [Clinical.accent.opacity(0.12), .clear], startPoint: .top, endPoint: .bottom))
-                        LineMark(x: .value("Date", date), y: .value("Shed", value))
-                            .interpolationMethod(.monotone)
-                            .lineStyle(.init(lineWidth: 2))
-                            .foregroundStyle(Clinical.accent)
-                    }
-                    ForEach(washPoints, id: \.0) { date, value in
-                        PointMark(x: .value("Date", date), y: .value("Shed", value))
-                            .symbol {
-                                Circle()
-                                    .strokeBorder(Clinical.ink, lineWidth: 1.3)
-                                    .frame(width: 7, height: 7)
-                            }
-                    }
-                }
-                .frame(height: 150)
-                .chartYScale(domain: 0...3)
-                .chartYAxis { yAxis([0, 1, 2, 3], labels: ["Low", "Normal", "High", "Heavy"]) }
-                .chartXAxis { xAxis }
-                if !washPoints.isEmpty {
-                    HStack(spacing: 5) {
-                        Circle().strokeBorder(Clinical.ink, lineWidth: 1.2).frame(width: 7, height: 7)
-                        Text("Wash day — shed reads heavier, not necessarily worse.")
-                            .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: Scalp severity trend
-
-    private var scalpCard: some View {
+    /// Round-6: the shedding trend used to get its own second `Chart` here, re-plotting the exact
+    /// fact the hero `JourneyChart` already shows. That card is gone; scalp continues in the same
+    /// margin-note ledger language as Today's signal ledger — one row, a current reading, a tiny
+    /// inline trace, no card.
+    private var scalpRow: some View {
         let raw = windowEntries.map { Double($0.scalpTotal) }
-        let smoothed = ChartMath.rollingMean(raw, window: 7)
         let dir = HairAnalytics.direction(raw)
-        let points = Array(zip(windowEntries.map(\.date), smoothed))
-        let rawPoints = Array(zip(windowEntries.map(\.date), raw))
-        return ClinicalCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Eyebrow(text: "Scalp severity (0–16)")
-                    Spacer()
-                    directionTag(dir, invert: true)
-                }
-                Chart {
-                    ForEach([5.5, 9.5], id: \.self) { threshold in
-                        RuleMark(y: .value("band", threshold))
-                            .lineStyle(.init(lineWidth: 1, dash: [3, 4]))
-                            .foregroundStyle(Clinical.hairline)
-                    }
-                    // Faint raw daily values behind the trend — the honest reality.
-                    ForEach(rawPoints, id: \.0) { date, value in
-                        PointMark(x: .value("Date", date), y: .value("Score", value))
-                            .symbolSize(12)
-                            .foregroundStyle(Clinical.ink.opacity(0.25))
-                    }
-                    ForEach(points, id: \.0) { date, value in
-                        LineMark(x: .value("Date", date), y: .value("Score", value))
-                            .interpolationMethod(.monotone)
-                            .lineStyle(.init(lineWidth: 2))
-                            .foregroundStyle(Clinical.ink)
-                    }
-                }
-                .frame(height: 150)
-                .chartYScale(domain: 0...16)
-                .chartYAxis { yAxis([0, 5, 10, 16], labels: ["0", "5", "10", "16"]) }
-                .chartXAxis { xAxis }
-                Text("Bands: 0–5 mild · 6–9 moderate · 10–16 severe.")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
-            }
+        let (trend, tint) = trendWord(dir, invert: true)
+        let latest = windowEntries.last
+        let value = latest.map { "\($0.scalpTotal)/16 · \(trend)" } ?? "Not enough data"
+        return VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(Clinical.hairline)
+            AnnotationRow(
+                label: "Scalp",
+                value: value,
+                logged: latest != nil,
+                valueColor: latest == nil ? Clinical.ink : tint,
+                trace: latest.map { AnyView(MiniTrace(fraction: min(1, CGFloat($0.scalpTotal) / 16), color: Clinical.ink)) }
+            )
         }
     }
 
-    // MARK: Adherence
+    // MARK: Adherence (unboxed ledger rows)
 
-    private var adherenceCard: some View {
+    /// Round-6: dissolved out of its own `ClinicalCard` with a per-treatment progress bar into
+    /// continuation rows of the same ledger — the 14-day percentage now lives in the row's own
+    /// value slot instead of a separate bar widget.
+    @ViewBuilder
+    private var adherenceRows: some View {
         // "Daily" is schedule-driven (not class-driven), so `.other`-class items with slots count.
         let daily = treatments.filter { !$0.slots.isEmpty && $0.isActive }
-        return ClinicalCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Eyebrow(text: "14-day adherence")
-                if daily.isEmpty {
-                    Text("Add a daily treatment in Care to track adherence.")
-                        .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
-                } else {
-                    ForEach(daily) { t in
-                        let dates = doses.filter { $0.treatment?.persistentModelID == t.persistentModelID }.map(\.loggedAt)
-                        let pct = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.slots.count) ?? 0
-                        adherenceRow(t.name, pct: pct)
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            if daily.isEmpty {
+                AnnotationRow(label: "Adherence", value: "Add a daily treatment in Care", logged: false)
+            } else {
+                ForEach(daily) { t in
+                    let dates = doses.filter { $0.treatment?.persistentModelID == t.persistentModelID }.map(\.loggedAt)
+                    let pct = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.slots.count) ?? 0
+                    let tint = pct >= 0.8 ? Clinical.positive : Clinical.warning
+                    AnnotationRow(
+                        label: t.treatmentClass.title,
+                        value: "\(Int((pct * 100).rounded()))% · 14d",
+                        logged: true,
+                        valueColor: tint,
+                        trace: AnyView(MiniTrace(fraction: CGFloat(pct), color: tint))
+                    )
                 }
             }
+            Divider().overlay(Clinical.hairline)
         }
     }
 
-    private func adherenceRow(_ name: String, pct: Double) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(name).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-                Spacer()
-                Text("\(Int((pct * 100).rounded()))%").font(Clinical.number(14)).foregroundStyle(Clinical.ink)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Clinical.canvas)
-                    Capsule().fill(pct >= 0.8 ? Clinical.positive : Clinical.warning)
-                        .frame(width: max(6, geo.size.width * pct))
-                }
-            }
-            .frame(height: 8)
-        }
-    }
-
-    // MARK: chart helpers
-
-    private func directionTag(_ dir: Double, invert: Bool) -> some View {
+    /// Direction word + tint shared by every trend row — replaces the old chart-header
+    /// `directionTag` Label now that scalp reads as ledger text instead of a chart title.
+    private func trendWord(_ dir: Double, invert: Bool) -> (String, Color) {
         let improving = invert ? dir < -0.05 : dir > 0.05
         let worsening = invert ? dir > 0.05 : dir < -0.05
-        let (text, color, icon): (String, Color, String) =
-            improving ? ("Improving", Clinical.positive, "arrow.down.right")
-            : worsening ? ("Rising", Clinical.warning, "arrow.up.right")
-            : ("Steady", Clinical.tertiary, "arrow.right")
-        return Label(text, systemImage: icon)
-            .font(Clinical.eyebrow(11))
-            .foregroundStyle(color)
-    }
-
-    private var xAxis: some AxisContent {
-        AxisMarks(values: .stride(by: xAxisStride)) { value in
-            AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
-            AxisValueLabel {
-                if let d = value.as(Date.self) {
-                    Text(d.formatted(xAxisFormat))
-                        .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-                }
-            }
-        }
-    }
-
-    /// Denser stride at short ranges, coarser at long ones — a year-plus of daily data crammed
-    /// into monthly ticks would read as a solid smear of labels.
-    private var xAxisStride: Calendar.Component {
-        switch range {
-        case .m1: return .weekOfYear
-        case .m3, .m6: return .month
-        case .y1, .all: return .quarter
-        }
-    }
-
-    /// Month-only reads fine inside one calendar year; past that the same "Jan" tick would
-    /// repeat every year with nothing to tell them apart, so the year joins the label.
-    private var xAxisFormat: Date.FormatStyle {
-        switch range {
-        case .m1: return .dateTime.month(.abbreviated).day()
-        case .m3, .m6: return .dateTime.month(.abbreviated)
-        case .y1, .all: return .dateTime.month(.abbreviated).year(.twoDigits)
-        }
-    }
-
-    private func yAxis(_ values: [Double], labels: [String]) -> some AxisContent {
-        AxisMarks(position: .leading, values: values) { value in
-            AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
-            AxisValueLabel {
-                if let v = value.as(Double.self), let idx = values.firstIndex(of: v) {
-                    // Complete words only (no abbreviations that could read as truncated) —
-                    // fixedSize + a wide-enough gutter guarantees every label draws in full.
-                    Text(labels[idx])
-                        .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-                        .lineLimit(1)
-                        .fixedSize()
-                        .frame(width: 44, alignment: .trailing)   // pin gutter — stops horizontal breathing
-                }
-            }
-        }
+        if improving { return ("Improving", Clinical.positive) }
+        if worsening { return ("Rising", Clinical.warning) }
+        return ("Steady", Clinical.tertiary)
     }
 }
 

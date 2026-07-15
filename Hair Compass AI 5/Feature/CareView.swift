@@ -92,18 +92,18 @@ struct CareView: View {
 
                 // Same cap as the last treatment card above — lands in the same beat, no
                 // renumbering of the fixed indices elsewhere in this stack required.
-                proceduresCard.staggeredEntrance(index: 12)
+                proceduresSection.staggeredEntrance(index: 12)
 
                 // New card, new trailing index — appended past the capped treatment/procedures
                 // beat rather than renumbering any index above.
-                progressCheckInCard.staggeredEntrance(index: 13)
+                progressCheckInSection.staggeredEntrance(index: 13)
 
                 // Same trailing pattern one index later — a life event (illness, crash diet,
                 // childbirth, a new medication…) is the only entry point to `TriggerEvent`
                 // outside onboarding, so every downstream surface that reads dated triggers
                 // (journey markers, insights, the clinician export) stays usable for the whole
                 // life of the record, not just its first day.
-                lifeEventCard.staggeredEntrance(index: 14)
+                lifeEventSection.staggeredEntrance(index: 14)
 
                 // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
                 // straight to it and must never catch a mid-fade frame.
@@ -704,111 +704,101 @@ struct CareView: View {
     }
 
     private var empty: some View {
-        ClinicalCard {
-            VStack(spacing: 8) {
-                // The laurel medallion as the empty-state emblem — the 24-week journey this
-                // card invites you to start, in the brand's own hand rather than an SF Symbol.
-                Image(BrandArt.medallion)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 96, height: 96)
-                    .accessibilityHidden(true)
-                Eyebrow(text: "No treatments")
-                Text("Add minoxidil, finasteride, or a procedure to build your daily routine and track the 24-week window.")
-                    .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
-                    .multilineTextAlignment(.center)
-                Button("Add treatment") { showAdd = true }
-                    .buttonStyle(ClinicalButtonStyle())
-                    .padding(.top, 4)
-            }
-            .frame(maxWidth: .infinity)
+        VStack(spacing: 8) {
+            // The laurel medallion as the empty-state emblem — the 24-week journey this
+            // card invites you to start, in the brand's own hand rather than an SF Symbol.
+            Image(BrandArt.medallion)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 96, height: 96)
+                .accessibilityHidden(true)
+            Eyebrow(text: "No treatments")
+            Text("Add minoxidil, finasteride, or a procedure to build your daily routine and track the 24-week window.")
+                .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                .multilineTextAlignment(.center)
+            Button("Add treatment") { showAdd = true }
+                .buttonStyle(ClinicalButtonStyle())
+                .padding(.top, 4)
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: Procedures
 
-    /// Compact entry card mirroring the treatment cards: the next couple of upcoming
-    /// appointments (if any) plus an add action. The full booked/done list lives in
-    /// `ProceduresView`, one tap away — this card never disturbs the treatment content around it.
-    private var proceduresCard: some View {
-        Button { showProcedures = true } label: {
-            ClinicalCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Eyebrow(text: "Procedures")
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
-                    }
-                    if upcomingProcedures.isEmpty {
-                        Text("Book PRP, microneedling, or another in-clinic procedure and get a reminder the day before.")
-                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        ForEach(upcomingProcedures.prefix(2)) { appt in
-                            HStack(spacing: 10) {
-                                Image(systemName: appt.type.symbol)
-                                    .font(.system(size: 13)).foregroundStyle(Clinical.sage)
-                                    .frame(width: 28, height: 28)
-                                    .background(Clinical.sage.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(appt.type.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-                                    Text(appt.date.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                                }
-                                Spacer()
-                            }
-                        }
-                        if upcomingProcedures.count > 2 {
-                            Text("+ \(upcomingProcedures.count - 2) more")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
-                        }
-                    }
-                    Text(upcomingProcedures.isEmpty ? "Add procedure" : "See all")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+    /// Round-6: dissolved out of its own `ClinicalCard` into a continuation of the same
+    /// hairline-ruled ledger the rest of the page reads as — an eyebrow heading row that opens
+    /// `ProceduresView`, then each upcoming appointment as a dated entry row. Same data, same
+    /// destination, no card edge.
+    private var proceduresSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(Clinical.hairline)
+            ledgerSectionHeader("Procedures") { showProcedures = true }
+            if upcomingProcedures.isEmpty {
+                Text("Book PRP, microneedling, or another in-clinic procedure and get a reminder the day before.")
+                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 13)
+            } else {
+                ForEach(upcomingProcedures.prefix(2)) { appt in
+                    LedgerEntryRow(
+                        date: appt.date.formatted(.dateTime.month(.abbreviated).day()),
+                        title: appt.type.title,
+                        caption: appt.date.formatted(date: .omitted, time: .shortened)
+                    )
+                }
+                if upcomingProcedures.count > 2 {
+                    Text("+ \(upcomingProcedures.count - 2) more")
+                        .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        .padding(.bottom, 10)
                 }
             }
+            Divider().overlay(Clinical.hairline)
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: Life events (dated TE triggers)
 
-    /// A compact entry card in the same family as `proceduresCard`: the most recent recorded
-    /// event (if any) plus an add action. Kept quiet and optional — this is a record, never a
-    /// prompt suggesting something is wrong.
-    private var lifeEventCard: some View {
-        Button { showAddTrigger = true } label: {
-            ClinicalCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Eyebrow(text: "Life events")
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
-                    }
-                    if let latest = triggerEvents.sorted(by: { $0.date > $1.date }).first {
-                        HStack(spacing: 10) {
-                            Image(systemName: latest.type.symbol)
-                                .font(.system(size: 13)).foregroundStyle(Clinical.warning)
-                                .frame(width: 28, height: 28)
-                                .background(Clinical.warning.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(latest.type.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-                                Text(latest.date.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                            }
-                            Spacer()
-                        }
-                    } else {
-                        Text("An illness, a crash diet, childbirth, major stress, or a new medication — dating it lets a shedding change 2–3 months later explain itself instead of looking random.")
-                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Text(triggerEvents.isEmpty ? "Log an event" : "Log another")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
-                }
+    /// A ledger section in the same family as `proceduresSection`: the most recent recorded
+    /// event (if any) as a dated row, an eyebrow heading that opens the add sheet. Kept quiet and
+    /// optional — this is a record, never a prompt suggesting something is wrong.
+    private var lifeEventSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(Clinical.hairline)
+            ledgerSectionHeader("Life events") { showAddTrigger = true }
+            if let latest = triggerEvents.sorted(by: { $0.date > $1.date }).first {
+                LedgerEntryRow(
+                    date: latest.date.formatted(.dateTime.month(.abbreviated).day()),
+                    title: latest.type.title
+                )
+                .padding(.bottom, 10)
+            } else {
+                Text("An illness, a crash diet, childbirth, major stress, or a new medication — dating it lets a shedding change 2–3 months later explain itself instead of looking random.")
+                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 13)
             }
+            Divider().overlay(Clinical.hairline)
         }
-        .buttonStyle(.plain)
+    }
+
+    /// A quiet eyebrow-heading row that opens a destination — the shared header for Plan's
+    /// below-the-fold ledger sections (Procedures, Life events, Progress check-in). Replaces each
+    /// section's old boxed `Eyebrow + chevron` row with the exact same tap target and chevron,
+    /// just without the card it used to sit inside.
+    private func ledgerSectionHeader(_ title: String, trailing: AnyView? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Eyebrow(text: title)
+                if let trailing { trailing }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Clinical.tertiary)
+            }
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.clinicalPressable)
     }
 
     // MARK: Progress check-in
@@ -832,36 +822,26 @@ struct CareView: View {
     }
 
     /// The dermatologist's between-visit questions (new regrowth, density/shedding/hairline
-    /// trend, overall, scalp red flag), captured monthly. A compact entry card in the same
-    /// family as `proceduresCard`/`guidanceCard` — last date, a "Due" chip, and a trailing
-    /// link-style action rather than a full-bleed button, so it reads as one more item in the
-    /// card stack rather than a standalone form.
-    private var progressCheckInCard: some View {
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Eyebrow(text: "Progress check-in")
-                    Spacer()
-                    if isProgressCheckInDue {
-                        statusChip("Due", symbol: "calendar.badge.exclamationmark", tint: Clinical.warning)
-                    }
-                }
-                Text(checkIns.first.map { "Last check-in \($0.date.formatted(date: .abbreviated, time: .omitted))" } ?? "Not done yet")
-                    .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-                Text("The between-visit questions a dermatologist asks — new baby hairs, density, shedding, hairline, scalp symptoms.")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button {
-                    showProgressCheckIn = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("New check-in").font(.system(size: 13, weight: .semibold))
-                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(Clinical.accent)
-                }
-                .buttonStyle(.plain)
-            }
+    /// trend, overall, scalp red flag), captured monthly. Round-6: dissolved into the same
+    /// ledger section language as `proceduresSection`/`lifeEventSection` — the heading row itself
+    /// opens the new check-in sheet, the "Due" chip rides beside it, and the last-check-in date
+    /// plus the explainer sentence continue underneath as plain lines instead of a boxed form.
+    private var progressCheckInSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(Clinical.hairline)
+            ledgerSectionHeader(
+                "Progress check-in",
+                trailing: isProgressCheckInDue
+                    ? AnyView(statusChip("Due", symbol: "calendar.badge.exclamationmark", tint: Clinical.warning))
+                    : nil
+            ) { showProgressCheckIn = true }
+            Text(checkIns.first.map { "Last check-in \($0.date.formatted(date: .abbreviated, time: .omitted))" } ?? "Not done yet")
+                .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.ink)
+            Text("The between-visit questions a dermatologist asks — new baby hairs, density, shedding, hairline, scalp symptoms.")
+                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 13)
+            Divider().overlay(Clinical.hairline)
         }
     }
 
@@ -1035,42 +1015,39 @@ private struct RoutineStepRow: View {
     /// alongside the surrounding row text instead of staying a fixed 24pt dot.
     @ScaledMetric(relativeTo: .body) private var checkDiameter: CGFloat = 24
 
-    /// Meds read copper, device/in-office work reads sage — both straight from the palette.
-    private var classTint: Color {
-        switch treatment.treatmentClass {
-        case .microneedling, .prp, .lllt: return Clinical.sage
-        default: return Clinical.accent
-        }
-    }
-
     private var name: String {
         treatment.name.isEmpty ? treatment.treatmentClass.title : treatment.name
     }
 
-    /// "08:00 · Minoxidil" collapses to "08:00" when the class title is already in the name.
-    private var subtitle: String {
-        let lead = periodic ? "As scheduled" : slot
-        let cls = treatment.treatmentClass.title
-        return name.localizedCaseInsensitiveContains(cls) ? lead : "\(lead) · \(cls)"
+    /// The left-hand ledger column — a slot time ("08:00") or, for a periodic care product with
+    /// no clock time, a short "TODAY" in the same monospaced column, matching Today's own signal
+    /// ledger typography instead of a tinted class-icon square.
+    private var timeLabel: String {
+        periodic ? "TODAY" : slot
     }
 
-    /// Round: dropped the separate (i) button — every row used to carry a filled checkmark AND
-    /// an (i) button, redundant chrome on every single step. The whole leading content (icon +
-    /// name + subtitle) is now the tap target for the dosing-instruction disclosure; the
-    /// checkmark stays its own trailing tap target for logging the dose.
+    /// The class title only shows up as its own line when the treatment's own name doesn't
+    /// already say it (e.g. a treatment literally named "Minoxidil" doesn't need "Minoxidil"
+    /// repeated underneath).
+    private var classSubtitle: String? {
+        let cls = treatment.treatmentClass.title
+        return name.localizedCaseInsensitiveContains(cls) ? nil : cls
+    }
+
+    /// Round-6: the 31pt tinted class-icon square is gone — the last card-chrome holdout inside
+    /// the ritual column. What replaces it is ledger typography: a small monospaced time/"TODAY"
+    /// column on the left (matching Today's signal ledger), the treatment name in ink, and its
+    /// class as a secondary line only when it isn't already implied by the name.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Button(action: onInfo) {
                     HStack(spacing: 12) {
-                        Image(systemName: treatment.treatmentClass.symbol)
-                            .font(.system(size: 14))
-                            .foregroundStyle(classTint)
-                            .frame(width: 31, height: 31)
-                            .background(classTint.opacity(done ? 0.06 : 0.12),
-                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                            .opacity(done ? 0.6 : 1)
-                            .accessibilityHidden(true)
+                        Text(timeLabel.uppercased())
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Clinical.secondary)
+                            .frame(width: 46, alignment: .leading)
+                            .opacity(done ? 0.55 : 1)
                         VStack(alignment: .leading, spacing: 2) {
                             // No strikethrough: this is a current-medication list, and a
                             // struck-through drug name reads clinically as "discontinued" —
@@ -1091,14 +1068,16 @@ private struct RoutineStepRow: View {
                                         .offset(y: 2)
                                         .allowsHitTesting(false)
                                 }
-                            Text(subtitle)
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            if let classSubtitle {
+                                Text(classSubtitle)
+                                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            }
                         }
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(name), \(subtitle)")
+                .accessibilityLabel(accessibilityLabel)
                 .accessibilityHint("Shows dosing instructions")
                 Spacer()
                 checkButton
@@ -1106,9 +1085,17 @@ private struct RoutineStepRow: View {
             if expanded {
                 Text(TreatmentGuide.instruction(for: treatment.treatmentClass))
                     .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                    .padding(.leading, 43)   // aligns under the text column (31pt chip + 12 gap)
+                    .padding(.leading, 58)   // aligns under the text column (46pt time column + 12 gap)
             }
         }
+    }
+
+    /// Spoken form of what the row now shows visually — the time/"as scheduled" lead plus the
+    /// class, exactly what the old combined `subtitle` string used to say.
+    private var accessibilityLabel: String {
+        let lead = periodic ? "As scheduled" : slot
+        let cls = classSubtitle.map { ", \($0)" } ?? ""
+        return "\(name), \(lead)\(cls)"
     }
 
     /// Runs the name underline's draw-in → hold → fade sequence once, only on a genuine
@@ -1206,5 +1193,35 @@ struct ProgressBar: View {
                 Capsule().fill(tint).frame(width: max(6, geo.size.width * min(1, max(0, value))))
             }
         }
+    }
+}
+
+/// A quiet ledger entry row: a small monospaced date column on the left, a title in ink, and an
+/// optional caption line — used by Plan's below-the-fold sections (Procedures, Life events) once
+/// they dissolved out of their `ClinicalCard`s. No card, no icon tile; hairline `Divider`s drawn
+/// by the section around it separate entries.
+private struct LedgerEntryRow: View {
+    let date: String
+    let title: String
+    var caption: String? = nil
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(date.uppercased())
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(Clinical.tertiary)
+                .frame(width: 40, alignment: .leading)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                if let caption {
+                    Text(caption).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(caption.map { "\(title), \($0), \(date)" } ?? "\(title), \(date)")
     }
 }
