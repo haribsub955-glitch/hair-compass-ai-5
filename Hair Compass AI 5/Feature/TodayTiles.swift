@@ -473,7 +473,11 @@ struct TodayTileGrid: View {
         if stressLogged || expandedUnlogged { add(stressRow) }
         if oilLogged || expandedUnlogged { add(oilRow) }
         if !expandedUnlogged && !unloggedLabels.isEmpty { add(collapsedUnloggedRow) }
-        if medsTotal > 0 { add(medsRow) }
+        // Round-7 fix: when the ROUTINE ledger below has rows to show, they already display these
+        // exact doses live (checkable circles) — a "Meds N/M" readout directly above would say the
+        // same fact twice. `medsRow` now only appears as a fallback for meds that exist but for
+        // whatever reason produced no routine rows today (e.g. every dose is off-schedule).
+        if medsTotal > 0 && routineSteps.isEmpty { add(medsRow) }
         if let triggerWeeks { add(triggerRow(weeks: triggerWeeks)) }
         if !routineSteps.isEmpty {
             add(routineHeaderRow)
@@ -487,14 +491,29 @@ struct TodayTileGrid: View {
 
     /// One small-caps label row — replaces the boxed "Today's checklist" card's Eyebrow, now a
     /// continuation of the same hairline-ruled ledger instead of its own heading over its own box.
+    /// Round-7: carries the remaining-dose count that used to be its own "Meds N/M" row above —
+    /// a quiet right-aligned counter that ticks down (with a soft spring) as circles below are
+    /// checked, so the header itself answers "how many left" instead of restating the ledger.
     private var routineHeaderRow: some View {
         HStack {
             Text("ROUTINE")
                 .font(Clinical.eyebrow(10)).tracking(1.2)
                 .foregroundStyle(Clinical.tertiary)
             Spacer()
+            if medsTotal > 0 {
+                Text(medsRemainingLabel)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(medsDone >= medsTotal ? Clinical.positive : Clinical.tertiary)
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.4, dampingFraction: 0.78), value: medsTotal - medsDone)
+            }
         }
         .padding(.vertical, 13)
+    }
+
+    private var medsRemainingLabel: String {
+        let remaining = medsTotal - medsDone
+        return remaining <= 0 ? "Done" : "\(remaining) left"
     }
 
     private func routineStepRow(_ treatment: Treatment, slot: String) -> some View {
@@ -637,6 +656,9 @@ struct TodayTileGrid: View {
         )
     }
 
+    /// Fallback-only readout (see `visibleRows`) — no LevelDots trace alongside the chevron
+    /// anymore, since dots + chevron read as two affordances for one tap target. The chevron
+    /// alone (from `action`) is enough.
     private var medsRow: some View {
         AnnotationRow(
             label: "Meds",
@@ -644,21 +666,20 @@ struct TodayTileGrid: View {
             logged: true,
             valueColor: medsDone >= medsTotal ? Clinical.positive : Clinical.ink,
             action: onOpenPlan,
-            actionHint: "Opens today's treatment plan",
-            trace: AnyView(LevelDots(filled: medsDone, total: min(max(medsTotal, 1), 8), color: Clinical.accent))
+            actionHint: "Opens today's treatment plan"
         )
     }
 
-    /// Telogen-effluvium watch: the trace's shaded band marks the 8–12 week window where
-    /// trigger-driven shedding typically peaks; the dot marks where today sits in the 16-week watch.
+    /// Telogen-effluvium watch: margin ink, not a control — a hairline rule with one copper tick
+    /// marking today's week and a faint sage band over the 8–12 week peak-shedding window. Round-7
+    /// replaced a dot-on-track trace that read as a draggable slider knob; this has none.
     private func triggerRow(weeks: Int) -> some View {
         AnnotationRow(
             label: "Trigger watch",
             value: "Week \(weeks) of 16",
             logged: true,
             valueColor: Clinical.warning,
-            trace: AnyView(MiniTrace(fraction: min(1, CGFloat(weeks) / 16), color: Clinical.warning,
-                                      bandStart: 0.5, bandWidth: 0.25))
+            trace: AnyView(TriggerTickTrace(fraction: min(1, CGFloat(weeks) / 16)))
         )
     }
 
@@ -817,6 +838,44 @@ struct MiniTrace: View {
             }
         }
         .frame(width: 40, height: 6)
+    }
+}
+
+/// Margin-ink reading for the trigger watch: a 1pt `Clinical.hairline` rule, a faint sage band
+/// over the 8–12-week peak-shedding window, and one copper tick marking today's week — annotation
+/// language, not a control. Round-7 replaced this row's previous dot-on-track trace, which read as
+/// a slider knob competing with the ledger's real controls (the routine circles below it). The
+/// tick slides in once from week 0 to its resting position on first appearance; under Reduce
+/// Motion it simply appears already settled, matching every other one-time draw-in in this file.
+private struct TriggerTickTrace: View {
+    let fraction: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var arrived = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            ZStack(alignment: .leading) {
+                Capsule().fill(Clinical.hairline).frame(height: 1)
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(Clinical.sage.opacity(0.3))
+                    .frame(width: w * 0.25, height: 4)
+                    .offset(x: w * 0.5)
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(Clinical.accent)
+                    .frame(width: 2, height: 8)
+                    .offset(x: max(0, min(w - 2, w * (arrived ? fraction : 0) - 1)))
+            }
+        }
+        .frame(width: 40, height: 8)
+        .onAppear {
+            guard !arrived else { return }
+            if reduceMotion {
+                arrived = true
+            } else {
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.8).delay(0.1)) { arrived = true }
+            }
+        }
     }
 }
 

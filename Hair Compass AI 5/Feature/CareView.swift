@@ -56,7 +56,7 @@ struct CareView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenHeader(
-                    eyebrow: "Your plan",
+                    eyebrow: "Ritual",
                     title: "Plan",
                     trailing: AnyView(
                         HeaderActionButton(systemName: "plus", accessibilityLabel: "Add treatment") {
@@ -430,25 +430,32 @@ struct CareView: View {
 
     /// The gold milestone bar, demoted from its own card to the one-line annotation that closes
     /// the routine list — its full body text still reaches VoiceOver via the accessibility label.
+    /// Round-7: restyled to match the Evidence/Reminders footnote family below it — the hourglass
+    /// glyph and mono small-caps face are gone, replaced by a 12pt copper circular-progress ring
+    /// (the same reading `milestoneProgress` already computed) and a plain 13pt sentence. The tail
+    /// used to mix four typographic families across five rows; this is now one of them.
     private func milestoneFootnote(_ m: Milestone) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: m.symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Clinical.gold)
-            Text(m.title)
-                .font(Clinical.eyebrow(10))
-                .foregroundStyle(Clinical.secondary)
+        let progress = milestoneProgress(m)
+        return HStack(spacing: 8) {
+            MilestoneProgressRing(progress: progress ?? 1)
+            Text(milestoneDisplayTitle(m, progress: progress))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Clinical.ink)
                 .lineLimit(1)
-            if let progress = milestoneProgress(m), progress < 1 {
-                // Just the number — some milestone titles ("halfway there") already end in
-                // "there"; appending "% there" a second time read as "halfway there · 83% there".
-                Text("· \(Int((progress * 100).rounded()))%")
-                    .font(Clinical.eyebrow(10))
-                    .foregroundStyle(Clinical.tertiary)
-            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(m.title). \(m.body)")
+    }
+
+    /// "Finasteride · halfway there · 83%" — the milestone's own colon-joined title reworded with
+    /// the ledger's "·" separator, plus the percentage the ring is also drawing, spoken once in
+    /// text for anyone not reading the ring itself.
+    private func milestoneDisplayTitle(_ m: Milestone, progress: Double?) -> String {
+        var text = m.title.replacingOccurrences(of: ": ", with: " · ")
+        if let progress, progress < 1 {
+            text += " · \(Int((progress * 100).rounded()))%"
+        }
+        return text
     }
 
     /// A single hairline-ruled footnote row — decongested from an icon-tile card with its own
@@ -618,11 +625,13 @@ struct CareView: View {
 
     /// Round-5: demoted from a boxed `ClinicalCard` with its own icon tile — the page's last
     /// surviving box — to a plain hairline-ruled footnote row in the same family as
-    /// `guidanceCard`/`remindersCard`. Same exact 24-week copy, unstyled by any container edge.
+    /// `guidanceCard`/`remindersCard`. Round-7: shortened from a three-line paragraph to the one
+    /// sentence that actually matters — the tail was stacking four typographic families across
+    /// five rows, and this closing line was the longest of them.
     private var gateExplainer: some View {
         VStack(spacing: 0) {
             Divider().overlay(Clinical.hairline)
-            Text("Hair-density change is judged at 24 weeks in clinical trials. Each treatment shows its progress toward that milestone — resist judging sooner.")
+            Text("Density change is judged at 24 weeks — resist judging sooner.")
                 .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 13)
@@ -1177,6 +1186,35 @@ private struct RoutineHairlineProgress: View {
                 shown = true
             } else {
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2)) { shown = true }
+            }
+        }
+    }
+}
+
+/// Round-7: the milestone footnote's leading mark — a tiny 12pt copper ring standing in for the
+/// hourglass glyph + mono percentage it replaced. Its arc fills once on first appearance with a
+/// soft spring, matching every other one-time draw-in in this file; under Reduce Motion it simply
+/// appears already at its final reading, with no arc animation.
+private struct MilestoneProgressRing: View {
+    let progress: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var filled = false
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Clinical.hairline, lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: filled ? min(1, max(0, progress)) : 0)
+                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 12, height: 12)
+        .onAppear {
+            guard !filled else { return }
+            if reduceMotion {
+                filled = true
+            } else {
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.85).delay(0.15)) { filled = true }
             }
         }
     }

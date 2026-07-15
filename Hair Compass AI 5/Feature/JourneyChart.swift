@@ -118,25 +118,29 @@ struct JourneyChart: View {
                         .lineStyle(StrokeStyle(lineWidth: 2.5))
                         .foregroundStyle(Clinical.accent)
                 }
-                // The line labels itself at its own terminal point — replaces the legend row's
-                // "Shedding" key with an inline small-caps tag right where the ink actually is.
-                if let last = data.shedPoints.last {
-                    PointMark(x: .value("Date", last.date), y: .value("Shed", last.smoothed))
+                // The line labels itself at its own starting point — round-7 moved this from the
+                // line's *end* (top/trailing), where it used to collide with the echo band's own
+                // caption and, on windows with a recent trigger, the band itself. Anchoring to the
+                // first point instead keeps one label per zone: "SHEDDING" up front where the line
+                // begins, "Possible echo window" wherever its band actually falls.
+                if let first = data.shedPoints.first {
+                    PointMark(x: .value("Date", first.date), y: .value("Shed", first.smoothed))
                         .symbolSize(0)
-                        .annotation(position: .top, alignment: .trailing, spacing: 3,
+                        .annotation(position: .top, alignment: .leading, spacing: 3,
                                     overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
                             Text("SHEDDING")
                                 .font(Clinical.eyebrow(8)).tracking(0.8)
                                 .foregroundStyle(Clinical.accent)
                         }
                 }
-                // Dashed verticals anchor each dated event to the trend.
+                // Dashed verticals anchor each dated event to the trend — lightened to 0.35
+                // opacity (round-7) now that the marker itself is a tick rather than a heavy dot.
                 ForEach(data.markers) { m in
                     RuleMark(x: .value("Date", m.date))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 4]))
-                        .foregroundStyle(m.color.opacity(0.45))
+                        .foregroundStyle(m.color.opacity(0.35))
                 }
-                // Event dots — staggered onto a second row when two events land close together.
+                // Event ticks — staggered onto a second row when two events land close together.
                 // Meaning is tap-to-reveal only now (see `markerBadge`), so there's no permanent
                 // tag label competing with the trend line for attention.
                 ForEach(data.markers) { m in
@@ -194,12 +198,11 @@ struct JourneyChart: View {
     }
 
     /// Round-5: shrunk from a 20×20 "balloon" (white disc, stroked ring, drop shadow, permanent
-    /// tag label) to a small solid glyph dot sitting right on its dashed vertical — the trend
-    /// line stays the one thing the eye reads at a glance, and every marker's meaning still
-    /// surfaces on tap via `markerDisclosure`. Its kind's own color is kept (procedure copper,
-    /// start gold, stop grey, trigger warning, note sage) since that's real information, not
-    /// decoration — collapsing every kind to one hue would cost the chart its only way to tell
-    /// "started" from "life event" at a glance.
+    /// tag label) to a small solid glyph dot sitting right on its dashed vertical. Round-7: lightened
+    /// further, from that haloed dot to an 8pt tick — the chart's heaviest ink used to mark its
+    /// least important events (a tap-to-reveal detail), competing with the trend line itself for
+    /// attention. A plain tick still carries its kind's own color (procedure copper, start gold,
+    /// stop grey, trigger warning, note sage) since that's real information, not decoration.
     private func markerBadge(_ m: JourneyData.Marker) -> some View {
         Button {
             withAnimation(.easeOut(duration: 0.15)) {
@@ -207,11 +210,10 @@ struct JourneyChart: View {
             }
             UISelectionFeedbackGenerator().selectionChanged()
         } label: {
-            ZStack {
-                Circle().fill(m.color.opacity(0.16)).frame(width: 14, height: 14)
-                Circle().fill(m.color).frame(width: 7, height: 7)
-            }
-            .contentShape(Circle().inset(by: -8)) // keeps a comfortable tap target on the tiny dot
+            Capsule()
+                .fill(m.color)
+                .frame(width: 2.5, height: 8)
+                .contentShape(Rectangle().inset(by: -10)) // keeps a comfortable tap target
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(markerKindLabel(m)) on \(m.date.formatted(date: .abbreviated, time: .omitted))")

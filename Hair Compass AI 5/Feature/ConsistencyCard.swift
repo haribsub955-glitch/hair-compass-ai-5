@@ -62,7 +62,7 @@ struct ConsistencyCard: View {
                 .buttonStyle(.plain)
             }
 
-            Text(footnote(level: level, progress: progress, xp: xp, streak: streak))
+            Text(footnote(level: level, progress: progress, streak: streak))
                 .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
 
             ConsistencyHairline(fraction: progress.fraction)
@@ -73,20 +73,21 @@ struct ConsistencyCard: View {
 
     // MARK: Pieces
 
-    /// "Sapling · Level 4 · 177 XP to Grove · 1-day streak" — one line replacing the old
-    /// display-serif level name, the fraction, the XP-to-next line and the streak row that used
-    /// to fire four at once.
+    /// "Sapling · 177 marks to Grove · 1-day streak" — one line replacing the old display-serif
+    /// level name, the fraction, the XP-to-next line and the streak row that used to fire four at
+    /// once. Round-7: dropped "Level N" and "XP" — the one place the journal still spoke
+    /// gamification dialect instead of its own field-journal vocabulary. "Marks" stands in for
+    /// XP; a field journal counts entries, not points.
     private func footnote(
         level: GamificationLevel,
         progress: (fraction: Double, remaining: Int, next: GamificationLevel?),
-        xp: Int,
         streak: Int
     ) -> String {
-        var parts = [level.name, "Level \(level.index)"]
+        var parts = [level.name]
         if let next = progress.next {
-            parts.append("\(progress.remaining) XP to \(next.name)")
+            parts.append("\(progress.remaining) marks to \(next.name)")
         } else {
-            parts.append("\(xp) XP · top of the ladder")
+            parts.append("top of the ledger")
         }
         parts.append(streak > 0 ? "\(streak)-day streak" : "no streak yet")
         return parts.joined(separator: " · ")
@@ -126,6 +127,8 @@ struct ConsistencyCard: View {
 /// entire progress visual now that the thick gold bar and its fraction/remaining-XP lines have
 /// collapsed into one footnote sentence. Draws itself in once on first appearance with a soft
 /// spring; under Reduce Motion it jumps straight to the final width with no fill animation.
+/// Round-7: thinned from 2pt to a true 1pt hairline, matching the Labs gauges' weight, so it reads
+/// as margin ink rather than a bar chart competing with the journey chart above it.
 private struct ConsistencyHairline: View {
     let fraction: Double
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -139,7 +142,7 @@ private struct ConsistencyHairline: View {
                     .frame(width: geo.size.width * (filled ? min(1, max(0, fraction)) : 0))
             }
         }
-        .frame(height: 2)
+        .frame(height: 1)
         .onAppear {
             guard !filled else { return }
             if reduceMotion {

@@ -252,7 +252,13 @@ struct LabsView: View {
             HStack {
                 Text(lo.formatted()).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                 Spacer()
-                Text("RANGE").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.secondary)
+                // Round-7: "RANGE" used to stamp every gauge — an ornament said three times on a
+                // three-test ledger. The endpoint numbers either side already say what the band
+                // is; the word itself now appears once, on the first row, as the one-time key
+                // that teaches what the two numbers mean.
+                if index == 0 {
+                    Text("RANGE").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.secondary)
+                }
                 Spacer()
                 Text(hi.formatted()).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
             }
