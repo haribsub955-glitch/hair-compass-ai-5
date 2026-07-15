@@ -400,6 +400,60 @@ extension View {
     }
 }
 
+/// The app's one completion "ink" gesture, shared by every routine row (Today's ledger and Plan's
+/// ritual list): a copper underline draws in beneath a step's name on check, holds while the text
+/// settles to its dimmed color, then fades for good. Attach to the name `Text` with
+/// `.completionInkUnderline(trigger:)`; flip the bound `Bool` to `true` on a genuine check-off
+/// (never on uncheck — the caller decides that) and the modifier resets it back to `false` once
+/// the sequence finishes, so it's armed to fire again next time. Under Reduce Motion the trigger
+/// is consumed instantly with no underline at all — completion still reads from the check circle
+/// and the dimmed text alone.
+private struct CompletionInkUnderline: ViewModifier {
+    @Binding var trigger: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var draw: CGFloat = 0
+    @State private var lineOpacity: Double = 0
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .bottomLeading) {
+                Capsule()
+                    .fill(Clinical.accent.opacity(0.55))
+                    .frame(height: 1.5)
+                    .scaleEffect(x: draw, y: 1, anchor: .leading)
+                    .opacity(lineOpacity)
+                    .offset(y: 2)
+                    .allowsHitTesting(false)
+            }
+            .onChange(of: trigger) { _, fired in
+                guard fired else { return }
+                guard !reduceMotion else {
+                    trigger = false
+                    return
+                }
+                withAnimation(.smooth(duration: 0.4)) {
+                    draw = 1
+                    lineOpacity = 1
+                }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    withAnimation(.easeOut(duration: 0.45)) { lineOpacity = 0 }
+                    try? await Task.sleep(nanoseconds: 450_000_000)
+                    draw = 0
+                    trigger = false
+                }
+            }
+    }
+}
+
+extension View {
+    /// Fires the app's shared routine-completion underline flourish (see `CompletionInkUnderline`)
+    /// whenever `trigger` flips to `true`.
+    func completionInkUnderline(trigger: Binding<Bool>) -> some View {
+        modifier(CompletionInkUnderline(trigger: trigger))
+    }
+}
+
 /// A quiet text-tab selector: plain labels with a sliding copper underline driven by
 /// `matchedGeometryEffect` — the shared selector language that replaces bordered segmented
 /// capsules and boxed filter pills (Trends' range picker, Photos' region picker). Crossfades
@@ -481,6 +535,27 @@ struct Eyebrow: View {
             .font(Clinical.eyebrow())
             .tracking(1.4)
             .foregroundStyle(color)
+    }
+}
+
+/// The app's one closing-sentence voice — the honest, non-decorative line that signs off a
+/// ledger the way a book's colophon closes its last page: a hairline rule above, one plain
+/// sentence, no icon, no small-caps, generous vertical breathing room. Promoted from Plan's
+/// `gateExplainer` so the same element class (Labs' "context, not a diagnosis" line, Plan's
+/// "density judged at 24 weeks" line) is unmistakably one hand's writing wherever it closes a
+/// screen.
+struct Colophon: View {
+    let text: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider().overlay(Clinical.hairline)
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 13)
+        }
     }
 }
 

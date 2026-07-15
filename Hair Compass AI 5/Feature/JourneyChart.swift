@@ -51,12 +51,35 @@ struct JourneyChart: View {
             if data.shedPoints.count < 2 {
                 thinDataPlaceholder
             } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    shedChart(data: data, domain: start...end)
-                    intakeLane(data: data, domain: start...end)
+                // Round-9: one `RevealOnce` now drives both halves of the instrument — the shed
+                // line inks across the top chart AND the dose rug rises left-to-right beneath it
+                // in the same pass, instead of the line animating in while the rug below sat
+                // already fully formed. The page's one focal object draws itself in as one
+                // gesture, then settles completely still.
+                RevealOnce { progress, elapsed in
+                    VStack(alignment: .leading, spacing: 6) {
+                        shedChart(data: data, domain: start...end, progress: progress, elapsed: elapsed)
+                        intakeLane(data: data, domain: start...end, elapsed: elapsed)
+                    }
                 }
+                if !data.echoBands.isEmpty { echoWindowKey }
                 if let selectedMarker { markerDisclosure(selectedMarker) }
             }
+        }
+    }
+
+    /// One quiet margin key naming the amber band — said once, in the margin, regardless of how
+    /// many echo bands are actually on screen. Replaces the in-plot "Possible echo window"
+    /// caption that used to sit on the chart itself, where it collided with the rug zone in the
+    /// 3M view.
+    private var echoWindowKey: some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(Clinical.warning.opacity(0.35))
+                .frame(width: 8, height: 8)
+            Text("Shaded band — possible echo window")
+                .font(Clinical.eyebrow(9))
+                .foregroundStyle(Clinical.warning)
         }
     }
 
@@ -64,20 +87,25 @@ struct JourneyChart: View {
 
     /// The chart draws itself in once on appear — the shedding line inks across left-to-right
     /// and each event marker pops in as the ink passes its date. Driven by wall-clock elapsed
-    /// time (`RevealOnce`) rather than SwiftUI's animation/transaction system, since this chart
-    /// sits inside `TrendsView`'s `.transaction { $0.animation = nil }` subtree — deliberately
-    /// applied there so Swift Charts' own marks never interpolate when the range picker changes.
-    /// An ordinary `withAnimation` reveal would be silently cancelled by that ancestor; ticking
-    /// a plain elapsed-time value instead sidesteps the transaction system entirely.
-    private func shedChart(data: JourneyData, domain: ClosedRange<Date>) -> some View {
-        RevealOnce { progress, elapsed in
+    /// time (`RevealOnce`, owned by `body` and shared with `intakeLane` below) rather than
+    /// SwiftUI's animation/transaction system, since this chart sits inside `TrendsView`'s
+    /// `.transaction { $0.animation = nil }` subtree — deliberately applied there so Swift
+    /// Charts' own marks never interpolate when the range picker changes. An ordinary
+    /// `withAnimation` reveal would be silently cancelled by that ancestor; ticking a plain
+    /// elapsed-time value instead sidesteps the transaction system entirely.
+    private func shedChart(data: JourneyData, domain: ClosedRange<Date>, progress: CGFloat, elapsed: TimeInterval) -> some View {
+        Group {
             Chart {
                 // Possible-echo bands — drawn first so every other mark sits above them. Pure
                 // calendar math (trigger/stop date + 8…12 weeks) on data already queried;
                 // phrased as "possible echo", never a prediction, so the honest 2–3-month causal
                 // vocabulary that only ever lived in prose is now visible on the one chart
-                // people actually look at when a shed spike worries them.
-                ForEach(Array(data.echoBands.enumerated()), id: \.1.id) { index, band in
+                // people actually look at when a shed spike worries them. Round-9: the band's own
+                // in-plot "Possible echo window" caption is gone — words belong in the journal's
+                // margin, not competing with the trend line on the instrument itself. The one
+                // sentence that used to print here now lives once, below the chart, as
+                // `echoWindowKey` (see `body`).
+                ForEach(Array(data.echoBands.enumerated()), id: \.1.id) { _, band in
                     RectangleMark(
                         xStart: .value("Start", band.start),
                         xEnd: .value("End", band.end),
@@ -85,17 +113,6 @@ struct JourneyChart: View {
                         yEnd: .value("High", 3.0)
                     )
                     .foregroundStyle(Clinical.warning.opacity(0.08))
-                    // The old full-width "Faint band = possible echo window…" paragraph now
-                    // lives here instead — one small annotation tucked under the first band's
-                    // own x-position, only when a band is actually on screen.
-                    .annotation(position: .bottom, alignment: .leading, spacing: 2,
-                                overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
-                        if index == 0 {
-                            Text("Possible echo window")
-                                .font(Clinical.eyebrow(8))
-                                .foregroundStyle(Clinical.warning.opacity(0.85))
-                        }
-                    }
                 }
                 // Faint raw daily levels — the honest reality behind the smoothing.
                 ForEach(data.shedPoints) { p in
@@ -197,6 +214,22 @@ struct JourneyChart: View {
         return fraction * RevealTiming.duration
     }
 
+    /// A dose bar's own quick fade-up as the shed line's ink-in front passes its day — the same
+    /// elapsed-time/delay/smoothstep shape as `MarkerPop`, just applied to a static per-mark
+    /// `.opacity()` (Charts marks don't accept an arbitrary `ViewModifier`, only a scalar value)
+    /// so the rug rises left-to-right in the same pass as the line above it. `elapsed` is
+    /// `.greatestFiniteMagnitude` once the reveal is done or under Reduce Motion, so every bar
+    /// resolves to fully opaque then.
+    private func barRevealOpacity(_ bar: JourneyData.DoseBar, domain: ClosedRange<Date>, elapsed: TimeInterval) -> Double {
+        let total = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        guard total > 0 else { return 1 }
+        let fraction = max(0, min(1, bar.day.timeIntervalSince(domain.lowerBound) / total))
+        let delay = fraction * RevealTiming.duration
+        let local = max(0, elapsed - delay)
+        let t = max(0, min(1, local / MarkerPop.popDuration))
+        return t * t * (3 - 2 * t) // smoothstep, same easing as MarkerPop
+    }
+
     /// Round-5: shrunk from a 20×20 "balloon" (white disc, stroked ring, drop shadow, permanent
     /// tag label) to a small solid glyph dot sitting right on its dashed vertical. Round-7: lightened
     /// further, from that haloed dot to an 8pt tick — the chart's heaviest ink used to mark its
@@ -257,7 +290,7 @@ struct JourneyChart: View {
     // MARK: Bottom lane — day-by-day medication intake
 
     @ViewBuilder
-    private func intakeLane(data: JourneyData, domain: ClosedRange<Date>) -> some View {
+    private func intakeLane(data: JourneyData, domain: ClosedRange<Date>, elapsed: TimeInterval) -> some View {
         if data.doseBars.isEmpty {
             HStack(spacing: 8) {
                 Image(systemName: "pills")
@@ -276,13 +309,20 @@ struct JourneyChart: View {
             // window only (the trailing 7 days), so the eye still finds "am I keeping up right
             // now" without every past week shouting in saturated color.
             let recentCutoff = Calendar.current.date(byAdding: .day, value: -7, to: domain.upperBound) ?? domain.upperBound
-            Chart(data.doseBars) { bar in
-                BarMark(
-                    x: .value("Day", bar.day, unit: .day),
-                    y: .value("Doses", bar.count)
-                )
-                .foregroundStyle(bar.day >= recentCutoff ? Clinical.accent : Clinical.ink.opacity(0.25))
-                .cornerRadius(1)
+            Chart {
+                // Round-9: each bar rises in step with the shed line's own ink-in — the reveal
+                // front (driven by the same `elapsed` clock `shedChart` uses) passes each bar's
+                // x-position and fades it up, so the rug joins the page's one draw-in gesture
+                // instead of sitting inert while only the line above it animates.
+                ForEach(data.doseBars) { bar in
+                    BarMark(
+                        x: .value("Day", bar.day, unit: .day),
+                        y: .value("Doses", bar.count)
+                    )
+                    .foregroundStyle(bar.day >= recentCutoff ? Clinical.accent : Clinical.ink.opacity(0.25))
+                    .cornerRadius(1)
+                    .opacity(barRevealOpacity(bar, domain: domain, elapsed: elapsed))
+                }
             }
             .frame(height: 52)
             // The lane names itself at its own left edge, in the same quiet margin-ink caption
@@ -419,7 +459,7 @@ private struct RevealOnce<Content: View>: View {
 private struct MarkerPop: ViewModifier {
     let elapsed: TimeInterval
     let delay: Double
-    private static let popDuration: Double = 0.22
+    fileprivate static let popDuration: Double = 0.22
 
     func body(content: Content) -> some View {
         let local = max(0, elapsed - delay)

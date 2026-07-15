@@ -472,15 +472,14 @@ struct CareView: View {
     /// A single hairline-ruled footnote row — decongested from an icon-tile card with its own
     /// subtitle. "Education, not a prescription" now lives inside the sheet this opens (see
     /// `TreatmentRecommender.disclaimer` in `RecommenderView`) instead of being said twice.
+    /// Round-9: the leading stethoscope glyph is gone — the last purely decorative icon among
+    /// this tail's three footnote rows — so this row reads exactly like `remindersCard` below it:
+    /// text in ink, chevron in the margin, hairline above, nothing else.
     private var guidanceCard: some View {
         Button { showRecommender = true } label: {
             VStack(spacing: 0) {
                 Divider().overlay(Clinical.hairline)
                 HStack(spacing: 10) {
-                    Image(systemName: "stethoscope")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Clinical.accent)
-                        .frame(width: 20, alignment: .leading)
                     Text("What the evidence supports for you")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(Clinical.ink)
@@ -638,15 +637,11 @@ struct CareView: View {
     /// surviving box — to a plain hairline-ruled footnote row in the same family as
     /// `guidanceCard`/`remindersCard`. Round-7: shortened from a three-line paragraph to the one
     /// sentence that actually matters — the tail was stacking four typographic families across
-    /// five rows, and this closing line was the longest of them.
+    /// five rows, and this closing line was the longest of them. Round-9: promoted to the shared
+    /// `Colophon` component — the app's one closing-sentence voice — so this line and Labs'
+    /// equivalent "context, not a diagnosis" line read as the same hand's writing.
     private var gateExplainer: some View {
-        VStack(spacing: 0) {
-            Divider().overlay(Clinical.hairline)
-            Text("Density change is judged at 24 weeks — resist judging sooner.")
-                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 13)
-        }
+        Colophon(text: "Density change is judged at 24 weeks — resist judging sooner.")
     }
 
     /// One card that opens the full week-N progress report, sitting next to the assessment
@@ -1027,10 +1022,11 @@ private struct RoutineStepRow: View {
     @State private var pop = false
     /// Round-5: the row's one purposeful "ink" gesture on completion — a copper underline draws
     /// itself in beneath the step's name, holds while the text settles to its dimmed secondary
-    /// color, then fades for good. `underlineDraw` is the 0…1 draw-in scale, `underlineOpacity`
-    /// the fade-out. Never fires on uncheck (see `runInkFlourish`).
-    @State private var underlineDraw: CGFloat = 0
-    @State private var underlineOpacity: Double = 0
+    /// color, then fades for good. Round-9: the flourish itself moved into the shared
+    /// `completionInkUnderline` view modifier (Clinical.swift) so Today's ledger row completes
+    /// with the exact same ink gesture — this just flips `inkTrigger` on a genuine check-off
+    /// (never on uncheck).
+    @State private var inkTrigger = false
     /// The check circle's diameter, scaled with Dynamic Type so the actual tap target grows
     /// alongside the surrounding row text instead of staying a fixed 24pt dot.
     @ScaledMetric(relativeTo: .body) private var checkDiameter: CGFloat = 24
@@ -1079,15 +1075,7 @@ private struct RoutineStepRow: View {
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
                                 .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: done)
-                                .overlay(alignment: .bottomLeading) {
-                                    Capsule()
-                                        .fill(Clinical.accent.opacity(0.55))
-                                        .frame(height: 1.5)
-                                        .scaleEffect(x: underlineDraw, y: 1, anchor: .leading)
-                                        .opacity(underlineOpacity)
-                                        .offset(y: 2)
-                                        .allowsHitTesting(false)
-                                }
+                                .completionInkUnderline(trigger: $inkTrigger)
                             if let classSubtitle {
                                 Text(classSubtitle)
                                     .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
@@ -1118,34 +1106,19 @@ private struct RoutineStepRow: View {
         return "\(name), \(lead)\(cls)"
     }
 
-    /// Runs the name underline's draw-in → hold → fade sequence once, only on a genuine
-    /// check-off (never on uncheck, and never under Reduce Motion — the caller already guards
-    /// that). Purely decorative, so it never leaves lasting state beyond the row's own
-    /// `underlineDraw`/`underlineOpacity`, both reset to their rest value once the fade ends.
-    private func runInkFlourish() {
-        withAnimation(.smooth(duration: 0.4)) {
-            underlineDraw = 1
-            underlineOpacity = 1
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            withAnimation(.easeOut(duration: 0.45)) { underlineOpacity = 0 }
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            underlineDraw = 0
-        }
-    }
-
     private var checkButton: some View {
         Button {
             let willCheck = !done
             onToggle()
-            guard willCheck, !reduceMotion else { return }
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
-                pop = true
-            } completion: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pop = false }
+            guard willCheck else { return }
+            if !reduceMotion {
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
+                    pop = true
+                } completion: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pop = false }
+                }
             }
-            runInkFlourish()
+            inkTrigger = true
         } label: {
             ZStack {
                 // Unchecked reads as an actionable empty checkbox — a faint copper fill plus a

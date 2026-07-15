@@ -759,16 +759,19 @@ struct AnnotationRow: View {
     }
 }
 
-/// One checkable routine step, styled to continue the ledger's rows: a small hairline circle
-/// leading (fills copper with a check when logged), a mono time in the leading margin, the step
-/// name once in ink, no card, no strikethrough — a current-treatment list reads a struck-through
-/// name as "discontinued", which this app must never imply.
+/// One checkable routine step, styled to continue the ledger's rows: a mono time in the leading
+/// margin, the step name once in ink, and the check circle at the TRAILING edge — no card, no
+/// strikethrough — a current-treatment list reads a struck-through name as "discontinued", which
+/// this app must never imply.
 ///
 /// Round-8: the old subtitle ("21:00 · Finasteride") echoed the row's own name directly above it
 /// and spoke a different grammar than the identical row on Plan. This now shares Plan's exact
-/// grammar — mono time in the margin, name once, class only when the name doesn't already say it
-/// — so the same fact is said in the same voice on both screens (see `RoutineStepRow` in
-/// CareView.swift).
+/// grammar — mono time in the margin, name once, class only when the name doesn't already say it.
+///
+/// Round-9: the check circle moved from the leading margin (where this row alone put it) to the
+/// trailing edge, matching `RoutineStepRow` in CareView.swift exactly, and completion now fires
+/// the app's one shared ink gesture — a copper underline draws in beneath the name, holds, then
+/// fades — instead of only popping the circle. Same fact, same anatomy, same motion, on both tabs.
 private struct RoutineLedgerRow: View {
     let name: String
     let timeLabel: String
@@ -778,6 +781,7 @@ private struct RoutineLedgerRow: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pop = false
+    @State private var inkTrigger = false
 
     private var accessibilityDetail: String {
         [timeLabel, classSubtitle].compactMap { $0 }.joined(separator: ", ")
@@ -787,14 +791,35 @@ private struct RoutineLedgerRow: View {
         Button {
             let willCheck = !done
             action()
-            guard willCheck, !reduceMotion else { return }
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
-                pop = true
-            } completion: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pop = false }
+            guard willCheck else { return }
+            if !reduceMotion {
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
+                    pop = true
+                } completion: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pop = false }
+                }
             }
+            inkTrigger = true
         } label: {
             HStack(spacing: 10) {
+                Text(timeLabel.uppercased())
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Clinical.secondary)
+                    .frame(width: 46, alignment: .leading)
+                    .opacity(done ? 0.55 : 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.system(size: 14, weight: done ? .regular : .medium))
+                        .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
+                        .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: done)
+                        .completionInkUnderline(trigger: $inkTrigger)
+                    if let classSubtitle {
+                        Text(classSubtitle)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Clinical.tertiary)
+                    }
+                }
+                Spacer(minLength: 8)
                 ZStack {
                     Circle().fill(done ? Clinical.accent : Clinical.accent.opacity(0.06))
                     Circle().strokeBorder(done ? Clinical.accent : Clinical.accent.opacity(0.4), lineWidth: 1.5)
@@ -806,22 +831,6 @@ private struct RoutineLedgerRow: View {
                 }
                 .frame(width: 20, height: 20)
                 .scaleEffect(pop ? 1.15 : 1)
-                Text(timeLabel.uppercased())
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Clinical.secondary)
-                    .frame(width: 46, alignment: .leading)
-                    .opacity(done ? 0.55 : 1)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(name)
-                        .font(.system(size: 14, weight: done ? .regular : .medium))
-                        .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
-                    if let classSubtitle {
-                        Text(classSubtitle)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(Clinical.tertiary)
-                    }
-                }
-                Spacer(minLength: 8)
             }
             .padding(.vertical, 11)
             .contentShape(Rectangle())

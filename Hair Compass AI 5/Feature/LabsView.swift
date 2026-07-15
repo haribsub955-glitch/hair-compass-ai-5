@@ -156,18 +156,11 @@ struct LabsView: View {
 
     /// The disclaimer that used to lead every returning visit as its own banner is now a
     /// one-line footnote at the bottom of the list — data leads, honesty still gets said, just
-    /// not ahead of every result on every visit.
+    /// not ahead of every result on every visit. Round-9: promoted to the shared `Colophon`
+    /// component (mono eyebrow type + leading test-tube icon are gone) so this line reads in the
+    /// same voice as Plan's "density judged at 24 weeks" colophon instead of a second dialect.
     private var contextFootnote: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "testtube.2")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Clinical.tertiary)
-            Text("Context, not a diagnosis — choose tests with a clinician rather than a blanket panel.")
-                .font(Clinical.eyebrow(9))
-                .foregroundStyle(Clinical.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.top, 4)
+        Colophon(text: "Context, not a diagnosis — choose tests with a clinician rather than a blanket panel.")
     }
 
     /// One continuous ledger instead of three near-identical card boxes: every lab is a row on
@@ -343,6 +336,9 @@ struct LabsView: View {
     /// Round-5: restyled from a `DisclosureGroup` with a shouting all-caps mono
     /// "TESTS DERMS ORDER FOR HAIR LOSS" label to the same quiet footnote-row family as Plan's
     /// "Reminders" row — plain-weight sentence case, no caps, one hairline top and bottom.
+    /// Round-9: no longer supplies its own trailing hairline — `contextFootnote` right below it
+    /// is now a `Colophon`, which draws that rule itself, so this row borrows its neighbor's
+    /// hairline on both ends instead of doubling it.
     private var referenceFootnote: some View {
         VStack(alignment: .leading, spacing: 0) {
             // No leading hairline here — `labLedger`'s last row already closes with one, so this
@@ -390,8 +386,6 @@ struct LabsView: View {
                 .padding(.bottom, 12)
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
             }
-
-            Divider().overlay(Clinical.hairline)
         }
     }
 }
