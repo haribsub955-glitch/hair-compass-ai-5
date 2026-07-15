@@ -183,9 +183,9 @@ struct PhotosView: View {
             }
             .padding(.horizontal, 2)
             .padding(.top, 3)
-            .padding(.trailing, 12)
+            .padding(.trailing, 32)
         }
-        .trailingFade(width: 36)
+        .trailingFade(width: 56)
     }
 
     /// A draggable before/after slider in place of two side-by-side thumbnails. Defaults to the

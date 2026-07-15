@@ -602,12 +602,13 @@ struct HeaderActionButton: View {
             ZStack {
                 if prominent {
                     Circle()
-                        .fill(Clinical.ink)
+                        .fill(Clinical.surface)
+                        .overlay(Circle().stroke(Clinical.hairline, lineWidth: 1))
                         .frame(width: 40, height: 40)
                 }
                 Image(systemName: systemName)
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(prominent ? Clinical.surface : Clinical.ink)
+                    .foregroundStyle(prominent ? Clinical.accent : Clinical.ink)
             }
             .frame(width: 44, height: 44)
             .contentShape(Circle())

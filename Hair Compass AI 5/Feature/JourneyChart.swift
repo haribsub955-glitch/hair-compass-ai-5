@@ -69,18 +69,15 @@ struct JourneyChart: View {
     }
 
     /// One quiet margin key naming the amber band — said once, in the margin, regardless of how
-    /// many echo bands are actually on screen. Replaces the in-plot "Possible echo window"
-    /// caption that used to sit on the chart itself, where it collided with the rug zone in the
-    /// 3M view.
+    /// many echo bands are actually on screen. Round-10: the swatch-plus-caption legend pairing
+    /// is gone — that was chart-legend grammar, the one dialect the app had otherwise eliminated.
+    /// This is now the same footnote voice as every other margin line (12pt, `Clinical.secondary`);
+    /// only the words "Amber band" carry the warning tint, so the color itself still teaches which
+    /// band on the chart above is meant, without a separate swatch to look between.
     private var echoWindowKey: some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(Clinical.warning.opacity(0.35))
-                .frame(width: 8, height: 8)
-            Text("Shaded band — possible echo window")
-                .font(Clinical.eyebrow(9))
-                .foregroundStyle(Clinical.warning)
-        }
+        (Text("Amber band").foregroundStyle(Clinical.warning)
+            + Text(" — possible echo window").foregroundStyle(Clinical.secondary))
+            .font(.system(size: 12))
     }
 
     // MARK: Top chart — smoothed shed trend + dated event markers

@@ -237,7 +237,7 @@ struct SheddingStatusScene: View {
 
     private var profile: SheddingSceneProfile { .make(intensity: intensity) }
     private static let ambientProfile = SheddingSceneProfile(
-        band: 0, displayIntensity: 0.08, restingStrandCount: 3, clusterCount: 0, washOpacity: 0.018
+        band: 0, displayIntensity: 0.08, restingStrandCount: 6, clusterCount: 0, washOpacity: 0.018
     )
 
     var body: some View {
@@ -278,7 +278,7 @@ struct SheddingStatusScene: View {
                     .transition(.opacity)
             } else if ambientWhenEmpty {
                 RestingHairCollection(profile: Self.ambientProfile)
-                    .opacity(0.34)
+                    .opacity(0.5)
                     .transition(.opacity)
             }
         }

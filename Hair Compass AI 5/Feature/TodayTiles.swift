@@ -344,44 +344,74 @@ struct ConditionsHero: View {
 /// purely decorative motion, so it stays hidden from the accessibility tree. Under Reduce
 /// Motion the rail never appears at all: the gesture is still reachable via the accessibility
 /// adjustable action and the log sheet, just not taught by an animation.
+///
+/// Round-10: the rail itself now breathes once on appear — its whole opacity eases
+/// quiet -> bright -> settled over ~2.4s, the north star's "draws attention once, like breath,
+/// then settles completely still" — before the existing dot-rise teach and eventual fade-away
+/// run on their own unrelated clock below.
 private struct LadderHintRail: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var trigger = false
     @State private var visible = true
+    @State private var breathTrigger = false
 
     private enum Phase: CaseIterable { case rest, rise, gone }
+
+    private enum BreathPhase: CaseIterable {
+        case quiet, bright, settled
+
+        var opacity: Double {
+            switch self {
+            case .quiet: return 0.45
+            case .bright: return 1.0
+            case .settled: return 0.7
+            }
+        }
+    }
 
     var body: some View {
         Group {
             if !reduceMotion && visible {
-                GeometryReader { geo in
-                    let h = geo.size.height
-                    ZStack(alignment: .bottom) {
-                        VStack(spacing: (h - 4 * 3) / 3) {
-                            ForEach(0..<4, id: \.self) { _ in
-                                Circle().fill(Clinical.hairline).frame(width: 3, height: 3)
+                PhaseAnimator(BreathPhase.allCases, trigger: breathTrigger) { breath in
+                    GeometryReader { geo in
+                        let h = geo.size.height
+                        ZStack(alignment: .bottom) {
+                            VStack(spacing: (h - 4 * 3) / 3) {
+                                ForEach(0..<4, id: \.self) { _ in
+                                    Circle().fill(Clinical.hairline).frame(width: 3, height: 3)
+                                }
+                            }
+                            PhaseAnimator(Phase.allCases, trigger: trigger) { phase in
+                                Circle()
+                                    .fill(Clinical.accent)
+                                    .frame(width: 6, height: 6)
+                                    .shadow(color: Clinical.accent.opacity(0.35), radius: 3)
+                                    .offset(y: phase == .rest ? 0 : -(h - 6))
+                                    .opacity(phase == .gone ? 0 : 1)
+                            } animation: { phase in
+                                switch phase {
+                                case .rest: return nil
+                                case .rise: return .easeInOut(duration: 1.1)
+                                case .gone: return .easeOut(duration: 0.4)
+                                }
                             }
                         }
-                        PhaseAnimator(Phase.allCases, trigger: trigger) { phase in
-                            Circle()
-                                .fill(Clinical.accent)
-                                .frame(width: 6, height: 6)
-                                .shadow(color: Clinical.accent.opacity(0.35), radius: 3)
-                                .offset(y: phase == .rest ? 0 : -(h - 6))
-                                .opacity(phase == .gone ? 0 : 1)
-                        } animation: { phase in
-                            switch phase {
-                            case .rest: return nil
-                            case .rise: return .easeInOut(duration: 1.1)
-                            case .gone: return .easeOut(duration: 0.4)
-                            }
-                        }
+                    }
+                    .opacity(breath.opacity)
+                } animation: { breath in
+                    switch breath {
+                    case .quiet: return nil
+                    case .bright: return .easeInOut(duration: 1.2)
+                    case .settled: return .easeInOut(duration: 1.2)
                     }
                 }
                 .frame(width: 10, height: 88)
                 .onAppear {
-                    // "First idle": give the hero a beat to settle before teaching the gesture,
-                    // then run the one pass and let the rail dissolve for good.
+                    // The breath starts immediately — the rail announcing itself as a composed
+                    // element the instant it's on screen.
+                    breathTrigger.toggle()
+                    // "First idle": give the hero a beat to settle before teaching the drag
+                    // gesture itself, then run the one dot pass and let the rail dissolve for good.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
                         trigger.toggle()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) {
