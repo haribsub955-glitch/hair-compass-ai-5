@@ -183,6 +183,11 @@ struct BodySignalsDashboard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var connecting = false
     @State private var refreshing = false
+    /// Round-8: which signal rows have their "why it matters" sentence disclosed. Previously
+    /// every row appended its static educational sentence permanently — four unchanging lines
+    /// padding the fold on every visit. Now it's marginalia you invite with a tap, not a
+    /// standing lesson; VoiceOver still hears it via the row's accessibility label regardless.
+    @State private var expandedSignals: Set<BodySignal> = []
 
     /// Round-5: dissolved out of its `ClinicalCard` — the largest remaining boxed dashboard
     /// module in the app — into the same un-boxed, hairline-ruled ledger language as Today's
@@ -314,37 +319,77 @@ struct BodySignalsDashboard: View {
 
     // MARK: Signal row
 
+    /// Tapping the row discloses `signal.why` in place with a soft spring (a plain opacity
+    /// fade under Reduce Motion) instead of showing it permanently — the numbers stay the row's
+    /// focal object and the education becomes marginalia you invite, matching the ledger pattern
+    /// everywhere else in the app.
     private func signalRow(_ signal: BodySignal) -> some View {
         let series = seriesCache[signal] ?? []
         let latest = series.last?.value
         let delta = BodySignalsMath.delta(samples(for: signal), windowDays: windowDays)
         let rapidChip = signal == .weight ? BodySignalsMath.rapidLossChip(massSamples: massSamples) : nil
+        let expanded = expandedSignals.contains(signal)
 
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(signal.title.uppercased())
-                        .font(Clinical.eyebrow(10)).tracking(1.2)
-                        .foregroundStyle(Clinical.tertiary)
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(latest.map(signal.format) ?? "—")
-                            .font(Clinical.number(22)).foregroundStyle(Clinical.ink)
-                        if let delta {
-                            deltaChip(signal: signal, delta: delta, rapidLossActive: rapidChip != nil)
+        return Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            if reduceMotion {
+                toggle(signal)
+            } else {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.82)) { toggle(signal) }
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(signal.title.uppercased())
+                            .font(Clinical.eyebrow(10)).tracking(1.2)
+                            .foregroundStyle(Clinical.tertiary)
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(latest.map(signal.format) ?? "—")
+                                .font(Clinical.number(22)).foregroundStyle(Clinical.ink)
+                            if let delta {
+                                deltaChip(signal: signal, delta: delta, rapidLossActive: rapidChip != nil)
+                            }
                         }
                     }
+                    Spacer(minLength: 8)
+                    SignalSparkline(series: series, tint: signal.tint)
+                        .frame(width: 116, height: 44)
                 }
-                Spacer(minLength: 8)
-                SignalSparkline(series: series, tint: signal.tint)
-                    .frame(width: 116, height: 44)
+                if let rapidChip { warningChip(rapidChip) }
+                if expanded {
+                    Text(signal.why)
+                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+                }
             }
-            if let rapidChip { warningChip(rapidChip) }
-            Text(signal.why)
-                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 10)
-        .accessibilityElement(children: .combine)
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityDetail(signal: signal, latest: latest, delta: delta, rapidChip: rapidChip))
+        .accessibilityHint(expanded ? "Collapses why it matters" : "Shows why it matters")
+    }
+
+    /// The row's full VoiceOver text — value, trend, the rapid-loss warning when active, and the
+    /// "why it matters" sentence always, even while it's visually collapsed, so disclosing it on
+    /// tap costs sighted users a line of copy but costs VoiceOver users nothing.
+    private func accessibilityDetail(signal: BodySignal, latest: Double?, delta: Double?, rapidChip: String?) -> String {
+        var parts = [signal.title, latest.map(signal.format) ?? "No reading"]
+        if let delta { parts.append(signal.formatDelta(delta)) }
+        if let rapidChip { parts.append(rapidChip) }
+        parts.append(signal.why)
+        return parts.joined(separator: ". ")
+    }
+
+    private func toggle(_ signal: BodySignal) {
+        if expandedSignals.contains(signal) {
+            expandedSignals.remove(signal)
+        } else {
+            expandedSignals.insert(signal)
+        }
     }
 
     private func deltaChip(signal: BodySignal, delta: Double, rapidLossActive: Bool) -> some View {

@@ -434,9 +434,15 @@ struct InkTabs<T: Hashable, TabLabel: View>: View {
                 selection = option
             }
         } label: {
-            VStack(spacing: 6) {
-                label(option, isOn)
-                ZStack {
+            // The underline used to live in its own `ZStack` row beneath the label — but an
+            // unconstrained `Capsule` has infinite ideal width, so the HStack treated whichever
+            // tab currently held it as the one "flexible" child and handed it all the row's
+            // leftover space (the 3M underline spanning to 6M). Attaching it as a bottom overlay
+            // on the label itself proposes the *label's* size to the Capsule, so its width is
+            // always exactly the word's width, never the row's.
+            label(option, isOn)
+                .padding(.bottom, 8)
+                .overlay(alignment: .bottom) {
                     if isOn {
                         Capsule()
                             .fill(Clinical.accent)
@@ -444,8 +450,6 @@ struct InkTabs<T: Hashable, TabLabel: View>: View {
                             .matchedGeometryEffect(id: "inkTabsUnderline", in: namespace)
                     }
                 }
-                .frame(height: 2)
-            }
         }
         .buttonStyle(.plain)
         // Trends hosts this picker inside a `.transaction { $0.animation = nil }` subtree (it

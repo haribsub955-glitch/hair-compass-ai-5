@@ -447,10 +447,21 @@ struct CareView: View {
         .accessibilityLabel("\(m.title). \(m.body)")
     }
 
-    /// "Finasteride · halfway there · 83%" — the milestone's own colon-joined title reworded with
-    /// the ledger's "·" separator, plus the percentage the ring is also drawing, spoken once in
-    /// text for anyone not reading the ring itself.
+    /// "Finasteride 1mg · 83% to week 24" — one internally-true clause. Round-8: a "half-"
+    /// milestone's own title always says the fixed phrase "halfway there" regardless of whether
+    /// the treatment is at week 12 or week 23, so pasting the live percentage next to it produced
+    /// a footnote that disagreed with itself ("halfway there · 83%"). A "half-" milestone now
+    /// drops the stale tier phrase and states the one number the ring is also drawing; the
+    /// streak/24-week-reached titles (which don't carry a stale bucket phrase) keep the original
+    /// "·"-joined wording.
     private func milestoneDisplayTitle(_ m: Milestone, progress: Double?) -> String {
+        if m.id.hasPrefix("half-") {
+            let name = String(m.id.dropFirst("half-".count))
+            if let progress {
+                return "\(name) · \(Int((progress * 100).rounded()))% to week 24"
+            }
+            return name
+        }
         var text = m.title.replacingOccurrences(of: ": ", with: " · ")
         if let progress, progress < 1 {
             text += " · \(Int((progress * 100).rounded()))%"

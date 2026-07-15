@@ -518,11 +518,15 @@ struct TodayTileGrid: View {
 
     private func routineStepRow(_ treatment: Treatment, slot: String) -> some View {
         let done = isSlotLogged(treatment, slot)
+        let cls = treatment.treatmentClass.title
         return RoutineLedgerRow(
             name: treatment.name,
-            subtitle: slot.isEmpty
-                ? "As scheduled · \(treatment.treatmentClass.title)"
-                : "\(slot) · \(treatment.treatmentClass.title)",
+            // Round-8: matches Plan's identical row grammar — a mono time (or "TODAY" for a
+            // slotless periodic care product) in the leading margin, the name once in ink, and
+            // the class repeated underneath only when the name doesn't already say it. The old
+            // subtitle ("21:00 · Finasteride") echoed the row's own name directly above it.
+            timeLabel: slot.isEmpty ? "TODAY" : slot,
+            classSubtitle: treatment.name.localizedCaseInsensitiveContains(cls) ? nil : cls,
             done: done,
             action: { onToggleSlot(treatment, slot) }
         )
@@ -756,17 +760,28 @@ struct AnnotationRow: View {
 }
 
 /// One checkable routine step, styled to continue the ledger's rows: a small hairline circle
-/// leading (fills copper with a check when logged), the step name + subtitle, no card, no
-/// strikethrough — a current-treatment list reads a struck-through name as "discontinued", which
-/// this app must never imply (see `RoutineStepRow` on the Plan tab for the same rule).
+/// leading (fills copper with a check when logged), a mono time in the leading margin, the step
+/// name once in ink, no card, no strikethrough — a current-treatment list reads a struck-through
+/// name as "discontinued", which this app must never imply.
+///
+/// Round-8: the old subtitle ("21:00 · Finasteride") echoed the row's own name directly above it
+/// and spoke a different grammar than the identical row on Plan. This now shares Plan's exact
+/// grammar — mono time in the margin, name once, class only when the name doesn't already say it
+/// — so the same fact is said in the same voice on both screens (see `RoutineStepRow` in
+/// CareView.swift).
 private struct RoutineLedgerRow: View {
     let name: String
-    let subtitle: String
+    let timeLabel: String
+    let classSubtitle: String?
     let done: Bool
     let action: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pop = false
+
+    private var accessibilityDetail: String {
+        [timeLabel, classSubtitle].compactMap { $0 }.joined(separator: ", ")
+    }
 
     var body: some View {
         Button {
@@ -791,13 +806,20 @@ private struct RoutineLedgerRow: View {
                 }
                 .frame(width: 20, height: 20)
                 .scaleEffect(pop ? 1.15 : 1)
+                Text(timeLabel.uppercased())
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Clinical.secondary)
+                    .frame(width: 46, alignment: .leading)
+                    .opacity(done ? 0.55 : 1)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
                         .font(.system(size: 14, weight: done ? .regular : .medium))
                         .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
-                    Text(subtitle)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Clinical.tertiary)
+                    if let classSubtitle {
+                        Text(classSubtitle)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Clinical.tertiary)
+                    }
                 }
                 Spacer(minLength: 8)
             }
@@ -805,7 +827,7 @@ private struct RoutineLedgerRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.clinicalPressable)
-        .accessibilityLabel("\(name), \(subtitle)")
+        .accessibilityLabel("\(name), \(accessibilityDetail)")
         .accessibilityValue(done ? "Logged" : "Not logged")
         .accessibilityHint("Toggles today's dose as logged")
     }
