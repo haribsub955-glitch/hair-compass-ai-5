@@ -68,12 +68,11 @@ struct CareView: View {
                     .staggeredEntrance(index: 0)
 
                 // One entrance sequence down the card stack; indices are fixed positions, so a
-                // missing conditional card just leaves an invisible 50ms gap. The coach card is
-                // gone — its one fact ("N steps left today") now lives as a living subtitle
-                // right under the header, above a hairline that fills as steps complete, so the
-                // actual ritual (the routine list) is the first thing the page shows instead of
-                // a card that just restated what's below it.
-                routineProgressHeader.staggeredEntrance(index: 1)
+                // missing conditional card just leaves an invisible 50ms gap. The coach card —
+                // and the "N steps left today" subtitle that briefly replaced it — are both gone:
+                // that fact already lives in Today's ROUTINE annotation and in the unchecked
+                // circles of the list below, so the header now flows straight into the routine
+                // section itself, the page's uncontested focal object.
                 if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
                 if !routine.isEmpty { routineSection.staggeredEntrance(index: 3) }
                 guidanceCard.staggeredEntrance(index: 4)
@@ -328,59 +327,7 @@ struct CareView: View {
         }
         return RoutineBlock.allCases.compactMap { b in map[b].map { (b, $0) } }
     }
-    private var dailySteps: [(Treatment, String)] { routine.filter { $0.block != .periodic }.flatMap { $0.steps } }
-    private var doneToday: Int { dailySteps.filter { isLogged($0.0, slot: $0.1) }.count }
-
-    // MARK: Routine progress (the coach card's one surviving fact)
-
-    /// Replaces the old coach card — its illustration, flame streak and motivational copy used
-    /// to merely restate the list sitting right under it. What's left is the one fact worth
-    /// saying up top ("N steps left today") as a living subtitle beneath the header, and a
-    /// single copper hairline that fills left-to-right as steps complete instead of a separate
-    /// ring widget.
-    ///
-    /// Round-5: the "Nd streak" chip that used to ride beside the status line is gone — it was
-    /// the same fact Today's hero footnote and Trends' `ConsistencyCard` were already saying.
-    /// Consistency now has exactly one home (Trends), so `streak` here only feeds the milestone
-    /// math below, never its own on-screen chip.
-    private var routineProgressHeader: some View {
-        let remaining = max(0, dailySteps.count - doneToday)
-        let isComplete = !dailySteps.isEmpty && remaining == 0
-        let fraction = dailySteps.isEmpty ? 0 : Double(doneToday) / Double(dailySteps.count)
-        return VStack(alignment: .leading, spacing: 8) {
-            routineStatusLine(remaining: remaining, isComplete: isComplete)
-            if !dailySteps.isEmpty {
-                RoutineHairlineProgress(fraction: fraction)
-            }
-        }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: isComplete)
-        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8), value: remaining)
-    }
-
-    /// Checking a step off used to answer with a silent count change — the digit now genuinely
-    /// counts down via `.numericText()`, isolated in its own `Text` so only the number itself
-    /// (not the surrounding words, whose plural can flip) gets the rolling-digit transition.
-    @ViewBuilder
-    private func routineStatusLine(remaining: Int, isComplete: Bool) -> some View {
-        Group {
-            if dailySteps.isEmpty {
-                Text("No routine steps today")
-            } else if isComplete {
-                Text("Today's routine is done · \(dailySteps.count) of \(dailySteps.count)")
-                    .contentTransition(.opacity)
-            } else {
-                HStack(spacing: 4) {
-                    Text("\(remaining)")
-                        .contentTransition(.numericText(value: Double(remaining)))
-                        .monospacedDigit()
-                    Text(remaining == 1 ? "step left today" : "steps left today")
-                        .contentTransition(.opacity)
-                }
-            }
-        }
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(Clinical.ink)
-    }
+    // MARK: Routine progress
 
     /// Fraction toward the milestone's own next marker, derived from the same data
     /// (`treatmentWeeks`/`streak`) the milestone was built from — `Milestone` itself carries no
@@ -1142,36 +1089,6 @@ private struct RoutineStepRow: View {
         .buttonStyle(.plain)
         .accessibilityLabel(name)
         .accessibilityValue(done ? "Logged" : "Not logged")
-    }
-}
-
-/// A copper hairline that fills left-to-right as today's routine steps complete — the coach
-/// card's one surviving progress visual, now a single living line instead of a separate ring
-/// widget. Draws in once with a spring on appear (instant under Reduce Motion), then springs to
-/// each new value as steps get checked off.
-private struct RoutineHairlineProgress: View {
-    let fraction: Double
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var shown = false
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Clinical.hairline).frame(height: 2)
-                Capsule().fill(Clinical.accent)
-                    .frame(width: geo.size.width * (shown ? fraction : 0), height: 2)
-            }
-        }
-        .frame(height: 2)
-        .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.8), value: fraction)
-        .onAppear {
-            guard !shown else { return }
-            if reduceMotion {
-                shown = true
-            } else {
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2)) { shown = true }
-            }
-        }
     }
 }
 

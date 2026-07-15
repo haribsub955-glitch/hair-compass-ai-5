@@ -313,19 +313,26 @@ struct JourneyChart: View {
                         x: .value("Day", bar.day, unit: .day),
                         y: .value("Doses", bar.count)
                     )
-                    .foregroundStyle(bar.day >= recentCutoff ? Clinical.accent : Clinical.ink.opacity(0.25))
+                    // Round-12: thinned to 0.16 (from 0.25) so the past-window rug recedes to a
+                    // watermark under the journey line rather than a second chart competing with
+                    // it — the trailing 7 days stay full copper, unchanged.
+                    .foregroundStyle(bar.day >= recentCutoff ? Clinical.accent : Clinical.ink.opacity(0.16))
                     .cornerRadius(1)
                     .opacity(barRevealOpacity(bar, domain: domain, elapsed: elapsed))
                 }
             }
-            .frame(height: 52)
-            // The lane names itself at its own left edge, in the same quiet margin-ink caption
-            // as every other chart label here — replaces the legend row's "Doses" key.
-            .overlay(alignment: .topLeading) {
+            // Round-12: 36pt (from 52) — the densest ink patch in the app, quieted to a rug
+            // rather than a rival chart.
+            .frame(height: 36)
+            // The lane names itself in the same quiet margin-ink caption as every other chart
+            // label here — replaces the legend row's "Doses" key. Round-12: moved to the top
+            // trailing corner (was top leading) so it never sits over the tallest bars in the
+            // rug's first days, which the shorter frame now brings close to the top edge.
+            .overlay(alignment: .topTrailing) {
                 Text("Doses")
                     .font(Clinical.eyebrow(8)).tracking(0.6)
                     .foregroundStyle(Clinical.tertiary)
-                    .padding(.leading, gutterWidth + 4)
+                    .padding(.trailing, 2)
             }
             .chartXScale(domain: domain)
             .chartYScale(domain: 0...Double(data.intakeCeiling))

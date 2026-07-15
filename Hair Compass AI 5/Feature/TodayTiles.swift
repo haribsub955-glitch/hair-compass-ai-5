@@ -216,9 +216,12 @@ struct ConditionsHero: View {
                 }
                 Spacer()
                 Button(action: onOpenBaseline) {
-                    Image(systemName: "person.circle.fill")
-                        .font(.system(size: 30))
-                        .foregroundStyle(Clinical.ink.opacity(0.85), Clinical.surface.opacity(0.9))
+                    // A plain outline glyph, not a filled coin — the last card-chrome disc on
+                    // Today dissolves back onto the canvas, matching the bare header-action
+                    // voice used everywhere else in the app.
+                    Image(systemName: "person.circle")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Clinical.ink)
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                 }

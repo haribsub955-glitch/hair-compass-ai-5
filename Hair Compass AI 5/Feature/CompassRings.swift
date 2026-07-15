@@ -50,11 +50,19 @@ struct CompassRingView: View {
                 .opacity(reduceMotion ? (shown ? 1 : 0) : 1)
                 .animation(reduceMotion ? .easeOut(duration: 0.3) : nil, value: shown)
 
-            Text("\(score.score)")
-                .font(Clinical.number(17, weight: .semibold))
-                .foregroundStyle(Clinical.ink)
-                .contentTransition(.numericText())
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: score.score)
+            // No numeral before any effort was possible — a graded "0" at breakfast reads as a
+            // scold, not a journal companion; the empty track alone already says "open"
+            // honestly. The number appears the moment the first input closes, a small earned
+            // moment of motion rather than static chrome, then keeps counting via
+            // `.numericText()` on every later change.
+            if score.score > 0 {
+                Text("\(score.score)")
+                    .font(Clinical.number(17, weight: .semibold))
+                    .foregroundStyle(Clinical.ink)
+                    .contentTransition(.numericText())
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.7)))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: score.score)
+            }
         }
         .frame(width: size, height: size)
         .shadow(color: Clinical.accent.opacity(glowing ? 0.8 : 0), radius: glowing ? 14 : 0)
@@ -168,6 +176,11 @@ struct CompassRingsCard: View {
         }
         if score.allClosed {
             return "All rings closed. You showed up today."
+        }
+        // The ring itself carries no numeral yet at a true zero — its own sentence, rather than
+        // the two-item "Care and photo" phrasing below, since nothing has closed at all.
+        if score.score == 0 {
+            return "Log, care and photo all open today."
         }
         var open: [String] = []
         if let care = score.care, care < 1 { open.append("Care") }
