@@ -224,10 +224,14 @@ struct LabsView: View {
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Clinical.hairline.opacity(0.5)).frame(height: 6).offset(y: 4)
-                    Capsule().fill(Clinical.positive.opacity(0.22))
-                        .frame(width: geo.size.width * bandWidth, height: 6)
-                        .offset(x: geo.size.width * bandStart, y: 4)
+                    // Hairline vow: the gauge is a read-only annotation, not a slider — its track
+                    // and in-range band now draw at the same 2pt weight every other margin rule
+                    // in the ledger uses. The in-range band still says "range" by tint (sage),
+                    // never by extra stroke weight.
+                    Capsule().fill(Clinical.hairline.opacity(0.5)).frame(height: 2).offset(y: 6)
+                    Capsule().fill(Clinical.positive.opacity(0.32))
+                        .frame(width: geo.size.width * bandWidth, height: 2)
+                        .offset(x: geo.size.width * bandStart, y: 6)
                     // The dot slides in from the range's own start to its actual reading —
                     // draws once with a soft spring on appear, staggered per row so the ledger
                     // settles in sequence rather than all at once.
@@ -409,16 +413,18 @@ private struct AnimatedGaugeDot: View {
     @State private var pulsed = false
 
     private func x(for pct: CGFloat) -> CGFloat {
-        min(width - 14, max(0, width * pct - 7))
+        min(width - 10, max(0, width * pct - 5))
     }
 
     var body: some View {
+        // Hairline vow: the reading dot and its ring thin down to margin-annotation weight —
+        // this is a printed value, not a slider thumb waiting to be dragged.
         Circle().fill(color)
-            .frame(width: 14, height: 14)
-            .overlay(Circle().stroke(Clinical.surface, lineWidth: 2.5))
+            .frame(width: 10, height: 10)
+            .overlay(Circle().stroke(Clinical.surface, lineWidth: 1.5))
             // Soft halo behind the reading — the same flag color at whisper opacity, drawn as a
             // background so it takes no layout space and the gauge math above is untouched.
-            .background(Circle().fill(color.opacity(0.18)).frame(width: 26, height: 26))
+            .background(Circle().fill(color.opacity(0.14)).frame(width: 18, height: 18))
             .scaleEffect(pulsed ? 1.22 : 1)
             .shadow(color: Clinical.gold.opacity(pulsed ? 0.75 : 0), radius: pulsed ? 9 : 0)
             .offset(x: shown ? x(for: finalPct) : x(for: startPct))

@@ -1,12 +1,17 @@
 import SwiftUI
 import UIKit
 
-/// The app's floating tab bar: an ivory capsule sitting inside the bottom safe-area inset on
-/// layered warm shadows (tight contact + soft ambient — warm espresso, never grey). The
-/// selected item speaks in ink, not chrome — its icon and label simply tint copper — and is
-/// marked by a small copper underline that slides beneath the active label with a snappy spring
-/// (`matchedGeometryEffect`); the tapped symbol gives a light haptic and a small bounce. Under
-/// Reduce Motion the underline glides with an ease curve (no overshoot) and the bounce is
+/// The app's floating tab bar: items sitting directly on the canvas, inside the bottom safe-area
+/// inset, on nothing but a bottom-anchored scrim that fades scrolling content into
+/// `Clinical.canvas` before it reaches the labels. Round-13 retired the ivory capsule (fill +
+/// hairline strokeBorder + two warm shadows) — every page had already shed its card chrome, and
+/// the bright white pill was the loudest piece of chrome left, with Plan's product cards visibly
+/// ghosting behind it. The frame now speaks the same ink grammar as the pages it holds: no
+/// surface, no border, no shadow, just labels on a fade to canvas. The selected item still speaks
+/// in ink, not chrome — its icon and label simply tint copper — and is still marked by a small
+/// copper underline that slides beneath the active label with a snappy spring
+/// (`matchedGeometryEffect`); the tapped symbol still gives a light haptic and a small bounce.
+/// Under Reduce Motion the underline glides with an ease curve (no overshoot) and the bounce is
 /// dropped. Each item is a real button: label = tab title, `.isSelected` when active.
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
@@ -22,18 +27,31 @@ struct FloatingTabBar: View {
                 item(tab)
             }
         }
-        .padding(6)
-        .background(Clinical.surface, in: Capsule())
-        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
-        .shadow(color: Clinical.shadowWarm.opacity(0.12), radius: 2, y: 1)   // contact
-        .shadow(color: Clinical.shadowWarm.opacity(0.10), radius: 18, y: 9)  // ambient
+        .padding(.horizontal, 6)
+        .background(scrim)
         // Scoped to the bar: the underline slide + tint changes animate, the screen swap stays instant.
         .animation(
             reduceMotion ? .easeInOut(duration: 0.22) : .spring(response: 0.32, dampingFraction: 0.72),
             value: selection
         )
         .padding(.horizontal, 20)
-        .padding(.bottom, 10)
+        .padding(.bottom, 8)
+    }
+
+    /// Clear at the top, full canvas by the labels' own top edge, extended into the bottom safe
+    /// area — so content scrolled behind the bar dissolves into the page instead of ghosting
+    /// through a transparent white pill. Widened past the item stack (via `.padding(.top, -24)`)
+    /// so nothing shows a hard-edged rectangle above the tallest label.
+    private var scrim: some View {
+        LinearGradient(
+            colors: [Clinical.canvas.opacity(0), Clinical.canvas.opacity(0.85), Clinical.canvas],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .padding(.top, -24)
+        .padding(.horizontal, -20)
+        .ignoresSafeArea(edges: .bottom)
+        .allowsHitTesting(false)
     }
 
     private func item(_ tab: AppTab) -> some View {

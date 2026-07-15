@@ -101,20 +101,11 @@ struct RootView: View {
         }
         // Reserve real layout space for navigation. The previous overlay obscured the final
         // card on every tab and made users scroll content underneath an active control.
+        // Round-13: the canvas fade that used to live here (behind the tab bar's now-retired
+        // ivory capsule) moved onto `FloatingTabBar` itself — the bar owns its own scrim so the
+        // frame speaks the same ink grammar wherever it's hosted, not just in RootView.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             FloatingTabBar(selection: $tab)
-                .background {
-                    // Fade scrolling content into the canvas before it reaches navigation. This
-                    // keeps the capsule floating without letting card copy show through its
-                    // transparent outer margins.
-                    LinearGradient(
-                        colors: [Clinical.canvas.opacity(0), Clinical.canvas, Clinical.canvas],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .padding(.top, -16)
-                    .ignoresSafeArea(edges: .bottom)
-                }
                 // Charts can establish their own compositing layers. Flatten the complete bar
                 // above them so no tab item is painted underneath a scrolling chart card.
                 .compositingGroup()

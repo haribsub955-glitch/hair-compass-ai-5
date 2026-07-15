@@ -325,14 +325,19 @@ struct JourneyChart: View {
             // rather than a rival chart.
             .frame(height: 36)
             // The lane names itself in the same quiet margin-ink caption as every other chart
-            // label here — replaces the legend row's "Doses" key. Round-12: moved to the top
-            // trailing corner (was top leading) so it never sits over the tallest bars in the
-            // rug's first days, which the shorter frame now brings close to the top edge.
-            .overlay(alignment: .topTrailing) {
+            // label here — replaces the legend row's "Doses" key. Round-12 moved this to the top
+            // trailing corner, but that put it directly on the trailing 7-day bars — the rug's
+            // only full-copper ink — half-clipped at the screen edge. Round-13: back to the
+            // leading gutter, the chart's established home for lane names (Heavy/Elevated/
+            // Normal/Minimal already live there on the plot above), right-aligned to the same
+            // gutter width so it never sits over a bar in any window.
+            .overlay(alignment: .topLeading) {
                 Text("Doses")
                     .font(Clinical.eyebrow(8)).tracking(0.6)
                     .foregroundStyle(Clinical.tertiary)
-                    .padding(.trailing, 2)
+                    .lineLimit(1).fixedSize()
+                    .frame(width: gutterWidth, alignment: .trailing)
+                    .padding(.trailing, 4)
             }
             .chartXScale(domain: domain)
             .chartYScale(domain: 0...Double(data.intakeCeiling))

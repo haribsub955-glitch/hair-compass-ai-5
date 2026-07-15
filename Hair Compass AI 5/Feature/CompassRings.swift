@@ -19,16 +19,26 @@ enum CompassRingKind: CaseIterable, Hashable {
 }
 
 /// A single thin-stroke ring — the Compass Score said once, in margin scale, instead of a
-/// hero-sized bullseye of three concentric pastel bands. Draws its arc in once on first
-/// appearance (Reduce Motion: fades straight to the final reading, no trim animation) and pulses
-/// a brief copper glow with a success haptic the moment every input closes for the day.
+/// hero-sized bullseye of three concentric pastel bands.
+///
+/// Round-13: the ring used to sit on a thick pale-copper track (`Clinical.accent.opacity(0.18)`
+/// at the same weight as the reading arc) even at true zero — a vacant ornament occupying the
+/// page's second-most-prominent slot, its meaning entirely carried by the sentence beside it. The
+/// background is now a 1pt `Clinical.hairline` circle, matching every other margin rule in the
+/// journal, and the ring itself is three equal thirds — one per Compass input (log / care /
+/// lens) — that ink in at full copper weight only as their own pillar closes, rather than one
+/// continuous arc keyed to the blended score. Each third draws itself in once on first appearance
+/// (a trim animation; Reduce Motion crossfades straight to the final reading) and re-inks with the
+/// same spring whenever that pillar's own value changes later in the day — the ring becomes a
+/// living record of the day as it's lived, not a gauge waiting to judge an empty morning. Still
+/// pulses a brief copper glow with a success haptic the moment every input closes for the day.
 struct CompassRingView: View {
     let score: CompassScore
     var size: CGFloat = 64
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Gates the initial 0 → value draw-in so the ring animates once on first appearance,
-    /// instantly under Reduce Motion.
+    /// Gates the initial "closed at rest" → "inked to today's reading" draw-in so the ring
+    /// animates once on first appearance, instantly under Reduce Motion.
     @State private var shown = false
     /// Held explicitly so the very first appearance never reads as a "closure" — only a real
     /// change after the ring is already on screen can trigger the glow.
@@ -36,19 +46,16 @@ struct CompassRingView: View {
     @State private var glowing = false
 
     private var strokeWidth: CGFloat { size / 11 }
-    private var fraction: Double { Double(score.score) / 100 }
+    /// The three pillars in ring order — log, then care (nil when no plan exists today, which
+    /// leaves its third bare hairline instead of a bare-zero arc), then lens.
+    private var pillars: [Double?] { [score.log, score.care, score.lens] }
 
     var body: some View {
         ZStack {
-            let clamped = shown ? max(0, min(1, fraction)) : 0
-            Circle().stroke(Clinical.accent.opacity(0.18), lineWidth: strokeWidth)
-            Circle()
-                .trim(from: 0, to: clamped)
-                .stroke(Clinical.accent, style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.8), value: clamped)
-                .opacity(reduceMotion ? (shown ? 1 : 0) : 1)
-                .animation(reduceMotion ? .easeOut(duration: 0.3) : nil, value: shown)
+            Circle().stroke(Clinical.hairline, lineWidth: 1)
+            ForEach(Array(pillars.enumerated()), id: \.offset) { index, value in
+                pillarArc(index: index, value: value)
+            }
 
             // No numeral before any effort was possible — a graded "0" at breakfast reads as a
             // scold, not a journal companion; the empty track alone already says "open"
@@ -90,6 +97,24 @@ struct CompassRingView: View {
             previousScore = new
         }
         .accessibilityHidden(true)
+    }
+
+    /// One pillar's third of the ring, trimmed from its own segment start to a point proportional
+    /// to how much of that pillar has closed (so Care's partial dose fraction fills part of its
+    /// third, not all-or-nothing). `value == nil` (no plan scheduled) leaves the segment fully
+    /// unfilled — that third stays bare hairline, same as an unscored ring did before.
+    private func pillarArc(index: Int, value: Double?) -> some View {
+        let segmentStart = Double(index) / 3
+        let segmentSpan = 1.0 / 3
+        let target = segmentStart + segmentSpan * max(0, min(1, value ?? 0))
+        let end = shown ? target : segmentStart
+        return Circle()
+            .trim(from: segmentStart, to: max(segmentStart, end))
+            .stroke(Clinical.accent, style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))
+            .rotationEffect(.degrees(-90))
+            .animation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.8), value: end)
+            .opacity(reduceMotion ? (shown ? 1 : 0) : 1)
+            .animation(reduceMotion ? .easeOut(duration: 0.3) : nil, value: shown)
     }
 }
 

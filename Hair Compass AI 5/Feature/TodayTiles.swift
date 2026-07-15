@@ -77,12 +77,18 @@ struct ConditionsHero: View {
             // re-tinting at canvas 0.3 — landed both layers on the exact same seam, reading as a
             // crisp tonal line where the 304pt hero frame ends. Finishing the wash's return by
             // ~0.88 and holding bare canvas the rest of the way dissolves that edge entirely.
-            LinearGradient(stops: [
-                .init(color: Clinical.canvas, location: 0),
-                .init(color: Clinical.surface.opacity(0.9), location: 0.55),
-                .init(color: Clinical.canvas, location: 0.88),
-                .init(color: Clinical.canvas, location: 1),
-            ], startPoint: .top, endPoint: .bottom)
+            // Round-13: a full-width `LinearGradient` still reads as a tonal BAND — every column
+            // hits the same surface tint at location 0.55, so the wash has a crisp horizontal top
+            // and bottom edge even though it fades vertically. An `EllipticalGradient` centered
+            // behind the band word's slot has no edge at all: it feathers to fully clear well
+            // inside the frame on every side, so the hero melts into the canvas from a glow
+            // rather than breaking the page into a section.
+            EllipticalGradient(
+                colors: [Clinical.surface.opacity(0.85), Clinical.surface.opacity(0.32), Clinical.canvas.opacity(0)],
+                center: .init(x: 0.36, y: 0.68),
+                startRadiusFraction: 0,
+                endRadiusFraction: 0.62
+            )
             sceneLayer
             // Legibility scrim: soft at the top (greeting), stronger over the band word,
             // clear through the middle so the simulation stays the hero — now fading through
