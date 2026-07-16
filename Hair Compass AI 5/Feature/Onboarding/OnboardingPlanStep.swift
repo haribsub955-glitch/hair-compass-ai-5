@@ -313,6 +313,8 @@ struct OnboardingPlanStep: View {
             }
             .buttonStyle(.plain)
             .disabled(isPurchasing)
+
+            PaywallLegal()
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)

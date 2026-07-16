@@ -4,9 +4,15 @@ import Foundation
 /// are intentionally empty placeholders — fill them (the docs/ GitHub Pages site) before submitting;
 /// empty means the link is simply hidden in-app rather than showing a broken button.
 enum AppInfo {
-    /// TODO before submission: set to the live privacy policy / support URLs.
-    static let privacyPolicyURLString = ""
-    static let supportURLString = ""
+    /// The docs/ GitHub Pages site. Requires GitHub Pages to be enabled for the repo
+    /// (Settings → Pages → source: /docs on the default branch) so these resolve.
+    static let privacyPolicyURLString = "https://haribsub955-glitch.github.io/hair-compass-ai-5/privacy-policy.html"
+    static let supportURLString = "https://haribsub955-glitch.github.io/hair-compass-ai-5/"
+
+    /// Apple's standard end-user licence (EULA) — used on the subscription paywall when you don't
+    /// host a custom one. Swap for your own Terms URL if you write one.
+    static let termsOfUseURLString = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+    static var termsOfUseURL: URL? { URL(string: termsOfUseURLString) }
 
     static var privacyPolicyURL: URL? {
         privacyPolicyURLString.isEmpty ? nil : URL(string: privacyPolicyURLString)

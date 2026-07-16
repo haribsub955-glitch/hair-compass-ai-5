@@ -125,6 +125,8 @@ struct ProGate<Content: View>: View {
             .buttonStyle(.plain)
             .disabled(isPurchasing)
 
+            PaywallLegal()
+
             Spacer(minLength: 20)
         }
         .padding(.horizontal, 24)
