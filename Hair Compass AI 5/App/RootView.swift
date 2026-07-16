@@ -227,11 +227,20 @@ struct RootView: View {
                 appLock.markBackgrounded()
                 ritualCoordinator.markBackgrounded()
             case .active:
+                // A Siri/Shortcuts "Log check-in" hands off through the App Group — honour it on
+                // activation. The `&&` short-circuits so the flag is only consumed when we can act
+                // (never swallowed behind the lock or onboarding), and it suppresses a ritual roll.
+                let wantsLog = !showOnboarding && !(appLock.isEnabled && appLock.isLocked)
+                    && IntentHandoff.consumePendingLog()
+                if wantsLog {
+                    tab = .today
+                    deepLinks.openLogRequested = true
+                }
                 if appLock.isEnabled && appLock.isLocked {
                     // Lock wins: never roll a ritual over the lock screen — go straight to Face ID.
                     lockPresenter.present(appLock)
                     Task { await appLock.unlock() }
-                } else if !showOnboarding, !showTutorial, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
+                } else if !wantsLog, !showOnboarding, !showTutorial, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
                     // Foreground after >4h in the background → re-roll (never over onboarding/another cover).
                     ritualKind = ritualCoordinator.rollOnForeground(hasOnboarded: profile?.hasOnboarded == true)
                     ritualCoordinator.clearBackgrounded()

@@ -36,6 +36,9 @@ struct AddTreatmentSheet: View {
     // MARK: Ingredients photo + AI summary (custom item support)
     @State private var ingredientPickerItem: PhotosPickerItem?
     @State private var ingredientImage: UIImage?
+    /// Text read off the label on-device by Vision the moment a photo is picked — instant, free,
+    /// and private, shown before (and independent of) the optional off-device AI identification.
+    @State private var detectedLabelText = ""
     @State private var ingredientPhotoPath = ""
     @State private var aiIngredientSummary = ""
     @State private var analysisService = CloudAnalysisService()
@@ -422,6 +425,20 @@ struct AddTreatmentSheet: View {
                 .buttonStyle(ClinicalButtonStyle(filled: false))
                 .onChange(of: ingredientPickerItem) { _, item in loadIngredientPhoto(item) }
 
+                if !detectedLabelText.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Read on the label", systemImage: "text.viewfinder")
+                            .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
+                        Text(detectedLabelText)
+                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            .lineLimit(4)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                }
+
                 if ingredientImage != nil {
                     Button(action: analyzeIngredientsTapped) {
                         Label(analysisService.isRunning ? "Analyzing…" : "Analyze with AI", systemImage: "sparkles")
@@ -456,9 +473,12 @@ struct AddTreatmentSheet: View {
             guard let data = try? await item.loadTransferable(type: Data.self), let ui = UIImage(data: data) else { return }
             ingredientImage = ui
             aiIngredientSummary = ""
+            detectedLabelText = ""
             if let path = PhotoStore.shared.save(ui) {
                 ingredientPhotoPath = path
             }
+            // On-device OCR — instant, free, private. Runs regardless of the AI consent gate.
+            detectedLabelText = await TextScanner.recognizeText(in: ui)
         }
     }
 
