@@ -9,6 +9,7 @@ struct ProcedureDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var appointment: ProcedureAppointment
     @State private var showEdit = false
+    @State private var calendarFeedback: String?
 
     var body: some View {
         NavigationStack {
@@ -21,6 +22,15 @@ struct ProcedureDetailSheet: View {
                     if !appointment.isCompleted {
                         Button("Mark completed", action: markCompleted)
                             .buttonStyle(ClinicalButtonStyle())
+                    }
+                    if appointment.isUpcoming {
+                        Button(action: addToCalendar) {
+                            Label(calendarFeedback ?? "Add to Calendar",
+                                  systemImage: calendarFeedback == nil ? "calendar.badge.plus" : "checkmark")
+                                .font(.system(size: 15, weight: .medium))
+                        }
+                        .buttonStyle(ClinicalButtonStyle(filled: false))
+                        .disabled(calendarFeedback != nil)
                     }
                     deleteButton
                     Text("A private record for your own clinician conversations — not medical advice.")
@@ -86,6 +96,25 @@ struct ProcedureDetailSheet: View {
         appointment.isCompleted = true
         appointment.completedAt = .now
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    private func addToCalendar() {
+        Task {
+            switch await CalendarService.addProcedure(
+                title: appointment.type.title,
+                date: appointment.date,
+                location: appointment.location,
+                notes: appointment.note
+            ) {
+            case .added:
+                calendarFeedback = "Added to Calendar"
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            case .denied:
+                calendarFeedback = "Calendar access is off"
+            case .failed:
+                calendarFeedback = "Couldn't add it"
+            }
+        }
     }
 
     /// Hand-drawn destructive style (matches `PhotoDetailView.deleteButton`) rather than
