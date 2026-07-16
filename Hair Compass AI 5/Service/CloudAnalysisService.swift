@@ -20,8 +20,9 @@ final class CloudAnalysisService {
         self.defaults = defaults
     }
 
-    /// True when an API key is configured (env var → UserDefaults; never committed to the repo).
-    var hasKey: Bool { AIConfig.claudeKey?.isEmpty == false }
+    /// True when a cloud model is reachable — via the owner's proxy (release) or a launch-provided
+    /// dev key (local). Deep analysis needs the cloud; there's no on-device path for image input.
+    var hasKey: Bool { AIGateway.isConfigured }
 
     struct AnalysisError: Error { let message: String }
 
@@ -67,8 +68,8 @@ final class CloudAnalysisService {
         guard AIConsent.isGranted(defaults) else {
             throw AnalysisError(message: "Deep analysis is off: sending photos off-device needs your consent first. You'll be asked when you start a deep analysis, and you can manage it in your profile's Privacy section.")
         }
-        guard let key = AIConfig.claudeKey, !key.isEmpty else {
-            throw AnalysisError(message: "No API key configured. Deep analysis needs a Claude API key (set OPENAI/ANTHROPIC key in the run scheme).")
+        guard AIGateway.isConfigured else {
+            throw AnalysisError(message: "Deep analysis isn't available in this build.")
         }
 
         var content: [[String: Any]] = [[
@@ -86,7 +87,6 @@ final class CloudAnalysisService {
 
         return try await send(
             content: content,
-            key: key,
             maxTokens: 1024,
             refusalMessage: "The model declined to analyze this request. Try again with different photos or notes."
         )
@@ -100,8 +100,8 @@ final class CloudAnalysisService {
         guard AIConsent.isGranted(defaults) else {
             throw AnalysisError(message: "Analyzing this photo is off: sending it off-device needs your consent first. You'll be asked when you tap Analyze, and you can manage it in your profile's Privacy section.")
         }
-        guard let key = AIConfig.claudeKey, !key.isEmpty else {
-            throw AnalysisError(message: "No API key configured. Ingredient analysis needs a Claude API key (set OPENAI/ANTHROPIC key in the run scheme).")
+        guard AIGateway.isConfigured else {
+            throw AnalysisError(message: "Ingredient analysis isn't available in this build.")
         }
         guard let b64 = Self.downscaledJPEGBase64(image) else {
             throw AnalysisError(message: "Couldn't prepare this photo for analysis. Try a different photo.")
@@ -114,15 +114,14 @@ final class CloudAnalysisService {
 
         return try await send(
             content: content,
-            key: key,
             maxTokens: 512,
             refusalMessage: "The model declined to analyze this photo. Try a clearer photo of the label."
         )
     }
 
-    /// Shared HTTP call: posts one message to Fable with a server-side Opus fallback and returns
-    /// the response text, or throws an `AnalysisError` with a user-facing message.
-    private func send(content: [[String: Any]], key: String, maxTokens: Int, refusalMessage: String) async throws -> String {
+    /// Shared call: posts one message to Fable (server-side Opus fallback) through `AIGateway`
+    /// and returns the response text, or throws an `AnalysisError` with a user-facing message.
+    private func send(content: [[String: Any]], maxTokens: Int, refusalMessage: String) async throws -> String {
         let body: [String: Any] = [
             "model": "claude-fable-5",
             "max_tokens": maxTokens,
@@ -130,27 +129,11 @@ final class CloudAnalysisService {
             "messages": [["role": "user", "content": content]]
         ]
 
-        var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(key, forHTTPHeaderField: "x-api-key")
-        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        req.setValue("server-side-fallback-2026-06-01", forHTTPHeaderField: "anthropic-beta")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        req.timeoutInterval = 90
-
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse else {
-            throw AnalysisError(message: "Unexpected response from the analysis service.")
-        }
-        guard (200...299).contains(http.statusCode) else {
-            let apiMessage = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])
-                .flatMap { ($0?["error"] as? [String: Any])?["message"] as? String }
-            throw AnalysisError(message: apiMessage ?? "Analysis failed (HTTP \(http.statusCode)).")
-        }
-
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw AnalysisError(message: "Couldn't read the analysis response.")
+        let json: [String: Any]
+        do {
+            json = try await AIGateway.postMessages(body)
+        } catch let e as AIGateway.GatewayError {
+            throw AnalysisError(message: e.message)
         }
 
         // Fable can decline benign requests via safety classifiers — handle before reading content.
@@ -233,6 +216,16 @@ enum AIConsent {
 /// in UserDefaults — there is never a key in the repo.
 enum AIConfig {
     static let keyDefaultsKey = "claudeAPIKey"
+
+    /// The owner's cloud AI proxy (holds the API key server-side and verifies the subscription).
+    /// Set this for release builds — when non-empty the app never carries the key and every cloud
+    /// call goes through the proxy with the StoreKit entitlement attached. Empty = local dev, which
+    /// falls back to a launch-provided key (`claudeKey`) posted directly to Anthropic.
+    static let proxyURLString = ""
+
+    static var proxyURL: URL? {
+        proxyURLString.isEmpty ? nil : URL(string: proxyURLString)
+    }
 
     static var claudeKey: String? {
         UserDefaults.standard.string(forKey: keyDefaultsKey)

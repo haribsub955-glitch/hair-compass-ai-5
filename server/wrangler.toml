@@ -1,0 +1,6 @@
+name = "hair-compass-ai-proxy"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+
+# The Anthropic API key is a SECRET, never put here. Set it with:
+#   wrangler secret put ANTHROPIC_API_KEY

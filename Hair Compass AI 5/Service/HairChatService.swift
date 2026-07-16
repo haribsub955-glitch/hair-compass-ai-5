@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 /// One turn of the hair-science chat. Text only — photos never enter this feature.
 struct ChatMessage: Identifiable, Equatable {
@@ -96,8 +99,15 @@ final class HairChatService {
         self.defaults = defaults
     }
 
-    /// True when an API key is configured (env var → UserDefaults; never committed to the repo).
-    var hasKey: Bool { AIConfig.claudeKey?.isEmpty == false }
+    /// True when chat can run at all: on-device (Apple Intelligence) OR a reachable cloud model
+    /// (the owner's proxy in release, a dev key locally).
+    var hasKey: Bool {
+        if AIGateway.isConfigured { return true }
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *), OnDeviceChat.isAvailable { return true }
+        #endif
+        return false
+    }
 
     struct ChatError: Error { let message: String }
 
@@ -123,47 +133,43 @@ final class HairChatService {
     // MARK: - Request
 
     private func request(context: String, focus: String) async throws -> String {
-        // Belt and braces: no code path may send data off-device without explicit consent.
-        // The UI gates the entry point; this is the last line of defense.
+        let system = HairChatPrompt.system(contextJSON: context, focus: focus)
+        let turns = HairChatPrompt.cappedHistory(messages).map {
+            (role: $0.role.rawValue, text: $0.text)
+        }
+
+        // On-device first — Apple Intelligence answers with NOTHING leaving the device, so it needs
+        // no off-device consent, no key, and no proxy. Falls through to the cloud if it declines.
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *), OnDeviceChat.isAvailable {
+            if let reply = await OnDeviceChat.reply(system: system, turns: turns), !reply.isEmpty {
+                return reply
+            }
+        }
+        #endif
+
+        // Cloud fallback (devices without on-device AI). This DOES leave the device, so it needs
+        // consent, and it goes through the proxy (release) or a dev key (local).
         guard AIConsent.isGranted(defaults) else {
             throw ChatError(message: "Chat is off: sending your tracking summary off-device needs your consent first. You can manage this in your profile's Privacy section.")
         }
-        guard let key = AIConfig.claudeKey, !key.isEmpty else {
-            throw ChatError(message: "No API key configured. Chat needs a Claude API key (set it in the run scheme).")
+        guard AIGateway.isConfigured else {
+            throw ChatError(message: "Chat isn't available in this build.")
         }
 
-        let history = HairChatPrompt.cappedHistory(messages).map {
-            ["role": $0.role.rawValue, "content": $0.text]
-        }
         let body: [String: Any] = [
             "model": "claude-fable-5",
             "max_tokens": 700,
             "fallbacks": [["model": "claude-opus-4-8"]],
-            "system": HairChatPrompt.system(contextJSON: context, focus: focus),
-            "messages": history
+            "system": system,
+            "messages": turns.map { ["role": $0.role, "content": $0.text] }
         ]
 
-        var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(key, forHTTPHeaderField: "x-api-key")
-        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        req.setValue("server-side-fallback-2026-06-01", forHTTPHeaderField: "anthropic-beta")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        req.timeoutInterval = 90
-
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse else {
-            throw ChatError(message: "Unexpected response from the chat service.")
-        }
-        guard (200...299).contains(http.statusCode) else {
-            let apiMessage = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])
-                .flatMap { ($0?["error"] as? [String: Any])?["message"] as? String }
-            throw ChatError(message: apiMessage ?? "Chat failed (HTTP \(http.statusCode)).")
-        }
-
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw ChatError(message: "Couldn't read the chat response.")
+        let json: [String: Any]
+        do {
+            json = try await AIGateway.postMessages(body)
+        } catch let e as AIGateway.GatewayError {
+            throw ChatError(message: e.message)
         }
 
         let blocks = json["content"] as? [[String: Any]] ?? []
@@ -179,3 +185,34 @@ final class HairChatService {
         return reply
     }
 }
+
+#if canImport(FoundationModels)
+/// On-device chat via Apple's FoundationModels (Apple Intelligence). Everything stays on the
+/// device — no network, no key, no off-device consent — so it's the preferred path when available.
+/// Mirrors `OnDeviceInsight` in InsightEngine.swift.
+@available(iOS 26.0, *)
+enum OnDeviceChat {
+    static var isAvailable: Bool {
+        if case .available = SystemLanguageModel.default.availability { return true }
+        return false
+    }
+
+    /// Answer the latest turn on-device. `system` is the grounding/instructions; `turns` is the
+    /// capped conversation (oldest→newest, ending on the user's message). Returns nil to let the
+    /// caller fall back to the cloud — e.g. if the model is unavailable or the context is too large.
+    static func reply(system: String, turns: [(role: String, text: String)]) async -> String? {
+        guard case .available = SystemLanguageModel.default.availability else { return nil }
+        let rendered = turns
+            .map { "\($0.role == "assistant" ? "Assistant" : "User"): \($0.text)" }
+            .joined(separator: "\n\n")
+        let session = LanguageModelSession(instructions: system)
+        do {
+            let response = try await session.respond(to: rendered + "\n\nAssistant:")
+            let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : text
+        } catch {
+            return nil
+        }
+    }
+}
+#endif
