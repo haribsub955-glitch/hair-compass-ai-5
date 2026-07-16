@@ -1,56 +1,62 @@
 # Hair Compass AI proxy
 
-A tiny Cloudflare Worker that lets the app use the cloud AI **without ever shipping the Anthropic
-API key**. The key lives only here as a secret; the app calls this Worker, which verifies the user's
-App Store subscription and forwards the request to Anthropic.
+A small Node serverless function that lets the app use the cloud AI **without ever shipping the
+Anthropic API key**. The key lives only here as an env var. Each request carries the user's
+StoreKit 2 entitlement JWS, which this function verifies with **Apple's official App Store Server
+Library** — full signature + certificate-chain validation against Apple's root, not just a claims
+check — before forwarding to Anthropic.
 
 This is the server side of the hybrid AI:
 - **On-device (free, private):** the app uses Apple's FoundationModels for the *text* chat when the
   device supports Apple Intelligence — it never touches this proxy.
 - **Cloud (this proxy):** photo/deep analysis, and chat on devices without on-device AI.
 
-## Deploy (≈5 minutes, free tier)
+## Deploy (Vercel — easiest from your repo)
 
-1. Install Wrangler and log in:
+1. Install the CLI and log in:
    ```bash
-   npm install -g wrangler
-   wrangler login
+   npm install -g vercel
+   cd server && npm install
+   vercel login
    ```
-2. From this `server/` folder, set the Anthropic key as a secret (never committed):
-   ```bash
-   wrangler secret put ANTHROPIC_API_KEY
-   # paste your Anthropic key when prompted
-   ```
+2. Set the two environment variables (in the Vercel dashboard → Project → Settings → Environment
+   Variables, or via `vercel env add`):
+   - `ANTHROPIC_API_KEY` — your Anthropic key (**required**).
+   - `APP_APPLE_ID` — the numeric App Store app id (**for production**; get it from App Store
+     Connect once the app record exists). You can deploy without it and test with **sandbox /
+     TestFlight** first; add it before going live.
 3. Deploy:
    ```bash
-   wrangler deploy
+   vercel --prod
    ```
-   Wrangler prints a URL like `https://hair-compass-ai-proxy.<your-subdomain>.workers.dev`.
-4. Point the app at it — set this in `Hair Compass AI 5/Service/CloudAnalysisService.swift`:
+   Vercel prints a URL. Your endpoint is `https://<project>.vercel.app/api/analyze`.
+4. Point the app at it — one line in `Hair Compass AI 5/Service/CloudAnalysisService.swift`:
    ```swift
    enum AIConfig {
-       static let proxyURLString = "https://hair-compass-ai-proxy.<your-subdomain>.workers.dev"
+       static let proxyURLString = "https://<project>.vercel.app/api/analyze"
        ...
    }
    ```
    When `proxyURLString` is non-empty the app carries **no key** and every cloud call goes through
-   the Worker with the StoreKit entitlement attached. (Leave it empty for local dev, which uses a
-   launch-provided `ANTHROPIC_API_KEY` env var.)
+   this function with the StoreKit entitlement attached. (Leave it empty for local dev, which uses a
+   launch-provided `ANTHROPIC_API_KEY` env var and posts directly to Anthropic.)
 
-## How the gate works
+> Any Node host works (Netlify Functions, AWS Lambda, a small Express server) — it's a standard
+> handler; only the deploy command differs.
 
-Each request from the app sends the StoreKit 2 entitlement JWS in `X-Subscription`. The Worker
-checks it's this app's bundle id, a Pro product, not revoked, and not expired — then forwards to
-Anthropic. No subscription → `402`, and the app shows "this is a Pro feature".
+## How verification works
 
-## Hardening (do before scaling)
+`api/analyze.js` uses `SignedDataVerifier.verifyAndDecodeTransaction(jws)` from
+`@apple/app-store-server-library`, which:
+- verifies the JWS **signature**,
+- validates the **x5c certificate chain** up to Apple's root CA (fetched at cold start),
+- runs online (OCSP) **revocation** checks.
 
-`verifySubscription` currently checks the JWS **claims** but does not cryptographically verify
-Apple's signature, so a determined attacker could forge a token. Before you have real volume, add
-**x5c certificate-chain verification** against Apple's root CA (`AppleRootCA-G3`), or use Apple's
-[App Store Server Library](https://github.com/apple/app-store-server-library-node). Also consider:
-- a **rate limit** per subscription (Workers KV or Durable Objects),
-- a **monthly spend cap** on the Anthropic account as a backstop,
-- logging/analytics on usage.
+It then confirms the decoded transaction is **this app's bundle id**, a **Pro product**, **not
+revoked**, and **not expired**. It tries the production environment first, then sandbox, so one
+deploy serves both TestFlight review and the live App Store. No subscription → `402`, and the app
+shows "this is a Pro feature".
 
-Cloudflare is one option; the same ~40 lines port directly to a Vercel/Netlify function if you prefer.
+## Backstops worth adding
+- A **monthly spend cap** on the Anthropic account (belt-and-braces against any abuse).
+- A **per-subscription rate limit** (e.g. Vercel KV / Upstash) if usage grows.

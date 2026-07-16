@@ -1,0 +1,13 @@
+{
+  "name": "hair-compass-ai-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Subscription-gated proxy for Hair Compass's cloud AI — verifies the StoreKit 2 transaction JWS with Apple's official library, then forwards to Anthropic with a server-held key.",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@apple/app-store-server-library": "^1.4.0"
+  }
+}
