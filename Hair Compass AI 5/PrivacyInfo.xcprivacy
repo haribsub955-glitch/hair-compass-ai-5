@@ -9,38 +9,14 @@
 	<array/>
 
 	<!--
-	  Data types the app handles off-device ONLY via the opt-in AI features (photos + health/log
-	  context sent to the analysis service on explicit consent). Not linked to identity, never used
-	  for tracking, only for app functionality. Everything else stays on device.
-	  NOTE: this must match the "App Privacy" answers in App Store Connect — reconcile before submitting.
+	  The app collects NO data off-device. All AI runs on-device (Apple Intelligence / Vision),
+	  every record and photo stays in on-device storage, and there is no server or analytics
+	  upload. So no data types are declared here.
+	  NOTE: this must match the "App Privacy" answers in App Store Connect — set "Data Not
+	  Collected" there to reconcile before submitting.
 	-->
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array>
-		<dict>
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypeHealth</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-		<dict>
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-	</array>
+	<array/>
 
 	<!--
 	  Required-reason API declarations — this is the part App Review scans the binary against.

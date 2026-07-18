@@ -1,89 +1,14 @@
 import SwiftData
 import SwiftUI
-import UIKit
 
-/// One-time, plain-language consent shown before the FIRST deep analysis — scalp photos leave the
-/// device, so that has to be an explicit, informed yes. "Not now" sends nothing. Granting persists
-/// (see `AIConsent`) and is revocable anytime from Baseline → Privacy.
-struct AIConsentSheet: View {
-    /// Called after consent is recorded — the caller proceeds to the analysis sheet.
-    var onAllow: () -> Void
-    /// Called on decline — dismiss, nothing sent.
-    var onNotNow: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
-                    BrandBanner(art: BrandArt.analysis, height: 130)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Eyebrow(text: "Before your first deep analysis")
-                        Text("Your photos would leave this device")
-                            .font(Clinical.headline(24))
-                            .foregroundStyle(Clinical.ink)
-                    }
-
-                    ClinicalCard {
-                        VStack(alignment: .leading, spacing: 16) {
-                            consentRow("photo.on.rectangle.angled", "What is sent",
-                                       "Your scalp photos and a short summary of your tracking (shedding, scalp scores, treatments).")
-                            consentRow("cloud", "Where it goes",
-                                       "To Anthropic, the cloud AI provider that runs the analysis. This data leaves your device for that one request.")
-                            consentRow("doc.text", "Why",
-                                       "To write a plain-language, record-keeping summary of what's visible. It is not a diagnosis.")
-                            consentRow("hand.raised", "Your control",
-                                       "Nothing is sent until you allow it, and you can turn this off later in your profile's Privacy section.")
-                        }
-                    }
-
-                    Button("Allow and continue") {
-                        AIConsent.grant()
-                        onAllow()
-                    }
-                    .buttonStyle(ClinicalButtonStyle())
-                    .accessibilityIdentifier("aiConsentAllow")
-
-                    Button("Not now") { onNotNow() }
-                        .buttonStyle(ClinicalButtonStyle(filled: false))
-                        .accessibilityIdentifier("aiConsentNotNow")
-                }
-                .padding(20)
-            }
-            .clinicalScreen()
-            .navigationTitle("Deep analysis")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-
-    private func consentRow(_ symbol: String, _ title: String, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 16))
-                .foregroundStyle(Clinical.accent)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Clinical.ink)
-                Text(text)
-                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-            }
-        }
-    }
-}
-
-/// Opt-in cloud "deep analysis". Explicit off-device-data consent up front, then a single Claude
-/// Fable 5 call over the deterministic facts plus matched progress photos. Framed as
-/// record-keeping, never diagnosis.
+/// Pro "deep analysis": a single, on-device written summary of the full tracking record via Apple
+/// Intelligence (Foundation Models). Everything stays on the device — no network, no key, no
+/// consent. Text only: it reasons over the deterministic `AIContext`, never over photo pixels
+/// (Foundation Models has no image input), so scalp photos are not sent anywhere. Framed as
+/// record-keeping, never diagnosis. Shows a clear card on hardware without on-device AI.
 struct DeepAnalysisSheet: View {
-    /// The on-device insight context the caller was showing. The cloud payload itself is the
-    /// richer, versioned `AIContext` built below from the sheet's own queries.
-    let context: InsightContext
-    let images: [UIImage]
-
     @Environment(\.dismiss) private var dismiss
-    @State private var service = CloudAnalysisService()
-    @State private var consented = false
+    @State private var service = OnDeviceAnalysisService()
 
     // The full record the AIContext snapshot is built from at run time — labs, tolerability
     // and photo metadata included, which the on-device InsightContext doesn't carry.
@@ -101,9 +26,9 @@ struct DeepAnalysisSheet: View {
     var body: some View {
         NavigationStack {
             ProGate(
-                feature: "AI deep photo analysis",
-                symbol: "photo.on.rectangle.angled",
-                description: "A one-time, standardized read of your matched progress photos — record-keeping, not diagnosis."
+                feature: "AI deep analysis",
+                symbol: "sparkles.rectangle.stack",
+                description: "A one-tap written read of your full tracking record — on-device and private, record-keeping, not diagnosis."
             ) {
                 analysisContent
             }
@@ -120,22 +45,17 @@ struct DeepAnalysisSheet: View {
                 BrandBanner(art: BrandArt.analysis, height: 130)
                 ClinicalCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        Eyebrow(text: "Deep analysis · Claude Fable 5")
-                        Text("This sends your recent readings and \(images.count) matched progress photo\(images.count == 1 ? "" : "s") to Anthropic's cloud model for a one-time review. It's record-keeping, not diagnosis, and nothing is stored there beyond the request.")
+                        Eyebrow(text: "Deep analysis · on-device")
+                        Text("Writes a plain-language summary of your recent readings, treatments and labs using Apple Intelligence. It runs entirely on your iPhone — nothing leaves the device — and it's record-keeping, not diagnosis.")
                             .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
-                        Toggle(isOn: $consented) {
-                            Text("Send this data off-device for analysis")
-                                .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-                        }
-                        .tint(Clinical.accent)
                     }
                 }
 
-                if !service.hasKey {
+                if !service.isAvailable {
                     ClinicalCard {
                         HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "key").font(.system(size: 14)).foregroundStyle(Clinical.warning)
-                            Text("No API key is configured, so deep analysis is unavailable. On-device insight on the Today screen still works fully and privately.")
+                            Image(systemName: "sparkles").font(.system(size: 14)).foregroundStyle(Clinical.warning)
+                            Text(OnDeviceAnalysisService.unavailableMessage)
                                 .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
                         }
                     }
@@ -168,11 +88,11 @@ struct DeepAnalysisSheet: View {
                         labs: labs, sideEffects: sideEffects, photos: photos,
                         profile: profiles.first, progressCheckIns: progressCheckIns, now: .now
                     )
-                    Task { await service.analyze(context: payload, images: images) }
+                    Task { await service.analyze(context: payload) }
                 }
                 .buttonStyle(ClinicalButtonStyle())
-                .disabled(!consented || !service.hasKey || service.isRunning)
-                .opacity((!consented || !service.hasKey || service.isRunning) ? 0.5 : 1)
+                .disabled(!service.isAvailable || service.isRunning)
+                .opacity((!service.isAvailable || service.isRunning) ? 0.5 : 1)
             }
             .padding(20)
         }

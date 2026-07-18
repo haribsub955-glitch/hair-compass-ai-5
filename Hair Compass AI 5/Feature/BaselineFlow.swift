@@ -9,7 +9,6 @@ struct BaselineFlow: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppLockService.self) private var appLock
     @State private var replayOnboarding = false
-    @State private var aiConsentGranted = AIConsent.isGranted()
 
     private let ageBands = ["Under 25", "26–35", "36–45", "46–55", "56+"]
 
@@ -102,6 +101,8 @@ struct BaselineFlow: View {
                     StrandDivider()
 
                     BackupRestoreSection()
+
+                    FeedbackSection()
 
                     aboutFooter
                 }
@@ -209,7 +210,8 @@ struct BaselineFlow: View {
         FlowChips(items: items, selected: selected, onPick: onPick)
     }
 
-    /// Privacy controls: App Lock (Face ID / passcode) and the off-device AI-analysis consent.
+    /// Privacy controls: App Lock (Face ID / passcode). All AI runs on-device now, so there is no
+    /// off-device data consent to manage — the app simply keeps everything on the phone.
     private var privacySection: some View {
         @Bindable var appLock = appLock
         return VStack(alignment: .leading, spacing: 10) {
@@ -231,40 +233,18 @@ struct BaselineFlow: View {
 
                 Divider().overlay(Clinical.hairline)
 
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Cloud photo analysis")
-                            .font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
-                        Text(aiConsentStatusLine)
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                    }
-                    Spacer()
-                    if aiConsentGranted {
-                        Button("Revoke") {
-                            AIConsent.revoke()
-                            aiConsentGranted = false
-                        }
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Clinical.critical)
-                        .accessibilityIdentifier("aiConsentRevoke")
-                    }
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "lock.iphone")
+                        .font(.system(size: 14)).foregroundStyle(Clinical.accent)
+                        .frame(width: 20)
+                    Text("Everything stays on your device. Your records, photos and the AI features all run on-device — nothing is uploaded to any server.")
+                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
                 }
             }
             .padding(14)
             .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
         }
-        .onAppear { aiConsentGranted = AIConsent.isGranted() }
-    }
-
-    private var aiConsentStatusLine: String {
-        guard aiConsentGranted else {
-            return "Off — you'll be asked before any photo leaves this device."
-        }
-        if let date = AIConsent.grantedDate() {
-            return "Allowed \(date.formatted(date: .abbreviated, time: .omitted)) — photos may be sent when you run a deep analysis."
-        }
-        return "Allowed — photos may be sent when you run a deep analysis."
     }
 
     private var aboutFooter: some View {

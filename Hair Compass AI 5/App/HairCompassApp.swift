@@ -6,7 +6,6 @@ struct HairCompassApp: App {
     let container: ModelContainer
 
     init() {
-        AIConfig.seedKeyIfProvided()
         let schema = Schema([
             Profile.self,
             DailyEntry.self,
