@@ -3,7 +3,8 @@ import SwiftUI
 /// The hair-science chat sheet, opened from the Compare screen's "Ask AI" chip. Explains the
 /// on-screen relationship over the canonical `AIContext` JSON and allows restricted chatting —
 /// hair science and the person's own data only (the restriction lives in `HairChatPrompt.system`).
-/// Text only: photos never enter this feature, and nothing is sent without `AIConsent`.
+/// Text only: photos never enter this feature, and it runs entirely on-device (Apple Intelligence)
+/// — nothing leaves the device. Shows a clear card on hardware without on-device AI.
 struct HairChatSheet: View {
     /// `AIContext.jsonString()` snapshot built by the caller when the sheet opens.
     let contextJSON: String
@@ -14,7 +15,6 @@ struct HairChatSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var service = HairChatService()
     @State private var draft = ""
-    @State private var consented = AIConsent.isGranted()
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -33,19 +33,11 @@ struct HairChatSheet: View {
 
     @ViewBuilder
     private var gatedContent: some View {
-        if consented {
+        if service.isAvailable {
             conversation
-            if service.hasKey {
-                inputBar
-            } else {
-                noKeyNotice
-            }
+            inputBar
         } else {
-            ScrollView(showsIndicators: false) {
-                consentCard
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 14)
-            }
+            unavailableNotice
         }
     }
 
@@ -248,64 +240,28 @@ struct HairChatSheet: View {
         Task { await service.send(trimmed, context: contextJSON, focus: focus) }
     }
 
-    private var noKeyNotice: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "key")
-                .font(.system(size: 13))
-                .foregroundStyle(Clinical.warning)
-            Text("No API key is configured, so chat is unavailable. Everything else in the app works fully on-device.")
-                .font(.system(size: 12))
-                .foregroundStyle(Clinical.secondary)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-    }
-
-    // MARK: Consent (first open, plain language — same spirit as AIConsentSheet, but for
-    // the text-only chat: questions and the tracking summary leave the device, never photos)
-
-    private var consentCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ClinicalCard {
-                VStack(alignment: .leading, spacing: 16) {
-                    Eyebrow(text: "Before your first chat")
-                    Text("Your tracking summary would leave this device")
-                        .font(Clinical.headline(20))
-                        .foregroundStyle(Clinical.ink)
-                    consentRow("doc.text", "What is sent",
-                               "Your questions and a text summary of your tracking (shedding, scalp scores, treatments, labs). Never your photos.")
-                    consentRow("cloud", "Where it goes",
-                               "To Anthropic, the cloud AI provider that answers the chat. Data leaves your device only when you send a message.")
-                    consentRow("hand.raised", "Your control",
-                               "Nothing is sent until you allow it, and you can turn this off later in your profile's Privacy section.")
-                }
-            }
-            Button("Allow and continue") {
-                AIConsent.grant()
-                consented = true
-            }
-            .buttonStyle(ClinicalButtonStyle())
-            .accessibilityIdentifier("chatConsentAllow")
-
-            Button("Not now") { dismiss() }
-                .buttonStyle(ClinicalButtonStyle(filled: false))
-                .accessibilityIdentifier("chatConsentNotNow")
-        }
-    }
-
-    private func consentRow(_ symbol: String, _ title: String, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 16))
+    // Shown on hardware without Apple Intelligence — chat runs on-device only, so there's no
+    // cloud fallback. Honest and reassuring: everything else in the app still works.
+    private var unavailableNotice: some View {
+        VStack(spacing: 12) {
+            Spacer(minLength: 20)
+            Image(systemName: "sparkles")
+                .font(.system(size: 24))
                 .foregroundStyle(Clinical.accent)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Clinical.ink)
-                Text(text)
-                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
-            }
+                .frame(width: 56, height: 56)
+                .background(Clinical.accentSoft, in: Circle())
+            Text("On-device AI unavailable")
+                .font(Clinical.headline(18))
+                .foregroundStyle(Clinical.ink)
+            Text("Hair chat runs privately on your device with Apple Intelligence, which needs an iPhone 15 Pro or newer on iOS 26. Everything else in Hair Compass works fully on this device.")
+                .font(.system(size: 13))
+                .foregroundStyle(Clinical.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 20)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 28)
     }
 }
 

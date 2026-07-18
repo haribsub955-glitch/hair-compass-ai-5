@@ -14,6 +14,10 @@ enum AppInfo {
     static let termsOfUseURLString = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
     static var termsOfUseURL: URL? { URL(string: termsOfUseURLString) }
 
+    /// Where the in-app "Send feedback" button addresses its email. Change this to your support
+    /// inbox. The app has no backend, so feedback is delivered straight to this address.
+    static let feedbackEmail = "harib.alazri@gmail.com"
+
     static var privacyPolicyURL: URL? {
         privacyPolicyURLString.isEmpty ? nil : URL(string: privacyPolicyURLString)
     }

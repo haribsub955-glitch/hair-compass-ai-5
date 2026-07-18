@@ -99,39 +99,6 @@ struct PrivacyTests {
         #expect(lock.isLocked == true)
     }
 
-    // MARK: - AI consent
-
-    @Test func aiConsentRoundTripsGrantAndRevoke() {
-        let (defaults, cleanup) = makeDefaults()
-        defer { cleanup() }
-
-        #expect(AIConsent.isGranted(defaults) == false)
-        #expect(AIConsent.grantedDate(defaults) == nil)
-
-        let stamp = Date(timeIntervalSince1970: 1_750_000_000)
-        AIConsent.grant(defaults, now: stamp)
-        #expect(AIConsent.isGranted(defaults) == true)
-        #expect(AIConsent.grantedDate(defaults) == stamp)
-
-        // Revoking flips the flag and clears the date — the next deep-analysis tap re-asks.
-        AIConsent.revoke(defaults)
-        #expect(AIConsent.isGranted(defaults) == false)
-        #expect(AIConsent.grantedDate(defaults) == nil)
-    }
-
-    @Test func cloudAnalysisRefusesWithoutConsent() async {
-        let (defaults, cleanup) = makeDefaults()
-        defer { cleanup() }
-
-        // Consent never granted in this defaults suite → the service must refuse before any
-        // network work (belt and braces under the UI gate).
-        let service = CloudAnalysisService(defaults: defaults)
-        let context = AIContext.build(
-            entries: [], treatments: [], doses: [], snapshots: [], triggers: [],
-            labs: [], sideEffects: [], photos: [], profile: nil, now: .now)
-        await service.analyze(context: context, images: [])
-
-        #expect(service.result == nil)
-        #expect(service.errorMessage?.contains("consent") == true)
-    }
+    // AI consent was removed together with the cloud path — all AI now runs on-device (Apple
+    // Intelligence / Vision) with nothing leaving the device, so there is nothing to consent to.
 }

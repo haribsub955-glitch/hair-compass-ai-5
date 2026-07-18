@@ -26,8 +26,6 @@ struct TodayView: View {
     @State private var celebrationReward: CheckInReward?
     @State private var insight: DailyInsight?
     @State private var showDeepAnalysis = false
-    @State private var showAIConsent = false
-    @State private var aiConsentJustGranted = false
     @State private var showLearn = false
 
     private var calendar: Calendar { .current }
@@ -227,23 +225,7 @@ struct TodayView: View {
             CheckInCelebration(reward: reward)
         }
         .sheet(isPresented: $showDeepAnalysis) {
-            DeepAnalysisSheet(context: buildContext(), images: analysisImages())
-        }
-        // One-time consent before the first deep analysis (photos leave the device). Presenting the
-        // analysis sheet from onDismiss avoids racing two sheet presentations.
-        .sheet(isPresented: $showAIConsent, onDismiss: {
-            if aiConsentJustGranted {
-                aiConsentJustGranted = false
-                showDeepAnalysis = true
-            }
-        }) {
-            AIConsentSheet(
-                onAllow: {
-                    aiConsentJustGranted = true
-                    showAIConsent = false
-                },
-                onNotNow: { showAIConsent = false }
-            )
+            DeepAnalysisSheet()
         }
         .sheet(isPresented: $showLearn) {
             NavigationStack {
@@ -325,19 +307,6 @@ struct TodayView: View {
         insight = await InsightEngine.dailyInsight(for: ctx)
     }
 
-    /// The latest photo per region, loaded for the cloud call (capped downstream).
-    private func analysisImages() -> [UIImage] {
-        var seen = Set<PhotoRegion>()
-        var images: [UIImage] = []
-        for record in photos where !seen.contains(record.region) {
-            if let image = PhotoStore.shared.loadThumbnail(record.imagePath, maxPixel: 1024) {
-                images.append(image)
-                seen.insert(record.region)
-            }
-        }
-        return images
-    }
-
     /// An unboxed margin note — the last ClinicalCard on the page's tail became this: an eyebrow,
     /// the insight sentence directly on canvas, a hairline, then one footnote line that says the
     /// source, the honesty caption, and the deep-analysis affordance together instead of stacking
@@ -363,13 +332,9 @@ struct TodayView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button {
-                // Consent gate: the deep analysis sends scalp photos off-device, so the first
-                // tap asks in plain language. Once granted (revocable in Privacy), straight in.
-                if AIConsent.isGranted() {
-                    showDeepAnalysis = true
-                } else {
-                    showAIConsent = true
-                }
+                // On-device and private — no consent gate needed. The sheet itself handles the
+                // Pro gate and the Apple-Intelligence availability check.
+                showDeepAnalysis = true
             } label: {
                 HStack(spacing: 2) {
                     Text("Deep analysis")

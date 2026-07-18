@@ -80,12 +80,10 @@ enum HairChatPrompt {
     }
 }
 
-/// The hair-science chat behind the Compare screen's "Ask AI" chip: a consent-gated Claude
-/// Messages conversation over the canonical `AIContext` JSON. Text only — no photos, ever.
-///
-/// Mirrors `CloudAnalysisService`'s Fable specifics: raw HTTPS, no `thinking`/`temperature`
-/// params (they 400), `stop_reason == "refusal"` checked before reading content, and a
-/// server-side fallback to `claude-opus-4-8` requested via the beta header.
+/// The hair-science chat behind the Compare screen's "Ask AI" chip: an on-device conversation
+/// (Apple Intelligence) over the canonical `AIContext` JSON. Text only — no photos, ever — and
+/// nothing leaves the device: no key, no proxy, no consent. Unavailable (with a clear message)
+/// on hardware without Apple Intelligence; there is no cloud fallback.
 @MainActor
 @Observable
 final class HairChatService {
@@ -93,16 +91,11 @@ final class HairChatService {
     private(set) var isRunning = false
     private(set) var errorMessage: String?
 
-    private let defaults: UserDefaults
+    init() {}
 
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-    }
-
-    /// True when chat can run at all: on-device (Apple Intelligence) OR a reachable cloud model
-    /// (the owner's proxy in release, a dev key locally).
-    var hasKey: Bool {
-        if AIGateway.isConfigured { return true }
+    /// True when chat can run on this device — Apple Intelligence is available. There is no cloud
+    /// fallback, so this is false on hardware without on-device AI, and the UI shows a clear card.
+    var isAvailable: Bool {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *), OnDeviceChat.isAvailable { return true }
         #endif
@@ -138,8 +131,9 @@ final class HairChatService {
             (role: $0.role.rawValue, text: $0.text)
         }
 
-        // On-device first — Apple Intelligence answers with NOTHING leaving the device, so it needs
-        // no off-device consent, no key, and no proxy. Falls through to the cloud if it declines.
+        // On-device only — Apple Intelligence answers with NOTHING leaving the device, so it needs
+        // no consent, no key, and no proxy. There is no cloud fallback: hardware without on-device
+        // AI gets a clear, honest message instead (the UI also gates on `isAvailable` up front).
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *), OnDeviceChat.isAvailable {
             if let reply = await OnDeviceChat.reply(system: system, turns: turns), !reply.isEmpty {
@@ -148,41 +142,7 @@ final class HairChatService {
         }
         #endif
 
-        // Cloud fallback (devices without on-device AI). This DOES leave the device, so it needs
-        // consent, and it goes through the proxy (release) or a dev key (local).
-        guard AIConsent.isGranted(defaults) else {
-            throw ChatError(message: "Chat is off: sending your tracking summary off-device needs your consent first. You can manage this in your profile's Privacy section.")
-        }
-        guard AIGateway.isConfigured else {
-            throw ChatError(message: "Chat isn't available in this build.")
-        }
-
-        let body: [String: Any] = [
-            "model": "claude-fable-5",
-            "max_tokens": 700,
-            "fallbacks": [["model": "claude-opus-4-8"]],
-            "system": system,
-            "messages": turns.map { ["role": $0.role, "content": $0.text] }
-        ]
-
-        let json: [String: Any]
-        do {
-            json = try await AIGateway.postMessages(body)
-        } catch let e as AIGateway.GatewayError {
-            throw ChatError(message: e.message)
-        }
-
-        let blocks = json["content"] as? [[String: Any]] ?? []
-        let text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Fable can decline via safety classifiers — mapped to a gentle in-chat line, not an error.
-        let reply = HairChatPrompt.assistantReply(stopReason: json["stop_reason"] as? String, text: text)
-        guard !reply.isEmpty else {
-            throw ChatError(message: "The reply came back empty. Please try again.")
-        }
-        return reply
+        throw ChatError(message: "On-device chat needs Apple Intelligence (iPhone 15 Pro or newer, iOS 26).")
     }
 }
 
