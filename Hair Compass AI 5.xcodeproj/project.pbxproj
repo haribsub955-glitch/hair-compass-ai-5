@@ -380,7 +380,7 @@
 				INFOPLIST_FILE = "Hair Compass AI 5/Info.plist";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Hair Compass uses the camera to capture standardized scalp and hair photos for record keeping and analysis.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, exercise, protein, and water data so you can compare hair trends with lifestyle patterns.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. It does not diagnose hair or scalp conditions.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Hair Compass uses your photo library so you can import scalp and hair photos for comparison and analysis.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -400,7 +400,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -418,7 +418,7 @@
 				INFOPLIST_FILE = "Hair Compass AI 5/Info.plist";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Hair Compass uses the camera to capture standardized scalp and hair photos for record keeping and analysis.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, exercise, protein, and water data so you can compare hair trends with lifestyle patterns.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. It does not diagnose hair or scalp conditions.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Hair Compass uses your photo library so you can import scalp and hair photos for comparison and analysis.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -438,7 +438,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -672,7 +672,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -701,7 +701,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};

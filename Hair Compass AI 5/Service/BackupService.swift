@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import SwiftData
 
 /// Full-fidelity backup and merge-safe restore of every record the app owns, photos included.
@@ -14,11 +15,21 @@ enum BackupService {
 
     static let currentVersion = 1
 
+    /// Auditable contract: every SwiftData model is represented, and treatment ownership is
+    /// preserved by nesting. Unattached relationship records have dedicated arrays below.
+    static let manifest = [
+        "Profile", "DailyEntry", "Treatment", "TreatmentDose → Treatment?",
+        "SideEffectLog → Treatment?", "LabResult", "PhotoRecord", "HealthSnapshot",
+        "TriggerEvent", "ProcedureAppointment", "ProgressCheckIn"
+    ]
+
     // MARK: - Errors
 
     enum BackupError: LocalizedError, Equatable {
         case unsupportedVersion(Int)
         case unreadableFile
+        case missingPhotoFiles([String])
+        case invalidPhotoData
 
         var errorDescription: String? {
             switch self {
@@ -26,6 +37,10 @@ enum BackupService {
                 return "This backup uses a newer format (v\(v)) than this app understands. Update Hair Compass, then try again."
             case .unreadableFile:
                 return "That file doesn't look like a Hair Compass backup."
+            case .missingPhotoFiles(let paths):
+                return "Backup stopped because \(paths.count) photo file(s) are missing. No incomplete backup was created."
+            case .invalidPhotoData:
+                return "A photo in this backup is not valid image data. Nothing from that photo was written."
             }
         }
     }
@@ -42,6 +57,8 @@ enum BackupService {
         var profile: ProfileDTO?
         var entries: [EntryDTO] = []
         var treatments: [TreatmentDTO] = []
+        var unattachedDoses: [DoseDTO]?
+        var unattachedSideEffects: [SideEffectDTO]?
         var labs: [LabDTO] = []
         var photos: [PhotoDTO] = []
         var snapshots: [SnapshotDTO] = []
@@ -192,6 +209,8 @@ enum BackupService {
         profile: Profile?,
         entries: [DailyEntry],
         treatments: [Treatment],
+        doses: [TreatmentDose] = [],
+        sideEffects: [SideEffectLog] = [],
         labs: [LabResult],
         photos: [PhotoRecord],
         snapshots: [HealthSnapshot],
@@ -236,6 +255,10 @@ enum BackupService {
                     .map { SideEffectDTO(date: $0.date, severity: $0.severity, typeRaw: $0.typeRaw, note: $0.note) }
             )
         }
+        envelope.unattachedDoses = doses.filter { $0.treatment == nil }
+            .map { DoseDTO(loggedAt: $0.loggedAt, slot: $0.slot) }
+        envelope.unattachedSideEffects = sideEffects.filter { $0.treatment == nil }
+            .map { SideEffectDTO(date: $0.date, severity: $0.severity, typeRaw: $0.typeRaw, note: $0.note) }
 
         envelope.labs = labs.map {
             LabDTO(testRaw: $0.testRaw, value: $0.value, collectedAt: $0.collectedAt, note: $0.note,
@@ -316,6 +339,8 @@ enum BackupService {
         profile: Profile?,
         entries: [DailyEntry],
         treatments: [Treatment],
+        doses: [TreatmentDose] = [],
+        sideEffects: [SideEffectLog] = [],
         labs: [LabResult],
         photos: [PhotoRecord],
         snapshots: [HealthSnapshot],
@@ -326,11 +351,16 @@ enum BackupService {
         photoData: (String) -> Data? = { PhotoStore.shared.loadData($0) }
     ) throws -> URL {
         let envelope = makeEnvelope(
-            profile: profile, entries: entries, treatments: treatments, labs: labs,
+            profile: profile, entries: entries, treatments: treatments, doses: doses,
+            sideEffects: sideEffects, labs: labs,
             photos: photos, snapshots: snapshots, triggers: triggers,
             procedures: procedures, progressCheckIns: progressCheckIns,
             createdAt: now, photoData: photoData
         )
+        let missingPhotos = zip(photos, envelope.photos).compactMap { record, dto in
+            !record.imagePath.isEmpty && dto.imageBase64 == nil ? record.imagePath : nil
+        }
+        guard missingPhotos.isEmpty else { throw BackupError.missingPhotoFiles(missingPhotos) }
         let data = try encode(envelope)
 
         let formatter = DateFormatter()
@@ -338,7 +368,7 @@ enum BackupService {
         formatter.dateFormat = "yyyy-MM-dd"
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("HairCompass-Backup-\(formatter.string(from: now)).json")
-        try data.write(to: url, options: .atomic)
+        try data.write(to: url, options: [.atomic, .completeFileProtection])
         return url
     }
 
@@ -500,6 +530,17 @@ enum BackupService {
             }
         }
 
+        for dto in envelope.unattachedDoses ?? [] {
+            context.insert(TreatmentDose(loggedAt: dto.loggedAt, slot: dto.slot))
+            summary.inserted += 1
+        }
+        for dto in envelope.unattachedSideEffects ?? [] {
+            let log = SideEffectLog(severity: dto.severity, date: dto.date, note: dto.note)
+            log.typeRaw = dto.typeRaw
+            context.insert(log)
+            summary.inserted += 1
+        }
+
         // Labs — (test, collectedAt).
         var labKeys = Set(
             try context.fetch(FetchDescriptor<LabResult>())
@@ -529,10 +570,15 @@ enum BackupService {
             autoreleasepool {
                 if let base64 = dto.imageBase64,
                    let bytes = Data(base64Encoded: base64),
+                   let source = CGImageSourceCreateWithData(bytes as CFData, nil),
+                   CGImageSourceGetCount(source) > 0,
                    let saved = photoWriter(bytes) {
                     path = saved
+                } else if dto.imageBase64 != nil {
+                    path = "__invalid__"
                 }
             }
+            if path == "__invalid__" { throw BackupError.invalidPhotoData }
             if !path.isEmpty { summary.photosRestored += 1 }
             let record = PhotoRecord(imagePath: path, createdAt: dto.createdAt,
                                      lighting: dto.lighting, distance: dto.distance,

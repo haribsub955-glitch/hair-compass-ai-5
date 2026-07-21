@@ -13,15 +13,14 @@ protocol SignalSource: AnyObject {
     func refreshSnapshot(context: ModelContext) async -> HealthSnapshot?
 }
 
-/// Authorization state for an auto source. Read access can't be truly introspected on
-/// HealthKit (Apple hides it for privacy), so `.authorized` means "asked and querying".
+/// Request/query state for HealthKit. Apple deliberately does not reveal read grants, so this
+/// never models a read request as "authorized" or "denied".
 enum HealthAuthorizationState: Equatable {
     case unavailable      // no HealthKit on this device
-    case notDetermined    // never asked
+    case notRequested
     case requesting
-    case authorized       // asked; queries will run (data may still be empty)
-    case denied
+    case requestedQueryable
 
-    var isUsable: Bool { self == .authorized }
-    var canConnect: Bool { self == .notDetermined || self == .denied }
+    var isQueryable: Bool { self == .requestedQueryable }
+    var canRequest: Bool { self == .notRequested }
 }

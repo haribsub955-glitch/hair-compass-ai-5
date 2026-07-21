@@ -623,8 +623,8 @@ struct OnboardingFlow: View {
 
     @ViewBuilder private var healthConnectCTA: some View {
         switch healthKit.authorization {
-        case .authorized:
-            Text("Health is connected ✓")
+        case .requestedQueryable:
+            Text("Health request completed — available samples can now be queried")
                 .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.sage)
                 .padding(.bottom, 8)
             primary("Continue") { next() }
@@ -639,7 +639,7 @@ struct OnboardingFlow: View {
             primary("Connect Apple Health") {
                 Task {
                     await healthKit.requestAuthorization()
-                    if healthKit.authorization.isUsable { await healthKit.refreshSnapshot(context: context) }
+                    if healthKit.authorization.isQueryable { await healthKit.refreshSnapshot(context: context) }
                     next()
                 }
             }

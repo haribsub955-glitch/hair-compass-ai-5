@@ -293,6 +293,8 @@ private struct BackupRestoreSection: View {
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
+    @Query(sort: \TreatmentDose.loggedAt) private var doses: [TreatmentDose]
+    @Query(sort: \SideEffectLog.date) private var sideEffects: [SideEffectLog]
     @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
     @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
@@ -307,13 +309,15 @@ private struct BackupRestoreSection: View {
     @State private var showRestoreConfirm = false
     @State private var restoreSummary: BackupService.RestoreSummary?
     @State private var errorMessage: String?
+    @State private var showSensitiveWarning = false
+    @State private var sensitiveWarningAcknowledged = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: "Your data")
 
             VStack(alignment: .leading, spacing: 12) {
-                if let backupURL {
+                if let backupURL, sensitiveWarningAcknowledged {
                     ShareLink(item: backupURL) {
                         Label("Share \(backupURL.lastPathComponent)\(backupSizeSuffix(backupURL))",
                               systemImage: "square.and.arrow.up")
@@ -324,6 +328,9 @@ private struct BackupRestoreSection: View {
                             .background(Clinical.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     .accessibilityIdentifier("backupShare")
+                } else if let backupURL {
+                    Button("Review before sharing") { showSensitiveWarning = true }
+                        .buttonStyle(ClinicalButtonStyle(filled: true))
                 } else {
                     Button(action: generateBackup) {
                         Label(isBackingUp ? "Preparing backup…" : "Back up everything",
@@ -371,6 +378,13 @@ private struct BackupRestoreSection: View {
                 errorMessage = error.localizedDescription
             }
         }
+        .confirmationDialog("Sensitive health information", isPresented: $showSensitiveWarning,
+                            titleVisibility: .visible) {
+            Button("I understand — show sharing options") { sensitiveWarningAcknowledged = true }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This backup contains sensitive health records, treatment history, notes, and scalp photos. Share it only with people and services you trust.")
+        }
         .confirmationDialog("Restore from backup?", isPresented: $showRestoreConfirm, titleVisibility: .visible) {
             Button("Restore") { runRestore() }
             Button("Cancel", role: .cancel) { pendingRestoreURL = nil }
@@ -402,9 +416,11 @@ private struct BackupRestoreSection: View {
         do {
             backupURL = try BackupService.exportBackup(
                 profile: profiles.first, entries: entries, treatments: treatments,
+                doses: doses, sideEffects: sideEffects,
                 labs: labs, photos: photos, snapshots: snapshots, triggers: triggers,
                 procedures: procedureAppointments, progressCheckIns: progressCheckIns
             )
+            sensitiveWarningAcknowledged = false
         } catch {
             errorMessage = error.localizedDescription
         }
