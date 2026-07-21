@@ -83,6 +83,18 @@ enum LearnLibrary {
         .init(id: "c4", category: .conditions, tierQ: .weak,
               q: "Does stress cause hair loss?",
               a: "Severe stress can trigger temporary shedding. Everyday stress is a weaker, context-level signal — worth noting, but not a proven cause of pattern loss."),
+        .init(id: "c5", category: .conditions, tierQ: .strong,
+              q: "When do sudden, smooth patches need a dermatologist?",
+              a: "Sudden, smooth, coin-sized bald patches — no scale, no obvious redness — can be alopecia areata, an immune-related condition where earlier treatment tends to help more. Get it checked promptly rather than waiting to see if it fills back in on its own."),
+        .init(id: "c6", category: .conditions, tierQ: .strong,
+              q: "Is persistent scalp pain or burning ever a red flag?",
+              a: "Yes. Ongoing pain, burning, or tenderness — especially with smooth, shiny skin or redness where hair used to be — can mean a scarring (cicatricial) alopecia, where lost follicles may not regrow. That combination is worth a prompt dermatology review, not a wait-and-see."),
+        .init(id: "c7", category: .conditions, tierQ: .strong,
+              q: "When does shedding stop being 'just wait it out'?",
+              a: "Most telogen effluvium settles within about 6 months of its trigger. Diffuse shedding that's still heavy well past that point — or that keeps climbing instead of easing — is worth a dermatology visit to look for another cause."),
+        .init(id: "c8", category: .conditions, tierQ: .strong,
+              q: "What if hair loss comes with feeling unwell?",
+              a: "Rapid or patchy loss alongside fever, unexplained weight change, joint pain, or other new symptoms can point to something beyond hair — thyroid disease, another autoimmune condition, a nutritional deficiency. That combination is worth a prompt medical visit, not just tracking."),
     ]
 
     private static let treatments: [FlashCard] = [

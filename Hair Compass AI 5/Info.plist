@@ -31,6 +31,8 @@
 	<string>Hair Compass saves captured scalp and hair photos to support progress tracking, procedure follow-up, and clinician discussions.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Hair Compass accesses your photo library so you can attach scalp and hair images for check-ins, product analysis, and comparison sessions.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array/>
 </dict>

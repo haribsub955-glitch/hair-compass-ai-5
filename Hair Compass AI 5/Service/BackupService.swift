@@ -173,6 +173,9 @@ enum BackupService {
         var sheddingRaw = 0
         var hairlineRaw = 0
         var overallRaw = 0
+        /// Alopecia areata-only "patches" answer; `nil` for every backup made before this
+        /// question existed, decoded via `Codable`'s default-on-missing-key behavior.
+        var patchTrendRaw: Int?
         var scalpPain = false
         var scalpPainNote = ""
         var note = ""
@@ -274,6 +277,7 @@ enum BackupService {
             ProgressCheckInDTO(
                 date: $0.date, regrowthRaw: $0.regrowthRaw, densityRaw: $0.densityRaw,
                 sheddingRaw: $0.sheddingRaw, hairlineRaw: $0.hairlineRaw, overallRaw: $0.overallRaw,
+                patchTrendRaw: $0.patchTrendRaw,
                 scalpPain: $0.scalpPain, scalpPainNote: $0.scalpPainNote, note: $0.note,
                 createdAt: $0.createdAt
             )
@@ -605,6 +609,7 @@ enum BackupService {
                 shedding: ProgressTrend(rawValue: dto.sheddingRaw) ?? .same,
                 hairline: ProgressTrend(rawValue: dto.hairlineRaw) ?? .same,
                 overall: ProgressTrend(rawValue: dto.overallRaw) ?? .same,
+                patchTrend: dto.patchTrendRaw.flatMap(ProgressTrend.init(rawValue:)),
                 scalpPain: dto.scalpPain, scalpPainNote: dto.scalpPainNote,
                 note: dto.note, createdAt: dto.createdAt
             ))

@@ -52,7 +52,7 @@ struct CheckInCelebration: View {
                 Spacer(minLength: 0)
 
                 Text("Done")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(Clinical.body(13, weight: .semibold))
                     .foregroundStyle(Clinical.tertiary)
                     .padding(.bottom, 18)
             }
@@ -84,7 +84,7 @@ struct CheckInCelebration: View {
                 .font(Clinical.headline(44))
                 .foregroundStyle(Clinical.gold)
             Text(identityLine)
-                .font(.system(size: 13, weight: .medium))
+                .font(Clinical.body(13, weight: .medium))
                 .foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -131,10 +131,10 @@ struct CheckInCelebration: View {
                 Spacer()
                 if let next = reward.progressToNext.next {
                     Text("\(reward.progressToNext.remaining) XP to \(next.name)")
-                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 } else {
                     Text("Top of the ladder")
-                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 }
             }
         }
@@ -146,7 +146,7 @@ struct CheckInCelebration: View {
             extra > 0 ? "New badge — \(badge.title) +\(extra) more" : "New badge — \(badge.title)",
             systemImage: badge.symbol
         )
-        .font(.system(size: 12, weight: .semibold))
+        .font(Clinical.body(12, weight: .semibold))
         .foregroundStyle(Clinical.surface)
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Clinical.gold, in: Capsule())

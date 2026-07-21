@@ -35,6 +35,8 @@ struct SerumRitual: Ritual {
     // MARK: Ritual
 
     var isComplete: Bool { level >= Self.completeLevel }
+    var progress: CGFloat { min(1, level / Self.completeLevel) }
+    var estimatedDuration: TimeInterval? { nil }   // interaction-paced — no fixed end time
 
     mutating func handle(_ touch: RitualTouch) {
         switch touch.phase {

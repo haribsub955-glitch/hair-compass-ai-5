@@ -122,11 +122,11 @@ struct GuidedCaptureView: View {
             Clinical.ink.opacity(0.9)
             VStack(spacing: 8) {
                 Image(systemName: camera.permission == .denied ? "lock.slash" : "camera.metering.unknown")
-                    .font(.system(size: 26)).foregroundStyle(.white.opacity(0.8))
+                    .font(Clinical.caption(26)).foregroundStyle(.white.opacity(0.8))
                 Text(camera.permission == .denied
                      ? "Camera access is off. Enable it in Settings, or import a photo below."
                      : "No camera here — import a photo below to add to this series.")
-                    .font(.system(size: 13)).foregroundStyle(.white.opacity(0.85))
+                    .font(Clinical.caption(13)).foregroundStyle(.white.opacity(0.85))
                     .multilineTextAlignment(.center).padding(.horizontal, 24)
             }
         }
@@ -134,13 +134,13 @@ struct GuidedCaptureView: View {
 
     private var coachingBanner: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "viewfinder").font(.system(size: 13)).foregroundStyle(.white)
-            Text(coaching).font(.system(size: 12, weight: .medium)).foregroundStyle(.white)
+            Image(systemName: "viewfinder").font(Clinical.caption(13)).foregroundStyle(.white)
+            Text(coaching).font(Clinical.body(12, weight: .medium)).foregroundStyle(.white)
             Spacer()
             if ghostImage != nil {
                 Button { showGhost.toggle() } label: {
                     Image(systemName: showGhost ? "square.on.square.dashed" : "square.dashed")
-                        .font(.system(size: 15)).foregroundStyle(.white)
+                        .font(Clinical.caption(15)).foregroundStyle(.white)
                 }
                 .accessibilityLabel(showGhost ? "Hide previous photo guide" : "Show previous photo guide")
             }
@@ -153,7 +153,7 @@ struct GuidedCaptureView: View {
     private var controls: some View {
         HStack(spacing: 28) {
             PhotosPicker(selection: $pickerItem, matching: .images) {
-                Image(systemName: "photo.on.rectangle").font(.system(size: 22)).foregroundStyle(Clinical.ink)
+                Image(systemName: "photo.on.rectangle").font(Clinical.caption(22)).foregroundStyle(Clinical.ink)
                     .frame(width: 48, height: 48)
             }
             .accessibilityLabel("Choose from library")
@@ -176,7 +176,7 @@ struct GuidedCaptureView: View {
             .accessibilityLabel("Take photo")
 
             Button { camera.flip() } label: {
-                Image(systemName: "arrow.triangle.2.circlepath.camera").font(.system(size: 22)).foregroundStyle(Clinical.ink)
+                Image(systemName: "arrow.triangle.2.circlepath.camera").font(Clinical.caption(22)).foregroundStyle(Clinical.ink)
                     .frame(width: 48, height: 48)
             }
             .disabled(!camera.hasCamera)
@@ -192,7 +192,7 @@ struct GuidedCaptureView: View {
                     let on = r == region
                     Button { region = r } label: {
                         Label(r.title, systemImage: r.symbol)
-                            .font(.system(size: 13, weight: on ? .semibold : .regular))
+                            .font(Clinical.body(13, weight: on ? .semibold : .regular))
                             .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                             .padding(.horizontal, 12).padding(.vertical, 8)
                             .background(on ? Clinical.ink : Clinical.surface)
@@ -233,7 +233,7 @@ struct GuidedCaptureView: View {
                         DatePicker("Taken on", selection: $takenOnDate, in: ...Date.now, displayedComponents: .date)
                             .tint(Clinical.accent)
                         Text("Recovered from the photo automatically when available — adjust it if this is an older photo from your library.")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                     }
                 }
 
@@ -244,7 +244,7 @@ struct GuidedCaptureView: View {
                                 let on = r == region
                                 Button { region = r } label: {
                                     Text(r.title)
-                                        .font(.system(size: 13, weight: on ? .semibold : .regular))
+                                        .font(Clinical.body(13, weight: on ? .semibold : .regular))
                                         .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                                         .padding(.horizontal, 12).padding(.vertical, 8)
                                         .background(on ? Clinical.ink : Clinical.surface)
@@ -259,11 +259,11 @@ struct GuidedCaptureView: View {
 
                 section("Conditions") {
                     Text("Pre-filled to match your last \(region.title.lowercased()) shot — keep them the same so comparisons stay honest.")
-                        .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                     CapturePreviewChips(title: "Lighting", options: lightingOptions, selection: $lighting, kind: .lighting)
                     CapturePreviewChips(title: "Distance", options: distanceOptions, selection: $distance, kind: .distance)
                     CapturePreviewChips(title: "Parting", options: partingOptions, selection: $parting, kind: .parting)
-                    Toggle(isOn: $isWet) { Text("Wet hair").font(.system(size: 15)).foregroundStyle(Clinical.ink) }
+                    Toggle(isOn: $isWet) { Text("Wet hair").font(Clinical.caption(15)).foregroundStyle(Clinical.ink) }
                         .tint(Clinical.accent)
                 }
 
@@ -287,6 +287,7 @@ struct GuidedCaptureView: View {
         case .templeLeft: return "Turn slightly right. Line the left temple up with the marker."
         case .templeRight: return "Turn slightly left. Line the right temple up with the marker."
         case .global: return "Whole head in frame, even lighting, no shadows across the scalp."
+        case .patch: return "Center the patch in the guide, same distance each time; use the ghost overlay to re-find the same spot."
         }
     }
 
@@ -391,6 +392,12 @@ struct RegionOverlay: View {
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
                         .stroke(Color.white.opacity(0.85), style: stroke)
                         .frame(width: w * 0.82, height: h * 0.86)
+                case .patch:
+                    // A single centered dashed circle — no anatomical assumption, since a patch
+                    // can be anywhere on the scalp; the ghost overlay (not this guide) is what
+                    // actually re-finds the same spot shot to shot.
+                    Circle().stroke(Clinical.accent.opacity(0.9), style: stroke)
+                        .frame(width: min(w, h) * 0.4, height: min(w, h) * 0.4)
                 }
             }
             .frame(width: w, height: h)

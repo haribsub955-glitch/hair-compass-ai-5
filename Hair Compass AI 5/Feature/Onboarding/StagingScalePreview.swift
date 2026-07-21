@@ -28,7 +28,7 @@ struct StagingScalePreview: View {
                 Text("\(sex.stagingScaleName.uppercased()) SCALE")
                     .font(Clinical.eyebrow(10)).tracking(1.4).foregroundStyle(Clinical.accent)
                 Text(isLudwig ? "Thinning shows as a widening part" : "Thinning shows at the hairline and crown")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
             }
         }
         .frame(maxWidth: .infinity)

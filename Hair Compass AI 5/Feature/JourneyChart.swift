@@ -34,6 +34,11 @@ struct JourneyChart: View {
     /// Procedure/Med-start/Stopped/Trigger/Note meanings now live, read on demand instead of
     /// permanently spelled out in a five-key legend.
     @State private var selectedMarker: JourneyData.Marker?
+    /// Non-nil while a `.trigger` marker's disclosure "Edit" button has opened its source
+    /// `TriggerEvent` in `AddTriggerSheet` — the chart's own deep link into the same edit flow
+    /// `LifeEventsSheet` uses, so a mis-dated life event never has to be hunted down through
+    /// Plan's ledger after being spotted here first.
+    @State private var editingTrigger: TriggerEvent?
 
     var body: some View {
         let end = Date.now
@@ -66,6 +71,7 @@ struct JourneyChart: View {
                 if let selectedMarker { markerDisclosure(selectedMarker) }
             }
         }
+        .sheet(item: $editingTrigger) { AddTriggerSheet(existing: $0) }
     }
 
     /// One quiet margin key naming the amber band — said once, in the margin, regardless of how
@@ -77,7 +83,7 @@ struct JourneyChart: View {
     private var echoWindowKey: some View {
         (Text("Amber band").foregroundStyle(Clinical.warning)
             + Text(" — possible echo window").foregroundStyle(Clinical.secondary))
-            .font(.system(size: 12))
+            .font(Clinical.caption(12))
     }
 
     // MARK: Top chart — smoothed shed trend + dated event markers
@@ -250,20 +256,29 @@ struct JourneyChart: View {
     /// The disclosed marker's date + meaning, dismissible by re-tapping its badge. Sits below
     /// the legend so nothing about the chart's layout shifts when a marker opens or closes —
     /// this is now where every marker kind's meaning lives (see `markerKindLabel`), not just
-    /// notes, since the legend itself dropped its five marker keys.
+    /// notes, since the legend itself dropped its five marker keys. A `.trigger` marker carries
+    /// its source `TriggerEvent` (`triggerRef`), so it alone gets a trailing "Edit" affordance —
+    /// the one marker kind the app previously had no way to correct once dated wrong.
     private func markerDisclosure(_ marker: JourneyData.Marker) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: marker.symbol)
-                .font(.system(size: 12)).foregroundStyle(marker.color)
+                .font(Clinical.caption(12)).foregroundStyle(marker.color)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 2) {
                 Text(marker.date.formatted(date: .abbreviated, time: .omitted))
                     .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                 Text(markerKindLabel(marker))
-                    .font(.system(size: 12)).foregroundStyle(Clinical.ink)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
+            if let triggerRef = marker.triggerRef {
+                Button("Edit") { editingTrigger = triggerRef }
+                    .font(Clinical.body(12, weight: .semibold))
+                    .foregroundStyle(Clinical.accent)
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens this life event to edit its date, type, or note")
+            }
         }
         .padding(10)
         .background(Clinical.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -288,9 +303,9 @@ struct JourneyChart: View {
         if data.doseBars.isEmpty {
             HStack(spacing: 8) {
                 Image(systemName: "pills")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 Text("No medication logged yet")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
@@ -406,12 +421,12 @@ struct JourneyChart: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Image(systemName: "chart.xyaxis.line")
-                    .font(.system(size: 16)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(16)).foregroundStyle(Clinical.tertiary)
                 Text("Keep logging to see your journey")
-                    .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.secondary)
             }
             Text("Two or more daily logs in this window unlock the timeline.")
-                .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
         }
         .padding(.vertical, 8)
     }
@@ -510,6 +525,11 @@ private struct JourneyData {
         /// Full free-text note — set only for `.note` markers, shown by the tap-to-reveal
         /// disclosure. Every other kind uses `tag`'s short canonical label instead.
         var noteText: String? = nil
+        /// The actual `TriggerEvent` this marker was built from — set only for `.trigger`
+        /// markers, so the disclosure's "Edit" button can deep-link straight to
+        /// `AddTriggerSheet(existing:)` instead of sending someone hunting through Plan's ledger
+        /// for the one they just tapped on the chart.
+        var triggerRef: TriggerEvent? = nil
 
         var color: Color {
             switch kind {
@@ -610,7 +630,8 @@ private struct JourneyData {
                 id: "trig-\(tr.typeRaw)-\(tr.date.timeIntervalSinceReferenceDate)",
                 kind: .trigger, date: tr.date,
                 symbol: tr.type.symbol,
-                tag: Self.triggerTag(tr.type)
+                tag: Self.triggerTag(tr.type),
+                triggerRef: tr
             ))
         }
         // Daily-log notes — the richest causal context a person records ("switched shampoo",
@@ -727,6 +748,7 @@ private struct JourneyData {
         case .minoxidil: return "Minoxidil"
         case .finasteride: return "Finasteride"
         case .dutasteride: return "Dutasteride"
+        case .spironolactone: return "Spironolactone"
         case .microneedling: return "Needling"
         case .prp: return "PRP"
         case .lllt: return "Laser"

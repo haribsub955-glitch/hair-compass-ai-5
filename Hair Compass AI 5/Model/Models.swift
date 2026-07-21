@@ -286,6 +286,10 @@ final class ProgressCheckIn {
     var sheddingRaw: Int = ProgressTrend.same.rawValue
     var hairlineRaw: Int = ProgressTrend.same.rawValue
     var overallRaw: Int = ProgressTrend.same.rawValue
+    /// Alopecia areata-only: are patches new/larger, unchanged, or fewer/smaller since last
+    /// time? `nil` means "not asked" (every non-AA check-in, and every check-in recorded before
+    /// this field existed) — distinct from `.same`, which is an actual answer.
+    var patchTrendRaw: Int?
     var scalpPain: Bool = false          // a genuine red flag — persistent pain can mean scarring alopecia
     var scalpPainNote: String = ""
     var note: String = ""
@@ -298,6 +302,7 @@ final class ProgressCheckIn {
         shedding: ProgressTrend = .same,
         hairline: ProgressTrend = .same,
         overall: ProgressTrend = .same,
+        patchTrend: ProgressTrend? = nil,
         scalpPain: Bool = false,
         scalpPainNote: String = "",
         note: String = "",
@@ -309,6 +314,7 @@ final class ProgressCheckIn {
         self.sheddingRaw = shedding.rawValue
         self.hairlineRaw = hairline.rawValue
         self.overallRaw = overall.rawValue
+        self.patchTrendRaw = patchTrend?.rawValue
         self.scalpPain = scalpPain
         self.scalpPainNote = scalpPainNote
         self.note = note
@@ -335,6 +341,12 @@ final class ProgressCheckIn {
         get { ProgressTrend(rawValue: overallRaw) ?? .same }
         set { overallRaw = newValue.rawValue }
     }
+    /// `nil` when never asked (non-AA profiles, or check-ins recorded before this field
+    /// existed) — distinct from an explicit `.same` answer.
+    var patchTrend: ProgressTrend? {
+        get { patchTrendRaw.flatMap(ProgressTrend.init(rawValue:)) }
+        set { patchTrendRaw = newValue?.rawValue }
+    }
 
     /// Plain, clinician-readable lines for the export. The scalp-pain line is a safety flag,
     /// not a diagnosis.
@@ -346,6 +358,9 @@ final class ProgressCheckIn {
             "Hairline/part: \(hairline.clinicianPhrase(for: .hairline))",
             "Overall: \(overall.clinicianPhrase(for: .overall))"
         ]
+        if let patchTrend {
+            lines.append("Patches: \(patchTrend.clinicianPhrase(for: .patches))")
+        }
         if scalpPain {
             lines.append("⚠ Reports scalp pain/tenderness\(scalpPainNote.isEmpty ? "" : " — \(scalpPainNote)"). Worth prompt dermatology review.")
         }

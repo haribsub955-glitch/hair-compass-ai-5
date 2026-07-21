@@ -54,6 +54,54 @@ final class HealthKitService: SignalSource {
         #endif
     }
 
+    /// Re-derives real authorization at every launch. `init()` alone can only ever see
+    /// `.notDetermined` — HealthKit doesn't persist our enum across process restarts, and
+    /// this app never asks Apple to re-request. Without this, RootView's launch snapshot
+    /// refresh and the dashboard's manual "Update from Health" row silently stop working
+    /// after the very first session, and an already-granted user sees the connect prompt
+    /// again on every relaunch. Call once, early, from RootView's launch `.task`.
+    ///
+    /// `statusForAuthorizationRequest` only reports whether a *new* system prompt would be
+    /// shown — never whether read access was actually granted (Apple hides that for
+    /// privacy). `.unnecessary` means "already asked", which for a read-only request set
+    /// like this one is the closest honest signal to "usable": queries will run as before,
+    /// even if some come back empty. `.shouldRequest` means truly never asked.
+    func bootstrap() async {
+        #if canImport(HealthKit)
+        guard HKHealthStore.isHealthDataAvailable() else { authorization = .unavailable; return }
+        do {
+            let status = try await store.statusForAuthorizationRequest(toShare: [], read: readTypes)
+            authorization = Self.resolvedAuthorization(for: status, current: authorization)
+        } catch {
+            // Leave authorization as-is; a failed status check shouldn't promote us.
+        }
+        #else
+        authorization = .unavailable
+        #endif
+    }
+
+    #if canImport(HealthKit)
+    /// The state-machine step `bootstrap()` runs, pulled out as a pure function so it can be
+    /// exercised in a unit test without a live `HKHealthStore` — tests can't actually grant
+    /// HealthKit authorization, but they can construct an `HKAuthorizationRequestStatus` and
+    /// assert the resulting `HealthAuthorizationState`.
+    static func resolvedAuthorization(
+        for status: HKAuthorizationRequestStatus,
+        current: HealthAuthorizationState
+    ) -> HealthAuthorizationState {
+        switch status {
+        case .unnecessary:
+            return .authorized
+        case .shouldRequest:
+            return .notDetermined
+        case .unknown:
+            return current // genuinely can't say — leave the current/default state alone
+        @unknown default:
+            return current
+        }
+    }
+    #endif
+
     /// Reads the latest metrics and upserts today's snapshot. Returns the snapshot (or nil if
     /// HealthKit is unavailable / no data). Safe to call repeatedly — it updates in place.
     @discardableResult

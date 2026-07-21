@@ -17,6 +17,8 @@ struct TodayView: View {
     @Query(sort: \TriggerEvent.date, order: .reverse) private var triggers: [TriggerEvent]
     @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
     @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
+    @Query(sort: \ProgressCheckIn.date) private var progressCheckIns: [ProgressCheckIn]
+    @Query(sort: \SideEffectLog.date) private var sideEffectLogs: [SideEffectLog]
 
     @State private var showLog = false
     @State private var showBackfill = false
@@ -27,6 +29,9 @@ struct TodayView: View {
     @State private var insight: DailyInsight?
     @State private var showDeepAnalysis = false
     @State private var showLearn = false
+    @State private var showChat = false
+    @State private var chatDetent: PresentationDetent = .large
+    @State private var chatContext = ""
 
     private var calendar: Calendar { .current }
     private var todayEntry: DailyEntry? {
@@ -227,6 +232,14 @@ struct TodayView: View {
         .sheet(isPresented: $showDeepAnalysis) {
             DeepAnalysisSheet()
         }
+        .sheet(isPresented: $showChat) {
+            HairChatSheet(
+                contextJSON: chatContext, focus: chatFocus,
+                eyebrow: "Ask about your record", title: "Ask AI",
+                starterKind: .fullRecord
+            )
+            .presentationDetents([.medium, .large], selection: $chatDetent)
+        }
         .sheet(isPresented: $showLearn) {
             NavigationStack {
                 LearnView()
@@ -256,13 +269,13 @@ struct TodayView: View {
             Button { showLearn = true } label: {
                 HStack(alignment: .top, spacing: 6) {
                     Text(dailyLearnCard.question)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(Clinical.body(14, weight: .medium))
                         .foregroundStyle(Clinical.accent)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(Clinical.body(11, weight: .semibold))
                         .foregroundStyle(Clinical.accent.opacity(0.6))
                         .padding(.top, 2)
                 }
@@ -291,14 +304,15 @@ struct TodayView: View {
         let latest = entries.first.map {
             "\($0.shedRaw)-\($0.flaking)-\($0.erythema)-\($0.itch)-\($0.date.timeIntervalSince1970)"
         } ?? "none"
-        return "\(entries.count)-\(latest)-\(snapshots.count)-\(treatments.count)-\(labs.count)"
+        return "\(entries.count)-\(latest)-\(snapshots.count)-\(treatments.count)-\(labs.count)-\(progressCheckIns.count)-\(sideEffectLogs.count)"
     }
 
     @MainActor
     private func buildContext() -> InsightContext {
         InsightContext.build(
             entries: entries, treatments: treatments, doses: doses,
-            snapshots: snapshots, triggers: triggers, labs: labs, profile: profile
+            snapshots: snapshots, triggers: triggers, labs: labs, profile: profile,
+            progressCheckIns: progressCheckIns, sideEffects: sideEffectLogs
         )
     }
 
@@ -315,36 +329,71 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: "Today's insight")
             Text(insight?.text ?? "Reading your recent entries…")
-                .font(.system(size: 15))
+                .font(Clinical.caption(15))
                 .foregroundStyle(insight == nil ? Clinical.tertiary : Clinical.ink)
             Divider().overlay(Clinical.hairline)
             insightFootnote
         }
     }
 
-    /// Source label + "record-keeping, not diagnosis" + the deep-analysis affordance, said once
-    /// on one line instead of three separate statements down a card.
+    /// Source label + "record-keeping, not diagnosis" + the flagship AI affordances, said once
+    /// on one line instead of stacking separate statements down a card. "Ask AI" is the
+    /// first-class entry point into the on-device hair chat — previously reachable only three
+    /// levels deep inside Compare; "Deep analysis" opens the one-tap written summary.
     private var insightFootnote: some View {
         HStack(alignment: .top, spacing: 8) {
             Text(insightFootnoteText)
-                .font(.system(size: 11))
+                .font(Clinical.caption(11))
                 .foregroundStyle(Clinical.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
-            Button {
-                // On-device and private — no consent gate needed. The sheet itself handles the
-                // Pro gate and the Apple-Intelligence availability check.
-                showDeepAnalysis = true
-            } label: {
-                HStack(spacing: 2) {
-                    Text("Deep analysis")
-                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
+            HStack(spacing: 14) {
+                Button {
+                    // On-device and private — no consent gate needed. The sheet itself handles
+                    // the Pro gate and the Apple-Intelligence availability check.
+                    openChat()
+                } label: {
+                    HStack(spacing: 2) {
+                        Text("Ask AI")
+                        Image(systemName: "chevron.right").font(Clinical.body(8, weight: .semibold))
+                    }
+                    .font(Clinical.body(11, weight: .semibold))
+                    .foregroundStyle(Clinical.accent)
                 }
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Clinical.accent)
+                .buttonStyle(.clinicalPressable)
+                .accessibilityLabel("Ask AI about your tracking record")
+
+                Button {
+                    showDeepAnalysis = true
+                } label: {
+                    HStack(spacing: 2) {
+                        Text("Deep analysis")
+                        Image(systemName: "chevron.right").font(Clinical.body(8, weight: .semibold))
+                    }
+                    .font(Clinical.body(11, weight: .semibold))
+                    .foregroundStyle(Clinical.accent)
+                }
+                .buttonStyle(.clinicalPressable)
             }
-            .buttonStyle(.clinicalPressable)
         }
+    }
+
+    /// One line telling the chat what's on screen — the whole record, not a specific chart,
+    /// since Today has no single comparison in view.
+    private var chatFocus: String {
+        "User is asking from the Today screen about their overall record."
+    }
+
+    /// Snapshot the canonical AIContext at open time — same pattern as `CompareView.openChat()`
+    /// and `DeepAnalysisSheet`, just grounded on the whole record instead of one chart.
+    private func openChat() {
+        chatContext = AIContext.build(
+            entries: entries, treatments: treatments, doses: doses,
+            snapshots: snapshots, triggers: triggers,
+            labs: labs, sideEffects: sideEffectLogs, photos: photos,
+            profile: profile, progressCheckIns: progressCheckIns, now: .now
+        ).jsonString()
+        showChat = true
     }
 
     private var insightFootnoteText: String {
@@ -368,7 +417,7 @@ struct TodayView: View {
         let lastActivity = [entries.first?.date, doses.map(\.loggedAt).max()].compactMap { $0 }.max()
         return Text(lastActivity.map { "Up to date · last entry \($0.formatted(.relative(presentation: .named)))" }
                     ?? "Ready for your first entry")
-            .font(.system(size: 11))
+            .font(Clinical.caption(11))
             .foregroundStyle(Clinical.tertiary)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)

@@ -65,10 +65,10 @@ struct FloatingTabBar: View {
             VStack(spacing: 3) {
                 Image(systemName: tab.symbol)
                     .symbolVariant(on ? .fill : .none)
-                    .font(.system(size: 18, weight: on ? .semibold : .regular))
+                    .font(Clinical.body(18, weight: on ? .semibold : .regular))
                     .symbolEffect(.bounce, value: bounceCounts[tab, default: 0])
                 Text(tab.title)
-                    .font(.system(size: 11, weight: on ? .semibold : .medium))
+                    .font(Clinical.body(11, weight: on ? .semibold : .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                 // Selection is marked here — a small copper underline sliding between items —

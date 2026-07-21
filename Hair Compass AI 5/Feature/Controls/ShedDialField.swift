@@ -77,7 +77,7 @@ struct ShedDialField: View {
                     .foregroundStyle(Clinical.ink)
                     .contentTransition(.opacity)
                 Text("\(reflection.title) · \(subtitle)")
-                    .font(.system(size: 11))
+                    .font(Clinical.caption(11))
                     .foregroundStyle(Clinical.secondary)
                     .contentTransition(.opacity)
                     .lineLimit(2)

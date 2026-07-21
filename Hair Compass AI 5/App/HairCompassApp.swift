@@ -56,6 +56,14 @@ struct HairCompassApp: App {
                 // warm colour. Pin Light so the invariant is explicit — any future system-adaptive
                 // colour or default sheet/list background can't silently break in dark mode.
                 .preferredColorScheme(.light)
+                // Dynamic Type step 2: the app's body copy now genuinely scales (Clinical.body/
+                // .caption), which is the point — but a handful of hand-drawn layouts (the tab
+                // bar, compass gauges, log-sheet tiles) size their chrome in fixed points around
+                // that text. Clamping the top of the range at `.accessibility2` (roughly double
+                // system text) keeps those tight compositions intact while still giving anyone up
+                // to that size real, working growth — the other three AX sizes above it exist for
+                // system text (Settings, alerts), not for a densely custom app layout like this one.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         }
         .modelContainer(container)
     }

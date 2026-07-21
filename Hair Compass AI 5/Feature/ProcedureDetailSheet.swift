@@ -10,6 +10,13 @@ struct ProcedureDetailSheet: View {
     @Bindable var appointment: ProcedureAppointment
     @State private var showEdit = false
     @State private var calendarFeedback: String?
+    /// Consultation-only: presents `ExportSheet` so a doctor-visit appointment can hand off
+    /// straight into the visit report the app already builds — the "see a dermatologist" loop's
+    /// missing link.
+    @State private var showExportSheet = false
+    /// Drives the delete confirmation dialog — confirm-first, matching every other irreversible
+    /// delete in the app.
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -27,14 +34,27 @@ struct ProcedureDetailSheet: View {
                         Button(action: addToCalendar) {
                             Label(calendarFeedback ?? "Add to Calendar",
                                   systemImage: calendarFeedback == nil ? "calendar.badge.plus" : "checkmark")
-                                .font(.system(size: 15, weight: .medium))
+                                .font(Clinical.body(15, weight: .medium))
                         }
                         .buttonStyle(ClinicalButtonStyle(filled: false))
                         .disabled(calendarFeedback != nil)
                     }
+                    if appointment.type == .consultation {
+                        Button {
+                            showExportSheet = true
+                        } label: {
+                            Label("Prepare visit report", systemImage: "doc.richtext")
+                                .font(Clinical.body(15, weight: .medium))
+                        }
+                        .buttonStyle(ClinicalButtonStyle(filled: false))
+                    }
+                    if appointment.type == .transplant && appointment.isCompleted {
+                        transplantTimelineCard
+                    }
+                    expectationsCard
                     deleteButton
                     Text("A private record for your own clinician conversations — not medical advice.")
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
                 .padding(20)
             }
@@ -46,6 +66,20 @@ struct ProcedureDetailSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .sheet(isPresented: $showEdit) { AddProcedureSheet(existing: appointment) }
+            .sheet(isPresented: $showExportSheet) { ExportSheet() }
+            .confirmationDialog(
+                "Delete this procedure record?",
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    context.delete(appointment)
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This can't be undone.")
+            }
         }
     }
 
@@ -55,24 +89,89 @@ struct ProcedureDetailSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 Image(systemName: appointment.type.symbol)
-                    .font(.system(size: 16)).foregroundStyle(Clinical.accent)
+                    .font(Clinical.caption(16)).foregroundStyle(Clinical.accent)
                     .frame(width: 38, height: 38)
                     .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(appointment.date.formatted(.dateTime.weekday(.wide).day().month(.wide).year().hour().minute()))
-                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                        .font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.ink)
                     Text(statusLine)
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(statusTint)
+                        .font(Clinical.body(12, weight: .medium)).foregroundStyle(statusTint)
                 }
                 Spacer()
             }
             if !appointment.location.isEmpty {
                 Label(appointment.location, systemImage: "mappin.and.ellipse")
-                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
             }
             if !appointment.note.isEmpty {
                 Text(appointment.note)
-                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: Education (expectations & aftercare)
+
+    /// General orientation for this procedure type — what's typical to feel afterward, how
+    /// results build, and when they're fair to judge. Education only, never directive; matches
+    /// `TreatmentGuide`'s posture and the "private record, not medical advice" footer below.
+    private var expectationsCard: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Eyebrow(text: "What to expect")
+                    Text(ProcedureGuide.expectations(for: appointment.type))
+                        .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Divider().overlay(Clinical.hairline)
+                VStack(alignment: .leading, spacing: 8) {
+                    Eyebrow(text: appointment.type == .consultation ? "Before your visit" : "Typical aftercare")
+                    ForEach(Array(ProcedureGuide.aftercareNotes(for: appointment.type).enumerated()), id: \.offset) { _, note in
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle().fill(Clinical.accent).frame(width: 4, height: 4).padding(.top, 6)
+                            Text(note).font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Text(appointment.type == .consultation
+                         ? "General prep, not a checklist from your clinic — bring whatever they've asked for too."
+                         : "Typical practice — always follow your clinic's own instructions.")
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
+                        .padding(.top, 2)
+                }
+            }
+        }
+    }
+
+    /// Transplant-only: a "weeks since" recovery timeline anchored on the completion date,
+    /// replacing the universal 24-week outcome gate with the much longer transplant-specific arc
+    /// (`ProcedureGuide.transplantTimeline`) — graft security, shock loss, early regrowth,
+    /// thickening, and the 12–18-month judging window.
+    private var transplantTimelineCard: some View {
+        let anchor = appointment.completedAt ?? appointment.date
+        let weeks = HairAnalytics.weeksElapsed(since: anchor)
+        let milestone = ProcedureGuide.transplantMilestone(weeksElapsed: weeks)
+        let progress = min(1, Double(weeks) / Double(ProcedureGuide.transplantJudgingWindowWeeks))
+        let inJudgingWindow = weeks >= 53
+
+        return ClinicalCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Eyebrow(text: "Recovery timeline")
+                HStack {
+                    Text("Week \(weeks) since your transplant")
+                        .font(Clinical.number(13)).foregroundStyle(Clinical.ink)
+                    Spacer()
+                    Text(milestone.title)
+                        .font(Clinical.eyebrow(11))
+                        .foregroundStyle(inJudgingWindow ? Clinical.positive : Clinical.accent)
+                }
+                ProgressBar(value: progress, tint: inJudgingWindow ? Clinical.positive : Clinical.accent)
+                    .frame(height: 8)
+                Text(milestone.body)
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -122,11 +221,10 @@ struct ProcedureDetailSheet: View {
     /// would bury the destructive intent.
     private var deleteButton: some View {
         Button(role: .destructive) {
-            context.delete(appointment)
-            dismiss()
+            showDeleteConfirm = true
         } label: {
             Label("Delete procedure", systemImage: "trash")
-                .font(.system(size: 16, weight: .semibold))
+                .font(Clinical.body(16, weight: .semibold))
                 .foregroundStyle(Clinical.critical)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)

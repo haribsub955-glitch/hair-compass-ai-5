@@ -56,7 +56,7 @@ struct JourneyPlayerView: View {
                     }
 
                     Text("Aggregating \(count) photo\(count == 1 ? "" : "s")")
-                        .font(.system(size: 12))
+                        .font(Clinical.caption(12))
                         .foregroundStyle(Clinical.secondary)
                 }
                 .padding(20)
@@ -132,7 +132,7 @@ struct JourneyPlayerView: View {
                     isPlaying.toggle()
                 } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(Clinical.body(16, weight: .semibold))
                         .foregroundStyle(Clinical.surface)
                         .frame(width: 44, height: 44)
                         .background(Clinical.ink, in: Circle())

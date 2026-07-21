@@ -226,7 +226,7 @@ struct ConditionsHero: View {
                     // Today dissolves back onto the canvas, matching the bare header-action
                     // voice used everywhere else in the app.
                     Image(systemName: "person.circle")
-                        .font(.system(size: 22))
+                        .font(Clinical.caption(22))
                         .foregroundStyle(Clinical.ink)
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
@@ -302,7 +302,7 @@ struct ConditionsHero: View {
 
     private func subtitleText(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .medium))
+            .font(Clinical.body(12, weight: .medium))
             .foregroundStyle(Clinical.secondary)
             .lineLimit(2)
             .contentTransition(.opacity)
@@ -313,7 +313,7 @@ struct ConditionsHero: View {
     private var scalpLine: some View {
         if let scalpTotal, let scalpBand {
             Text("Scalp \(scalpTotal)/16 · \(scalpBand.title)")
-                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
         }
     }
 
@@ -331,7 +331,7 @@ struct ConditionsHero: View {
         Button(action: onLog) {
             Label(hasLoggedToday ? "Edit log" : "Log today",
                   systemImage: hasLoggedToday ? "pencil" : "plus")
-                .font(.system(size: 12, weight: .semibold))
+                .font(Clinical.body(12, weight: .semibold))
                 .foregroundStyle(Clinical.surface)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 34)
@@ -550,7 +550,7 @@ struct TodayTileGrid: View {
             Spacer()
             if medsTotal > 0 {
                 Text(medsRemainingLabel)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(Clinical.body(12, weight: .medium))
                     .foregroundStyle(medsDone >= medsTotal ? Clinical.positive : Clinical.tertiary)
                     .contentTransition(.numericText())
                     .animation(.spring(response: 0.4, dampingFraction: 0.78), value: medsTotal - medsDone)
@@ -586,11 +586,11 @@ struct TodayTileGrid: View {
         Button(action: action) {
             HStack {
                 Text("Log a past day")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(Clinical.body(13, weight: .medium))
                     .foregroundStyle(Clinical.accent)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(Clinical.body(9, weight: .semibold))
                     .foregroundStyle(Clinical.accent.opacity(0.5))
             }
             .padding(.vertical, 13)
@@ -618,10 +618,10 @@ struct TodayTileGrid: View {
         } label: {
             HStack(spacing: 10) {
                 Text("Not noted yet")
-                    .font(.system(size: 14))
+                    .font(Clinical.caption(14))
                     .foregroundStyle(Clinical.tertiary.opacity(0.7))
                 Text(unloggedLabels.joined(separator: " · "))
-                    .font(.system(size: 12))
+                    .font(Clinical.caption(12))
                     .foregroundStyle(Clinical.tertiary.opacity(0.55))
                     .lineLimit(1)
                 Spacer(minLength: 8)
@@ -788,7 +788,7 @@ struct AnnotationRow: View {
                 .foregroundStyle(Clinical.tertiary)
                 .frame(minWidth: 82, alignment: .leading)
             Text(value)
-                .font(.system(size: 14, weight: logged ? .medium : .regular))
+                .font(Clinical.body(14, weight: logged ? .medium : .regular))
                 .foregroundStyle(logged ? valueColor : Clinical.tertiary.opacity(0.65))
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
@@ -796,7 +796,7 @@ struct AnnotationRow: View {
             if let trace { trace }
             if action != nil {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(Clinical.body(9, weight: .semibold))
                     .foregroundStyle(Clinical.accent.opacity(0.5))
             }
         }
@@ -857,13 +857,13 @@ private struct RoutineLedgerRow: View {
                     .opacity(done ? 0.55 : 1)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
-                        .font(.system(size: 14, weight: done ? .regular : .medium))
+                        .font(Clinical.body(14, weight: done ? .regular : .medium))
                         .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
                         .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: done)
                         .completionInkUnderline(trigger: $inkTrigger)
                     if let classSubtitle {
                         Text(classSubtitle)
-                            .font(.system(size: 11.5))
+                            .font(Clinical.caption(11.5))
                             .foregroundStyle(Clinical.tertiary)
                     }
                 }
@@ -873,7 +873,7 @@ private struct RoutineLedgerRow: View {
                     Circle().strokeBorder(done ? Clinical.accent : Clinical.accent.opacity(0.4), lineWidth: 1.5)
                     if done {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(Clinical.body(9, weight: .bold))
                             .foregroundStyle(Clinical.surface)
                     }
                 }

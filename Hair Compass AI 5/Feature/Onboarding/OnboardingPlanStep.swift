@@ -5,18 +5,23 @@ import SwiftUI
 /// Onboarding step 12 — "your plan". The honest Pro offer: a scientifically grounded projection
 /// (the ONLY quantitative number is the published male-AGA combination-therapy average from
 /// `docs/TrackingSpec.md`; everyone else gets qualitative milestones), three "what Pro adds"
-/// rows, and purchase buttons that never show a placeholder price — they simply don't render
-/// until real products load. "Continue free" sits directly under them, same size of voice, and
-/// there is no countdown, no fake discount, no back navigation trap: this screen only moves
-/// forward, either through a purchase or through the free path.
+/// rows, and purchase buttons that never show a placeholder price — until real products load
+/// they're replaced by `StoreUnavailableView` (a spinner, or an honest "can't reach the store"
+/// message with Retry). "Continue free" sits directly under them, same size of voice, and there
+/// is no countdown, no fake discount, no back navigation trap: this screen only moves forward,
+/// either through a purchase or through the free path.
 struct OnboardingPlanStep: View {
     let profile: Profile
     var onContinue: () -> Void
 
     @Environment(PurchaseService.self) private var purchases
-    @State private var isPurchasing = false
+    /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
+    /// only the button the user actually tapped shows its spinner.
+    @State private var purchasingProductID: String?
     @State private var yearlyIntroEligible = false
     @State private var monthlyIntroEligible = false
+
+    private var isBusy: Bool { purchasingProductID != nil || purchases.isRestoring }
 
     private var model: ProjectionModel {
         ProjectionModel.make(condition: profile.condition, sex: profile.sex)
@@ -56,7 +61,7 @@ struct OnboardingPlanStep: View {
                 .foregroundStyle(Clinical.ink)
                 .fixedSize(horizontal: false, vertical: true)
             Text(personalLine)
-                .font(.system(size: 14))
+                .font(Clinical.caption(14))
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -91,10 +96,10 @@ struct OnboardingPlanStep: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(model.citation)
-                        .font(.system(size: 11))
+                        .font(Clinical.caption(11))
                         .foregroundStyle(Clinical.secondary)
                     Text(model.disclaimer)
-                        .font(.system(size: 11))
+                        .font(Clinical.caption(11))
                         .foregroundStyle(Clinical.tertiary)
                 }
                 .fixedSize(horizontal: false, vertical: true)
@@ -173,7 +178,7 @@ struct OnboardingPlanStep: View {
     private func differenceChart(_ curve: [ProjectionModel.DifferencePoint]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Signal clarity (illustrative)")
-                .font(.system(size: 11))
+                .font(Clinical.caption(11))
                 .foregroundStyle(Clinical.tertiary)
 
             Chart {
@@ -245,7 +250,7 @@ struct OnboardingPlanStep: View {
                         .frame(width: 36, height: 22)
                         .background(Clinical.accent, in: Capsule())
                     Text(m.label)
-                        .font(.system(size: 13))
+                        .font(Clinical.caption(13))
                         .foregroundStyle(Clinical.ink)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -267,13 +272,13 @@ struct OnboardingPlanStep: View {
     private func proRow(_ symbol: String, _ title: String, _ line: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
-                .font(.system(size: 15, weight: .medium))
+                .font(Clinical.body(15, weight: .medium))
                 .foregroundStyle(Clinical.accent)
                 .frame(width: 30, height: 30)
                 .background(Clinical.accentSoft, in: Circle())
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Clinical.ink)
-                Text(line).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                Text(title).font(Clinical.body(14, weight: .semibold)).foregroundStyle(Clinical.ink)
+                Text(line).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
             }
             Spacer(minLength: 0)
         }
@@ -289,30 +294,41 @@ struct OnboardingPlanStep: View {
         VStack(spacing: 10) {
             if !purchases.products.isEmpty {
                 purchaseButtons
+            } else {
+                StoreUnavailableView(isLoading: purchases.isLoading) {
+                    Task { await purchases.load() }
+                }
             }
+
+            PurchaseStatusLine(purchaseState: purchases.purchaseState, restoreResult: purchases.restoreResult)
 
             Button {
                 onContinue()
             } label: {
                 Text("Continue free")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(Clinical.body(15, weight: .medium))
                     .foregroundStyle(Clinical.ink)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
             }
             .buttonStyle(.plain)
-            .disabled(isPurchasing)
+            .disabled(isBusy)
             .accessibilityIdentifier("onboardContinueFree")
 
             Button {
                 Task { await purchases.restore() }
             } label: {
-                Text("Restore purchases")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Clinical.tertiary)
+                HStack(spacing: 6) {
+                    if purchases.isRestoring {
+                        ProgressView().tint(Clinical.tertiary)
+                    }
+                    Text("Restore purchases")
+                        .font(Clinical.caption(12))
+                        .foregroundStyle(Clinical.tertiary)
+                }
             }
             .buttonStyle(.plain)
-            .disabled(isPurchasing)
+            .disabled(isBusy)
 
             PaywallLegal()
         }
@@ -331,37 +347,39 @@ struct OnboardingPlanStep: View {
                 if let offer {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(offer.base)
-                            .font(.system(size: 14))
+                            .font(Clinical.caption(14))
                             .strikethrough()
                             .foregroundStyle(Clinical.tertiary)
                         Text(offer.intro)
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(Clinical.body(18, weight: .semibold))
                             .foregroundStyle(Clinical.ink)
                         Text("/year")
-                            .font(.system(size: 13))
+                            .font(Clinical.caption(13))
                             .foregroundStyle(Clinical.secondary)
                     }
                 }
                 Button {
                     buy(yearly)
                 } label: {
-                    VStack(spacing: 2) {
-                        if let offer {
-                            Text("Start yearly — \(offer.intro) first year")
-                            Text("First year — save \(offer.percentOff)%, then \(offer.base)/year · Limited-time")
-                                .font(.system(size: 11))
-                                .foregroundStyle(Clinical.secondary)
-                        } else {
-                            Text("Start with yearly — \(yearly.displayPrice)/year")
-                            if let perMonth = yearly.monthlyEquivalentDisplay {
-                                Text(perMonth)
-                                    .font(.system(size: 11, weight: .regular))
+                    PurchaseButtonLabel(isPurchasing: purchasingProductID == yearly.id, tint: Clinical.surface) {
+                        VStack(spacing: 2) {
+                            if let offer {
+                                Text("Start yearly — \(offer.intro) first year")
+                                Text("First year — save \(offer.percentOff)%, then \(offer.base)/year · Limited-time")
+                                    .font(Clinical.caption(11))
+                                    .foregroundStyle(Clinical.secondary)
+                            } else {
+                                Text("Start with yearly — \(yearly.displayPrice)/year")
+                                if let perMonth = yearly.monthlyEquivalentDisplay {
+                                    Text(perMonth)
+                                        .font(Clinical.body(11, weight: .regular))
+                                }
                             }
                         }
                     }
                 }
                 .buttonStyle(ClinicalButtonStyle())
-                .disabled(isPurchasing)
+                .disabled(isBusy)
                 .accessibilityIdentifier("onboardPurchaseYearly")
             }
         }
@@ -370,24 +388,26 @@ struct OnboardingPlanStep: View {
             Button {
                 buy(monthly)
             } label: {
-                if let trialText {
-                    Text("\(trialText)/month")
-                } else {
-                    Text("Monthly — \(monthly.displayPrice)/month")
+                PurchaseButtonLabel(isPurchasing: purchasingProductID == monthly.id, tint: Clinical.ink) {
+                    if let trialText {
+                        Text("\(trialText)/month")
+                    } else {
+                        Text("Monthly — \(monthly.displayPrice)/month")
+                    }
                 }
             }
             .buttonStyle(ClinicalButtonStyle(filled: false))
-            .disabled(isPurchasing)
+            .disabled(isBusy)
             .accessibilityIdentifier("onboardPurchaseMonthly")
         }
     }
 
     private func buy(_ product: Product) {
-        guard !isPurchasing else { return }
-        isPurchasing = true
+        guard !isBusy else { return }
+        purchasingProductID = product.id
         Task {
             let bought = await purchases.purchase(product)
-            isPurchasing = false
+            purchasingProductID = nil
             if bought { onContinue() }
         }
     }

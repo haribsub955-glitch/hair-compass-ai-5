@@ -32,6 +32,8 @@ struct KnotRitual: Ritual {
     // MARK: Ritual
 
     var isComplete: Bool { !points.isEmpty && avgS > Self.completeThreshold }
+    var progress: CGFloat { min(1, avgS / Self.completeThreshold) }
+    var estimatedDuration: TimeInterval? { nil }   // interaction-paced — no fixed end time
 
     mutating func handle(_ touch: RitualTouch) {
         switch touch.phase {

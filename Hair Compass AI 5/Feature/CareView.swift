@@ -37,10 +37,17 @@ struct CareView: View {
     @State private var reportFocusTreatment: Treatment?
     @State private var showProcedures = false
     @State private var showProgressCheckIn = false
-    @State private var showAddTrigger = false
+    /// Opens `LifeEventsSheet` — the full list of dated `TriggerEvent`s, view/edit/delete —
+    /// rather than jumping straight to the add form; mirrors `showProcedures`.
+    @State private var showLifeEvents = false
     /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
     /// directly from the ScrollView's own content offset.
     @State private var headerCondense: CGFloat = 0
+    /// Non-nil while the "Delete" confirmation dialog is up for a treatment card's ellipsis
+    /// menu — deleting cascades away every logged dose and side-effect entry (`Models.swift`'s
+    /// `.cascade` delete rules), so this is a confirm-first path with "Mark inactive instead"
+    /// offered alongside the destructive action.
+    @State private var deleteTreatmentCandidate: Treatment?
 
     /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
     /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
@@ -119,10 +126,40 @@ struct CareView: View {
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
         .sheet(item: $detailTreatment) { TreatmentDetailSheet(treatment: $0) }
+        // Deleting a treatment cascades away every logged dose and side-effect entry
+        // (`Models.swift`'s `.cascade` delete rules) — the adherence history the 24-week
+        // judgment depends on — so this confirms first and offers "Mark inactive instead" as a
+        // non-destructive way to stop a treatment without losing its record.
+        .confirmationDialog(
+            deleteTreatmentTitle,
+            isPresented: Binding(
+                get: { deleteTreatmentCandidate != nil },
+                set: { if !$0 { deleteTreatmentCandidate = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let t = deleteTreatmentCandidate {
+                Button("Mark inactive instead") {
+                    t.isActive = false
+                    t.endDate = .now
+                    deleteTreatmentCandidate = nil
+                }
+                Button("Delete", role: .destructive) {
+                    context.delete(t)
+                    deleteTreatmentCandidate = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { deleteTreatmentCandidate = nil }
+        } message: {
+            Text(deleteTreatmentMessage)
+        }
         .sheet(isPresented: $showProcedures) { ProceduresView() }
-        .sheet(isPresented: $showAddTrigger) { AddTriggerSheet() }
+        .sheet(isPresented: $showLifeEvents) { LifeEventsSheet() }
         .sheet(isPresented: $showProgressCheckIn) {
-            ProgressCheckInSheet(treatmentContext: progressCheckInTreatmentContext)
+            ProgressCheckInSheet(
+                treatmentContext: progressCheckInTreatmentContext,
+                showsPatchQuestion: profile?.condition == .alopeciaAreata
+            )
         }
         .sheet(isPresented: $showReport) {
             if let report = progressReport { ProgressReportSheet(report: report, photos: photoRecords) }
@@ -221,6 +258,29 @@ struct CareView: View {
 
     // MARK: Derived state
 
+    /// "Delete "Minoxidil"?" — the treatment name, quoted, falling back to its class title for
+    /// treatments the user never named.
+    private var deleteTreatmentTitle: String {
+        guard let t = deleteTreatmentCandidate else { return "" }
+        let name = t.name.isEmpty ? t.treatmentClass.title : t.name
+        return "Delete \"\(name)\"?"
+    }
+
+    /// Spells out exactly what the cascade delete takes with it, so the destructive button in
+    /// the dialog above is never a surprise — and points at the non-destructive alternative.
+    private var deleteTreatmentMessage: String {
+        guard let t = deleteTreatmentCandidate else { return "" }
+        let doseCount = t.doses.count
+        let sideEffectCount = t.sideEffects.count
+        var parts: [String] = []
+        if doseCount > 0 { parts.append("\(doseCount) logged dose\(doseCount == 1 ? "" : "s")") }
+        if sideEffectCount > 0 { parts.append("\(sideEffectCount) side-effect entr\(sideEffectCount == 1 ? "y" : "ies")") }
+        let consequence = parts.isEmpty
+            ? "This can't be undone."
+            : "This also deletes \(parts.joined(separator: " and ")) — it can't be undone."
+        return consequence + " Consider \"Mark inactive instead\" to keep the history."
+    }
+
     private var activeTreatments: [Treatment] { treatments.filter(\.isActive) }
     private var treatmentWeeks: [(name: String, weeks: Int)] {
         activeTreatments.map { (($0.name.isEmpty ? $0.treatmentClass.title : $0.name), HairAnalytics.weeksElapsed(since: $0.startDate)) }
@@ -245,8 +305,8 @@ struct CareView: View {
         activeTreatments.map { "\($0.name)\($0.scheduleTimes)\($0.isActive)\($0.refillBy?.timeIntervalSince1970 ?? 0)" }.joined(separator: "|")
     }
     private var upcomingProcedures: [ProcedureAppointment] { procedureAppointments.filter(\.isUpcoming) }
-    private var notifProcedures: [(id: String, title: String, date: Date)] {
-        upcomingProcedures.map { (String($0.persistentModelID.hashValue), $0.type.title, $0.date) }
+    private var notifProcedures: [(id: String, title: String, date: Date, isConsultation: Bool)] {
+        upcomingProcedures.map { (String($0.persistentModelID.hashValue), $0.type.title, $0.date, $0.type == .consultation) }
     }
     private var procedureFingerprint: String {
         procedureAppointments.map { "\($0.persistentModelID.hashValue)|\($0.date.timeIntervalSince1970)|\($0.isCompleted)" }.joined(separator: "|")
@@ -265,10 +325,7 @@ struct CareView: View {
     }
     private var hasLoggedToday: Bool { entries.contains { calendar.isDateInToday($0.date) } }
     private var eveningCheckInComponents: DateComponents {
-        var comps = DateComponents()
-        comps.hour = eveningCheckInMinutes / 60
-        comps.minute = eveningCheckInMinutes % 60
-        return comps
+        NotificationService.eveningCheckInComponents(minutesSinceMidnight: eveningCheckInMinutes)
     }
     /// Binding into the AppStorage minutes-since-midnight Int, for the DatePicker below.
     private var eveningCheckInTime: Binding<Date> {
@@ -386,7 +443,7 @@ struct CareView: View {
         return HStack(spacing: 8) {
             MilestoneProgressRing(progress: progress ?? 1)
             Text(milestoneDisplayTitle(m, progress: progress))
-                .font(.system(size: 13, weight: .medium))
+                .font(Clinical.body(13, weight: .medium))
                 .foregroundStyle(Clinical.ink)
                 .lineLimit(1)
         }
@@ -428,11 +485,11 @@ struct CareView: View {
                 Divider().overlay(Clinical.hairline)
                 HStack(spacing: 10) {
                     Text("What the evidence supports for you")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(Clinical.body(14, weight: .medium))
                         .foregroundStyle(Clinical.ink)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(Clinical.body(11, weight: .semibold))
                         .foregroundStyle(Clinical.tertiary)
                 }
                 .padding(.vertical, 13)
@@ -450,9 +507,9 @@ struct CareView: View {
         ClinicalCard(padding: 14) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "exclamationmark.bubble")
-                    .font(.system(size: 16)).foregroundStyle(Clinical.critical)
+                    .font(Clinical.caption(16)).foregroundStyle(Clinical.critical)
                 Text("You logged a severe side effect — worth discussing with your prescriber.")
-                    .font(.system(size: 13)).foregroundStyle(Clinical.ink)
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -504,11 +561,11 @@ struct CareView: View {
             } label: {
                 HStack(spacing: 10) {
                     Text("Reminders · \(remindersSummaryLabel)")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(Clinical.body(14, weight: .medium))
                         .foregroundStyle(Clinical.ink)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(Clinical.body(11, weight: .semibold))
                         .foregroundStyle(Clinical.accent)
                         .rotationEffect(.degrees(remindersExpanded ? 90 : 0))
                 }
@@ -534,9 +591,9 @@ struct CareView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle(isOn: $remindersOn) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Routine reminders").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                        Text("Routine reminders").font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
                         Text("Nudge me at my routine times.")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
                 }
                 .tint(Clinical.accent)
@@ -552,7 +609,7 @@ struct CareView: View {
                 }
                 if remindersOn && notifTreatments.isEmpty {
                     Text("Add a daily treatment with times to get routine reminders.")
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
             }
             .padding(.top, 4)
@@ -563,15 +620,15 @@ struct CareView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle(isOn: $eveningCheckInEnabled) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Evening check-in").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                        Text("Evening check-in").font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
                         Text("One invite at a time you pick — off until you turn it on.")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
                 }
                 .tint(Clinical.accent)
                 if eveningCheckInEnabled {
                     DatePicker("Reminder time", selection: eveningCheckInTime, displayedComponents: .hourAndMinute)
-                        .font(.system(size: 13))
+                        .font(Clinical.caption(13))
                         .tint(Clinical.accent)
                 }
             }
@@ -613,7 +670,7 @@ struct CareView: View {
                 Button { showReport = true } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "doc.text.magnifyingglass")
-                            .font(.system(size: 16))
+                            .font(Clinical.caption(16))
                             .foregroundStyle(milestone ? Clinical.surface : Clinical.accent)
                             .frame(width: 38, height: 38)
                             .background(milestone ? Clinical.accent : Clinical.accentSoft,
@@ -621,7 +678,7 @@ struct CareView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 6) {
                                 Text("Progress report")
-                                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                                    .font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.ink)
                                 if milestone {
                                     Text("MILESTONE")
                                         .font(Clinical.eyebrow(8)).tracking(0.8)
@@ -633,14 +690,14 @@ struct CareView: View {
                             Text(milestone
                                  ? "Week \(report.weekNumber) is a review milestone — read the full picture."
                                  : "Week \(report.weekNumber) · next report at week \(report.nextMilestoneWeek).")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
                         Spacer()
                         HStack(spacing: 4) {
                             Text("View report")
-                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+                                .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.accent)
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(Clinical.accent)
+                                .font(Clinical.body(11, weight: .semibold)).foregroundStyle(Clinical.accent)
                         }
                     }
                 }
@@ -676,7 +733,7 @@ struct CareView: View {
                 .accessibilityHidden(true)
             Eyebrow(text: "No treatments")
             Text("Add minoxidil, finasteride, or a procedure to build your daily routine and track the 24-week window.")
-                .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)
             Button("Add treatment") { showAdd = true }
                 .buttonStyle(ClinicalButtonStyle())
@@ -697,7 +754,7 @@ struct CareView: View {
             ledgerSectionHeader("Procedures") { showProcedures = true }
             if upcomingProcedures.isEmpty {
                 Text("Book PRP, microneedling, or another in-clinic procedure and get a reminder the day before.")
-                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 13)
             } else {
@@ -710,7 +767,7 @@ struct CareView: View {
                 }
                 if upcomingProcedures.count > 2 {
                     Text("+ \(upcomingProcedures.count - 2) more")
-                        .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                         .padding(.bottom, 10)
                 }
             }
@@ -721,12 +778,13 @@ struct CareView: View {
     // MARK: Life events (dated TE triggers)
 
     /// A ledger section in the same family as `proceduresSection`: the most recent recorded
-    /// event (if any) as a dated row, an eyebrow heading that opens the add sheet. Kept quiet and
+    /// event (if any) as a dated row, an eyebrow heading that opens the full `LifeEventsSheet`
+    /// list — view, edit, or delete any dated event, not just add another one. Kept quiet and
     /// optional — this is a record, never a prompt suggesting something is wrong.
     private var lifeEventSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Divider().overlay(Clinical.hairline)
-            ledgerSectionHeader("Life events") { showAddTrigger = true }
+            ledgerSectionHeader("Life events") { showLifeEvents = true }
             if let latest = triggerEvents.sorted(by: { $0.date > $1.date }).first {
                 LedgerEntryRow(
                     date: latest.date.formatted(.dateTime.month(.abbreviated).day()),
@@ -735,7 +793,7 @@ struct CareView: View {
                 .padding(.bottom, 10)
             } else {
                 Text("An illness, a crash diet, childbirth, major stress, or a new medication — dating it lets a shedding change 2–3 months later explain itself instead of looking random.")
-                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 13)
             }
@@ -754,7 +812,7 @@ struct CareView: View {
                 if let trailing { trailing }
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(Clinical.body(11, weight: .semibold))
                     .foregroundStyle(Clinical.tertiary)
             }
             .padding(.vertical, 13)
@@ -798,9 +856,9 @@ struct CareView: View {
                     : nil
             ) { showProgressCheckIn = true }
             Text(checkIns.first.map { "Last check-in \($0.date.formatted(date: .abbreviated, time: .omitted))" } ?? "Not done yet")
-                .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.ink)
+                .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.ink)
             Text("The between-visit questions a dermatologist asks — new baby hairs, density, shedding, hairline, scalp symptoms.")
-                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 13)
             Divider().overlay(Clinical.hairline)
@@ -820,13 +878,13 @@ struct CareView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     Image(systemName: t.treatmentClass.symbol)
-                        .font(.system(size: 16)).foregroundStyle(Clinical.accent)
+                        .font(Clinical.caption(16)).foregroundStyle(Clinical.accent)
                         .frame(width: 38, height: 38)
                         .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(t.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(Clinical.ink)
+                        Text(t.name).font(Clinical.body(16, weight: .semibold)).foregroundStyle(Clinical.ink)
                         Text("\(t.treatmentClass.title)\(t.dose.isEmpty ? "" : " · \(t.dose)")")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
                     Spacer()
                     Menu {
@@ -838,9 +896,9 @@ struct CareView: View {
                             // changes after stopping a treatment often lag by 2–3 months).
                             t.endDate = t.isActive ? nil : .now
                         }
-                        Button("Delete", role: .destructive) { context.delete(t) }
+                        Button("Delete", role: .destructive) { deleteTreatmentCandidate = t }
                     } label: {
-                        Image(systemName: "ellipsis").font(.system(size: 16)).foregroundStyle(Clinical.tertiary)
+                        Image(systemName: "ellipsis").font(Clinical.caption(16)).foregroundStyle(Clinical.tertiary)
                             .frame(width: 30, height: 30)
                     }
                 }
@@ -859,7 +917,7 @@ struct CareView: View {
 
                 if let adherence {
                     HStack {
-                        Text("14-day adherence").font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                        Text("14-day adherence").font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                         Spacer()
                         Text("\(Int((adherence * 100).rounded()))%")
                             .font(Clinical.number(13))
@@ -867,7 +925,7 @@ struct CareView: View {
                     }
                 } else {
                     Text("Periodic treatment · logged per session")
-                        .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                 }
 
                 let urgency = HairAnalytics.refillUrgency(daysLeft: t.daysUntilRefill)
@@ -901,7 +959,7 @@ struct CareView: View {
                 // a quiet, easy-to-dismiss nudge rather than a blocking requirement.
                 if t.isActive && !hasBaselinePhoto(for: t) {
                     Label("No baseline photo on record — the week-24 comparison starts from your earliest one.", systemImage: "camera.badge.ellipsis")
-                        .font(.system(size: 11.5)).foregroundStyle(Clinical.warning)
+                        .font(Clinical.caption(11.5)).foregroundStyle(Clinical.warning)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -1019,13 +1077,13 @@ private struct RoutineStepRow: View {
                             // as purposeful, plus the transient copper underline flourish below
                             // (never permanent, so it can't be misread as a strike).
                             Text(name)
-                                .font(.system(size: 15, weight: .medium))
+                                .font(Clinical.body(15, weight: .medium))
                                 .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
                                 .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: done)
                                 .completionInkUnderline(trigger: $inkTrigger)
                             if let classSubtitle {
                                 Text(classSubtitle)
-                                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                             }
                         }
                     }
@@ -1039,7 +1097,7 @@ private struct RoutineStepRow: View {
             }
             if expanded {
                 Text(TreatmentGuide.instruction(for: treatment.treatmentClass))
-                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     .padding(.leading, 58)   // aligns under the text column (46pt time column + 12 gap)
             }
         }
@@ -1075,7 +1133,7 @@ private struct RoutineStepRow: View {
                 Circle().strokeBorder(done ? Clinical.accent : Clinical.accent.opacity(0.45), lineWidth: 2)
                 if done {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(Clinical.body(11, weight: .bold))
                         .foregroundStyle(Clinical.surface)
                 }
             }
@@ -1152,9 +1210,9 @@ private struct LedgerEntryRow: View {
                 .frame(width: 40, alignment: .leading)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                Text(title).font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.ink)
                 if let caption {
-                    Text(caption).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    Text(caption).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 }
             }
             Spacer(minLength: 0)

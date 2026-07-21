@@ -20,7 +20,7 @@ struct LabProposalCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 Eyebrow(text: "What this may mean")
                 Text(proposal.deficiency)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(Clinical.body(15, weight: .medium))
                     .foregroundStyle(Clinical.ink)
 
                 if !products.isEmpty {
@@ -33,7 +33,7 @@ struct LabProposalCard: View {
                         }
                     }
                     Text("Affiliate disclosure: if you buy through these links we may earn a commission. It never changes a product's evidence rating.")
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
 
                 if let note = proposal.clinicianNote {
@@ -41,7 +41,7 @@ struct LabProposalCard: View {
                 }
 
                 Text("Record-keeping, not medical advice.")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
             }
         }
     }
@@ -49,19 +49,19 @@ struct LabProposalCard: View {
     private func productRow(_ product: ScienceProduct) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text(product.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                Text(product.name).font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.ink)
                 Label(product.route.label, systemImage: product.route.symbol)
                     .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                 Spacer()
                 ProductBadge(evidence: product.evidence)
             }
-            Text(product.summary).font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+            Text(product.summary).font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
 
             if product.industryFunded {
                 HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "building.2").font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    Image(systemName: "building.2").font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                     Text("Key trials were funded by the maker — weigh that in.")
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
             }
 
@@ -70,7 +70,7 @@ struct LabProposalCard: View {
                     openURL(url)
                 } label: {
                     Label("View on iHerb", systemImage: "arrow.up.right.square")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+                        .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.accent)
                 }
                 .buttonStyle(.plain)
             }
@@ -80,14 +80,14 @@ struct LabProposalCard: View {
     private func clinicianNote(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "stethoscope")
-                .font(.system(size: 14, weight: .semibold))
+                .font(Clinical.body(14, weight: .semibold))
                 .foregroundStyle(Clinical.accent)
             VStack(alignment: .leading, spacing: 3) {
                 Text("Talk to a clinician")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(Clinical.body(13, weight: .semibold))
                     .foregroundStyle(Clinical.accent)
                 Text(text)
-                    .font(.system(size: 12.5))
+                    .font(Clinical.caption(12.5))
                     .foregroundStyle(Clinical.secondary)
             }
         }

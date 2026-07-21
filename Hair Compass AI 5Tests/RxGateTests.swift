@@ -26,6 +26,12 @@ struct RxGateTests {
         #expect(req?.art == .remedy)
     }
 
+    @Test func spironolactoneFires() {
+        let req = RxGate.requirement(treatmentClass: .spironolactone, name: "Spironolactone", dose: "100 mg")
+        #expect(req?.medication == .spironolactone)
+        #expect(req?.art == .remedy)
+    }
+
     // MARK: - Minoxidil is route-gated
 
     @Test func oralMinoxidilFiresWithRemedyArt() {
@@ -64,6 +70,9 @@ struct RxGateTests {
         #expect(RxGate.requirement(treatmentClass: .other, name: "Minoxidil (oral)", dose: "2.5 mg")?.medication == .oralMinoxidil)
         // Topical minoxidil stays over-the-counter even via the `.other` path.
         #expect(RxGate.requirement(treatmentClass: .other, name: "Minoxidil 5%", dose: "1 mL") == nil)
+        // Spironolactone (and its brand name Aldactone) typed into a free-form `.other` item.
+        #expect(RxGate.requirement(treatmentClass: .other, name: "Spironolactone 100 mg", dose: "100 mg")?.medication == .spironolactone)
+        #expect(RxGate.requirement(treatmentClass: .other, name: "Aldactone", dose: "")?.medication == .spironolactone)
     }
 
     // MARK: - Route-aware art pick

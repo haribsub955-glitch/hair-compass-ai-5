@@ -60,7 +60,7 @@ struct MetricScrubber: View {
         HStack(spacing: 6) {
             Circle().fill(tint).frame(width: 7, height: 7)
             Text(focused.title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(Clinical.body(13, weight: .semibold))
                 .foregroundStyle(Clinical.ink)
                 .lineLimit(1).minimumScaleFactor(0.8)
             Text(focused.unit)

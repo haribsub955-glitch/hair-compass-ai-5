@@ -40,6 +40,8 @@ struct MassageRitual: Ritual {
     // MARK: Ritual
 
     var isComplete: Bool { time >= Self.totalDuration }
+    var progress: CGFloat { min(1, time / Self.totalDuration) }
+    var estimatedDuration: TimeInterval? { TimeInterval(Self.totalDuration) }
 
     mutating func handle(_ touch: RitualTouch) {
         switch touch.phase {

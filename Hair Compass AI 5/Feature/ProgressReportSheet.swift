@@ -33,7 +33,7 @@ struct ProgressReportSheet: View {
                     StrandDivider()
                     honestReadCard
                     Text("A self-tracked record for your own clinician conversations — not medical advice.")
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
                 .padding(20)
             }
@@ -63,7 +63,7 @@ struct ProgressReportSheet: View {
             Text("Week \(report.weekNumber) report")
                 .font(Clinical.headline(28)).foregroundStyle(Clinical.ink)
             Text("\(report.periodStart.formatted(date: .abbreviated, time: .omitted)) – \(report.periodEnd.formatted(date: .abbreviated, time: .omitted)) · \(report.entryCount) daily log\(report.entryCount == 1 ? "" : "s")")
-                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // The report's crowning emblem: the laurel medallion sits whole in the header's open
@@ -109,7 +109,7 @@ struct ProgressReportSheet: View {
                     StatBlock(value: fmt(trend.firstWindowMean), label: "First 4 wks avg")
                     StatBlock(value: fmt(trend.lastWindowMean), label: "Last 4 wks avg")
                 }
-                Text(unitLabel).font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                Text(unitLabel).font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
             }
         }
     }
@@ -182,15 +182,15 @@ struct ProgressReportSheet: View {
                         .font(Clinical.number(28)).foregroundStyle(tint)
                     Spacer()
                     Text("of expected doses · last \(adherence.windowDays) days")
-                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 }
                 ProgressBar(value: adherence.overall, tint: tint).frame(height: 8)
                 if let weak = adherence.weakest {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "calendar.badge.exclamationmark")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.warning)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.warning)
                         Text("Weakest stretch: \(weak.start.formatted(date: .abbreviated, time: .omitted)) – \(weak.end.formatted(date: .abbreviated, time: .omitted)) at \(Int((weak.rate * 100).rounded()))%.")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -214,7 +214,7 @@ struct ProgressReportSheet: View {
                 }
                 if tolerability.total == 0 {
                     Text("Nothing logged this period.")
-                        .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                        .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                 } else {
                     HStack(spacing: 16) {
                         StatBlock(value: "\(tolerability.mild)", label: "Mild")
@@ -225,10 +225,10 @@ struct ProgressReportSheet: View {
                     ForEach(tolerability.items.prefix(4)) { item in
                         HStack(spacing: 8) {
                             severityDots(item.severity)
-                            Text(item.title).font(.system(size: 13)).foregroundStyle(Clinical.ink)
+                            Text(item.title).font(Clinical.caption(13)).foregroundStyle(Clinical.ink)
                             Spacer()
                             Text(item.date.formatted(date: .abbreviated, time: .omitted))
-                                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                                .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                         }
                     }
                 }
@@ -260,9 +260,9 @@ struct ProgressReportSheet: View {
                     HStack(spacing: 8) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(lab.title)
-                                .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                                .font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.ink)
                             Text(lab.date.formatted(date: .abbreviated, time: .omitted))
-                                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                                .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                         }
                         Spacer()
                         Text("\(fmt(lab.value)) \(lab.unit)")
@@ -301,14 +301,14 @@ struct ProgressReportSheet: View {
                 ForEach(photoPairs, id: \.region) { pair in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(pair.region.title)
-                            .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.ink)
+                            .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.ink)
                         HStack(spacing: 10) {
                             photoThumb(pair.baseline, label: "Baseline")
                             photoThumb(pair.latest, label: "Latest")
                         }
                         if let caveat = pair.caveat {
                             Label(caveat, systemImage: "exclamationmark.triangle")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(Clinical.body(11, weight: .medium))
                                 .foregroundStyle(Clinical.warning)
                         }
                     }
@@ -331,7 +331,7 @@ struct ProgressReportSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
             Text("\(label) · \(record.createdAt.formatted(date: .abbreviated, time: .omitted))")
-                .font(.system(size: 10)).foregroundStyle(Clinical.tertiary)
+                .font(Clinical.caption(10)).foregroundStyle(Clinical.tertiary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -343,14 +343,14 @@ struct ProgressReportSheet: View {
             VStack(alignment: .leading, spacing: 10) {
                 Eyebrow(text: "The honest read", color: Clinical.accent)
                 Text(report.honestRead)
-                    .font(.system(size: 14)).foregroundStyle(Clinical.ink)
+                    .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                 if !report.triggerLines.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(report.triggerLines, id: \.self) { line in
                             Label(line, systemImage: "calendar.badge.exclamationmark")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
                     }
                 }

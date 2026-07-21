@@ -32,7 +32,7 @@ struct CountScrubber: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(Clinical.body(15, weight: .medium))
                     .foregroundStyle(Clinical.ink)
                 Spacer()
                 Text("\(value)")

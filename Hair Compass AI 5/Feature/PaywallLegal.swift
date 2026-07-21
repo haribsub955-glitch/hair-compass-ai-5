@@ -7,7 +7,7 @@ struct PaywallLegal: View {
     var body: some View {
         VStack(spacing: 6) {
             Text("Auto-renews until cancelled. Manage or cancel anytime in Settings.")
-                .font(.system(size: 10))
+                .font(Clinical.caption(10))
                 .foregroundStyle(Clinical.tertiary)
                 .multilineTextAlignment(.center)
             HStack(spacing: 14) {
@@ -18,7 +18,7 @@ struct PaywallLegal: View {
                     Link("Privacy Policy", destination: privacy)
                 }
             }
-            .font(.system(size: 11, weight: .medium))
+            .font(Clinical.body(11, weight: .medium))
             .foregroundStyle(Clinical.secondary)
         }
         .frame(maxWidth: .infinity)

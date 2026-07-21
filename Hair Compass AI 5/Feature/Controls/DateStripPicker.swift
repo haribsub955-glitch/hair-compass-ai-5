@@ -71,7 +71,7 @@ struct DateStripPicker: View {
                 .foregroundStyle(Clinical.ink)
             Spacer(minLength: 8)
             Text(relativeNote)
-                .font(.system(size: 12))
+                .font(Clinical.caption(12))
                 .foregroundStyle(Clinical.secondary)
         }
         .accessibilityElement(children: .ignore)

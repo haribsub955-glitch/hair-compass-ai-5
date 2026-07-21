@@ -19,7 +19,7 @@ struct FeedbackSection: View {
             VStack(alignment: .leading, spacing: 12) {
                 Button(action: sendFeedback) {
                     Label("Send feedback", systemImage: "envelope")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(Clinical.body(15, weight: .semibold))
                         .foregroundStyle(Clinical.ink)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
@@ -30,7 +30,7 @@ struct FeedbackSection: View {
                 .accessibilityIdentifier("sendFeedback")
 
                 Text("Tell us what's working or what's missing. It opens an email so you can send it directly — nothing is collected automatically.")
-                    .font(.system(size: 12))
+                    .font(Clinical.caption(12))
                     .foregroundStyle(Clinical.secondary)
             }
             .padding(14)

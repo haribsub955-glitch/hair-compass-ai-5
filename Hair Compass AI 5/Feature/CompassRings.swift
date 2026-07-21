@@ -145,7 +145,7 @@ struct CompassRingsCard: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Eyebrow(text: "Compass score")
                         Text(openLine)
-                            .font(.system(size: 14))
+                            .font(Clinical.caption(14))
                             .foregroundStyle(Clinical.ink)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -226,7 +226,7 @@ struct CompassRingsCard: View {
             Eyebrow(text: label)
             Spacer(minLength: 8)
             Text(state)
-                .font(.system(size: 12, weight: .medium))
+                .font(Clinical.body(12, weight: .medium))
                 .foregroundStyle(Clinical.secondary)
         }
         .accessibilityElement(children: .ignore)

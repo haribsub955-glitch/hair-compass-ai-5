@@ -182,7 +182,7 @@ final class NotificationService {
     /// call this AFTER it, since `reschedule()`'s remove-all would otherwise wipe reminders this
     /// call just scheduled (see `CareView`'s shared `.task(id:)`). No-op (after clearing stale
     /// ids) when reminders are off.
-    func planProcedureReminders(_ items: [(id: String, title: String, date: Date)]) async {
+    func planProcedureReminders(_ items: [(id: String, title: String, date: Date, isConsultation: Bool)]) async {
         let pending = await center.pendingNotificationRequests()
         let staleIDs = pending.map(\.identifier).filter { $0.hasPrefix(procedurePrefix) }
         if !staleIDs.isEmpty { center.removePendingNotificationRequests(withIdentifiers: staleIDs) }
@@ -193,7 +193,7 @@ final class NotificationService {
             guard let fireDate = Self.procedureReminderDate(for: item.date), fireDate > .now else { continue }
             let content = UNMutableNotificationContent()
             content.title = "Upcoming: \(item.title)"
-            content.body = Self.procedureReminderBody(fireDate: fireDate, appointmentDate: item.date)
+            content.body = Self.procedureReminderBody(fireDate: fireDate, appointmentDate: item.date, isConsultation: item.isConsultation)
             content.sound = .default
             content.threadIdentifier = "procedure"   // day-before, time-relevant — default (active) level
             if let art = NotificationArt.attachment() { content.attachments = [art] }
@@ -295,12 +295,29 @@ final class NotificationService {
         }
     }
 
+    /// Converts the `eveningCheckInMinutes` AppStorage int (minutes since midnight) into the
+    /// `DateComponents` `planEveningCheckIn` wants. Shared by every re-planning call site
+    /// (`RootView`, always alive, and `CareView`'s own toggle UI) so a minutes value maps to the
+    /// exact same fire time no matter which surface last re-planned it.
+    static func eveningCheckInComponents(minutesSinceMidnight: Int) -> DateComponents {
+        var comps = DateComponents()
+        comps.hour = minutesSinceMidnight / 60
+        comps.minute = minutesSinceMidnight % 60
+        return comps
+    }
+
     /// Implementation-intention evening reminder (research: a user-chosen time beats generic
     /// smart timing, and caps at ≤1/day keep retention high). Independent of the routine
     /// "Reminders" toggle above — OFF until the Plan tab's evening-check-in toggle turns it on.
     /// Schedules up to 3 non-repeating reminders (today + the next two days) at `time`, skipping
     /// today when `hasLoggedToday` so a logged day is never nagged. Invitation-toned, never
     /// guilt: streak-aware once a streak exists, otherwise a plain, calm invite.
+    ///
+    /// Idempotent (it removes its own 3 pending ids before re-adding), and cheap — safe to call
+    /// from more than one surface. It must be re-called at least every 3 days or the schedule
+    /// silently runs out, so `RootView` — always alive regardless of which tab is on screen —
+    /// re-plans it on every relevant state change and again on every foreground, in addition to
+    /// `CareView`'s own toggle UI re-planning it on the spot when the user flips it.
     func planEveningCheckIn(enabled: Bool, time: DateComponents, hasLoggedToday: Bool, streak: Int) async {
         let ids = (0..<3).map { "\(eveningCheckInPrefix)\($0)" }
         center.removePendingNotificationRequests(withIdentifiers: ids)
@@ -351,9 +368,13 @@ final class NotificationService {
         return candidate > .now ? candidate : appointmentDate
     }
 
-    /// "Tomorrow"/"Today" reads correctly whichever branch `procedureReminderDate` took.
-    static func procedureReminderBody(fireDate: Date, appointmentDate: Date, calendar: Calendar = .current) -> String {
-        calendar.isDate(fireDate, inSameDayAs: appointmentDate) ? "Today at your clinic." : "Tomorrow at your clinic."
+    /// "Tomorrow"/"Today" reads correctly whichever branch `procedureReminderDate` took. A
+    /// consultation (round-6 addition) gets its own body pointing back at the visit report the
+    /// app already builds, rather than the generic "at your clinic" line.
+    static func procedureReminderBody(fireDate: Date, appointmentDate: Date, isConsultation: Bool = false, calendar: Calendar = .current) -> String {
+        let when = calendar.isDate(fireDate, inSameDayAs: appointmentDate) ? "Today" : "Tomorrow"
+        if isConsultation { return "\(when). Your visit report is ready to bring." }
+        return "\(when) at your clinic."
     }
 
     /// A coalesced routine reminder's title: one step keeps its own name; several read as the
