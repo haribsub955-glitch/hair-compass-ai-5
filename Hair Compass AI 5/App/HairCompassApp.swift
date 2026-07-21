@@ -1,80 +1,123 @@
 import SwiftData
 import SwiftUI
 
-@main
-struct HairCompassApp: App {
-    let container: ModelContainer
+enum HairCompassSchemaV1: VersionedSchema {
+    static let versionIdentifier = Schema.Version(1, 0, 0)
+    static var models: [any PersistentModel.Type] {
+        [Profile.self, DailyEntry.self, Treatment.self, TreatmentDose.self,
+         SideEffectLog.self, LabResult.self, PhotoRecord.self, HealthSnapshot.self,
+         TriggerEvent.self, ProcedureAppointment.self, ProgressCheckIn.self]
+    }
+}
 
-    init() {
-        let schema = Schema([
-            Profile.self,
-            DailyEntry.self,
-            Treatment.self,
-            TreatmentDose.self,
-            SideEffectLog.self,
-            LabResult.self,
-            PhotoRecord.self,
-            HealthSnapshot.self,
-            TriggerEvent.self,
-            ProcedureAppointment.self,
-            ProgressCheckIn.self
-        ])
-        // CloudKit readiness — the schema already satisfies CloudKit's model rules:
-        // every attribute has a default value or is optional, every relationship is
-        // optional (or an array defaulting to []) with a declared inverse, and no
-        // @Attribute(.unique) constraints are used. Turning sync on is a manual Xcode
-        // signing step that cannot be done in code:
-        //   1. Target "Hair Compass AI 5" → Signing & Capabilities → + Capability → iCloud.
-        //   2. Check "CloudKit" and add a container (e.g. iCloud.harib.Hair-Compass-AI-5).
-        //   3. + Capability → Background Modes → check "Remote notifications".
-        //   4. Replace the line below with:
-        //        ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)
-        //   5. Photos live outside SwiftData (Documents/ScalpPhotos, path-only records) —
-        //      they will NOT sync via CloudKit; keep the JSON backup for them or move the
-        //      bytes into an @Attribute(.externalStorage) Data property first.
-        // Until then, the full-backup file (Profile sheet → "Your data") is the durability story.
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+enum HairCompassMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] { [HairCompassSchemaV1.self] }
+    static var stages: [MigrationStage] { [] }
+}
+
+@MainActor @Observable
+final class PersistenceController {
+    private(set) var container: ModelContainer?
+    private(set) var failureMessage: String?
+    private(set) var recoveryURL: URL?
+
+    init() { openStore() }
+
+    func retry() { openStore() }
+
+    func resetAfterConfirmation() {
         do {
-            container = try ModelContainer(for: schema, configurations: [config])
+            recoveryURL = try Self.moveStoreAside()
+            openStore()
         } catch {
-            // A stale store from an older schema is unrecoverable in place — delete the
-            // on-disk store and its sidecars, then recreate. Never fatalError on launch.
-            Self.destroyStore()
-            do {
-                container = try ModelContainer(for: schema, configurations: [config])
-            } catch {
-                let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-                container = try! ModelContainer(for: schema, configurations: [fallback])
-            }
+            failureMessage = "The existing data could not be preserved for recovery: \(error.localizedDescription)"
         }
     }
+
+    private func openStore() {
+        do {
+            let schema = Schema(versionedSchema: HairCompassSchemaV1.self)
+            let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+            container = try ModelContainer(for: schema,
+                                           migrationPlan: HairCompassMigrationPlan.self,
+                                           configurations: configuration)
+            failureMessage = nil
+        } catch {
+            container = nil
+            failureMessage = error.localizedDescription
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("HC_IN_MEMORY_FALLBACK") {
+                let schema = Schema(versionedSchema: HairCompassSchemaV1.self)
+                let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                container = try? ModelContainer(for: schema,
+                                                migrationPlan: HairCompassMigrationPlan.self,
+                                                configurations: configuration)
+            }
+            #endif
+        }
+    }
+
+    /// Explicit reset is recoverable: the store and SQLite sidecars are moved, never deleted.
+    static func moveStoreAside(fileManager: FileManager = .default, date: Date = .now) throws -> URL? {
+        guard let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        let store = support.appendingPathComponent("default.store")
+        guard fileManager.fileExists(atPath: store.path) else { return nil }
+        let stamp = Int(date.timeIntervalSince1970)
+        let directory = support.appendingPathComponent("HairCompass-Persistence-Recovery-\(stamp)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        for name in ["default.store", "default.store-wal", "default.store-shm"] {
+            let source = support.appendingPathComponent(name)
+            guard fileManager.fileExists(atPath: source.path) else { continue }
+            try fileManager.moveItem(at: source, to: directory.appendingPathComponent(name))
+        }
+        return directory
+    }
+}
+
+@main
+struct HairCompassApp: App {
+    @State private var persistence = PersistenceController()
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                // The design is deliberately single-appearance: every Clinical token is a fixed
-                // warm colour. Pin Light so the invariant is explicit — any future system-adaptive
-                // colour or default sheet/list background can't silently break in dark mode.
-                .preferredColorScheme(.light)
-                // Dynamic Type step 2: the app's body copy now genuinely scales (Clinical.body/
-                // .caption), which is the point — but a handful of hand-drawn layouts (the tab
-                // bar, compass gauges, log-sheet tiles) size their chrome in fixed points around
-                // that text. Clamping the top of the range at `.accessibility2` (roughly double
-                // system text) keeps those tight compositions intact while still giving anyone up
-                // to that size real, working growth — the other three AX sizes above it exist for
-                // system text (Settings, alerts), not for a densely custom app layout like this one.
-                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-        }
-        .modelContainer(container)
-    }
-
-    private static func destroyStore() {
-        let fm = FileManager.default
-        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-        for base in appSupport {
-            for suffix in ["default.store", "default.store-wal", "default.store-shm"] {
-                try? fm.removeItem(at: base.appendingPathComponent(suffix))
+            Group {
+                if let container = persistence.container {
+                    RootView().modelContainer(container)
+                } else {
+                    PersistenceRecoveryView(controller: persistence)
+                }
             }
+            .preferredColorScheme(.light)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        }
+    }
+}
+
+private struct PersistenceRecoveryView: View {
+    let controller: PersistenceController
+    @State private var confirmReset = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Your data couldn't be opened")
+                .font(Clinical.headline(30)).foregroundStyle(Clinical.ink)
+            Text("Hair Compass has not deleted or replaced your records. Retry first. Reset only if retry continues to fail.")
+                .font(Clinical.body(16)).foregroundStyle(Clinical.secondary)
+            if let message = controller.failureMessage {
+                Text(message).font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
+            }
+            Button("Retry opening data") { controller.retry() }
+                .buttonStyle(ClinicalButtonStyle(filled: true))
+            Button("Reset app data…", role: .destructive) { confirmReset = true }
+                .font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.critical)
+        }
+        .padding(28).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(Clinical.canvas.ignoresSafeArea())
+        .alert("Reset all app data?", isPresented: $confirmReset) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset and start over", role: .destructive) { controller.resetAfterConfirmation() }
+        } message: {
+            Text("This removes all Hair Compass records from the app, including health logs and photo references. The failed database will be preserved in a recovery folder, but it may require technical help to recover.")
         }
     }
 }

@@ -211,7 +211,7 @@ struct BodySignalsDashboard: View {
     private var header: some View {
         HStack {
             Eyebrow(text: "Body signals")
-            if !visibleSignals.isEmpty || healthKit.authorization.isUsable {
+            if !visibleSignals.isEmpty || healthKit.authorization.isQueryable {
                 Text("·").foregroundStyle(Clinical.tertiary)
                 Text("from Apple Health")
                     .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
@@ -262,14 +262,11 @@ struct BodySignalsDashboard: View {
             }
         } else {
             switch healthKit.authorization {
-            case .authorized:
-                Text("Wearing a watch? Data appears within a day.")
-                    .font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
+            case .requestedQueryable:
+                requestedEmptyPrompt
             case .unavailable:
                 Text("Apple Health isn't available on this device — lifestyle factors stay manual.")
                     .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
-            case .denied:
-                deniedPrompt
             default:
                 connectPrompt
             }
@@ -298,9 +295,9 @@ struct BodySignalsDashboard: View {
     /// iOS never re-presents the system permission sheet once a person has answered it, so a
     /// denied request has no in-app retry — only Settings can change it. Shown instead of the
     /// connect button so tapping never feels like a dead end.
-    private var deniedPrompt: some View {
+    private var requestedEmptyPrompt: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Health access is off for Hair Compass. Turn it on in Settings to auto-fill sleep, body weight, and a recovery (HRV) stress proxy.")
+            Text("No matching Apple Health samples were found. You may not have recorded these signals yet, or some data types may not be shared with Hair Compass.")
                 .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
             Button("Open Settings") {
                 guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
@@ -315,11 +312,11 @@ struct BodySignalsDashboard: View {
     /// timestamp plus a one-tap "Update from Health", so data doesn't only ever arrive passively.
     @ViewBuilder
     private var refreshRow: some View {
-        if healthKit.authorization == .authorized {
+        if healthKit.authorization == .requestedQueryable {
             HStack(spacing: 10) {
-                Text(healthKit.lastRefresh.map {
-                    "Updated \($0.formatted(.relative(presentation: .named)))"
-                } ?? "Not yet refreshed")
+                Text(healthKit.lastSuccessfulSampleRetrieval.map {
+                    "Samples found \($0.formatted(.relative(presentation: .named)))"
+                } ?? healthKit.lastRefresh.map { _ in "Last query found no samples" } ?? "Not yet queried")
                     .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 Spacer(minLength: 8)
                 Button(refreshing ? "Updating…" : "Update from Health") {

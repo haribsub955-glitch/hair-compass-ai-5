@@ -14,6 +14,7 @@ import HealthKit
 final class HealthKitService: SignalSource {
     private(set) var authorization: HealthAuthorizationState
     private(set) var lastRefresh: Date?
+    private(set) var lastSuccessfulSampleRetrieval: Date?
 
     #if canImport(HealthKit)
     private let store = HKHealthStore()
@@ -33,7 +34,7 @@ final class HealthKitService: SignalSource {
 
     init() {
         #if canImport(HealthKit)
-        authorization = HKHealthStore.isHealthDataAvailable() ? .notDetermined : .unavailable
+        authorization = HKHealthStore.isHealthDataAvailable() ? .notRequested : .unavailable
         #else
         authorization = .unavailable
         #endif
@@ -45,9 +46,10 @@ final class HealthKitService: SignalSource {
         authorization = .requesting
         do {
             try await store.requestAuthorization(toShare: [], read: readTypes)
-            authorization = .authorized
+            authorization = .requestedQueryable
         } catch {
-            authorization = .denied
+            // The request did not complete; remain retryable without inferring a grant/denial.
+            authorization = .notRequested
         }
         #else
         authorization = .unavailable
@@ -55,7 +57,7 @@ final class HealthKitService: SignalSource {
     }
 
     /// Re-derives real authorization at every launch. `init()` alone can only ever see
-    /// `.notDetermined` — HealthKit doesn't persist our enum across process restarts, and
+    /// `.notRequested` — HealthKit doesn't persist our enum across process restarts, and
     /// this app never asks Apple to re-request. Without this, RootView's launch snapshot
     /// refresh and the dashboard's manual "Update from Health" row silently stop working
     /// after the very first session, and an already-granted user sees the connect prompt
@@ -85,15 +87,15 @@ final class HealthKitService: SignalSource {
     /// exercised in a unit test without a live `HKHealthStore` — tests can't actually grant
     /// HealthKit authorization, but they can construct an `HKAuthorizationRequestStatus` and
     /// assert the resulting `HealthAuthorizationState`.
-    static func resolvedAuthorization(
+    nonisolated static func resolvedAuthorization(
         for status: HKAuthorizationRequestStatus,
         current: HealthAuthorizationState
     ) -> HealthAuthorizationState {
         switch status {
         case .unnecessary:
-            return .authorized
+            return .requestedQueryable
         case .shouldRequest:
-            return .notDetermined
+            return .notRequested
         case .unknown:
             return current // genuinely can't say — leave the current/default state alone
         @unknown default:
@@ -107,7 +109,7 @@ final class HealthKitService: SignalSource {
     @discardableResult
     func refreshSnapshot(context: ModelContext) async -> HealthSnapshot? {
         #if canImport(HealthKit)
-        guard authorization == .authorized else { return nil }
+        guard authorization == .requestedQueryable else { return nil }
 
         async let sleep = sleepHoursLastNight()
         async let hrv = mostRecent(.heartRateVariabilitySDNN, unit: HKUnit.secondUnit(with: .milli))
@@ -125,7 +127,11 @@ final class HealthKitService: SignalSource {
         snapshot.dietaryProteinG = await protein
         snapshot.updatedAt = .now
         lastRefresh = .now
-        return snapshot.hasAnyValue ? snapshot : nil
+        if snapshot.hasAnyValue {
+            lastSuccessfulSampleRetrieval = .now
+            return snapshot
+        }
+        return nil
         #else
         return nil
         #endif

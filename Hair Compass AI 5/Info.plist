@@ -24,9 +24,7 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Hair Compass reads selected Health data like sleep, exercise, protein, and water intake to help you compare routine and lifestyle patterns with hair logs.</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>Hair Compass does not write Health data, but this key is included to clearly describe HealthKit use during review.</string>
+	<string>Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. It does not diagnose hair or scalp conditions.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Hair Compass saves captured scalp and hair photos to support progress tracking, procedure follow-up, and clinician discussions.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

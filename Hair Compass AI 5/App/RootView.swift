@@ -189,13 +189,13 @@ struct RootView: View {
             if !showOnboarding && !showTutorial && !suppressRitual && !appLock.isLocked {
                 ritualKind = ritualCoordinator.rollOnLaunch(hasOnboarded: profile?.hasOnboarded == true)
             }
-            // Re-derive real HealthKit authorization first — `HealthKitService.init()` can
-            // only ever start at `.notDetermined`, so without this, a user who granted
-            // access in a prior session would look never-asked on every relaunch and the
+            // Re-derive HealthKit request/query state first — `HealthKitService.init()` can
+            // only ever start at `.notRequested`, so without this, a person who answered
+            // the request in a prior session would look never-asked on every relaunch and the
             // snapshot refresh below (and the dashboard's manual refresh) would silently stop.
             await healthKit.bootstrap()
-            // If the user has already granted Health access, refresh today's snapshot on launch.
-            if healthKit.authorization.isUsable {
+            // If the request was previously presented, query today's available samples.
+            if healthKit.authorization.isQueryable {
                 await healthKit.refreshSnapshot(context: context)
             }
         }
@@ -290,7 +290,7 @@ struct RootView: View {
                 // A day-long-suspended app never re-runs the launch `.task` above, so without
                 // this an already-connected user's sleep/HRV/weight facts would only refresh on
                 // a cold relaunch. Cheap and idempotent — `refreshSnapshot` only upserts today.
-                if healthKit.authorization.isUsable {
+                if healthKit.authorization.isQueryable {
                     Task { await healthKit.refreshSnapshot(context: context) }
                 }
                 // Same reasoning: `eveningCheckInPlanKey` only changes once the day rolls over,

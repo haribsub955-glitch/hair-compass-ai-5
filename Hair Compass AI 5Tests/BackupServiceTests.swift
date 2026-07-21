@@ -14,6 +14,8 @@ import Testing
 @MainActor
 struct BackupServiceTests {
 
+    private let validImageData = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
+
     /// Fresh in-memory store over the full app schema — nothing touches disk.
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
@@ -64,7 +66,7 @@ struct BackupServiceTests {
         env.photos = [.init(regionRaw: PhotoRegion.vertex.rawValue, createdAt: yesterday,
                             lighting: "daylight", distance: "arm's length", parting: "center",
                             isWet: false, note: "",
-                            imageBase64: Data("jpeg-bytes".utf8).base64EncodedString())]
+                            imageBase64: validImageData.base64EncodedString())]
         env.snapshots = [.init(date: yesterday, sleepHours: 7.2, hrvSDNN: 44, restingHR: 58,
                                bodyMassKg: 78, bmi: 24.1, dietaryProteinG: 110, updatedAt: now)]
         env.triggers = [.init(typeRaw: TriggerType.illness.rawValue, date: yesterday,
@@ -128,7 +130,7 @@ struct BackupServiceTests {
             procedures: try context.fetch(FetchDescriptor<ProcedureAppointment>()),
             progressCheckIns: try context.fetch(FetchDescriptor<ProgressCheckIn>()),
             createdAt: now,
-            photoData: { path in path == "fixture.jpg" ? Data("jpeg-bytes".utf8) : nil }
+            photoData: { path in path == "fixture.jpg" ? validImageData : nil }
         )
         let data = try BackupService.encode(envelope)
         let decoded = try BackupService.decode(data)
@@ -154,7 +156,7 @@ struct BackupServiceTests {
         #expect(decoded.treatments.first?.sideEffects.first?.typeRaw == "scalpIrritation")
         #expect(decoded.labs.first?.value == 38)
         #expect(decoded.snapshots.first?.sleepHours == 7.2)
-        #expect(decoded.photos.first?.imageBase64 == Data("jpeg-bytes".utf8).base64EncodedString())
+        #expect(decoded.photos.first?.imageBase64 == validImageData.base64EncodedString())
         #expect(decoded.procedures.first?.typeRaw == ProcedureType.prp.rawValue)
         #expect(decoded.procedures.first?.location == "Downtown Derm")
         #expect(decoded.progressCheckIns.first?.regrowthRaw == RegrowthLevel.few.rawValue)
@@ -303,5 +305,37 @@ struct BackupServiceTests {
         #expect(BackupService.isDefaultProfile(Profile()))                       // untouched
         #expect(!BackupService.isDefaultProfile(Profile(name: "Harib")))         // named
         #expect(!BackupService.isDefaultProfile(Profile(hasOnboarded: true)))    // onboarded
+    }
+
+    @Test func manifestCoversEveryModelAndTreatmentRelationships() {
+        #expect(BackupService.manifest.count == HairCompassSchemaV1.models.count)
+        #expect(BackupService.manifest.contains("TreatmentDose → Treatment?"))
+        #expect(BackupService.manifest.contains("SideEffectLog → Treatment?"))
+    }
+
+    @Test func exportRefusesAMissingPhotoFile() {
+        let photo = PhotoRecord(region: .vertex, imagePath: "missing.jpg")
+        #expect(throws: BackupService.BackupError.missingPhotoFiles(["missing.jpg"])) {
+            _ = try BackupService.exportBackup(profile: nil, entries: [], treatments: [],
+                                                labs: [], photos: [photo], snapshots: [], triggers: [],
+                                                photoData: { _ in nil })
+        }
+    }
+
+    @Test func restoreRejectsInvalidImageBeforeWriting() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        var envelope = BackupService.Envelope()
+        envelope.photos = [.init(regionRaw: PhotoRegion.vertex.rawValue,
+                                 imageBase64: Data("not-an-image".utf8).base64EncodedString())]
+        final class Writer { var calls = 0 }
+        let writer = Writer()
+        #expect(throws: BackupService.BackupError.invalidPhotoData) {
+            _ = try BackupService.restore(envelope, into: context, photoWriter: { _ in
+                writer.calls += 1
+                return "should-not-write.jpg"
+            })
+        }
+        #expect(writer.calls == 0)
     }
 }
