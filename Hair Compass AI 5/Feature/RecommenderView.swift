@@ -17,26 +17,26 @@ struct RecommenderView: View {
 
                 ClinicalCard(padding: 14) {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "stethoscope").font(.system(size: 15)).foregroundStyle(Clinical.accent)
+                        Image(systemName: "stethoscope").font(Clinical.caption(15)).foregroundStyle(Clinical.accent)
                         Text(TreatmentRecommender.disclaimer)
-                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                     }
                 }
 
                 Text(TreatmentRecommender.headline(condition: condition))
                     .font(Clinical.headline(20)).foregroundStyle(Clinical.ink)
                 Text("Based on your baseline: \(condition.title.lowercased()). Change it in your baseline if that's not right.")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
 
                 ForEach(options) { option in
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Text(option.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                                Text(option.name).font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.ink)
                                 Spacer()
                                 TierBadge(tier: option.tier)
                             }
-                            Text(option.summary).font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                            Text(option.summary).font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
                             note(icon: "stethoscope", option.clinicianNote, color: Clinical.accent)
                             if let caution = option.caution {
                                 note(icon: "exclamationmark.triangle", caution, color: Clinical.warning)
@@ -54,8 +54,8 @@ struct RecommenderView: View {
 
     private func note(icon: String, _ text: String, color: Color) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: icon).font(.system(size: 12)).foregroundStyle(color).padding(.top, 1)
-            Text(text).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+            Image(systemName: icon).font(Clinical.caption(12)).foregroundStyle(color).padding(.top, 1)
+            Text(text).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
         }
     }
 }

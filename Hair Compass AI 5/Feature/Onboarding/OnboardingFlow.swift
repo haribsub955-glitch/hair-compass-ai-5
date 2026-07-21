@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The cinematic first-run. 14 screens that demonstrate rather than ask; each writes the same
 /// `Profile`/`DailyEntry`/`TriggerEvent` fields as the plain BaselineFlow (which stays as the
@@ -26,6 +27,13 @@ struct OnboardingFlow: View {
     @State private var sleepI: CGFloat = 0.5
     @State private var stressI: CGFloat = 0.5
     @State private var selectedTriggers = Set<TriggerType>()
+
+    // Restore-from-backup, offered quietly on the welcome step for anyone migrating phones —
+    // see `runRestore(from:)`. A migrating user shouldn't have to re-answer 14 questions just
+    // to find the door back to their existing records.
+    @State private var showRestoreImporter = false
+    @State private var restoreSummary: BackupService.RestoreSummary?
+    @State private var restoreErrorMessage: String?
 
     @FocusState private var nameFocused: Bool
 
@@ -55,6 +63,53 @@ struct OnboardingFlow: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Clinical.canvas.ignoresSafeArea())
+        .fileImporter(isPresented: $showRestoreImporter, allowedContentTypes: [.json]) { result in
+            switch result {
+            case .success(let url):
+                runRestore(from: url)
+            case .failure(let error):
+                restoreErrorMessage = error.localizedDescription
+            }
+        }
+        .alert("Restore complete", isPresented: Binding(
+            get: { restoreSummary != nil },
+            set: { if !$0 { restoreSummary = nil } }
+        )) {
+            Button("OK") {
+                let restoredOnboardedProfile = profile.hasOnboarded
+                restoreSummary = nil
+                // The envelope's profile only overwrites ours while ours is still untouched
+                // (`BackupService.isDefaultProfile`) — true here on a fresh install's welcome
+                // step. If the backup came from an already-onboarded phone, `hasOnboarded` just
+                // flipped true, so finish the cover and land straight on a fully-populated
+                // Today instead of marching the user through 14 questions they already answered.
+                if restoredOnboardedProfile { onFinish() }
+            }
+        } message: {
+            if let s = restoreSummary {
+                Text("\(s.inserted) records added, \(s.photosRestored) photos restored.")
+            }
+        }
+        .alert("Couldn't restore", isPresented: Binding(
+            get: { restoreErrorMessage != nil },
+            set: { if !$0 { restoreErrorMessage = nil } }
+        )) {
+            Button("OK") { restoreErrorMessage = nil }
+        } message: {
+            if let restoreErrorMessage { Text(restoreErrorMessage) }
+        }
+    }
+
+    /// Reads and merges a backup picked from the welcome step's "Restoring from a backup?"
+    /// link. Mirrors `BaselineFlow`'s `BackupRestoreSection.runRestore()` — same service call,
+    /// same error surface — minus the mid-app "this merges, nothing is deleted" confirmation,
+    /// which doesn't apply to a store that's still empty.
+    private func runRestore(from url: URL) {
+        do {
+            restoreSummary = try BackupService.restore(from: url, into: context)
+        } catch {
+            restoreErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
     }
 
     // MARK: Chrome
@@ -65,7 +120,7 @@ struct OnboardingFlow: View {
             // is the honest exit.
             if step > 0 && step < total - 1 && step != 13 {
                 Button { back() } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold)).foregroundStyle(Clinical.ink)
+                    Image(systemName: "chevron.left").font(Clinical.body(16, weight: .semibold)).foregroundStyle(Clinical.ink)
                 }
             }
             GeometryReader { geo in
@@ -79,7 +134,7 @@ struct OnboardingFlow: View {
             .frame(height: 4)
             if let onDismiss {
                 Button { onDismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.tertiary)
+                    Image(systemName: "xmark").font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.tertiary)
                 }
                 .accessibilityLabel("Close walkthrough")
             }
@@ -163,7 +218,7 @@ struct OnboardingFlow: View {
         VStack(alignment: .leading, spacing: 8) {
             Eyebrow(text: eyebrow)
             Text(title).font(Clinical.headline(30)).foregroundStyle(Clinical.ink).fixedSize(horizontal: false, vertical: true)
-            if let sub { Text(sub).font(.system(size: 15)).foregroundStyle(Clinical.secondary).fixedSize(horizontal: false, vertical: true) }
+            if let sub { Text(sub).font(Clinical.caption(15)).foregroundStyle(Clinical.secondary).fixedSize(horizontal: false, vertical: true) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20).padding(.top, 12)
@@ -179,11 +234,20 @@ struct OnboardingFlow: View {
                 Eyebrow(text: "Welcome")
                 Text("Let's set your\ncompass").font(Clinical.headline(34)).foregroundStyle(Clinical.ink)
                 Text("A few questions — each one shows you something true about hair. It takes about a minute.")
-                    .font(.system(size: 15)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(15)).foregroundStyle(Clinical.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(20)
             Spacer()
             primary("Begin") { next() }
+            Button {
+                UISelectionFeedbackGenerator().selectionChanged()
+                showRestoreImporter = true
+            } label: {
+                Text("Restoring from a backup?")
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
+            }
+            .padding(.bottom, 24)
+            .accessibilityIdentifier("onboardRestoreFromBackup")
         }
     }
 
@@ -220,7 +284,7 @@ struct OnboardingFlow: View {
                     let on = profile.sex == s
                     Button { profile.sex = s; UISelectionFeedbackGenerator().selectionChanged() } label: {
                         HStack {
-                            Text(s.title).font(.system(size: 17, weight: .medium)).foregroundStyle(on ? Clinical.surface : Clinical.ink)
+                            Text(s.title).font(Clinical.body(17, weight: .medium)).foregroundStyle(on ? Clinical.surface : Clinical.ink)
                             Spacer()
                             if on { Text(s.stagingScaleName).font(Clinical.eyebrow(10)).foregroundStyle(Clinical.surface.opacity(0.8)) }
                         }
@@ -256,11 +320,11 @@ struct OnboardingFlow: View {
                     } label: {
                         HStack {
                             Text(s.title)
-                                .font(.system(size: 16, weight: on ? .semibold : .regular))
+                                .font(Clinical.body(16, weight: on ? .semibold : .regular))
                                 .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                             Spacer()
                             if on {
-                                Image(systemName: "checkmark").font(.system(size: 13, weight: .bold)).foregroundStyle(Clinical.surface)
+                                Image(systemName: "checkmark").font(Clinical.body(13, weight: .bold)).foregroundStyle(Clinical.surface)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -289,7 +353,7 @@ struct OnboardingFlow: View {
                         // Copper selected state — matches sexStep/pregnancyStep/familyStep so the
                         // whole linear flow speaks one "selected" language instead of switching to
                         // a near-black ink pill just for this step.
-                        Text(b).font(.system(size: 16, weight: on ? .semibold : .regular)).foregroundStyle(on ? Clinical.surface : Clinical.ink)
+                        Text(b).font(Clinical.body(16, weight: on ? .semibold : .regular)).foregroundStyle(on ? Clinical.surface : Clinical.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 15)
                             .background(on ? Clinical.accent : Clinical.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
@@ -310,7 +374,7 @@ struct OnboardingFlow: View {
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
                 .padding(.horizontal, 20).padding(.top, 12)
             Text(profile.condition.demoCaption)
-                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 .contentTransition(.opacity)
                 .padding(.horizontal, 20).padding(.top, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -321,9 +385,9 @@ struct OnboardingFlow: View {
                         Button { withAnimation(.easeInOut(duration: 0.3)) { profile.condition = c }; UISelectionFeedbackGenerator().selectionChanged() } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(c.plainTitle).font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                                    Text(c.plainTitle).font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
                                     Text(c.title.uppercased()).font(Clinical.eyebrow(10)).tracking(1.0).foregroundStyle(Clinical.tertiary)
-                                    Text(c.plainSummary).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                    Text(c.plainSummary).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                                 }
                                 Spacer()
                                 Image(systemName: on ? "largecircle.fill.circle" : "circle").foregroundStyle(on ? Clinical.accent : Clinical.tertiary)
@@ -348,7 +412,7 @@ struct OnboardingFlow: View {
                 Spacer()
                 VStack(alignment: .leading, spacing: 3) {
                     Text(cap.0).font(Clinical.headline(30)).foregroundStyle(Clinical.accent)
-                    Text(cap.1).font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                    Text(cap.1).font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
                 }.padding(.horizontal, 20)
                 primary("Continue") { next() }
             }
@@ -434,8 +498,8 @@ struct OnboardingFlow: View {
                             UISelectionFeedbackGenerator().selectionChanged()
                         } label: {
                             HStack(spacing: 12) {
-                                Image(systemName: t.symbol).font(.system(size: 16)).foregroundStyle(on ? Clinical.accent : Clinical.secondary).frame(width: 22)
-                                Text(t.title).font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                                Image(systemName: t.symbol).font(Clinical.caption(16)).foregroundStyle(on ? Clinical.accent : Clinical.secondary).frame(width: 22)
+                                Text(t.title).font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
                                 Spacer()
                                 Image(systemName: on ? "checkmark.circle.fill" : "circle").foregroundStyle(on ? Clinical.accent : Clinical.tertiary)
                             }
@@ -449,7 +513,7 @@ struct OnboardingFlow: View {
                         UISelectionFeedbackGenerator().selectionChanged()
                     } label: {
                         HStack {
-                            Text("None of these").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                            Text("None of these").font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
                             Spacer()
                             Image(systemName: selectedTriggers.isEmpty ? "largecircle.fill.circle" : "circle")
                                 .foregroundStyle(selectedTriggers.isEmpty ? Clinical.accent : Clinical.tertiary)
@@ -470,7 +534,7 @@ struct OnboardingFlow: View {
             Spacer()
             RiskGauge(value: riskValue)
             Text(familyContextLine)
-                .font(.system(size: 12))
+                .font(Clinical.caption(12))
                 .foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -482,7 +546,7 @@ struct OnboardingFlow: View {
                 ForEach(FamilyHistory.allCases) { f in
                     let on = profile.familyHistory == f
                     Button { withAnimation { profile.familyHistory = f }; UISelectionFeedbackGenerator().selectionChanged() } label: {
-                        Text(f.title).font(.system(size: 15, weight: on ? .semibold : .regular)).foregroundStyle(on ? Clinical.surface : Clinical.ink)
+                        Text(f.title).font(Clinical.body(15, weight: on ? .semibold : .regular)).foregroundStyle(on ? Clinical.surface : Clinical.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 13)
                             .background(on ? Clinical.accent : Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
@@ -535,7 +599,7 @@ struct OnboardingFlow: View {
         }
     }
     private func habitToggle(_ title: String, _ b: Binding<Bool>) -> some View {
-        Toggle(isOn: b) { Text(title).font(.system(size: 14)).foregroundStyle(Clinical.ink) }
+        Toggle(isOn: b) { Text(title).font(Clinical.caption(14)).foregroundStyle(Clinical.ink) }
             .tint(Clinical.accent)
             .padding(.horizontal, 14).padding(.vertical, 4)
             .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -561,13 +625,13 @@ struct OnboardingFlow: View {
         switch healthKit.authorization {
         case .authorized:
             Text("Health is connected ✓")
-                .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.sage)
+                .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.sage)
                 .padding(.bottom, 8)
             primary("Continue") { next() }
                 .accessibilityIdentifier("onboardHealthConnect")
         case .unavailable:
             Text("Health isn't available on this device")
-                .font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+                .font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
                 .padding(.bottom, 8)
             primary("Continue") { next() }
                 .accessibilityIdentifier("onboardHealthConnect")
@@ -581,15 +645,15 @@ struct OnboardingFlow: View {
             }
             .accessibilityIdentifier("onboardHealthConnect")
             Button("Not now") { next() }
-                .font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+                .font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
                 .padding(.bottom, 24)
         }
     }
 
     private func healthBenefitRow(symbol: String, text: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: symbol).font(.system(size: 16)).foregroundStyle(Clinical.accent).frame(width: 28)
-            Text(text).font(.system(size: 14)).foregroundStyle(Clinical.ink)
+            Image(systemName: symbol).font(Clinical.caption(16)).foregroundStyle(Clinical.accent).frame(width: 28)
+            Text(text).font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
             Spacer()
         }
         .padding(14)
@@ -602,12 +666,12 @@ struct OnboardingFlow: View {
             FallingHairView(intensity: 0.25)
             VStack(spacing: 0) {
                 Spacer()
-                Image(systemName: "checkmark.seal.fill").font(.system(size: 54)).foregroundStyle(Clinical.accent)
+                Image(systemName: "checkmark.seal.fill").font(Clinical.caption(54)).foregroundStyle(Clinical.accent)
                     .padding(.bottom, 16)
                 Text(profile.name.isEmpty ? "You're all set" : "You're all set, \(profile.name)")
                     .font(Clinical.headline(30)).foregroundStyle(Clinical.ink).multilineTextAlignment(.center)
                 Text("Your compass is calibrated. A quick tour starts when you close this.")
-                    .font(.system(size: 15)).foregroundStyle(Clinical.secondary).multilineTextAlignment(.center)
+                    .font(Clinical.caption(15)).foregroundStyle(Clinical.secondary).multilineTextAlignment(.center)
                     .padding(.horizontal, 40).padding(.top, 8)
                 Spacer()
                 primary("Start tracking") { finish() }

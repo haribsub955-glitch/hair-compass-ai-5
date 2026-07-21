@@ -68,10 +68,10 @@ struct ProceduresView: View {
         ClinicalCard {
             VStack(spacing: 8) {
                 Image(systemName: "calendar.badge.plus")
-                    .font(.system(size: 32)).foregroundStyle(Clinical.accent)
+                    .font(Clinical.caption(32)).foregroundStyle(Clinical.accent)
                 Eyebrow(text: "No procedures")
-                Text("Book PRP, microneedling, or another in-clinic procedure to get a reminder the day before and track it here.")
-                    .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                Text("Book a doctor visit, PRP, microneedling, or another in-clinic procedure to get a reminder the day before and track it here.")
+                    .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
                     .multilineTextAlignment(.center)
                 Button("Add procedure") { showAdd = true }
                     .buttonStyle(ClinicalButtonStyle())
@@ -91,20 +91,20 @@ struct ProceduresView: View {
             ClinicalCard(padding: 14) {
                 HStack(spacing: 12) {
                     Image(systemName: appt.type.symbol)
-                        .font(.system(size: 15))
+                        .font(Clinical.caption(15))
                         .foregroundStyle(appt.isCompleted ? Clinical.secondary : Clinical.accent)
                         .frame(width: 34, height: 34)
                         .background(appt.isCompleted ? Clinical.hairline : Clinical.accentSoft,
                                     in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(appt.type.title).font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
-                        Text(subtitle(appt)).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        Text(appt.type.title).font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
+                        Text(subtitle(appt)).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
                     Spacer()
                     if appt.isCompleted {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(Clinical.positive)
                     } else {
-                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        Image(systemName: "chevron.right").font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                     }
                 }
             }

@@ -12,7 +12,7 @@ enum RxGate {
 
     /// The prescription-only medications the gate recognises.
     enum Medication: String, CaseIterable, Sendable {
-        case finasteride, dutasteride, oralMinoxidil
+        case finasteride, dutasteride, oralMinoxidil, spironolactone
     }
 
     /// How the medication reaches the body — drives which brand art represents it.
@@ -63,7 +63,7 @@ enum RxGate {
     /// Every medication the gate currently recognises is taken orally.
     static func route(of medication: Medication) -> Route {
         switch medication {
-        case .finasteride, .dutasteride, .oralMinoxidil: return .oral
+        case .finasteride, .dutasteride, .oralMinoxidil, .spironolactone: return .oral
         }
     }
 
@@ -75,6 +75,8 @@ enum RxGate {
             return .finasteride
         case .dutasteride:
             return .dutasteride
+        case .spironolactone:
+            return .spironolactone
         case .minoxidil:
             // Only the oral route is prescription-only — topical 5% (mL doses) is
             // over-the-counter and must save without a card.
@@ -92,6 +94,7 @@ enum RxGate {
             if n.contains("finasteride") { return .finasteride }
             if n.contains("dutasteride") { return .dutasteride }
             if n.contains("minoxidil"), isOral(name: name, dose: dose) { return .oralMinoxidil }
+            if n.contains("spironolactone") || n.contains("aldactone") { return .spironolactone }
             return nil
         }
     }
@@ -114,6 +117,8 @@ enum RxGate {
             return "Dutasteride is usually prescription-only, and for hair it's typically prescribed off-label. We'll assume yours came from a clinician — this app never recommends starting it."
         case .oralMinoxidil:
             return "Oral minoxidil for hair is an off-label, prescription-only route. We'll assume a clinician prescribed yours — this app never recommends starting it."
+        case .spironolactone:
+            return "Spironolactone is prescription-only, and for hair it's typically prescribed off-label with periodic monitoring. We'll assume yours came from a clinician — this app never recommends starting it."
         }
     }
 }

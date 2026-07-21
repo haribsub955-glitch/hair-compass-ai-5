@@ -14,7 +14,7 @@ struct PregnancyCautionSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 42, weight: .medium))
+                .font(Clinical.body(42, weight: .medium))
                 .foregroundStyle(Clinical.warning)
                 .padding(.top, 8)
                 .accessibilityHidden(true)
@@ -25,7 +25,7 @@ struct PregnancyCautionSheet: View {
                     .foregroundStyle(Clinical.ink)
                     .multilineTextAlignment(.center)
                 Text(info.substance)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(Clinical.body(15, weight: .medium))
                     .foregroundStyle(Clinical.secondary)
             }
             .padding(.top, 14)
@@ -34,11 +34,11 @@ struct PregnancyCautionSheet: View {
             // clinician, never a scare and never a claim about her specific situation.
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "info.circle")
-                    .font(.system(size: 13))
+                    .font(Clinical.caption(13))
                     .foregroundStyle(Clinical.warning)
                     .padding(.top, 2)
                 Text(info.message)
-                    .font(.system(size: 13))
+                    .font(Clinical.caption(13))
                     .foregroundStyle(Clinical.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -56,7 +56,7 @@ struct PregnancyCautionSheet: View {
             // "Go back" is the emphasised choice here; adding stays possible but quiet, so the
             // form never feels like it's encouraging the medication.
             Button("Go back") { dismiss() }
-                .font(.system(size: 16, weight: .semibold))
+                .font(Clinical.body(16, weight: .semibold))
                 .foregroundStyle(Clinical.surface)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)
@@ -64,7 +64,7 @@ struct PregnancyCautionSheet: View {
                 .buttonStyle(.plain)
 
             Button("Add to plan anyway") { onProceed() }
-                .font(.system(size: 14, weight: .medium))
+                .font(Clinical.body(14, weight: .medium))
                 .foregroundStyle(Clinical.secondary)
                 .buttonStyle(.plain)
                 .padding(.top, 12)

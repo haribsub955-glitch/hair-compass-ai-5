@@ -47,7 +47,7 @@ struct ScienceProductsSection: View {
                     #endif
                 }
                 Text("Substances with real evidence — each shown with how strong that evidence actually is. None of these rival minoxidil or finasteride.")
-                    .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
 
                 ForEach(grouped, id: \.evidence) { group in
                     VStack(alignment: .leading, spacing: 10) {
@@ -69,7 +69,7 @@ struct ScienceProductsSection: View {
                 }
 
                 Text("Affiliate disclosure: if you buy through these links we may earn a commission. It never changes a product's evidence rating.")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                     .padding(.top, 4)
             }
         }
@@ -133,13 +133,13 @@ private struct ProductRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text(product.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                Text(product.name).font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.ink)
                 Label(product.route.label, systemImage: product.route.symbol)
                     .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                 Spacer()
                 ProductBadge(evidence: product.evidence)
             }
-            Text(product.summary).font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+            Text(product.summary).font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
 
             if product.deficiencyGated {
                 note(icon: "testtube.2", "Only worth it if a blood test shows you're low — check ferritin / vitamin D in Labs first.")
@@ -154,11 +154,11 @@ private struct ProductRow: View {
             HStack(spacing: 12) {
                 if inPlan {
                     Label("In your plan", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.positive)
+                        .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.positive)
                 } else {
                     Button(action: onAdd) {
                         Label("Add to plan", systemImage: "plus.circle")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+                            .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.accent)
                     }
                     .buttonStyle(.plain)
                 }
@@ -168,7 +168,7 @@ private struct ProductRow: View {
                         openURL(url)
                     } label: {
                         Label("View on iHerb", systemImage: "arrow.up.right.square")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.accent)
+                            .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.accent)
                     }
                     .buttonStyle(.plain)
                 }
@@ -180,8 +180,8 @@ private struct ProductRow: View {
 
     private func note(icon: String, _ text: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
-            Image(systemName: icon).font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
-            Text(text).font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+            Image(systemName: icon).font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
+            Text(text).font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
         }
     }
 }
@@ -204,21 +204,21 @@ struct ManageLinksSheet: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Eyebrow(text: "Owner link overrides (debug)")
                             Text("Debug-only overrides that beat the bundled and remote catalogs on this device. Use them to preview a product's buy flow; ship real links via AffiliateLinks.json or the remote catalog. Leave blank to fall back.")
-                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                         }
                     }
                     ForEach(ScienceCatalog.products) { product in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
-                                Text(product.name).font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
+                                Text(product.name).font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
                                 ProductBadge(evidence: product.evidence)
                                 Spacer()
                                 if affiliates.debugOverride(for: product.id) != nil {
-                                    Image(systemName: "checkmark.circle.fill").font(.system(size: 14)).foregroundStyle(Clinical.positive)
+                                    Image(systemName: "checkmark.circle.fill").font(Clinical.caption(14)).foregroundStyle(Clinical.positive)
                                 }
                             }
                             TextField("https://iherb.com/…  (search: \(product.searchHint))", text: binding(for: product.id))
-                                .font(.system(size: 13))
+                                .font(Clinical.caption(13))
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .keyboardType(.URL)

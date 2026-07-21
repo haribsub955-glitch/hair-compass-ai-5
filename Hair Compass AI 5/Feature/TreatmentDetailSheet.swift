@@ -41,12 +41,13 @@ struct TreatmentDetailSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     header
+                    whatToExpectCard
                     if let report = treatmentReport { progressReportRow(report) }
                     refillSection
                     ingredientsSection
                     tolerabilitySection
                     Text("A private record for your own prescriber conversations — not medical advice.")
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
                 .padding(20)
             }
@@ -81,16 +82,16 @@ struct TreatmentDetailSheet: View {
             ClinicalCard(padding: 14) {
                 HStack(spacing: 10) {
                     Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 15)).foregroundStyle(Clinical.accent)
+                        .font(Clinical.caption(15)).foregroundStyle(Clinical.accent)
                         .frame(width: 34, height: 34)
                         .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Progress report").font(.system(size: 14, weight: .semibold)).foregroundStyle(Clinical.ink)
+                        Text("Progress report").font(Clinical.body(14, weight: .semibold)).foregroundStyle(Clinical.ink)
                         Text("Week \(report.weekNumber) · this treatment's own trajectory")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
                     Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                    Image(systemName: "chevron.right").font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                 }
             }
         }
@@ -102,16 +103,61 @@ struct TreatmentDetailSheet: View {
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: treatment.treatmentClass.symbol)
-                .font(.system(size: 16)).foregroundStyle(Clinical.accent)
+                .font(Clinical.caption(16)).foregroundStyle(Clinical.accent)
                 .frame(width: 38, height: 38)
                 .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(treatment.treatmentClass.title)\(treatment.dose.isEmpty ? "" : " · \(treatment.dose)")")
-                    .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                    .font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.ink)
                 Text("Started \(treatment.startDate.formatted(date: .abbreviated, time: .omitted))")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
             }
             Spacer()
+        }
+    }
+
+    // MARK: What to expect
+
+    /// General orientation for this treatment's class — what's typical in the early weeks, how
+    /// results build, and when it's fair to judge — plus a week-anchored phase line where there's
+    /// a distinct one to call out (minoxidil's early shed, an SRI's slow onset), and a thin
+    /// progress bar to the app's 24-week judging point: the same clock `AddTreatmentSheet` sets
+    /// and `CareView`/`ProgressReport` already judge every treatment against. Mirrors
+    /// `ProcedureDetailSheet.expectationsCard`/`.transplantTimelineCard`'s posture: education, not
+    /// a reason to start or stop anything.
+    private var whatToExpectCard: some View {
+        let weeks = HairAnalytics.weeksElapsed(since: treatment.startDate)
+        let progress = HairAnalytics.outcomeProgress(weeksElapsed: weeks)
+        let ready = HairAnalytics.outcomeReady(weeksElapsed: weeks)
+        let weeksToGo = max(0, HairAnalytics.outcomeWindowWeeks - weeks)
+
+        return ClinicalCard {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Eyebrow(text: "What to expect")
+                    Text(TreatmentGuide.expectations(for: treatment.treatmentClass))
+                        .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Divider().overlay(Clinical.hairline)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Week \(weeks) since starting")
+                            .font(Clinical.number(13)).foregroundStyle(Clinical.ink)
+                        Spacer()
+                        Text(ready ? "24-week checkpoint reached" : "\(weeksToGo) week\(weeksToGo == 1 ? "" : "s") to the 24-week checkpoint")
+                            .font(Clinical.eyebrow(11))
+                            .foregroundStyle(ready ? Clinical.positive : Clinical.accent)
+                    }
+                    ProgressBar(value: progress, tint: ready ? Clinical.positive : Clinical.accent)
+                        .frame(height: 8)
+                    if let phase = TreatmentGuide.phase(for: treatment.treatmentClass, weeksElapsed: weeks) {
+                        Text(phase)
+                            .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
         }
     }
 
@@ -137,12 +183,12 @@ struct TreatmentDetailSheet: View {
                             range: refillRange
                         )
                         Button("Clear refill date") { treatment.refillBy = nil }
-                            .font(.system(size: 13, weight: .medium))
+                            .font(Clinical.body(13, weight: .medium))
                             .foregroundStyle(Clinical.secondary)
                             .buttonStyle(.plain)
                     } else {
                         Text("Note when your supply runs out — running low is the most common reason a routine lapses.")
-                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         Button("Set a refill date") {
                             treatment.refillBy = calendar.date(byAdding: .day, value: 30, to: calendar.startOfDay(for: .now))
@@ -168,7 +214,7 @@ struct TreatmentDetailSheet: View {
                 }
             }()
             Label(text, systemImage: "pills.circle")
-                .font(.system(size: 13, weight: .medium)).foregroundStyle(tint)
+                .font(Clinical.body(13, weight: .medium)).foregroundStyle(tint)
         }
     }
 
@@ -194,9 +240,9 @@ struct TreatmentDetailSheet: View {
                         if !treatment.aiIngredientSummary.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(treatment.aiIngredientSummary)
-                                    .font(.system(size: 13)).foregroundStyle(Clinical.ink)
+                                    .font(Clinical.caption(13)).foregroundStyle(Clinical.ink)
                                 Text("AI summary · not medical advice")
-                                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                             }
                         }
                     }
@@ -217,7 +263,7 @@ struct TreatmentDetailSheet: View {
                 VStack(alignment: .leading, spacing: 14) {
                     if sortedLogs.isEmpty && !showLogForm {
                         Text("Nothing logged. Side effects are the main reason people stop \(treatment.treatmentClass.title.lowercased()) — a dated record makes the conversation with your prescriber concrete.")
-                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -239,19 +285,19 @@ struct TreatmentDetailSheet: View {
     private func logRow(_ log: SideEffectLog) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: log.type.symbol)
-                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                 .frame(width: 28, height: 28)
                 .background(Clinical.canvas, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text(log.type.title)
-                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                        .font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.ink)
                     severityDots(log.severity)
                 }
                 Text(log.date.formatted(date: .abbreviated, time: .omitted))
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 if !log.note.isEmpty {
-                    Text(log.note).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    Text(log.note).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -259,7 +305,7 @@ struct TreatmentDetailSheet: View {
             Button {
                 context.delete(log)
             } label: {
-                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundStyle(Clinical.tertiary)
+                Image(systemName: "xmark").font(Clinical.body(10, weight: .semibold)).foregroundStyle(Clinical.tertiary)
                     .frame(width: 24, height: 24)
                     .frame(minWidth: 32, minHeight: 32)
                     .contentShape(Rectangle())
@@ -295,7 +341,7 @@ struct TreatmentDetailSheet: View {
                             UISelectionFeedbackGenerator().selectionChanged()
                         } label: {
                             Label(t.title, systemImage: t.symbol)
-                                .font(.system(size: 13, weight: on ? .semibold : .regular))
+                                .font(Clinical.body(13, weight: on ? .semibold : .regular))
                                 .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                                 .padding(.horizontal, 12).padding(.vertical, 8)
                                 .background(on ? Clinical.ink : Clinical.surface)
@@ -308,7 +354,7 @@ struct TreatmentDetailSheet: View {
             }
 
             if let caption = newType.caption {
-                Text(caption).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                Text(caption).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
             }
 
             DateStripPicker(selection: $newDate, range: sideEffectDateRange)
@@ -320,7 +366,7 @@ struct TreatmentDetailSheet: View {
             )
 
             TextField("Note (optional)", text: $newNote)
-                .font(.system(size: 15))
+                .font(Clinical.caption(15))
                 .padding(11)
                 .background(Clinical.canvas)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -330,11 +376,11 @@ struct TreatmentDetailSheet: View {
                 Button("Cancel") {
                     withAnimation(.easeOut(duration: 0.18)) { showLogForm = false }
                 }
-                .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.secondary)
+                .font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.secondary)
                 .buttonStyle(.plain)
                 Spacer()
                 Button("Save") { saveLog() }
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Clinical.surface)
+                    .font(Clinical.body(14, weight: .semibold)).foregroundStyle(Clinical.surface)
                     .padding(.horizontal, 18).padding(.vertical, 9)
                     .background(Clinical.accent, in: Capsule())
                     .buttonStyle(.plain)

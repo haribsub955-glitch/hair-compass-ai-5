@@ -73,7 +73,7 @@ struct TutorialOverlay: View {
                         .font(Clinical.headline(22))
                         .foregroundStyle(Clinical.ink)
                     Text(current.line)
-                        .font(.system(size: 14))
+                        .font(Clinical.caption(14))
                         .foregroundStyle(Clinical.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -86,7 +86,7 @@ struct TutorialOverlay: View {
                         .accessibilityIdentifier("tutorialNext")
 
                     Button("Skip tour") { skip() }
-                        .font(.system(size: 13, weight: .medium))
+                        .font(Clinical.body(13, weight: .medium))
                         .foregroundStyle(Clinical.tertiary)
                         .accessibilityIdentifier("tutorialSkip")
                 }

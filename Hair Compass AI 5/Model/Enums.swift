@@ -177,7 +177,7 @@ enum TreatmentClass: String, Codable, CaseIterable, Identifiable {
     // Medications, then in-office/device work, then over-the-counter care products, then a
     // free-form catch-all. `classRaw` is stored as a String, so appending cases needs no schema
     // migration — existing rows keep their raw value and only new entries can pick the new ones.
-    case minoxidil, finasteride, dutasteride, microneedling, prp, lllt, shampoo, oil, supplement, other
+    case minoxidil, finasteride, dutasteride, spironolactone, microneedling, prp, lllt, shampoo, oil, supplement, other
     var id: String { rawValue }
 
     var title: String {
@@ -185,6 +185,7 @@ enum TreatmentClass: String, Codable, CaseIterable, Identifiable {
         case .minoxidil: return "Minoxidil"
         case .finasteride: return "Finasteride"
         case .dutasteride: return "Dutasteride"
+        case .spironolactone: return "Spironolactone"
         case .microneedling: return "Microneedling"
         case .prp: return "PRP"
         case .lllt: return "Low-level laser"
@@ -198,7 +199,7 @@ enum TreatmentClass: String, Codable, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .minoxidil: return "drop.fill"
-        case .finasteride, .dutasteride: return "pills.fill"
+        case .finasteride, .dutasteride, .spironolactone: return "pills.fill"
         case .microneedling: return "circle.grid.cross.fill"
         case .prp: return "syringe.fill"
         case .lllt: return "light.max"
@@ -215,7 +216,7 @@ enum TreatmentClass: String, Codable, CaseIterable, Identifiable {
     var defaultDailyCount: Int {
         switch self {
         case .minoxidil: return 2
-        case .finasteride, .dutasteride, .supplement: return 1
+        case .finasteride, .dutasteride, .spironolactone, .supplement: return 1
         default: return 0 // periodic, not daily (shampoo, oil, procedures, other)
         }
     }
@@ -396,7 +397,12 @@ enum LabFlag: Equatable {
 /// In-clinic procedures a user can book an appointment for. Distinct from a daily `Treatment` —
 /// these are dated events with reminders and a completion state.
 enum ProcedureType: String, Codable, CaseIterable, Identifiable {
-    case prp, microneedling, transplant, lllt, mesotherapy, other
+    // `consultation` (round-6 addition): the dermatologist/GP visit every other clinician nudge
+    // in the app (TreatmentRecommender, ClinicianReviewFlags, lab notes, the scalp-pain check-in
+    // nudge, red-flag Learn cards) points toward, finally given a date, a reminder, and a link to
+    // the visit-report PDF the app already builds. `typeRaw` is stored as a String, so this is
+    // schema-safe — existing rows are untouched.
+    case prp, microneedling, transplant, lllt, mesotherapy, consultation, other
     var id: String { rawValue }
 
     var title: String {
@@ -406,6 +412,7 @@ enum ProcedureType: String, Codable, CaseIterable, Identifiable {
         case .transplant: return "Hair transplant"
         case .lllt: return "Low-level laser (LLLT)"
         case .mesotherapy: return "Mesotherapy"
+        case .consultation: return "Doctor visit"
         case .other: return "Other procedure"
         }
     }
@@ -417,6 +424,7 @@ enum ProcedureType: String, Codable, CaseIterable, Identifiable {
         case .transplant: return "cross.case.fill"
         case .lllt: return "light.max"
         case .mesotherapy: return "drop.triangle.fill"
+        case .consultation: return "stethoscope"
         case .other: return "calendar.badge.plus"
         }
     }
@@ -428,7 +436,7 @@ enum ProcedureType: String, Codable, CaseIterable, Identifiable {
         case .microneedling: return "procedure-microneedling"
         case .transplant: return "procedure-hair-transplant"
         case .lllt: return "procedure-low-level-laser"
-        case .mesotherapy, .other: return ""
+        case .mesotherapy, .consultation, .other: return ""
         }
     }
 }
@@ -449,12 +457,15 @@ enum RegrowthLevel: Int, Codable, CaseIterable, Identifiable {
 }
 
 /// A three-point self-reported direction where `.better` is always the good direction. The exact
-/// wording differs per question (density vs shedding vs hairline vs overall) — `label(for:)`.
+/// wording differs per question (density vs shedding vs hairline vs overall vs patches) —
+/// `label(for:)`.
 enum ProgressTrend: Int, Codable, CaseIterable, Identifiable {
     case worse, same, better
     var id: Int { rawValue }
 
-    enum Question { case density, shedding, hairline, overall }
+    /// `.patches` is alopecia areata-specific — new/enlarging patches is the worse direction,
+    /// same as every other question, so `.better` still means "less loss."
+    enum Question { case density, shedding, hairline, overall, patches }
 
     func label(for q: Question) -> String {
         switch (q, self) {
@@ -470,6 +481,9 @@ enum ProgressTrend: Int, Codable, CaseIterable, Identifiable {
         case (.overall, .worse): return "Worse"
         case (.overall, .same): return "Stable"
         case (.overall, .better): return "Better"
+        case (.patches, .worse): return "New or larger"
+        case (.patches, .same): return "About the same"
+        case (.patches, .better): return "Fewer or smaller"
         }
     }
 
@@ -479,6 +493,11 @@ enum ProgressTrend: Int, Codable, CaseIterable, Identifiable {
 
 enum PhotoRegion: String, Codable, CaseIterable, Identifiable {
     case frontal, vertex, templeLeft, templeRight, global
+    /// A user-tagged alopecia areata patch — unlike the fixed anatomical regions above, a
+    /// person may have zero, one, or several; this exists so the guided camera can align a
+    /// consistent, comparable shot of whichever one they're tracking (see `TreatmentRecommender`'s
+    /// "Document the patches" guidance for AA).
+    case patch
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -487,6 +506,7 @@ enum PhotoRegion: String, Codable, CaseIterable, Identifiable {
         case .templeLeft: return "Left temple"
         case .templeRight: return "Right temple"
         case .global: return "Global"
+        case .patch: return "Patch"
         }
     }
     var symbol: String {
@@ -496,6 +516,7 @@ enum PhotoRegion: String, Codable, CaseIterable, Identifiable {
         case .templeLeft: return "arrow.left.circle"
         case .templeRight: return "arrow.right.circle"
         case .global: return "camera.viewfinder"
+        case .patch: return "circle.dashed"
         }
     }
 }

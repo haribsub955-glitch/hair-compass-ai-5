@@ -270,7 +270,12 @@ enum Achievement: String, CaseIterable, Identifiable {
         case .fullPhotoSet:
             let inTime = photos.filter { $0.createdAt <= now }
             var firstPerRegion: [Date] = []
-            for region in PhotoRegion.allCases {
+            // `.patch` is excluded on purpose: unlike the five fixed anatomical regions, it's an
+            // optional, alopecia areata-only tag someone may have zero or several of — it doesn't
+            // fit "one photo per region completes the set," and requiring it would make this
+            // badge silently unearnable for the vast majority of users who never see a reason to
+            // photograph one.
+            for region in PhotoRegion.allCases where region != .patch {
                 guard let first = inTime.filter({ $0.region == region }).map(\.createdAt).min()
                 else { return nil }
                 firstPerRegion.append(first)

@@ -32,6 +32,10 @@ struct InsightContext: Sendable {
     /// Latest result per lab test — a lower-priority, honest note for the daily insight, never
     /// a diagnosis. Matches the deep-analysis/chat `AIContext`'s labs, which already carry this.
     var labs: [LabNote]
+    /// Consolidated, deterministic "worth a clinician review" patterns (see
+    /// `ClinicianReviewFlags`) — fed in ahead of everything else so both the rule-based
+    /// paragraph and the on-device model prioritize them over routine trend commentary.
+    var clinicianReviewFlags: [ClinicianReviewFlag]
 
     struct TriggerNote: Sendable { var title: String; var weeks: Int }
     struct TreatmentSummary: Sendable {
@@ -51,7 +55,9 @@ struct InsightContext: Sendable {
         snapshots: [HealthSnapshot],
         triggers: [TriggerEvent],
         labs: [LabResult],
-        profile: Profile?
+        profile: Profile?,
+        progressCheckIns: [ProgressCheckIn] = [],
+        sideEffects: [SideEffectLog] = []
     ) -> InsightContext {
         let sortedEntries = entries.sorted { $0.date < $1.date }
         let shedValues = sortedEntries.map { Double($0.shed.rawValue) }
@@ -108,6 +114,10 @@ struct InsightContext: Sendable {
             return LabNote(name: test.title, flag: flagText, value: result.value, unit: test.unit)
         }
 
+        let reviewFlags = ClinicianReviewFlags.evaluate(
+            progressCheckIns: progressCheckIns, entries: entries, triggers: triggers, sideEffects: sideEffects
+        )
+
         let condition = profile?.condition ?? .unsure
         return InsightContext(
             conditionTitle: condition.title,
@@ -129,7 +139,8 @@ struct InsightContext: Sendable {
             recentTrigger: trigger,
             recentStop: stop,
             treatments: treatmentSummaries,
-            labs: labNotes
+            labs: labNotes,
+            clinicianReviewFlags: reviewFlags
         )
     }
 }
@@ -150,6 +161,13 @@ enum RuleBasedInsight {
     static func facts(_ c: InsightContext) -> String {
         var lines: [String] = []
         lines.append("Condition focus: \(c.conditionTitle).")
+        // Clinician-review patterns lead the fact list — the LLM instructions ask it to
+        // "explain and prioritize" the facts it's given, so putting these first is what makes
+        // it actually prioritize them over routine trend commentary.
+        if !c.clinicianReviewFlags.isEmpty {
+            let flagText = c.clinicianReviewFlags.map(\.detail).joined(separator: " ")
+            lines.append("Worth a clinician's review: \(flagText)")
+        }
         lines.append("Daily logs recorded: \(c.entryCount); current streak \(c.streak) days.")
         if let shed = c.latestShed { lines.append("Latest shedding: \(shed); trend \(trend(c.shedDirection, invert: true)).") }
         if c.usesScalpScale, let total = c.latestScalpTotal, let band = c.latestScalpBand {
@@ -179,6 +197,12 @@ enum RuleBasedInsight {
 
     static func paragraph(_ c: InsightContext) -> String {
         var parts: [String] = []
+
+        // A fired clinician-review pattern leads the paragraph — it outranks routine trend
+        // commentary, but stays a plain observation, never advice to act.
+        if let leadFlag = c.clinicianReviewFlags.first {
+            parts.append(leadFlag.detail)
+        }
 
         if c.entryCount < 3 {
             parts.append("Keep logging for a few more days — trends and a clearer readout appear once there's a short history to compare against.")

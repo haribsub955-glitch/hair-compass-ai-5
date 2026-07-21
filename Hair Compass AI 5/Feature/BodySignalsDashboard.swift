@@ -1,6 +1,7 @@
 import Charts
 import SwiftData
 import SwiftUI
+import UIKit
 
 // MARK: - The five signals
 
@@ -181,6 +182,7 @@ struct BodySignalsDashboard: View {
     @Environment(HealthKitService.self) private var healthKit
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     @State private var connecting = false
     @State private var refreshing = false
     /// Round-8: which signal rows have their "why it matters" sentence disclosed. Previously
@@ -262,10 +264,12 @@ struct BodySignalsDashboard: View {
             switch healthKit.authorization {
             case .authorized:
                 Text("Wearing a watch? Data appears within a day.")
-                    .font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
             case .unavailable:
                 Text("Apple Health isn't available on this device — lifestyle factors stay manual.")
-                    .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
+            case .denied:
+                deniedPrompt
             default:
                 connectPrompt
             }
@@ -275,7 +279,7 @@ struct BodySignalsDashboard: View {
     private var connectPrompt: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Connect Apple Health to auto-fill sleep, body weight, and a recovery (HRV) stress proxy — no manual entry.")
-                .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
             Button(connecting ? "Connecting…" : "Connect Apple Health") {
                 connecting = true
                 Task {
@@ -291,6 +295,22 @@ struct BodySignalsDashboard: View {
         }
     }
 
+    /// iOS never re-presents the system permission sheet once a person has answered it, so a
+    /// denied request has no in-app retry — only Settings can change it. Shown instead of the
+    /// connect button so tapping never feels like a dead end.
+    private var deniedPrompt: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Health access is off for Hair Compass. Turn it on in Settings to auto-fill sleep, body weight, and a recovery (HRV) stress proxy.")
+                .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
+            Button("Open Settings") {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                openURL(url)
+            }
+            .buttonStyle(ClinicalButtonStyle(filled: false))
+            .accessibilityIdentifier("trendsHealthOpenSettings")
+        }
+    }
+
     /// A quiet manual-refresh affordance shown once Health is authorized — last-updated
     /// timestamp plus a one-tap "Update from Health", so data doesn't only ever arrive passively.
     @ViewBuilder
@@ -300,7 +320,7 @@ struct BodySignalsDashboard: View {
                 Text(healthKit.lastRefresh.map {
                     "Updated \($0.formatted(.relative(presentation: .named)))"
                 } ?? "Not yet refreshed")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 Spacer(minLength: 8)
                 Button(refreshing ? "Updating…" : "Update from Health") {
                     refreshing = true
@@ -309,7 +329,7 @@ struct BodySignalsDashboard: View {
                         refreshing = false
                     }
                 }
-                .font(.system(size: 13, weight: .medium))
+                .font(Clinical.body(13, weight: .medium))
                 .foregroundStyle(Clinical.accent)
                 .disabled(refreshing)
                 .accessibilityIdentifier("trendsHealthRefresh")
@@ -359,7 +379,7 @@ struct BodySignalsDashboard: View {
                 if let rapidChip { warningChip(rapidChip) }
                 if expanded {
                     Text(signal.why)
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 }
@@ -435,8 +455,8 @@ struct BodySignalsDashboard: View {
 
     private func contextNote(icon: String, color: Color, text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: icon).font(.system(size: 13)).foregroundStyle(color)
-            Text(text).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+            Image(systemName: icon).font(Clinical.caption(13)).foregroundStyle(color)
+            Text(text).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
         }
         .padding(.top, 2)
     }

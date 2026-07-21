@@ -54,9 +54,10 @@ enum PregnancyCaution {
         if treatmentClass == .minoxidil || n.contains("minoxidil") {
             return Info(substance: "Minoxidil", kind: .minoxidil)
         }
-        // Anti-androgens reach the plan as free-typed `.other` items — match by name. Spironolactone
-        // (Aldactone), and the less common flutamide / bicalutamide / cyproterone acetate.
-        if n.contains("spironolactone") || n.contains("aldactone") {
+        // Spironolactone now has its own class, but older/free-typed entries can still land as
+        // `.other` — match by name too. The less common anti-androgens (flutamide, bicalutamide,
+        // cyproterone acetate) have no dedicated class, so they stay name-matched under `.other`.
+        if treatmentClass == .spironolactone || n.contains("spironolactone") || n.contains("aldactone") {
             return Info(substance: "Spironolactone", kind: .antiAndrogen)
         }
         if n.contains("flutamide") {

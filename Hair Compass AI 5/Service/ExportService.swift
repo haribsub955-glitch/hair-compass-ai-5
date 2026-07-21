@@ -25,6 +25,18 @@ enum ExportService {
         out += "Generated \(now.formatted(.dateTime.year().month().day()))\n"
         out += "A self-tracked record for documentation, not a diagnosis.\n\n"
 
+        // Patterns worth a clinician's attention — consolidated from data tracked throughout the
+        // app (see ClinicianReviewFlags). One honest line naming the fired patterns, never a
+        // diagnosis.
+        let reviewFlags = ClinicianReviewFlags.evaluate(
+            progressCheckIns: progressCheckIns, entries: entries, triggers: triggers,
+            sideEffects: sideEffects, now: now, calendar: calendar
+        )
+        if !reviewFlags.isEmpty {
+            out += "PATTERNS WORTH A CLINICIAN'S REVIEW (record-keeping, not a diagnosis): "
+            out += reviewFlags.map(\.title).joined(separator: "; ") + ".\n\n"
+        }
+
         // Baseline
         if let p = profile {
             out += "BASELINE\n"

@@ -23,7 +23,7 @@ struct BaselineFlow: View {
                     field("Your name") {
                         TextField("Name", text: $profile.name)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 16))
+                            .font(Clinical.caption(16))
                             .padding(12)
                             .background(Clinical.surface)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -34,7 +34,7 @@ struct BaselineFlow: View {
                     field("Biological sex") {
                         ClinicalSegmented(options: BiologicalSex.allCases, label: { $0.title }, selection: $profile.sex)
                         Text("Sets the staging scale: \(profile.sex.stagingScaleName).")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
 
                     field("Age") {
@@ -48,7 +48,7 @@ struct BaselineFlow: View {
                                 if let match = opts.first(where: { $0.title == title }) { profile.pregnancyStatus = match }
                             }
                             Text("Lets the plan flag medications usually avoided in or around pregnancy. Stays private to your device.")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
                     }
 
@@ -67,7 +67,7 @@ struct BaselineFlow: View {
                             }
                         }
                         Text("The single strongest measured risk factor for pattern loss.")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
 
                     field("Hair-care practices") {
@@ -77,13 +77,13 @@ struct BaselineFlow: View {
                             practiceToggle("Chemical treatments (relaxers, dyes, perms)", isOn: $profile.usesChemicalTreatments)
                         }
                         Text("Sustained tension, heat and chemicals cause traction alopecia — preventable and reversible early.")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
 
                     field("Baseline stage (optional)") {
                         TextField("e.g. \(profile.sex.stagingScaleName) III", text: $profile.baselineStage)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 16))
+                            .font(Clinical.caption(16))
                             .padding(12)
                             .background(Clinical.surface)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -142,7 +142,7 @@ struct BaselineFlow: View {
                     .font(Clinical.headline(26))
                     .foregroundStyle(Clinical.ink)
                 Text("These are the signals a dermatologist weighs first. You'll only set them once.")
-                    .font(.system(size: 14))
+                    .font(Clinical.caption(14))
                     .foregroundStyle(Clinical.secondary)
             }
         }
@@ -152,16 +152,16 @@ struct BaselineFlow: View {
         Button { replayOnboarding = true } label: {
             HStack(spacing: 12) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 18))
+                    .font(Clinical.caption(18))
                     .foregroundStyle(Clinical.accent)
                     .frame(width: 40, height: 40)
                     .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Replay the walkthrough").font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
-                    Text("Revisit the animated intro anytime").font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    Text("Replay the walkthrough").font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
+                    Text("Revisit the animated intro anytime").font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 }
                 Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.tertiary)
+                Image(systemName: "chevron.right").font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.tertiary)
             }
             .padding(12)
             .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -188,11 +188,11 @@ struct BaselineFlow: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: on ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 20))
+                    .font(Clinical.caption(20))
                     .foregroundStyle(on ? Clinical.accent : Clinical.tertiary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(c.title).font(.system(size: 15, weight: .medium)).foregroundStyle(Clinical.ink)
-                    Text(c.summary).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    Text(c.title).font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
+                    Text(c.summary).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 }
                 Spacer()
             }
@@ -220,7 +220,7 @@ struct BaselineFlow: View {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle(isOn: $appLock.isEnabled) {
                     Text("Require Face ID to open")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(Clinical.body(15, weight: .medium))
                         .foregroundStyle(appLock.canUseLock ? Clinical.ink : Clinical.tertiary)
                 }
                 .tint(Clinical.accent)
@@ -229,16 +229,16 @@ struct BaselineFlow: View {
                 Text(appLock.canUseLock
                      ? "Locks Hair Compass when you leave it. Uses your device's Face ID or passcode."
                      : "Unavailable — this device has no Face ID, Touch ID or passcode set up.")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
 
                 Divider().overlay(Clinical.hairline)
 
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "lock.iphone")
-                        .font(.system(size: 14)).foregroundStyle(Clinical.accent)
+                        .font(Clinical.caption(14)).foregroundStyle(Clinical.accent)
                         .frame(width: 20)
                     Text("Everything stays on your device. Your records, photos and the AI features all run on-device — nothing is uploaded to any server.")
-                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 }
             }
             .padding(14)
@@ -251,7 +251,7 @@ struct BaselineFlow: View {
         VStack(alignment: .leading, spacing: 8) {
             Divider().overlay(Clinical.hairline)
             Text(AppInfo.medicalDisclaimer)
-                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
             HStack(spacing: 16) {
                 if let url = AppInfo.privacyPolicyURL {
                     Link("Privacy", destination: url).font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
@@ -274,7 +274,7 @@ struct BaselineFlow: View {
 
     private func practiceToggle(_ title: String, isOn: Binding<Bool>) -> some View {
         Toggle(isOn: isOn) {
-            Text(title).font(.system(size: 14)).foregroundStyle(Clinical.ink)
+            Text(title).font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
         }
         .tint(Clinical.accent)
     }
@@ -317,7 +317,7 @@ private struct BackupRestoreSection: View {
                     ShareLink(item: backupURL) {
                         Label("Share \(backupURL.lastPathComponent)\(backupSizeSuffix(backupURL))",
                               systemImage: "square.and.arrow.up")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(Clinical.body(15, weight: .semibold))
                             .foregroundStyle(Clinical.surface)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
@@ -328,7 +328,7 @@ private struct BackupRestoreSection: View {
                     Button(action: generateBackup) {
                         Label(isBackingUp ? "Preparing backup…" : "Back up everything",
                               systemImage: "arrow.down.doc")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(Clinical.body(15, weight: .semibold))
                             .foregroundStyle(Clinical.ink)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
@@ -344,7 +344,7 @@ private struct BackupRestoreSection: View {
                     showImporter = true
                 } label: {
                     Label("Restore from backup", systemImage: "arrow.counterclockwise")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(Clinical.body(15, weight: .semibold))
                         .foregroundStyle(Clinical.ink)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
@@ -355,7 +355,7 @@ private struct BackupRestoreSection: View {
                 .accessibilityIdentifier("backupRestore")
 
                 Text("Backups include your photos. Store the file somewhere safe (Files/iCloud Drive). Automatic iCloud sync isn't on yet.")
-                    .font(.system(size: 12))
+                    .font(Clinical.caption(12))
                     .foregroundStyle(Clinical.secondary)
             }
             .padding(14)
@@ -446,7 +446,7 @@ private struct FlowChips: View {
                         UISelectionFeedbackGenerator().selectionChanged()
                     } label: {
                         Text(item)
-                            .font(.system(size: 14, weight: on ? .semibold : .regular))
+                            .font(Clinical.body(14, weight: on ? .semibold : .regular))
                             .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 9)

@@ -60,7 +60,7 @@ struct AddLabSheet: View {
                                         refLowText = ""; refHighText = ""
                                     } label: {
                                         Text(t.title)
-                                            .font(.system(size: 14, weight: on ? .semibold : .regular))
+                                            .font(Clinical.body(14, weight: on ? .semibold : .regular))
                                             .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                                             .padding(.horizontal, 13).padding(.vertical, 9)
                                             .background(on ? Clinical.ink : Clinical.surface)
@@ -71,7 +71,7 @@ struct AddLabSheet: View {
                                 }
                             }
                         }
-                        Text(test.note).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        Text(test.note).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
 
                     section("Value") {
@@ -101,9 +101,9 @@ struct AddLabSheet: View {
                                 } label: {
                                     HStack(spacing: 3) {
                                         Text(unitLabel)
-                                        Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                                        Image(systemName: "chevron.down").font(Clinical.body(9, weight: .semibold))
                                     }
-                                    .font(.system(size: 13, weight: .medium))
+                                    .font(Clinical.body(13, weight: .medium))
                                     .foregroundStyle(Clinical.ink)
                                     .padding(.horizontal, 12).padding(.vertical, 12)
                                     .background(Clinical.surface)
@@ -112,7 +112,7 @@ struct AddLabSheet: View {
                                 }
                             } else {
                                 Text(test.unit)
-                                    .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.secondary)
+                                    .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.secondary)
                             }
                         }
                         if let v = value {
@@ -123,27 +123,27 @@ struct AddLabSheet: View {
                                     Text("· from your lab report").foregroundStyle(Clinical.tertiary)
                                 }
                             }
-                            .font(.system(size: 12)).foregroundStyle(Clinical.flagColor(flag))
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.flagColor(flag))
                             if unitLabel != test.unit {
                                 Text("Converted to \(v.formatted(.number.precision(.fractionLength(0...1)))) \(test.unit) for storage — Hair Compass always keeps one unit per test.")
-                                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                             }
                         }
                     }
 
                     section("Reference range") {
                         Toggle("Use the range printed on your report", isOn: $useCustomRange.animation())
-                            .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.ink)
+                            .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.ink)
                             .tint(Clinical.accent)
                         if useCustomRange {
                             HStack(spacing: 10) {
                                 rangeField("Low", text: $refLowText)
                                 Text("–").foregroundStyle(Clinical.tertiary)
                                 rangeField("High", text: $refHighText)
-                                Text(test.unit).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                Text(test.unit).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                             }
                             Text("Overrides the built-in default for this result — every lab prints its own interval, and ferritin ranges differ by sex.")
-                                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                                .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                         }
                     }
 
@@ -157,7 +157,7 @@ struct AddLabSheet: View {
                             text: $note,
                             prompt: Text("Optional").foregroundStyle(Clinical.secondary.opacity(0.78))
                         )
-                            .font(.system(size: 15))
+                            .font(Clinical.caption(15))
                             .foregroundStyle(Clinical.ink)
                             .tint(Clinical.accent)
                             .textFieldStyle(.plain)

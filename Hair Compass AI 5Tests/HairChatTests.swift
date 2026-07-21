@@ -59,6 +59,24 @@ struct HairChatTests {
         #expect(Set(starters).count == 3)
     }
 
+    // MARK: Starter chips — full-record entry points (Today, deep-analysis follow-up)
+
+    @Test func fullRecordStartersAreThreeDistinctNonEmptyQuestions() {
+        let starters = HairChatPrompt.starters(
+            focus: "User is asking from the Today screen about their overall record.", kind: .fullRecord)
+        #expect(starters.count == 3)
+        #expect(starters.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        #expect(Set(starters).count == 3)
+    }
+
+    @Test func fullRecordStartersDontPresupposeATwoSignalRelationship() {
+        // The chart-comparison starters assume a specific two-signal relationship is on screen —
+        // not true from Today or a deep-analysis follow-up, so the full-record set must not echo them.
+        let starters = HairChatPrompt.starters(focus: "irrelevant", kind: .fullRecord)
+        #expect(!starters.contains("What could explain this relationship?"))
+        #expect(!starters.contains("Is this change meaningful, or just noise?"))
+    }
+
     // MARK: History capping
 
     private func makeAlternatingHistory(count: Int) -> [ChatMessage] {

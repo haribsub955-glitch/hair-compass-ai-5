@@ -3,6 +3,69 @@ import Foundation
 import FoundationModels
 #endif
 
+/// A precise breakdown of *why* on-device AI is (or isn't) usable right now, replacing the single
+/// `isAvailable` boolean everywhere the UI needs to explain an unavailable state. Shared by
+/// `OnDeviceAnalysisService`, `HairChatService`, and `InsightEngine`'s on-device path — all three
+/// read the same `SystemLanguageModel.default.availability` and previously collapsed every
+/// `UnavailableReason` to the same "your hardware can't do this" copy, which is simply false for a
+/// Pro subscriber on eligible hardware who hasn't flipped Apple Intelligence on yet, or whose model
+/// is still downloading. Each case carries its own actionable, honest message.
+enum OnDeviceAvailability: Equatable {
+    /// The on-device model can run right now.
+    case available
+    /// Eligible hardware, but Apple Intelligence is switched off in Settings — a one-tap fix.
+    case notEnabled
+    /// Apple Intelligence is on, but the model itself is still downloading/preparing. Transient.
+    case modelNotReady
+    /// This iPhone or iOS version doesn't support Apple Intelligence at all.
+    case deviceNotEligible
+
+    var isAvailable: Bool { self == .available }
+
+    /// Whether the unavailable card should offer an "Open Settings" shortcut for this reason.
+    var showsSettingsButton: Bool { self == .notEnabled }
+
+    /// The plain-language, actionable message shown when this status isn't `.available`. Always
+    /// closes on the same honest reassurance: the rest of the app still works fully on-device.
+    var message: String {
+        switch self {
+        case .available:
+            return ""
+        case .notEnabled:
+            return "Apple Intelligence is turned off — enable it in Settings > Apple Intelligence & Siri to use on-device AI. Everything else in Hair Compass works fully on this device."
+        case .modelNotReady:
+            return "Apple Intelligence is still getting ready on this iPhone — try again in a bit. Everything else in Hair Compass works fully on this device."
+        case .deviceNotEligible:
+            return "On-device AI needs Apple Intelligence (iPhone 15 Pro or newer, iOS 26). Everything else in Hair Compass works fully on this device."
+        }
+    }
+
+    /// Reads `SystemLanguageModel.default.availability` right now and classifies the specific
+    /// `UnavailableReason` so the UI can show something a person can act on instead of one generic
+    /// "unsupported hardware" notice. Falls back to `.deviceNotEligible` on iOS < 26 or when
+    /// FoundationModels isn't linkable — the same conservative default the app already used.
+    static var current: OnDeviceAvailability {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            switch SystemLanguageModel.default.availability {
+            case .available:
+                return .available
+            case .unavailable(let reason):
+                switch reason {
+                case .appleIntelligenceNotEnabled: return .notEnabled
+                case .modelNotReady: return .modelNotReady
+                case .deviceNotEligible: return .deviceNotEligible
+                @unknown default: return .deviceNotEligible
+                }
+            @unknown default:
+                return .deviceNotEligible
+            }
+        }
+        #endif
+        return .deviceNotEligible
+    }
+}
+
 /// On-device "deep analysis" and ingredient identification via Apple's **FoundationModels**
 /// (Apple Intelligence). Everything stays on the device — no network, no API key, no off-device
 /// consent. Text only: the model reasons over the app's deterministic tracking record (and the
@@ -17,21 +80,26 @@ final class OnDeviceAnalysisService {
     private(set) var isRunning = false
     private(set) var result: String?
     private(set) var errorMessage: String?
+    /// The written summary as it streams in token-by-token, cumulative from an empty string.
+    /// Nil until the first token arrives, and cleared back to nil once the finished text lands
+    /// in `result` — the UI shows this growing inside the Summary card instead of a blind wait.
+    private(set) var streamingText: String?
 
     init() {}
 
     struct AnalysisError: Error { let message: String }
 
-    /// True when the on-device model is usable on this device (Apple Intelligence available).
-    /// The whole feature is unavailable — with a clear message — when this is false.
-    var isAvailable: Bool {
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *), OnDeviceAnalysis.isAvailable { return true }
-        #endif
-        return false
-    }
+    /// The specific reason on-device AI is (or isn't) usable right now — read fresh each access,
+    /// since Apple Intelligence can be enabled/disabled or finish downloading while the app is open.
+    var availability: OnDeviceAvailability { OnDeviceAvailability.current }
 
-    /// The one-line reason shown when `isAvailable` is false.
+    /// True when the on-device model is usable on this device (Apple Intelligence available).
+    /// The whole feature is unavailable — with a clear, reason-specific message — when this is
+    /// false; see `availability` for which of the three reasons applies.
+    var isAvailable: Bool { availability.isAvailable }
+
+    /// The one-line reason shown when `isAvailable` is false and no more specific status is on
+    /// hand. Prefer `availability.message` where a live `OnDeviceAvailability` is available.
     static let unavailableMessage = "On-device AI needs Apple Intelligence (iPhone 15 Pro or newer, iOS 26). Everything else in Hair Compass works fully on this device."
 
     /// Runs one written analysis over the canonical `AIContext` JSON (see AIContextBuilder.swift).
@@ -40,14 +108,20 @@ final class OnDeviceAnalysisService {
     func analyze(context: AIContext) async {
         isRunning = true
         result = nil
+        streamingText = nil
         errorMessage = nil
-        defer { isRunning = false }
-        guard isAvailable else {
-            errorMessage = Self.unavailableMessage
+        defer { isRunning = false; streamingText = nil }
+        let status = availability
+        guard status.isAvailable else {
+            errorMessage = status.message
             return
         }
         do {
-            result = try await generate(instructions: Self.analysisInstructions, prompt: Self.analysisPrompt(context: context))
+            result = try await generate(
+                instructions: Self.analysisInstructions,
+                prompt: Self.analysisPrompt(context: context),
+                onPartial: { [weak self] partial in self?.streamingText = partial }
+            )
         } catch let e as AnalysisError {
             errorMessage = e.message
         } catch {
@@ -62,8 +136,9 @@ final class OnDeviceAnalysisService {
         isRunning = true
         errorMessage = nil
         defer { isRunning = false }
-        guard isAvailable else {
-            errorMessage = Self.unavailableMessage
+        let status = availability
+        guard status.isAvailable else {
+            errorMessage = status.message
             return nil
         }
         guard !trimmed.isEmpty else {
@@ -80,10 +155,14 @@ final class OnDeviceAnalysisService {
 
     // MARK: - On-device generation
 
-    private func generate(instructions: String, prompt: String) async throws -> String {
+    private func generate(
+        instructions: String,
+        prompt: String,
+        onPartial: @MainActor (String) -> Void = { _ in }
+    ) async throws -> String {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            guard let text = await OnDeviceAnalysis.generate(instructions: instructions, prompt: prompt),
+            guard let text = await OnDeviceAnalysis.generate(instructions: instructions, prompt: prompt, onPartial: onPartial),
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw AnalysisError(message: "The analysis came back empty. Please try again.")
             }
@@ -130,14 +209,26 @@ enum OnDeviceAnalysis {
         return false
     }
 
-    /// Generate over `prompt` with the given `instructions`. Returns nil when the model is
-    /// unavailable or the request fails, so the caller can surface a clear message.
-    static func generate(instructions: String, prompt: String) async -> String? {
+    /// Generate over `prompt` with the given `instructions`, streaming as it writes. `onPartial`
+    /// fires on the main actor with the cumulative text so far after every new snapshot, so the
+    /// UI can show the summary as it's written instead of a blind wait. Returns nil when the
+    /// model is unavailable or the request fails, so the caller can surface a clear message.
+    static func generate(
+        instructions: String,
+        prompt: String,
+        onPartial: @MainActor (String) -> Void = { _ in }
+    ) async -> String? {
         guard case .available = SystemLanguageModel.default.availability else { return nil }
         let session = LanguageModelSession(instructions: instructions)
         do {
-            let response = try await session.respond(to: prompt)
-            let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stream = session.streamResponse(to: prompt)
+            var latest = ""
+            for try await snapshot in stream {
+                latest = snapshot.content
+                let trimmed = latest.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { await onPartial(trimmed) }
+            }
+            let text = latest.trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? nil : text
         } catch {
             return nil

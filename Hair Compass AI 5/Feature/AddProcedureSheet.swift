@@ -39,7 +39,7 @@ struct AddProcedureSheet: View {
                                     let on = t == type
                                     Button { type = t } label: {
                                         Label(t.title, systemImage: t.symbol)
-                                            .font(.system(size: 14, weight: on ? .semibold : .regular))
+                                            .font(Clinical.body(14, weight: on ? .semibold : .regular))
                                             .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                                             .padding(.horizontal, 13).padding(.vertical, 9)
                                             .background(on ? Clinical.ink : Clinical.surface)
@@ -50,6 +50,10 @@ struct AddProcedureSheet: View {
                                 }
                             }
                         }
+                        Text(ProcedureGuide.shortExpectation(for: type))
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
                     }
 
                     section("Date") {
@@ -58,7 +62,7 @@ struct AddProcedureSheet: View {
 
                     section("Time") {
                         DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
-                            .font(.system(size: 13))
+                            .font(Clinical.caption(13))
                             .tint(Clinical.accent)
                     }
 
@@ -104,7 +108,7 @@ struct AddProcedureSheet: View {
             text: text,
             prompt: Text(placeholder).foregroundStyle(Clinical.secondary.opacity(0.78))
         )
-            .font(.system(size: 15))
+            .font(Clinical.caption(15))
             .foregroundStyle(Clinical.ink)
             .tint(Clinical.accent)
             .textFieldStyle(.plain)

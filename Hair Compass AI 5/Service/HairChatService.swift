@@ -33,7 +33,7 @@ enum HairChatPrompt {
     /// the on-screen focus line, and the canonical `AIContext` JSON all live here.
     static func system(contextJSON: String, focus: String) -> String {
         """
-        You are a careful hair-science explainer inside a personal hair-tracking app. The person is looking at charts of their own tracking data and wants to understand them.
+        You are a careful hair-science explainer inside a personal hair-tracking app. The person is looking at their own tracking data — sometimes a specific chart, sometimes their whole record — and wants to understand it.
 
         Scope — the only topics you discuss: hair biology and the hair growth cycle, shedding, scalp health, hair treatments and their evidence, and the relationships in the person's own tracking data (the JSON record below). If you are asked about anything outside that scope — coding, news, medical questions beyond hair, or anything else — reply with one friendly sentence redirecting the conversation back to hair topics, and nothing more.
 
@@ -52,17 +52,34 @@ enum HairChatPrompt {
         """
     }
 
-    /// Three tappable starter questions for the empty chat — generic enough to always apply,
-    /// with the last one keyed off the focus line when it mentions the lag control.
-    static func starters(focus: String) -> [String] {
-        let third = focus.localizedCaseInsensitiveContains("lag")
-            ? "How do time lags work for hair?"
-            : "What usually drives shedding changes?"
-        return [
-            "What could explain this relationship?",
-            "Is this change meaningful, or just noise?",
-            third,
-        ]
+    /// Which entry point opened the chat — shapes which starter questions read naturally.
+    /// `chartComparison`: opened over a specific two-signal chart (Compare). `fullRecord`:
+    /// opened over the whole tracking record with no single chart on screen (Today, deep
+    /// analysis follow-up).
+    enum StarterKind { case chartComparison, fullRecord }
+
+    /// Three tappable starter questions for the empty chat, shaped by where the chat was
+    /// opened from. For a chart comparison, the last one is keyed off the focus line when it
+    /// mentions the lag control; for the full record, the starters stay general instead of
+    /// presupposing a two-signal relationship that isn't on screen.
+    static func starters(focus: String, kind: StarterKind = .chartComparison) -> [String] {
+        switch kind {
+        case .chartComparison:
+            let third = focus.localizedCaseInsensitiveContains("lag")
+                ? "How do time lags work for hair?"
+                : "What usually drives shedding changes?"
+            return [
+                "What could explain this relationship?",
+                "Is this change meaningful, or just noise?",
+                third,
+            ]
+        case .fullRecord:
+            return [
+                "What patterns stand out in my record?",
+                "What should I keep an eye on?",
+                "What usually drives shedding changes?",
+            ]
+        }
     }
 
     /// The payload history: the last `limit` turns, then trimmed so the first message is a
@@ -90,17 +107,22 @@ final class HairChatService {
     private(set) var messages: [ChatMessage] = []
     private(set) var isRunning = false
     private(set) var errorMessage: String?
+    /// The assistant's reply as it streams in token-by-token, cumulative from an empty string.
+    /// Nil until the first token of a turn arrives, and cleared back to nil once the finished
+    /// reply lands in `messages` — the UI shows this in place of the thinking dots.
+    private(set) var streamingText: String?
 
     init() {}
 
+    /// The specific reason on-device chat is (or isn't) usable right now — see
+    /// `OnDeviceAvailability` in OnDeviceAnalysisService.swift. Read fresh each access, since
+    /// Apple Intelligence can be enabled/disabled or finish downloading while the app is open.
+    var availability: OnDeviceAvailability { OnDeviceAvailability.current }
+
     /// True when chat can run on this device — Apple Intelligence is available. There is no cloud
-    /// fallback, so this is false on hardware without on-device AI, and the UI shows a clear card.
-    var isAvailable: Bool {
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *), OnDeviceChat.isAvailable { return true }
-        #endif
-        return false
-    }
+    /// fallback, so this is false on hardware without on-device AI, and the UI shows a clear card
+    /// (see `availability` for exactly which of the three reasons applies).
+    var isAvailable: Bool { availability.isAvailable }
 
     struct ChatError: Error { let message: String }
 
@@ -112,14 +134,15 @@ final class HairChatService {
         messages.append(ChatMessage(role: .user, text: trimmed))
         isRunning = true
         errorMessage = nil
-        defer { isRunning = false }
+        streamingText = nil
+        defer { isRunning = false; streamingText = nil }
         do {
             let reply = try await request(context: context, focus: focus)
             messages.append(ChatMessage(role: .assistant, text: reply))
         } catch let e as ChatError {
             errorMessage = e.message
         } catch {
-            errorMessage = "Couldn't reach the chat service. Check your connection and try again."
+            errorMessage = "Couldn't generate a reply on this device. Try again."
         }
     }
 
@@ -133,16 +156,22 @@ final class HairChatService {
 
         // On-device only — Apple Intelligence answers with NOTHING leaving the device, so it needs
         // no consent, no key, and no proxy. There is no cloud fallback: hardware without on-device
-        // AI gets a clear, honest message instead (the UI also gates on `isAvailable` up front).
+        // AI gets a clear, reason-specific message instead (the UI also gates on `isAvailable` up
+        // front, via `availability`).
+        let status = availability
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *), OnDeviceChat.isAvailable {
-            if let reply = await OnDeviceChat.reply(system: system, turns: turns), !reply.isEmpty {
+        if #available(iOS 26.0, *), status.isAvailable {
+            if let reply = await OnDeviceChat.reply(
+                system: system, turns: turns,
+                onPartial: { [weak self] partial in self?.streamingText = partial }
+            ), !reply.isEmpty {
                 return reply
             }
+            throw ChatError(message: "Couldn't get a reply. Please try again.")
         }
         #endif
 
-        throw ChatError(message: "On-device chat needs Apple Intelligence (iPhone 15 Pro or newer, iOS 26).")
+        throw ChatError(message: status.message)
     }
 }
 
@@ -157,18 +186,31 @@ enum OnDeviceChat {
         return false
     }
 
-    /// Answer the latest turn on-device. `system` is the grounding/instructions; `turns` is the
-    /// capped conversation (oldest→newest, ending on the user's message). Returns nil to let the
-    /// caller fall back to the cloud — e.g. if the model is unavailable or the context is too large.
-    static func reply(system: String, turns: [(role: String, text: String)]) async -> String? {
+    /// Answer the latest turn on-device, streaming as it generates. `system` is the
+    /// grounding/instructions; `turns` is the capped conversation (oldest→newest, ending on the
+    /// user's message). `onPartial` fires on the main actor with the cumulative text so far after
+    /// every new snapshot, so the UI can show the reply as it's written instead of a blind wait.
+    /// Returns nil when the model is unavailable or the request fails, so the caller can surface
+    /// a clear message.
+    static func reply(
+        system: String,
+        turns: [(role: String, text: String)],
+        onPartial: @MainActor (String) -> Void = { _ in }
+    ) async -> String? {
         guard case .available = SystemLanguageModel.default.availability else { return nil }
         let rendered = turns
             .map { "\($0.role == "assistant" ? "Assistant" : "User"): \($0.text)" }
             .joined(separator: "\n\n")
         let session = LanguageModelSession(instructions: system)
         do {
-            let response = try await session.respond(to: rendered + "\n\nAssistant:")
-            let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stream = session.streamResponse(to: rendered + "\n\nAssistant:")
+            var latest = ""
+            for try await snapshot in stream {
+                latest = snapshot.content
+                let trimmed = latest.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { await onPartial(trimmed) }
+            }
+            let text = latest.trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? nil : text
         } catch {
             return nil

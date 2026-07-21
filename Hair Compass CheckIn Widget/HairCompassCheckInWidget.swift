@@ -1,3 +1,4 @@
+import ActivityKit
 import SwiftUI
 import WidgetKit
 
@@ -277,43 +278,225 @@ private struct MediumWidgetView: View {
 
 // MARK: - Accessory families (Lock Screen / StandBy)
 
+/// accessoryCircular: a ring trimmed to today's check-in state (full when logged, empty when
+/// not — no in-between, this isn't the Compass score) with a checkmark caption and the shielded
+/// streak number centered. System tint colors the ring/text; no WidgetPalette here.
 private struct AccessoryCircularWidgetView: View {
     let snapshot: WidgetSnapshot
 
     var body: some View {
-        ZStack {
-            AccessoryWidgetBackground()
-            Gauge(value: Double(snapshot.score), in: 0...100) {
-                Text("Compass")
-            } currentValueLabel: {
-                Text("\(snapshot.score)")
-            }
-            .gaugeStyle(.accessoryCircularCapacity)
+        Gauge(value: snapshot.hasLoggedToday ? 1.0 : 0.0, in: 0...1) {
+            Image(systemName: "checkmark")
+        } currentValueLabel: {
+            Text("\(snapshot.streakDays)")
         }
+        .gaugeStyle(.accessoryCircular)
         .widgetURL(URL(string: "haircompass://log"))
     }
 }
 
+/// accessoryRectangular: streak + today's status on one line, the next suggested plan step (or a
+/// fallback) on a second. System tint handles color on the Lock Screen / StandBy — no
+/// WidgetPalette colors here.
 private struct AccessoryRectangularWidgetView: View {
     let snapshot: WidgetSnapshot
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Hair Compass")
-                .font(.system(size: 12, weight: .semibold))
+            Label(streakStatusLine, systemImage: snapshot.hasLoggedToday ? "checkmark.circle.fill" : "flame.fill")
+                .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
-            Text(statusLine)
+            Text(nextActionLine)
                 .font(.system(size: 12))
-                .lineLimit(1)
-            Label("\(snapshot.streakDays)", systemImage: "flame.fill")
-                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
         }
-        // System tint handles color on the Lock Screen / StandBy — no WidgetPalette colors here.
         .widgetURL(URL(string: "haircompass://log"))
     }
 
-    private var statusLine: String {
-        snapshot.hasLoggedToday ? "\(snapshot.shedLabel) · \(snapshot.scalpLabel)" : "Log today"
+    private var streakStatusLine: String {
+        let day = "Day \(snapshot.streakDays)"
+        return snapshot.hasLoggedToday ? "\(day) · Logged" : "\(day) · Not logged"
+    }
+
+    private var nextActionLine: String {
+        if let next = snapshot.dueTitles.first { return "Next: \(next)" }
+        return snapshot.hasLoggedToday ? "All steps done" : "Tap to check in"
+    }
+}
+
+/// accessoryInline: a single Lock Screen text row — streak plus a terse check-in status.
+private struct AccessoryInlineWidgetView: View {
+    let snapshot: WidgetSnapshot
+
+    var body: some View {
+        Label(inlineText, systemImage: snapshot.hasLoggedToday ? "checkmark.circle.fill" : "circle")
+            .widgetURL(URL(string: "haircompass://log"))
+    }
+
+    private var inlineText: String {
+        let day = "Day \(snapshot.streakDays)"
+        return snapshot.hasLoggedToday ? "\(day) · check-in done" : "\(day) · log today"
+    }
+}
+
+// MARK: - Ritual Live Activity
+
+/// SF Symbol per launch ritual (`RitualKind.rawValue` in the app target — kept as a plain String
+/// here, see RitualActivityAttributes.swift). Falls back to a neutral glyph for any future kind
+/// this copy of the widget doesn't know about yet, rather than failing to render.
+private enum RitualGlyph {
+    static func symbolName(for kind: String) -> String {
+        switch kind {
+        case "comb": return "comb.fill"
+        case "knot": return "tornado"
+        case "massage": return "water.waves"
+        case "serum": return "drop.fill"
+        default: return "sparkles"
+        }
+    }
+}
+
+/// A ring (progress trim of `state.progress`) with the ritual's glyph centered in it — the
+/// "ritual glyph or progress ring" element reused across the banner, expanded leading region,
+/// and compactLeading. `showsGlyph: false` renders just the ring for the space-starved minimal
+/// presentation.
+private struct RitualGlyphRing: View {
+    let kind: String
+    let progress: Double
+    var size: CGFloat = 28
+    var showsGlyph: Bool = true
+
+    private var lineWidth: CGFloat { max(2, size / 9) }
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(WidgetPalette.copper.opacity(0.22), lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: max(0.03, min(1, progress)))
+                .stroke(WidgetPalette.copper, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            if showsGlyph {
+                Image(systemName: RitualGlyph.symbolName(for: kind))
+                    .font(.system(size: size * 0.42, weight: .semibold))
+                    .foregroundStyle(WidgetPalette.copper)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// Countdown (for the fixed-duration comb/massage phases) or a plain progress bar (for the
+/// interaction-paced knot/serum phases, which have no fixed end time) — used in the banner and
+/// the Dynamic Island's expanded bottom region. `now` is captured once so the countdown range's
+/// lower bound can never end up after its upper bound (which would trap `Text(timerInterval:)`)
+/// if `endDate` is at or just past "now" by the time this renders.
+private struct RitualProgressFooter: View {
+    let state: RitualActivityAttributes.ContentState
+
+    var body: some View {
+        let now = Date()
+        VStack(alignment: .leading, spacing: 6) {
+            if let endDate = state.endDate, endDate > now {
+                Text(timerInterval: now...endDate, countsDown: true)
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(WidgetPalette.copper)
+            }
+            ProgressView(value: state.progress)
+                .tint(WidgetPalette.copper)
+        }
+    }
+}
+
+/// compactTrailing: a short countdown while a fixed-duration phase is running, otherwise the
+/// completion percentage. Same "now captured once" guard as `RitualProgressFooter`.
+private struct RitualCompactTrailing: View {
+    let state: RitualActivityAttributes.ContentState
+
+    var body: some View {
+        let now = Date()
+        if let endDate = state.endDate, endDate > now {
+            Text(timerInterval: now...endDate, countsDown: true)
+                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .foregroundStyle(WidgetPalette.copper)
+                .frame(width: 34)
+        } else {
+            Text("\(Int((state.progress * 100).rounded()))%")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(WidgetPalette.copper)
+        }
+    }
+}
+
+/// Lock Screen / banner presentation: ritual glyph ring, name + current step, and the
+/// countdown-or-progress readout.
+private struct RitualActivityBannerView: View {
+    let attributes: RitualActivityAttributes
+    let state: RitualActivityAttributes.ContentState
+
+    var body: some View {
+        HStack(spacing: 14) {
+            RitualGlyphRing(kind: attributes.ritualKind, progress: state.progress, size: 40)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(attributes.ritualName)
+                    .font(.system(size: 15, weight: .semibold, design: .serif))
+                    .foregroundStyle(WidgetPalette.ink)
+                Text(state.stepName)
+                    .font(.system(size: 12))
+                    .foregroundStyle(WidgetPalette.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            RitualProgressFooter(state: state)
+                .frame(width: 84)
+        }
+        .padding(16)
+    }
+}
+
+/// Live Activity for a launch ritual (Feature/Ritual/RitualView.swift, app target) — started,
+/// updated, and ended by Service/RitualActivityService.swift. See RitualActivityAttributes.swift
+/// in this target for the required-identical-to-the-app-target contract.
+struct RitualLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: RitualActivityAttributes.self) { context in
+            RitualActivityBannerView(attributes: context.attributes, state: context.state)
+                .activityBackgroundTint(WidgetPalette.canvas)
+                .activitySystemActionForegroundColor(WidgetPalette.ink)
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    RitualGlyphRing(kind: context.attributes.ritualKind, progress: context.state.progress, size: 30)
+                        .padding(.leading, 4)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    VStack(spacing: 2) {
+                        Text(context.attributes.ritualName)
+                            .font(.system(size: 13, weight: .semibold, design: .serif))
+                            .foregroundStyle(.primary)
+                        Text(context.state.stepName)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    RitualProgressFooter(state: context.state)
+                        .padding(.horizontal, 4)
+                }
+            } compactLeading: {
+                RitualGlyphRing(kind: context.attributes.ritualKind, progress: context.state.progress, size: 20)
+            } compactTrailing: {
+                RitualCompactTrailing(state: context.state)
+            } minimal: {
+                RitualGlyphRing(kind: context.attributes.ritualKind, progress: context.state.progress, size: 16, showsGlyph: false)
+            }
+            .widgetURL(URL(string: "haircompass://"))
+            .keylineTint(WidgetPalette.copper)
+        }
     }
 }
 
@@ -331,6 +514,8 @@ struct HairCompassWidgetView: View {
             AccessoryCircularWidgetView(snapshot: entry.snapshot)
         case .accessoryRectangular:
             AccessoryRectangularWidgetView(snapshot: entry.snapshot)
+        case .accessoryInline:
+            AccessoryInlineWidgetView(snapshot: entry.snapshot)
         default:
             SmallWidgetView(snapshot: entry.snapshot)
         }
@@ -344,8 +529,11 @@ struct HairCompassCheckInWidget: Widget {
             HairCompassWidgetView(entry: entry)
         }
         .configurationDisplayName("Compass")
-        .description("Your rings, streak, and a one-tap check-in.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular])
+        .description("Your rings, streak, and a one-tap check-in — on the Home Screen and Lock Screen.")
+        .supportedFamilies([
+            .systemSmall, .systemMedium,
+            .accessoryCircular, .accessoryRectangular, .accessoryInline
+        ])
     }
 }
 
@@ -353,5 +541,6 @@ struct HairCompassCheckInWidget: Widget {
 struct HairCompassCheckInWidgetBundle: WidgetBundle {
     var body: some Widget {
         HairCompassCheckInWidget()
+        RitualLiveActivity()
     }
 }

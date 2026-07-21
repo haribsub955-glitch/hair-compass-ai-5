@@ -57,7 +57,7 @@ struct AddTreatmentSheet: View {
                                             selectClass(c)
                                         } label: {
                                             Label(c.title, systemImage: c.symbol)
-                                                .font(.system(size: 14, weight: on ? .semibold : .regular))
+                                                .font(Clinical.body(14, weight: on ? .semibold : .regular))
                                                 .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                                                 .padding(.horizontal, 13).padding(.vertical, 9)
                                                 .background(on ? Clinical.ink : Clinical.surface)
@@ -75,6 +75,10 @@ struct AddTreatmentSheet: View {
                                 withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(c, anchor: .center) }
                             }
                         }
+                        Text(TreatmentGuide.shortExpectation(for: treatmentClass))
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
                     }
 
                     let presets = TreatmentGuide.presets(for: treatmentClass)
@@ -84,7 +88,7 @@ struct AddTreatmentSheet: View {
                                 ForEach(presets) { p in presetChip(p) }
                             }
                             Text("A common regimen — confirm what's right for you with your prescriber.")
-                                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                                .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                         }
                     }
 
@@ -99,7 +103,7 @@ struct AddTreatmentSheet: View {
                         section("Daily times") {
                             textField("08:00,21:00", text: $times)
                             Text("Comma-separated 24-hour times. Drives adherence math.")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
                     }
 
@@ -109,14 +113,14 @@ struct AddTreatmentSheet: View {
                             Text(scheduledWeekdays.isEmpty
                                  ? "Every day. Tap days to use it only on those."
                                  : "Shows in your routine on the selected days.")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
                     }
 
                     section("Start date") {
                         DateStripPicker(selection: $startDate)
                         Text("Sets the 24-week assessment clock.")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
 
                     section("Refill by (optional)") {
@@ -126,7 +130,7 @@ struct AddTreatmentSheet: View {
                                 range: refillRange
                             )
                             Button("Clear refill date") { refillBy = nil }
-                                .font(.system(size: 13, weight: .medium))
+                                .font(Clinical.body(13, weight: .medium))
                                 .foregroundStyle(Clinical.secondary)
                                 .buttonStyle(.plain)
                         } else {
@@ -135,7 +139,7 @@ struct AddTreatmentSheet: View {
                             }
                             .buttonStyle(ClinicalButtonStyle(filled: false))
                             Text("When your current supply runs out — you'll see a heads-up before it lapses.")
-                                .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
                     }
 
@@ -245,6 +249,7 @@ struct AddTreatmentSheet: View {
         switch treatmentClass {
         case .minoxidil: return "e.g. 1 mL"
         case .finasteride, .dutasteride: return "e.g. 1 mg"
+        case .spironolactone: return "e.g. 100 mg"
         case .microneedling: return "e.g. 1.5 mm roller"
         case .prp, .lllt: return "e.g. per clinic protocol"
         case .shampoo: return "e.g. coin-sized, 2\u{2013}3\u{00d7} a week"
@@ -259,6 +264,7 @@ struct AddTreatmentSheet: View {
         case .minoxidil: return "e.g. Minoxidil 5%"
         case .finasteride: return "e.g. Finasteride 1 mg"
         case .dutasteride: return "e.g. Dutasteride 0.5 mg"
+        case .spironolactone: return "e.g. Spironolactone 100 mg"
         case .microneedling: return "e.g. Dermaroller"
         case .prp: return "e.g. PRP session"
         case .lllt: return "e.g. Laser cap"
@@ -311,16 +317,16 @@ struct AddTreatmentSheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
                     Image(systemName: applied ? "checkmark.circle.fill" : "sparkles")
-                        .font(.system(size: 11))
+                        .font(Clinical.caption(11))
                         .foregroundStyle(applied ? Clinical.accent : Clinical.gold)
                     Text(p.label)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(Clinical.body(13, weight: .semibold))
                         .foregroundStyle(Clinical.ink)
                 }
                 Text(p.summary)
-                    .font(.system(size: 11)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.secondary)
                 Text(p.note)
-                    .font(.system(size: 10)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(10)).foregroundStyle(Clinical.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -348,7 +354,7 @@ struct AddTreatmentSheet: View {
                     UISelectionFeedbackGenerator().selectionChanged()
                 } label: {
                     Text(day.label)
-                        .font(.system(size: 14, weight: on ? .semibold : .regular))
+                        .font(Clinical.body(14, weight: on ? .semibold : .regular))
                         .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                         .frame(width: 40, height: 40)
                         .background(on ? Clinical.accent : Clinical.surface, in: Circle())
@@ -370,7 +376,7 @@ struct AddTreatmentSheet: View {
             text: text,
             prompt: Text(placeholder).foregroundStyle(Clinical.secondary.opacity(0.78))
         )
-            .font(.system(size: 16))
+            .font(Clinical.caption(16))
             .foregroundStyle(Clinical.ink)
             .tint(Clinical.accent)
             .textFieldStyle(.plain)
@@ -399,7 +405,7 @@ struct AddTreatmentSheet: View {
 
                 PhotosPicker(selection: $ingredientPickerItem, matching: .images) {
                     Label(ingredientImage == nil ? "Add a photo of the label" : "Replace photo", systemImage: "camera")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(Clinical.body(14, weight: .medium))
                 }
                 .buttonStyle(ClinicalButtonStyle(filled: false))
                 .onChange(of: ingredientPickerItem) { _, item in loadIngredientPhoto(item) }
@@ -409,7 +415,7 @@ struct AddTreatmentSheet: View {
                         Label("Read on the label", systemImage: "text.viewfinder")
                             .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.tertiary)
                         Text(detectedLabelText)
-                            .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                             .lineLimit(4)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -421,7 +427,7 @@ struct AddTreatmentSheet: View {
                 if ingredientImage != nil, analysisService.isAvailable {
                     Button(action: analyzeIngredientsTapped) {
                         Label(analysisService.isRunning ? "Analyzing…" : "Analyze with AI", systemImage: "sparkles")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(Clinical.body(14, weight: .medium))
                     }
                     .buttonStyle(ClinicalButtonStyle(filled: false))
                     .disabled(analysisService.isRunning || detectedLabelText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -429,19 +435,19 @@ struct AddTreatmentSheet: View {
                     if !aiIngredientSummary.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(aiIngredientSummary)
-                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                             Text("AI summary · not medical advice")
-                                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                                .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                         }
                     }
 
                     if let error = analysisService.errorMessage {
-                        Text(error).font(.system(size: 12)).foregroundStyle(Clinical.critical)
+                        Text(error).font(Clinical.caption(12)).foregroundStyle(Clinical.critical)
                     }
                 }
 
                 Text("Reads the label on your device to identify what it is — private, nothing leaves your iPhone. Record-keeping, not medical advice.")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
             }
         }
     }

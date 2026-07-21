@@ -12,6 +12,9 @@ struct PhotoDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    /// Drives the delete confirmation dialog — the JPEG on disk is gone the moment it confirms,
+    /// unrecoverable, so the button below only asks for confirmation rather than deleting on tap.
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -38,6 +41,16 @@ struct PhotoDetailView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
             }
+            .confirmationDialog(
+                "Delete this photo permanently?",
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive, action: delete)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("It can't be recovered.")
+            }
         }
     }
 
@@ -55,7 +68,7 @@ struct PhotoDetailView: View {
                 if let ui = PhotoStore.shared.loadThumbnail(record.imagePath, maxPixel: 1400) {
                     Image(uiImage: ui).resizable().scaledToFit()
                 } else {
-                    Image(systemName: "photo").font(.system(size: 28)).foregroundStyle(Clinical.tertiary)
+                    Image(systemName: "photo").font(Clinical.caption(28)).foregroundStyle(Clinical.tertiary)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -95,7 +108,7 @@ struct PhotoDetailView: View {
     private func metaChip(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label.uppercased()).font(Clinical.eyebrow(8)).tracking(0.6).foregroundStyle(Clinical.tertiary)
-            Text(value).font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.ink)
+            Text(value).font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.ink)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(Clinical.surface)
@@ -110,9 +123,9 @@ struct PhotoDetailView: View {
     /// language (15pt corner radius, 15pt vertical padding), recolored to `Clinical.critical` so
     /// it still reads as a deliberate, unmistakably destructive action.
     private var deleteButton: some View {
-        Button(role: .destructive, action: delete) {
+        Button(role: .destructive) { showDeleteConfirm = true } label: {
             Label("Delete photo", systemImage: "trash")
-                .font(.system(size: 16, weight: .semibold))
+                .font(Clinical.body(16, weight: .semibold))
                 .foregroundStyle(Clinical.critical)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)

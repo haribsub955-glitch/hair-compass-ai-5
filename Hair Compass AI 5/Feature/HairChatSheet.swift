@@ -1,18 +1,31 @@
 import SwiftUI
+import UIKit
 
-/// The hair-science chat sheet, opened from the Compare screen's "Ask AI" chip. Explains the
-/// on-screen relationship over the canonical `AIContext` JSON and allows restricted chatting —
-/// hair science and the person's own data only (the restriction lives in `HairChatPrompt.system`).
-/// Text only: photos never enter this feature, and it runs entirely on-device (Apple Intelligence)
-/// — nothing leaves the device. Shows a clear card on hardware without on-device AI.
+/// The hair-science chat sheet — opened from the Compare screen's "Ask AI" chip over a specific
+/// chart, from Today's "Ask AI" button over the whole record, and from Deep analysis's
+/// "Ask a follow-up question" chip. Explains the on-screen context over the canonical `AIContext`
+/// JSON and allows restricted chatting — hair science and the person's own data only (the
+/// restriction lives in `HairChatPrompt.system`). Header copy and starter questions are
+/// parameterized (`eyebrow`/`title`/`starterKind`) so each entry point reads naturally. Text
+/// only: photos never enter this feature, and it runs entirely on-device (Apple Intelligence) —
+/// nothing leaves the device. Shows a clear card on hardware without on-device AI.
 struct HairChatSheet: View {
     /// `AIContext.jsonString()` snapshot built by the caller when the sheet opens.
     let contextJSON: String
-    /// One line describing what comparison is on screen, so answers land on it.
+    /// One line describing what's on screen, so answers land on it — a specific chart
+    /// comparison, or the person's whole record when opened from Today/deep analysis.
     let focus: String
+    /// Header eyebrow — defaults to the original Compare-sheet copy so existing callers are
+    /// unaffected. Override for entry points that aren't about a chart.
+    var eyebrow: String = "Ask about your data"
+    /// Header title — defaults to the original Compare-sheet copy.
+    var title: String = "Explain this chart"
+    /// Which starter questions to show in the empty state — see `HairChatPrompt.StarterKind`.
+    var starterKind: HairChatPrompt.StarterKind = .chartComparison
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     @State private var service = HairChatService()
     @State private var draft = ""
     @FocusState private var inputFocused: Bool
@@ -46,15 +59,15 @@ struct HairChatSheet: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 5) {
-                Eyebrow(text: "Ask about your data")
-                Text("Explain this chart")
+                Eyebrow(text: eyebrow)
+                Text(title)
                     .font(Clinical.headline(24))
                     .foregroundStyle(Clinical.ink)
             }
             Spacer()
             Button { dismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(Clinical.body(13, weight: .semibold))
                     .foregroundStyle(Clinical.secondary)
                     .frame(width: 30, height: 30)
                     .background(Clinical.surface, in: Circle())
@@ -78,7 +91,9 @@ struct HairChatSheet: View {
                         emptyState
                     }
                     ForEach(service.messages) { bubble($0) }
-                    if service.isRunning {
+                    if let streaming = service.streamingText {
+                        streamingBubble(streaming)
+                    } else if service.isRunning {
                         thinkingRow.id("thinking")
                     }
                     if let error = service.errorMessage {
@@ -94,6 +109,7 @@ struct HairChatSheet: View {
                     value: service.messages.count
                 )
                 .animation(.easeOut(duration: 0.2), value: service.isRunning)
+                .animation(.easeOut(duration: 0.2), value: service.streamingText != nil)
             }
             .onChange(of: service.messages.count) {
                 guard let last = service.messages.last else { return }
@@ -103,6 +119,10 @@ struct HairChatSheet: View {
                 guard service.isRunning else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("thinking", anchor: .bottom) }
             }
+            .onChange(of: service.streamingText) {
+                guard service.streamingText != nil else { return }
+                proxy.scrollTo("streaming", anchor: .bottom)
+            }
         }
     }
 
@@ -111,7 +131,7 @@ struct HairChatSheet: View {
         return HStack(spacing: 0) {
             if isUser { Spacer(minLength: 44) }
             Text(message.text)
-                .font(.system(size: 14))
+                .font(Clinical.caption(14))
                 .foregroundStyle(isUser ? Clinical.surface : Clinical.ink)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -134,18 +154,42 @@ struct HairChatSheet: View {
         .id(message.id)
     }
 
+    /// The assistant's reply rendered live as it streams in, replacing the thinking dots the
+    /// moment the first token arrives. Same look as a finished assistant bubble in `bubble(_:)`,
+    /// just re-rendered on every new snapshot instead of once at the end.
+    private func streamingBubble(_ text: String) -> some View {
+        HStack(spacing: 0) {
+            Text(text)
+                .font(Clinical.caption(14))
+                .foregroundStyle(Clinical.ink)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Clinical.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Clinical.hairline, lineWidth: 1)
+                )
+            Spacer(minLength: 44)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .id("streaming")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Assistant is typing: \(text)")
+    }
+
     private var thinkingRow: some View {
         HStack(spacing: 8) {
             if reduceMotion {
                 // Reduce Motion: no looping animation — a static ellipsis.
                 Text("…")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(Clinical.body(13, weight: .semibold))
                     .foregroundStyle(Clinical.tertiary)
                     .accessibilityHidden(true)
             } else {
                 ThinkingDots()
             }
-            Text("Thinking").font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+            Text("Thinking").font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
         }
         .transition(.opacity)
         .accessibilityLabel("Assistant is thinking")
@@ -153,7 +197,7 @@ struct HairChatSheet: View {
 
     private func errorRow(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12))
+            .font(Clinical.caption(12))
             .foregroundStyle(Clinical.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -170,13 +214,13 @@ struct HairChatSheet: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             Text("Answers stay about hair science and your own data. Not medical advice.")
-                .font(.system(size: 13))
+                .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(HairChatPrompt.starters(focus: focus).enumerated()), id: \.element) { index, starter in
+                ForEach(Array(HairChatPrompt.starters(focus: focus, kind: starterKind).enumerated()), id: \.element) { index, starter in
                     Button { submit(starter) } label: {
                         Text(starter)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(Clinical.body(13, weight: .medium))
                             .foregroundStyle(Clinical.accent)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 9)
@@ -197,7 +241,7 @@ struct HairChatSheet: View {
     private var inputBar: some View {
         HStack(spacing: 10) {
             TextField("Ask about your hair data…", text: $draft, axis: .vertical)
-                .font(.system(size: 14))
+                .font(Clinical.caption(14))
                 .foregroundStyle(Clinical.ink)
                 .lineLimit(1...4)
                 .padding(.horizontal, 14)
@@ -212,7 +256,7 @@ struct HairChatSheet: View {
                 .onSubmit { submit(draft) }
             Button { submit(draft) } label: {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(Clinical.body(15, weight: .semibold))
                     .foregroundStyle(Clinical.surface)
                     .frame(width: 38, height: 38)
                     .background(Clinical.accent)
@@ -240,24 +284,35 @@ struct HairChatSheet: View {
         Task { await service.send(trimmed, context: contextJSON, focus: focus) }
     }
 
-    // Shown on hardware without Apple Intelligence — chat runs on-device only, so there's no
-    // cloud fallback. Honest and reassuring: everything else in the app still works.
+    // Shown when on-device chat can't run right now. Chat is on-device only, so there's no cloud
+    // fallback — but the reason matters: someone who's simply switched Apple Intelligence off, or
+    // whose model is still downloading, gets a next step instead of being told their iPhone can't
+    // do this. Honest and reassuring either way: everything else in the app still works.
     private var unavailableNotice: some View {
-        VStack(spacing: 12) {
+        let status = service.availability
+        return VStack(spacing: 12) {
             Spacer(minLength: 20)
             Image(systemName: "sparkles")
-                .font(.system(size: 24))
+                .font(Clinical.caption(24))
                 .foregroundStyle(Clinical.accent)
                 .frame(width: 56, height: 56)
                 .background(Clinical.accentSoft, in: Circle())
             Text("On-device AI unavailable")
                 .font(Clinical.headline(18))
                 .foregroundStyle(Clinical.ink)
-            Text("Hair chat runs privately on your device with Apple Intelligence, which needs an iPhone 15 Pro or newer on iOS 26. Everything else in Hair Compass works fully on this device.")
-                .font(.system(size: 13))
+            Text(status.message)
+                .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+            if status.showsSettingsButton {
+                Button("Open Settings") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    openURL(url)
+                }
+                .buttonStyle(ClinicalButtonStyle(filled: false))
+                .accessibilityIdentifier("hairChatOpenSettings")
+            }
             Spacer(minLength: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -13,6 +13,8 @@ struct LabsView: View {
     /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
     /// directly from the ScrollView's own content offset.
     @State private var headerCondense: CGFloat = 0
+    /// Non-nil while the "Delete latest draw" context-menu confirmation is up.
+    @State private var deleteLabCandidate: LabResult?
 
     /// The most recent result (labs are sorted newest-first) that maps to a proposal — kept as
     /// the result itself, not just the derived proposal, so the matching test's card
@@ -87,7 +89,7 @@ struct LabsView: View {
                     // line stays a footnote at the very bottom.
                     if let sharedDrawDate {
                         Text("Drawn \(sharedDrawDate.formatted(.dateTime.day().month(.abbreviated).year()))")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                     }
                     labLedger
                     referenceFootnote
@@ -112,6 +114,24 @@ struct LabsView: View {
             if let proposal = latestProposal {
                 LabProposalSheet(proposal: proposal)
             }
+        }
+        // The ledger row's context-menu delete — confirm-first, matching every other
+        // irreversible delete in the app.
+        .confirmationDialog(
+            deleteLabCandidate.map { "Delete latest \($0.test.title) draw?" } ?? "Delete this draw?",
+            isPresented: Binding(
+                get: { deleteLabCandidate != nil },
+                set: { if !$0 { deleteLabCandidate = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let lab = deleteLabCandidate { context.delete(lab) }
+                deleteLabCandidate = nil
+            }
+            Button("Cancel", role: .cancel) { deleteLabCandidate = nil }
+        } message: {
+            Text("This can't be undone.")
         }
         .onAppear {
             #if DEBUG
@@ -140,10 +160,10 @@ struct LabsView: View {
                 )
                 VStack(alignment: .leading, spacing: 7) {
                     Label("Lab context", systemImage: "testtube.2")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(Clinical.body(14, weight: .semibold))
                         .foregroundStyle(Clinical.ink)
                     Text("Use reference ranges as context—not a diagnosis. Choose tests with a clinician rather than ordering a blanket panel.")
-                        .font(.system(size: 13))
+                        .font(Clinical.caption(13))
                         .foregroundStyle(Clinical.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 245, alignment: .leading)
@@ -203,19 +223,19 @@ struct LabsView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(test.title).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(Clinical.ink)
+                    Text(test.title).font(Clinical.body(15.5, weight: .semibold)).foregroundStyle(Clinical.ink)
                     if let previous {
                         Text("\(oneDecimal(previous.value)) → \(oneDecimal(latest.value)) \(test.unit) since \(previous.collectedAt.formatted(.dateTime.month(.abbreviated).day()))")
-                            .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     } else if sharedDrawDate == nil {
                         // When every visible test shares one draw date, it's already said once
                         // at the top of the ledger (see `sharedDrawDate`) — repeating it on every
                         // single-draw row below would say the same date three times down the page.
                         Text(latest.collectedAt.formatted(.dateTime.month().day().year()))
-                            .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                     }
                     if !latest.note.isEmpty {
-                        Text(latest.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        Text(latest.note).font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                     }
                 }
                 Spacer()
@@ -261,7 +281,7 @@ struct LabsView: View {
             }
             if latest.hasCustomRange {
                 Text("Range from your lab report, not the app default.")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
             }
 
             if results.count > 1 {
@@ -274,7 +294,7 @@ struct LabsView: View {
 
             if improving {
                 Label("Moving toward range — worth confirming with your clinician.", systemImage: "arrow.up.forward")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(Clinical.body(12, weight: .medium))
                     .foregroundStyle(Clinical.positive)
             }
 
@@ -285,16 +305,16 @@ struct LabsView: View {
                 Button { showProposalDetail = true } label: {
                     HStack(spacing: 8) {
                         Image(systemName: proposal.kind == .clinician ? "stethoscope" : "leaf.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(Clinical.body(12, weight: .semibold))
                             .foregroundStyle(Clinical.accent)
                         Text(proposal.deficiency)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(Clinical.body(12, weight: .medium))
                             .foregroundStyle(Clinical.accent)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 4)
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(Clinical.body(10, weight: .semibold))
                             .foregroundStyle(Clinical.accent.opacity(0.7))
                     }
                 }
@@ -305,7 +325,7 @@ struct LabsView: View {
         }
         .padding(.vertical, 16)
         .contextMenu {
-            Button("Delete latest draw", role: .destructive) { context.delete(latest) }
+            Button("Delete latest draw", role: .destructive) { deleteLabCandidate = latest }
         }
     }
 
@@ -320,12 +340,12 @@ struct LabsView: View {
                 ForEach(LabTest.allCases) { test in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text(test.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                            Text(test.title).font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.ink)
                             Spacer()
                             Text("\(test.referenceRange.lowerBound.formatted())–\(test.referenceRange.upperBound.formatted()) \(test.unit)")
                                 .font(Clinical.number(12)).foregroundStyle(Clinical.secondary)
                         }
-                        Text(test.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                        Text(test.note).font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                     }
                     if test != LabTest.allCases.last { Divider().overlay(Clinical.hairline) }
                 }
@@ -357,11 +377,11 @@ struct LabsView: View {
             } label: {
                 HStack(spacing: 10) {
                     Text("Tests derms order for hair loss")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(Clinical.body(14, weight: .medium))
                         .foregroundStyle(Clinical.ink)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(Clinical.body(11, weight: .semibold))
                         .foregroundStyle(Clinical.accent)
                         .rotationEffect(.degrees(referenceExpanded ? 90 : 0))
                 }
@@ -377,12 +397,12 @@ struct LabsView: View {
                     ForEach(LabTest.allCases) { test in
                         VStack(alignment: .leading, spacing: 2) {
                             HStack {
-                                Text(test.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                                Text(test.title).font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.ink)
                                 Spacer()
                                 Text("\(test.referenceRange.lowerBound.formatted())–\(test.referenceRange.upperBound.formatted()) \(test.unit)")
                                     .font(Clinical.number(12)).foregroundStyle(Clinical.secondary)
                             }
-                            Text(test.note).font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                            Text(test.note).font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                         }
                         if test != LabTest.allCases.last { Divider().overlay(Clinical.hairline) }
                     }

@@ -20,6 +20,10 @@ struct PhotosView: View {
     /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
     /// directly from the ScrollView's own content offset.
     @State private var headerCondense: CGFloat = 0
+    /// Non-nil while the grid's context-menu delete confirmation is up — the JPEG on disk is
+    /// gone the moment this confirms, unrecoverable, so it's confirm-first rather than an
+    /// instant single-tap delete.
+    @State private var deletePhotoCandidate: PhotoRecord?
     /// Drives the region picker's sliding copper underline — see `InkTabs`.
     @Namespace private var regionNamespace
 
@@ -63,10 +67,12 @@ struct PhotosView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
-                // Round-5: the header "+" is gone — Capture (empty state) and "Add older
-                // photos" already cover both paths to adding a photo, and this tab's empty
-                // screen used to say "add a photo" three ways at once (header +, Capture
-                // button, Add-older link). One header, no trailing control.
+                // Round-5 removed the header "+", reasoning that the empty state's Capture
+                // button and "Add older photos" link already covered both paths — but both of
+                // those live *inside* the per-region empty state, so a region with a baseline
+                // shot already had no visible way to add the next follow-up. `captureRow` below
+                // restores that affordance once there's something to shoot alongside, so the
+                // header itself stays a single instruction with no trailing control.
                 ScreenHeader(
                     eyebrow: "Documentation",
                     title: "Photos",
@@ -87,9 +93,9 @@ struct PhotosView: View {
                 if !photos.isEmpty {
                     ClinicalCard(padding: 14) {
                         HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: "camera.metering.center.weighted").font(.system(size: 15)).foregroundStyle(Clinical.accent)
+                            Image(systemName: "camera.metering.center.weighted").font(Clinical.caption(15)).foregroundStyle(Clinical.accent)
                             Text("Compare only same-region shots taken under matched lighting, distance and parting. A phone can't do trichoscopy — that needs a clip-on dermatoscope.")
-                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                         }
                     }
                     .staggeredEntrance(index: 1)
@@ -109,6 +115,8 @@ struct PhotosView: View {
                 } else {
                     journeyCard
                         .staggeredEntrance(index: 3)
+                    captureRow
+                        .staggeredEntrance(index: 4)
                     grid
                 }
             }
@@ -127,6 +135,27 @@ struct PhotosView: View {
         }
         .sheet(item: $journey) { presentation in
             JourneyPlayerView(frames: presentation.frames, isExample: presentation.isExample)
+        }
+        // The grid's context-menu delete — the JPEG is removed from disk the moment this
+        // confirms, so it's confirm-first like every other irreversible delete in the app.
+        .confirmationDialog(
+            "Delete this photo permanently?",
+            isPresented: Binding(
+                get: { deletePhotoCandidate != nil },
+                set: { if !$0 { deletePhotoCandidate = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let record = deletePhotoCandidate {
+                    PhotoStore.shared.delete(record.imagePath)
+                    context.delete(record)
+                }
+                deletePhotoCandidate = nil
+            }
+            Button("Cancel", role: .cancel) { deletePhotoCandidate = nil }
+        } message: {
+            Text("It can't be recovered.")
         }
         .onAppear {
             #if DEBUG
@@ -154,7 +183,7 @@ struct PhotosView: View {
                 Text("\(photos.count) photo\(photos.count == 1 ? "" : "s") · \(regionsWithPhotos.count) of \(PhotoRegion.allCases.count) regions · last \(latest.createdAt.formatted(.relative(presentation: .named)))")
             }
         }
-        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
     }
 
     /// The same quiet text-tab language as Trends' range picker: plain region names with a
@@ -174,7 +203,7 @@ struct PhotosView: View {
             ) { r, isOn in
                 HStack(spacing: 5) {
                     Text(r.title)
-                        .font(.system(size: 13, weight: isOn ? .semibold : .regular))
+                        .font(Clinical.body(13, weight: isOn ? .semibold : .regular))
                         .foregroundStyle(isOn ? Clinical.ink : Clinical.secondary)
                     if regionsWithPhotos.contains(r) {
                         Circle().fill(Clinical.accent).frame(width: 5, height: 5)
@@ -214,7 +243,7 @@ struct PhotosView: View {
                             .offset(x: geo.size.width * comparePosition - 1)
                             .shadow(radius: 3)
                         Circle().fill(Clinical.surface).frame(width: 34, height: 34).shadow(radius: 3)
-                            .overlay(Image(systemName: "arrow.left.and.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Clinical.accent))
+                            .overlay(Image(systemName: "arrow.left.and.right").font(Clinical.body(12, weight: .semibold)).foregroundStyle(Clinical.accent))
                             .position(x: geo.size.width * comparePosition, y: geo.size.height / 2)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -234,7 +263,7 @@ struct PhotosView: View {
                 }
                 if let mismatch {
                     Label(mismatch, systemImage: "exclamationmark.triangle")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(Clinical.body(11, weight: .medium))
                         .foregroundStyle(Clinical.warning)
                 }
             }
@@ -261,7 +290,7 @@ struct PhotosView: View {
             HStack(spacing: 3) {
                 Text("\(label) · \(selected.createdAt.formatted(.dateTime.month().day().year()))")
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .semibold))
+                    .font(Clinical.body(7, weight: .semibold))
             }
             .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
         }
@@ -277,13 +306,13 @@ struct PhotosView: View {
         VStack(spacing: 12) {
             ViewfinderFrame(size: 140)
             Text("No photos yet — capture to start a comparable series.")
-                .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)
             Button {
                 showAdd = true
             } label: {
                 Label("Capture", systemImage: "camera")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Clinical.body(12, weight: .semibold))
                     .foregroundStyle(Clinical.surface)
                     .padding(.horizontal, 16)
                     .frame(minHeight: 34)
@@ -304,7 +333,7 @@ struct PhotosView: View {
                 }
             }
             .buttonStyle(.plain)
-            .font(.system(size: 13, weight: .medium))
+            .font(Clinical.body(13, weight: .medium))
             .foregroundStyle(Clinical.accent)
         }
         .frame(maxWidth: .infinity)
@@ -320,14 +349,14 @@ struct PhotosView: View {
                 Eyebrow(text: "Journey")
                 if regionPhotos.count >= 2 {
                     Text("Play your \(region.title.lowercased()) captures as a scrubbable timelapse.")
-                        .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                        .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                     Button("Play journey · \(regionPhotos.count) photos") {
                         journey = JourneyPresentation(frames: regionFrames(), isExample: false)
                     }
                     .buttonStyle(ClinicalButtonStyle())
                 } else {
                     Text("Capture a few \(region.title.lowercased()) photos to build your own — here's what one looks like.")
-                        .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                        .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                     Button("See an example journey") {
                         journey = JourneyPresentation(frames: exampleFrames(), isExample: true)
                     }
@@ -335,6 +364,42 @@ struct PhotosView: View {
                 }
             }
         }
+    }
+
+    /// The persistent capture affordance for a region that already has photos — the counterpart
+    /// to `emptyState`'s Capture button for every capture after the first. Sits directly above
+    /// the grid so it reads as "shoot the next one" rather than competing with the compare/journey
+    /// cards above, and pairs the button with how long it's been since this region's last shot so
+    /// the same row doubles as the due-ness cue for the monthly follow-up.
+    private var captureRow: some View {
+        HStack(spacing: 10) {
+            Button {
+                showAdd = true
+            } label: {
+                Label("Capture \(region.title)", systemImage: "camera")
+                    .font(Clinical.body(12, weight: .semibold))
+                    .foregroundStyle(Clinical.surface)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 34)
+                    .background(Clinical.accent, in: Capsule())
+                    .shadow(color: Clinical.accent.opacity(0.24), radius: 8, y: 3)
+            }
+            .buttonStyle(.clinicalPressable)
+            .accessibilityLabel("Capture \(region.title.lowercased()) photo")
+            Spacer(minLength: 8)
+            if let lastCaptureRecency {
+                Text(lastCaptureRecency)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.secondary)
+                    .multilineTextAlignment(.trailing)
+            }
+        }
+    }
+
+    /// "last frontal photo 34 days ago" — the current region's most recent capture, relative-
+    /// formatted. `regionPhotos` is sorted oldest → newest, so `.last` is the newest.
+    private var lastCaptureRecency: String? {
+        guard let latest = regionPhotos.last else { return nil }
+        return "Last \(region.title.lowercased()) photo \(latest.createdAt.formatted(.relative(presentation: .named)))"
     }
 
     /// Oldest → newest thumbnails for the current region, captioned by capture date.
@@ -380,10 +445,7 @@ struct PhotosView: View {
                 .accessibilityLabel("\(region.title) photo, \(record.createdAt.formatted(.dateTime.month().day().year()))")
                 .accessibilityHint("Opens the full photo")
                 .contextMenu {
-                    Button("Delete", role: .destructive) {
-                        PhotoStore.shared.delete(record.imagePath)
-                        context.delete(record)
-                    }
+                    Button("Delete", role: .destructive) { deletePhotoCandidate = record }
                 }
                 // Tiles continue the stack's stagger; capped so a long grid doesn't
                 // keep staggering forever.

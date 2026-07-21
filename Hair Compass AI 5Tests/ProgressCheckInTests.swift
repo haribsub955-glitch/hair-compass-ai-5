@@ -76,4 +76,35 @@ struct ProgressCheckInTests {
         let withoutNote = ProgressCheckIn()
         #expect(!withoutNote.clinicianSummary().contains { $0.hasPrefix("Note:") })
     }
+
+    // MARK: - Patches (alopecia areata-only; nil means "not asked")
+
+    @Test func noPatchLineWhenPatchTrendWasNeverAsked() {
+        let checkIn = ProgressCheckIn(regrowth: .visible, density: .better)
+        #expect(checkIn.patchTrend == nil)
+        #expect(!checkIn.clinicianSummary().contains { $0.hasPrefix("Patches:") })
+    }
+
+    @Test func patchLineAppearsWithTheRightDirectionWhenAnswered() {
+        let worse = ProgressCheckIn(patchTrend: .worse)
+        #expect(worse.clinicianSummary().contains("Patches: new or larger"))
+
+        let better = ProgressCheckIn(patchTrend: .better)
+        #expect(better.clinicianSummary().contains("Patches: fewer or smaller"))
+
+        let same = ProgressCheckIn(patchTrend: .same)
+        #expect(same.clinicianSummary().contains("Patches: about the same"))
+    }
+
+    @Test func patchTrendRoundTripsThroughTheStoredRawValue() {
+        let checkIn = ProgressCheckIn()
+        #expect(checkIn.patchTrend == nil)
+
+        checkIn.patchTrend = .worse
+        #expect(checkIn.patchTrendRaw == ProgressTrend.worse.rawValue)
+        #expect(checkIn.patchTrend == .worse)
+
+        checkIn.patchTrend = nil
+        #expect(checkIn.patchTrendRaw == nil)
+    }
 }

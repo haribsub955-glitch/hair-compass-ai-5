@@ -12,6 +12,7 @@ struct TrendsView: View {
     @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
     @Query(sort: \ProgressCheckIn.date) private var progressCheckIns: [ProgressCheckIn]
     @Query(sort: \ProcedureAppointment.date) private var procedureAppointments: [ProcedureAppointment]
+    @Query(sort: \SideEffectLog.date) private var sideEffectLogs: [SideEffectLog]
 
     @State private var showCompare = false
     @State private var showExport = false
@@ -81,7 +82,7 @@ struct TrendsView: View {
                     accessibilityLabel: { $0.rawValue }
                 ) { option, isOn in
                     Text(option.rawValue)
-                        .font(.system(size: 13, weight: isOn ? .semibold : .regular))
+                        .font(Clinical.body(13, weight: isOn ? .semibold : .regular))
                         .foregroundStyle(isOn ? Clinical.ink : Clinical.secondary)
                 }
 
@@ -95,6 +96,8 @@ struct TrendsView: View {
                     procedures: procedureAppointments,
                     windowDays: range.days
                 )
+
+                clinicianReviewCard
 
                 progressCheckInsCard
 
@@ -185,11 +188,11 @@ struct TrendsView: View {
             Button { showCompare = true } label: {
                 HStack(spacing: 10) {
                     Text("Compare signals")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(Clinical.body(14, weight: .medium))
                         .foregroundStyle(Clinical.accent)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(Clinical.body(11, weight: .semibold))
                         .foregroundStyle(Clinical.accent.opacity(0.6))
                 }
                 .padding(.vertical, 13)
@@ -199,6 +202,49 @@ struct TrendsView: View {
             .accessibilityLabel("Compare signals")
             .accessibilityHint("Overlays a hair-fall variable against a lifestyle statistic")
             Divider().overlay(Clinical.hairline)
+        }
+    }
+
+    // MARK: - Clinician-review flags (consolidated red-flag surface)
+
+    /// Conservative, deterministic patterns worth a clinician's attention, computed from data
+    /// already tracked elsewhere — see `ClinicianReviewFlags`. Previously scattered (scalp pain
+    /// only in the monthly card, the 6-month shedding teaching buried in the recommender, the
+    /// severity-3 side-effect banner only in Care) — this is the one quiet place they surface
+    /// together.
+    private var clinicianReviewFlags: [ClinicianReviewFlag] {
+        ClinicianReviewFlags.evaluate(
+            progressCheckIns: progressCheckIns,
+            entries: entries,
+            triggers: triggers,
+            sideEffects: sideEffectLogs
+        )
+    }
+
+    @ViewBuilder
+    private var clinicianReviewCard: some View {
+        let flags = clinicianReviewFlags
+        if !flags.isEmpty {
+            ClinicalCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Eyebrow(text: "Worth showing a clinician", color: Clinical.warning)
+                    Text("Patterns your own tracking has surfaced — this is record-keeping, not a diagnosis.")
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                    VStack(alignment: .leading, spacing: 9) {
+                        ForEach(flags) { flag in
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(Clinical.body(12, weight: .semibold))
+                                    .foregroundStyle(Clinical.warning)
+                                Text(flag.detail)
+                                    .font(Clinical.caption(13)).foregroundStyle(Clinical.ink)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -216,12 +262,12 @@ struct TrendsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Eyebrow(text: "Monthly check-ins")
                     Text("Your own answers to the questions a dermatologist asks between visits.")
-                        .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
 
                     if let latest = sorted.last {
                         HStack(spacing: 6) {
-                            Text("Latest regrowth").font(.system(size: 12)).foregroundStyle(Clinical.secondary)
-                            Text(latest.regrowth.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.ink)
+                            Text("Latest regrowth").font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                            Text(latest.regrowth.title).font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.ink)
                             Spacer()
                             Text(latest.date.formatted(.dateTime.month(.abbreviated).day()))
                                 .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
@@ -233,6 +279,10 @@ struct TrendsView: View {
                         checkInTrendRow(title: "Shedding", question: .shedding, checkIns: sorted)
                         checkInTrendRow(title: "Hairline", question: .hairline, checkIns: sorted)
                         checkInTrendRow(title: "Overall", question: .overall, checkIns: sorted)
+                        // AA-only: the actual between-visit progress measure for patchy loss.
+                        if profile?.condition == .alopeciaAreata {
+                            checkInTrendRow(title: "Patches", question: .patches, checkIns: sorted)
+                        }
                     }
 
                     // A genuine red flag — persistent scalp pain can mean scarring alopecia.
@@ -242,7 +292,7 @@ struct TrendsView: View {
                             "Scalp pain reported \(pain.date.formatted(.dateTime.month(.abbreviated).day())) — worth a prompt dermatology review.",
                             systemImage: "exclamationmark.triangle.fill"
                         )
-                        .font(.system(size: 12, weight: .medium))
+                        .font(Clinical.body(12, weight: .medium))
                         .foregroundStyle(Clinical.warning)
                     }
                 }
@@ -253,7 +303,7 @@ struct TrendsView: View {
     private func checkInTrendRow(title: String, question: ProgressTrend.Question, checkIns: [ProgressCheckIn]) -> some View {
         HStack(spacing: 8) {
             Text(title)
-                .font(.system(size: 12, weight: .medium)).foregroundStyle(Clinical.ink)
+                .font(Clinical.body(12, weight: .medium)).foregroundStyle(Clinical.ink)
                 .frame(width: 64, alignment: .leading)
             HStack(spacing: 5) {
                 ForEach(Array(checkIns.enumerated()), id: \.offset) { _, checkIn in
@@ -281,6 +331,9 @@ struct TrendsView: View {
         case .shedding: return checkIn.shedding
         case .hairline: return checkIn.hairline
         case .overall: return checkIn.overall
+        // Not-asked (non-AA, or recorded before this question existed) reads as neutral rather
+        // than silently claiming "no change."
+        case .patches: return checkIn.patchTrend ?? .same
         }
     }
 
@@ -306,7 +359,7 @@ struct TrendsView: View {
                     .accessibilityHidden(true)
                 Eyebrow(text: "Not enough data")
                 Text("Trends appear after two or more daily logs in this window.")
-                    .font(.system(size: 14)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
             }
         }
     }
@@ -325,10 +378,10 @@ struct TrendsView: View {
         let summary = TrajectorySummary(entries: windowEntries)
         return HStack(spacing: 7) {
             Image(systemName: summary.symbol)
-                .font(.system(size: 12, weight: .semibold))
+                .font(Clinical.body(12, weight: .semibold))
                 .foregroundStyle(summary.tint)
             Text(summary.oneLiner)
-                .font(.system(size: 13))
+                .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -347,14 +400,14 @@ struct TrendsView: View {
             Divider().overlay(Clinical.hairline)
             Eyebrow(text: "Explicitly not tracked", color: Clinical.tertiary)
             Text("Left out on purpose — the evidence doesn't support them.")
-                .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(ExcludedMyth.allCases) { myth in
                     HStack(alignment: .top, spacing: 6) {
-                        Text("·").font(.system(size: 12, weight: .bold)).foregroundStyle(Clinical.tertiary)
+                        Text("·").font(Clinical.body(12, weight: .bold)).foregroundStyle(Clinical.tertiary)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(myth.title).font(.system(size: 12, weight: .medium)).foregroundStyle(Clinical.secondary)
-                            Text(myth.reason).font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                            Text(myth.title).font(Clinical.body(12, weight: .medium)).foregroundStyle(Clinical.secondary)
+                            Text(myth.reason).font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                         }
                     }
                 }

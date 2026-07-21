@@ -37,7 +37,7 @@ struct LivingGauge<Motif: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.system(size: 15, weight: .medium))
+                .font(Clinical.body(15, weight: .medium))
                 .foregroundStyle(Clinical.ink)
             previewPanel
             dragTrack
@@ -81,7 +81,7 @@ struct LivingGauge<Motif: View>: View {
                     .foregroundStyle(Clinical.ink)
                     .contentTransition(.opacity)
                 Text(subtitle)
-                    .font(.system(size: 11))
+                    .font(Clinical.caption(11))
                     .foregroundStyle(Clinical.secondary)
                     .contentTransition(.opacity)
             }

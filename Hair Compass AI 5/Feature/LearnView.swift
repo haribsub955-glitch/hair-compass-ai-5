@@ -26,7 +26,7 @@ struct LearnView: View {
                 }
 
                 Text("Tap any card to flip it. Every answer is graded by how strong the evidence actually is.")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                     .padding(.top, 2)
             }
             .padding(.horizontal, 20)
@@ -51,7 +51,7 @@ struct LearnView: View {
     private func chip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button { withAnimation(.easeOut(duration: 0.15)) { action() } } label: {
             Text(title)
-                .font(.system(size: 13, weight: on ? .semibold : .regular))
+                .font(Clinical.body(13, weight: on ? .semibold : .regular))
                 .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                 .padding(.horizontal, 13).padding(.vertical, 8)
                 .background(on ? Clinical.ink : Clinical.surface)
@@ -133,7 +133,7 @@ struct FlashCardView: View {
                     badge
                 }
                 Text(card.answer)
-                    .font(.system(size: featured ? 16 : 13))
+                    .font(Clinical.caption(featured ? 16 : 13))
                     .foregroundStyle(Clinical.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)

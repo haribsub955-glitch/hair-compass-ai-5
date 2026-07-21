@@ -719,8 +719,11 @@ struct Hair_Compass_AI_5Tests {
     @Test func fullPhotoSetNeedsEveryRegion() throws {
         let cal = Calendar.current
         let now = Date.now
+        // `.patch` is excluded from the badge (it's an optional, alopecia areata-only tag, not
+        // one of the fixed anatomical regions the badge is "every angle" of) — see Gamification.
+        let regions = PhotoRegion.allCases.filter { $0 != .patch }
         var photos: [PhotoRecord] = []
-        for (i, region) in PhotoRegion.allCases.dropLast().enumerated() {
+        for (i, region) in regions.dropLast().enumerated() {
             photos.append(PhotoRecord(region: region, createdAt: cal.date(byAdding: .day, value: -7 - i, to: now)!))
         }
         // One region still missing → not earned.
@@ -728,10 +731,23 @@ struct Hair_Compass_AI_5Tests {
             entries: [], treatments: [], doses: [], photos: photos, labs: [], sideEffects: [], now: now) == nil)
         // The final region completes the set — earned on the completing photo's date.
         let completion = cal.date(byAdding: .day, value: -1, to: now)!
-        photos.append(PhotoRecord(region: PhotoRegion.allCases.last!, createdAt: completion))
+        photos.append(PhotoRecord(region: regions.last!, createdAt: completion))
         let earned = try #require(Achievement.fullPhotoSet.earnedDate(
             entries: [], treatments: [], doses: [], photos: photos, labs: [], sideEffects: [], now: now))
         #expect(earned == completion)
+    }
+
+    @Test func fullPhotoSetDoesNotRequireAPatchPhoto() {
+        // A user with all five anatomical regions but never a `.patch` photo still earns the
+        // badge — patches are AA-specific and optional, not part of "every angle."
+        let cal = Calendar.current
+        let now = Date.now
+        let regions = PhotoRegion.allCases.filter { $0 != .patch }
+        let photos = regions.enumerated().map { i, region in
+            PhotoRecord(region: region, createdAt: cal.date(byAdding: .day, value: -i, to: now)!)
+        }
+        #expect(Achievement.fullPhotoSet.earnedDate(
+            entries: [], treatments: [], doses: [], photos: photos, labs: [], sideEffects: [], now: now) != nil)
     }
 
     @Test func adherenceBadgeIsNilSafeAndEarnable() throws {
@@ -835,9 +851,10 @@ struct Hair_Compass_AI_5Tests {
     @Test func medicationAndProcedureClassesHaveDosePresets() {
         for c in TreatmentClass.allCases {
             let presets = TreatmentGuide.presets(for: c)
-            if c == .other || c.isCareProduct {
-                // No honest standard "regimen" to suggest for an unknown item or an over-the-
-                // counter care product (shampoo, oil, supplement) — those are free-form.
+            if c == .other || (c.isCareProduct && c != .shampoo) {
+                // No honest standard "regimen" to suggest for an unknown item or most over-the-
+                // counter care products (oil, supplement) — those are free-form. Shampoo is the
+                // one care product with a studied strength (ketoconazole 2%) worth a preset.
                 #expect(presets.isEmpty)
             } else {
                 #expect(!presets.isEmpty)

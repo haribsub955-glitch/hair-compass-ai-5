@@ -122,7 +122,7 @@ struct CompareView: View {
             withAnimation(.easeOut(duration: 0.15)) { hairID = h; overlayID = o }
         } label: {
             Text(title)
-                .font(.system(size: 12, weight: on ? .semibold : .regular))
+                .font(Clinical.body(12, weight: on ? .semibold : .regular))
                 .foregroundStyle(on ? Clinical.surface : Clinical.ink)
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .background(on ? Clinical.accent : Clinical.surface)
@@ -154,11 +154,11 @@ struct CompareView: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "pills.fill").font(.system(size: 11))
+                    Image(systemName: "pills.fill").font(Clinical.caption(11))
                     Text(selectedTreatmentTitle ?? "Compare a medication")
-                        .font(.system(size: 12, weight: selectedTreatmentTitle == nil ? .regular : .semibold))
+                        .font(Clinical.body(12, weight: selectedTreatmentTitle == nil ? .regular : .semibold))
                         .lineLimit(1)
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                    Image(systemName: "chevron.down").font(Clinical.body(9, weight: .semibold))
                 }
                 .foregroundStyle(selectedTreatmentTitle == nil ? Clinical.accent : Clinical.surface)
                 .padding(.horizontal, 12).padding(.vertical, 7)
@@ -188,7 +188,7 @@ struct CompareView: View {
                            normalizedSeries: { ChartMath.normalize(series(for: $0.id).map(\.value)) })
             HStack(spacing: 10) {
                 Rectangle().fill(Clinical.hairline).frame(height: 1)
-                Image(systemName: "arrow.up.arrow.down").font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                Image(systemName: "arrow.up.arrow.down").font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 Rectangle().fill(Clinical.hairline).frame(height: 1)
             }
             MetricScrubber(title: "Lifestyle & plan", options: ChartMetric.lifestyle + treatmentMetrics, selectionID: $overlayID,
@@ -253,7 +253,7 @@ struct CompareView: View {
                         }
                     }
                     Text("Bold lines are a \(smoothWindow)-day smoothed trend over the faint daily values. Each signal is scaled to its own range, so this shows shape and timing — not absolute levels.")
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
             }
         }
@@ -310,12 +310,12 @@ struct CompareView: View {
     private func lockChip(daysLogged: Int) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "lock.fill")
-                .font(.system(size: 13)).foregroundStyle(Clinical.tertiary)
+                .font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Your real graph unlocks after 7 days of tracking")
-                    .font(.system(size: 14)).foregroundStyle(Clinical.ink)
+                    .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
                 Text("\(daysLogged) of 7 days logged")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
@@ -341,7 +341,7 @@ struct CompareView: View {
         return HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(Clinical.ink)
+                Text(title).font(Clinical.body(12, weight: .medium)).foregroundStyle(Clinical.ink)
                 Text("\(range) \(unit)").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
             }
         }
@@ -352,7 +352,7 @@ struct CompareView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Eyebrow(text: "Time lag")
                 Text("Lifestyle affects shedding weeks later — shift the comparison to line them up.")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 ClinicalSegmented(options: Lag.allCases, label: { $0.rawValue }, selection: $lag)
                     // Spring the copper pill between lag options; Reduce Motion keeps the
                     // segmented control's stock quick ease.
@@ -370,9 +370,9 @@ struct CompareView: View {
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "sparkle.magnifyingglass").font(.system(size: 15)).foregroundStyle(Clinical.accent)
+                    Image(systemName: "sparkle.magnifyingglass").font(Clinical.caption(15)).foregroundStyle(Clinical.accent)
                     Text(ChartMath.phrasing(assoc, hairTitle: hair.title, lifestyleTitle: overlay.title, lagDays: lag.days))
-                        .font(.system(size: 14)).foregroundStyle(Clinical.ink)
+                        .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
                 }
                 askAIChip
             }
@@ -386,7 +386,7 @@ struct CompareView: View {
     private var askAIChip: some View {
         Button { openChat() } label: {
             Label("Ask AI about this", systemImage: "bubble.left.and.text.bubble.right")
-                .font(.system(size: 12, weight: .semibold))
+                .font(Clinical.body(12, weight: .semibold))
                 .foregroundStyle(Clinical.accent)
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .background(Clinical.accentSoft)

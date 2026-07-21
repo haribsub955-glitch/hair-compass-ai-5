@@ -39,7 +39,12 @@ struct PregnancyCautionTests {
         #expect(PregnancyCaution.info(treatmentClass: .other, name: "Oral minoxidil 2.5mg")?.kind == .minoxidil)
     }
 
-    @Test func antiAndrogensAreFlaggedByName() {
+    @Test func antiAndrogensAreFlaggedByClassAndByName() {
+        // By treatment class…
+        #expect(PregnancyCaution.info(treatmentClass: .spironolactone, name: "")?.substance == "Spironolactone")
+        #expect(PregnancyCaution.info(treatmentClass: .spironolactone, name: "")?.kind == .antiAndrogen)
+        // …and by a name typed into an `.other` item (including a brand name and older entries
+        // predating the dedicated class).
         #expect(PregnancyCaution.info(treatmentClass: .other, name: "Spironolactone 100mg")?.substance == "Spironolactone")
         #expect(PregnancyCaution.info(treatmentClass: .other, name: "Aldactone")?.substance == "Spironolactone")
         #expect(PregnancyCaution.info(treatmentClass: .other, name: "Flutamide")?.kind == .antiAndrogen)

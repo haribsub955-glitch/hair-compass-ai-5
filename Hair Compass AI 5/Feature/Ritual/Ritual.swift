@@ -35,6 +35,19 @@ protocol Ritual {
     var hint: String { get }
     var isComplete: Bool { get }
 
+    /// 0...1 completion fraction — drives the Ritual Live Activity's progress bar/ring
+    /// (Service/RitualActivityService.swift, RitualView). Time-driven (elapsed / totalDuration)
+    /// for comb/massage; interaction-driven (relaxed knot points / filled serum level) for
+    /// knot/serum. `isComplete` is each ritual's own gate and isn't required to trip at exactly
+    /// `progress == 1`.
+    var progress: CGFloat { get }
+
+    /// Fixed wall-clock duration until this ritual auto-completes, for rituals whose `isComplete`
+    /// gate is a plain elapsed-time threshold (comb/massage). Nil for interaction-paced rituals
+    /// (knot/serum) that finish only once the user relaxes/fills it enough — those have no fixed
+    /// end time, so the Live Activity shows a plain progress bar instead of a countdown for them.
+    var estimatedDuration: TimeInterval? { get }
+
     /// Feed a touch (began/moved/ended) into the simulation.
     mutating func handle(_ touch: RitualTouch)
 

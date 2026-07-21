@@ -51,12 +51,49 @@ struct RootView: View {
     @State private var showTutorial = false
     @State private var deepLinks = DeepLinkRouter()
 
+    // Evening check-in reminder — same AppStorage keys `CareView`'s toggle UI reads/writes.
+    // `NotificationService.planEveningCheckIn` only ever schedules 3 non-repeating notifications
+    // (today + the next two days), so it must be re-planned at least every ~3 days or the
+    // schedule silently runs dry. `CareView` only exists while the Plan tab is on screen, so
+    // RootView — always alive — is the surface that actually keeps the horizon rolling forward
+    // for someone who lives in Today and never revisits Plan.
+    @AppStorage("eveningCheckInEnabled") private var eveningCheckInEnabled = false
+    @AppStorage("eveningCheckInMinutes") private var eveningCheckInMinutes = 20 * 60 + 30
+
     private var profile: Profile? { profiles.first }
     private var widgetFingerprint: String {
         let latestEntry = entries.first.map { "\($0.shedRaw)-\($0.flaking)-\($0.erythema)-\($0.itch)" } ?? "none"
         let activeTreatments = treatments.filter(\.isActive).count
         let photoWeek = photos.first.map { "\($0.createdAt.timeIntervalSince1970)" } ?? "nophoto"
         return "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)-\(photoWeek)"
+    }
+
+    // MARK: Evening check-in reminder
+
+    /// Whether today already has a logged entry — the "cancel tonight's reminder once today is
+    /// logged" honesty rule needs this current even when the user never opens Plan.
+    private var hasLoggedToday: Bool { entries.contains { Calendar.current.isDateInToday($0.date) } }
+    /// The shielded (displayed) streak — matches the number the Today hero and `CareView`'s own
+    /// copy show, so the reminder body ("Day N. Twenty seconds.") never disagrees with the app.
+    private var eveningCheckInStreak: Int {
+        HairAnalytics.shieldedStreak(entryDates: entries.map(\.date)).streak
+    }
+    /// Re-plans from whichever surface last ran — idempotent on the notification-service side,
+    /// so calling it here as well as from `CareView` is harmless double-planning, not a race.
+    private func replanEveningCheckIn() async {
+        await notifications.planEveningCheckIn(
+            enabled: eveningCheckInEnabled,
+            time: NotificationService.eveningCheckInComponents(minutesSinceMidnight: eveningCheckInMinutes),
+            hasLoggedToday: hasLoggedToday,
+            streak: eveningCheckInStreak
+        )
+    }
+    /// Keys the `.task` below — changes whenever the toggle, the chosen time, today's logged
+    /// state, or the most recent entry's day change, so a fresh re-plan runs on all of them
+    /// without re-running on every unrelated `entries` mutation.
+    private var eveningCheckInPlanKey: String {
+        let lastEntryDay = entries.first.map { "\(Calendar.current.startOfDay(for: $0.date).timeIntervalSince1970)" } ?? "none"
+        return "\(eveningCheckInEnabled)|\(eveningCheckInMinutes)|\(hasLoggedToday)|\(lastEntryDay)"
     }
 
     private static var initialTab: AppTab {
@@ -152,6 +189,11 @@ struct RootView: View {
             if !showOnboarding && !showTutorial && !suppressRitual && !appLock.isLocked {
                 ritualKind = ritualCoordinator.rollOnLaunch(hasOnboarded: profile?.hasOnboarded == true)
             }
+            // Re-derive real HealthKit authorization first — `HealthKitService.init()` can
+            // only ever start at `.notDetermined`, so without this, a user who granted
+            // access in a prior session would look never-asked on every relaunch and the
+            // snapshot refresh below (and the dashboard's manual refresh) would silently stop.
+            await healthKit.bootstrap()
             // If the user has already granted Health access, refresh today's snapshot on launch.
             if healthKit.authorization.isUsable {
                 await healthKit.refreshSnapshot(context: context)
@@ -159,6 +201,15 @@ struct RootView: View {
         }
         .task(id: widgetFingerprint) {
             WidgetBridge.write(WidgetSnapshotBuilder.build(entries: entries, treatments: treatments, doses: doses, photos: photos))
+        }
+        // Keeps the evening check-in's 3-day rolling horizon alive regardless of which tab is on
+        // screen — `CareView` (the Plan tab) only exists while it's the selected tab, so without
+        // this a user who lives in Today would stop receiving their chosen nudge after ~3 days.
+        // Re-runs on the toggle, the chosen time, today's logged state, and the latest entry's
+        // day; `planEveningCheckIn` is idempotent, so this and `CareView`'s own re-plan (when
+        // Plan happens to be open) never fight — the more recent call always wins.
+        .task(id: eveningCheckInPlanKey) {
+            await replanEveningCheckIn()
         }
         // Same DeepLinkRouter idiom the widget's haircompass://log URL uses below — routes every
         // reminder's tap to the tab and action it invited, rather than only milestone taps
@@ -236,6 +287,18 @@ struct RootView: View {
                     tab = .today
                     deepLinks.openLogRequested = true
                 }
+                // A day-long-suspended app never re-runs the launch `.task` above, so without
+                // this an already-connected user's sleep/HRV/weight facts would only refresh on
+                // a cold relaunch. Cheap and idempotent — `refreshSnapshot` only upserts today.
+                if healthKit.authorization.isUsable {
+                    Task { await healthKit.refreshSnapshot(context: context) }
+                }
+                // Same reasoning: `eveningCheckInPlanKey` only changes once the day rolls over,
+                // so a foreground that lands before midnight wouldn't otherwise re-trigger the
+                // `.task(id:)` above even though the 3-day horizon it scheduled on the *previous*
+                // foreground/launch is now a day closer to running dry. Explicit call here rolls
+                // it forward on every activation, not just on a day boundary.
+                Task { await replanEveningCheckIn() }
                 if appLock.isEnabled && appLock.isLocked {
                     // Lock wins: never roll a ritual over the lock screen — go straight to Face ID.
                     lockPresenter.present(appLock)
@@ -293,7 +356,13 @@ private final class LockWindowPresenter {
             .first(where: { $0.activationState != .unattached }) else { return }
         let window = UIWindow(windowScene: scene)
         window.windowLevel = .alert + 1
-        window.rootViewController = UIHostingController(rootView: LockScreenView(lock: lock))
+        // This window sits outside the WindowGroup's view hierarchy (its own UIHostingController),
+        // so it doesn't inherit the `.dynamicTypeSize` clamp applied to `RootView()` in
+        // HairCompassApp — restate it here for the same reason: the fixed 88×88 lock glyph circle
+        // shouldn't be asked to hold accessibility-size text past `.accessibility2`.
+        window.rootViewController = UIHostingController(
+            rootView: LockScreenView(lock: lock).dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        )
         window.isHidden = false
         self.window = window
     }
@@ -315,7 +384,7 @@ private struct LockScreenView: View {
             VStack(spacing: 0) {
                 Spacer()
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 32, weight: .medium))
+                    .font(Clinical.body(32, weight: .medium))
                     .foregroundStyle(Clinical.accent)
                     .frame(width: 88, height: 88)
                     .background(Clinical.accentSoft, in: Circle())
@@ -325,7 +394,7 @@ private struct LockScreenView: View {
                     .foregroundStyle(Clinical.ink)
                     .padding(.top, 22)
                 Text("Your hair records are locked.")
-                    .font(.system(size: 14))
+                    .font(Clinical.caption(14))
                     .foregroundStyle(Clinical.secondary)
                     .padding(.top, 6)
                 Spacer()
@@ -340,7 +409,7 @@ private struct LockScreenView: View {
                 // Debug builds only — simulators without enrolled Face ID would otherwise strand
                 // a test run behind the lock. Compiled out of release.
                 Button("Skip (debug build)") { lock.debugBypass() }
-                    .font(.system(size: 13, weight: .medium))
+                    .font(Clinical.body(13, weight: .medium))
                     .foregroundStyle(Clinical.tertiary)
                     .accessibilityIdentifier("appLockDebugSkip")
                     .padding(.bottom, 16)

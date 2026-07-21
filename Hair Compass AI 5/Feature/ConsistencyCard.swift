@@ -60,10 +60,10 @@ struct ConsistencyCard: View {
                     Eyebrow(text: "Consistency")
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(footnote(level: level, progress: progress, streak: streak))
-                            .font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
+                            .font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.ink)
                         Spacer(minLength: 8)
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(Clinical.body(11, weight: .semibold))
                             .foregroundStyle(Clinical.tertiary)
                     }
                     ConsistencyHairline(fraction: progress.fraction)
@@ -105,7 +105,7 @@ struct ConsistencyCard: View {
             extra > 0 ? "New badge — \(badge.title) +\(extra) more" : "New badge — \(badge.title)",
             systemImage: "sparkle"
         )
-        .font(.system(size: 12, weight: .semibold))
+        .font(Clinical.body(12, weight: .semibold))
         .foregroundStyle(Clinical.surface)
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Clinical.gold, in: Capsule())
@@ -182,7 +182,7 @@ struct BadgeIcon: View {
                 .opacity(dimmed ? 0.45 : 1)
         } else {
             Image(systemName: badge.symbol)
-                .font(.system(size: size, weight: .medium))
+                .font(Clinical.body(size, weight: .medium))
                 .foregroundStyle(dimmed ? Clinical.tertiary.opacity(0.6) : tint)
         }
     }
@@ -224,7 +224,7 @@ struct AchievementsSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 26))
+                            .font(Clinical.caption(26))
                             .foregroundStyle(Clinical.tertiary, Clinical.surface)
                     }
                     .buttonStyle(.plain)
@@ -241,7 +241,7 @@ struct AchievementsSheet: View {
                 }
 
                 Text("XP and badges reward the consistency of your tracking — never how your hair is doing. A hard week costs nothing.")
-                    .font(.system(size: 12)).foregroundStyle(Clinical.tertiary)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                     .padding(.top, 4)
             }
             .padding(.horizontal, 20)
@@ -260,7 +260,7 @@ struct AchievementsSheet: View {
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
             Text(badge.title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(Clinical.body(13, weight: .semibold))
                 .foregroundStyle(isEarned ? Clinical.ink : Clinical.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
             if let earnedOn {
@@ -269,7 +269,7 @@ struct AchievementsSheet: View {
                     .foregroundStyle(Clinical.gold)
             } else {
                 Text(badge.caption)
-                    .font(.system(size: 11))
+                    .font(Clinical.caption(11))
                     .foregroundStyle(Clinical.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }

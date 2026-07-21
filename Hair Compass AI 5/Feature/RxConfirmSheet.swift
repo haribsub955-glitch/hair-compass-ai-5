@@ -30,7 +30,7 @@ struct RxConfirmSheet: View {
                     .multilineTextAlignment(.center)
                 if !regimenSummary.isEmpty {
                     Text(regimenSummary)
-                        .font(.system(size: 14))
+                        .font(Clinical.caption(14))
                         .foregroundStyle(Clinical.secondary)
                 }
             }
@@ -40,11 +40,11 @@ struct RxConfirmSheet: View {
             // secondary ink on a plain surface card. Deliberately not a warning color.
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "info.circle")
-                    .font(.system(size: 13))
+                    .font(Clinical.caption(13))
                     .foregroundStyle(Clinical.secondary)
                     .padding(.top, 2)
                 Text(RxGate.note(for: requirement.medication))
-                    .font(.system(size: 13))
+                    .font(Clinical.caption(13))
                     .foregroundStyle(Clinical.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -61,7 +61,7 @@ struct RxConfirmSheet: View {
 
             Button(action: onConfirm) {
                 Text("Confirm — it's prescribed")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(Clinical.body(16, weight: .semibold))
                     .foregroundStyle(Clinical.surface)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
@@ -71,7 +71,7 @@ struct RxConfirmSheet: View {
             .buttonStyle(.plain)
 
             Button("Go back") { dismiss() }
-                .font(.system(size: 14, weight: .medium))
+                .font(Clinical.body(14, weight: .medium))
                 .foregroundStyle(Clinical.secondary)
                 .buttonStyle(.plain)
                 .padding(.top, 12)

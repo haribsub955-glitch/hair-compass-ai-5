@@ -4,9 +4,11 @@ import SwiftUI
 /// Wraps premium content: shows it for Pro users, otherwise an inline, honest upsell
 /// (feature name + a one-line description + the two Pro purchase buttons + restore). Used by
 /// the AI sheets — gate at the caller's top level so the sheet's own chrome (title, Close
-/// button) stays outside the gate and is always reachable. Purchase buttons hide entirely
-/// (never a placeholder price) when products haven't loaded, matching `OnboardingPlanStep`'s
-/// honesty rules. Does not apply its own background — callers already own `.clinicalScreen()`.
+/// button) stays outside the gate and is always reachable. Purchase buttons never show a
+/// placeholder price: while products haven't loaded they're replaced by `StoreUnavailableView`
+/// (a loading spinner, or an honest "can't reach the store" message with Retry), matching
+/// `OnboardingPlanStep`'s honesty rules. Does not apply its own background — callers already own
+/// `.clinicalScreen()`.
 struct ProGate<Content: View>: View {
     let feature: String
     let symbol: String
@@ -14,9 +16,13 @@ struct ProGate<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     @Environment(PurchaseService.self) private var purchases
-    @State private var isPurchasing = false
+    /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
+    /// only the button the user actually tapped shows its spinner.
+    @State private var purchasingProductID: String?
     @State private var yearlyIntroEligible = false
     @State private var monthlyIntroEligible = false
+
+    private var isBusy: Bool { purchasingProductID != nil || purchases.isRestoring }
 
     var body: some View {
         if purchases.hasPro {
@@ -31,6 +37,9 @@ struct ProGate<Content: View>: View {
                     guard let monthly = purchases.monthly else { return }
                     monthlyIntroEligible = await purchases.isEligibleForIntro(monthly)
                 }
+                // A failed/pending message from THIS gate shouldn't still be showing if the user
+                // dismisses it and opens a different feature's gate later.
+                .onDisappear { purchases.resetPurchaseState() }
         }
     }
 
@@ -39,7 +48,7 @@ struct ProGate<Content: View>: View {
             Spacer(minLength: 20)
 
             Image(systemName: symbol)
-                .font(.system(size: 26, weight: .medium))
+                .font(Clinical.body(26, weight: .medium))
                 .foregroundStyle(Clinical.accent)
                 .frame(width: 60, height: 60)
                 .background(Clinical.accentSoft, in: Circle())
@@ -49,7 +58,7 @@ struct ProGate<Content: View>: View {
                     .font(Clinical.headline(20))
                     .foregroundStyle(Clinical.ink)
                 Text(description)
-                    .font(.system(size: 13))
+                    .font(Clinical.caption(13))
                     .foregroundStyle(Clinical.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -65,35 +74,37 @@ struct ProGate<Content: View>: View {
                             if let offer {
                                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                                     Text(offer.base)
-                                        .font(.system(size: 14))
+                                        .font(Clinical.caption(14))
                                         .strikethrough()
                                         .foregroundStyle(Clinical.tertiary)
                                     Text(offer.intro)
-                                        .font(.system(size: 18, weight: .semibold))
+                                        .font(Clinical.body(18, weight: .semibold))
                                         .foregroundStyle(Clinical.ink)
                                     Text("/year")
-                                        .font(.system(size: 13))
+                                        .font(Clinical.caption(13))
                                         .foregroundStyle(Clinical.secondary)
                                 }
                             }
                             Button {
                                 buy(yearly)
                             } label: {
-                                VStack(spacing: 2) {
-                                    if let offer {
-                                        Text("Start yearly — \(offer.intro) first year")
-                                        Text("First year — save \(offer.percentOff)%, then \(offer.base)/year · Limited-time")
-                                            .font(.system(size: 11, weight: .regular))
-                                    } else {
-                                        Text("Yearly — \(yearly.displayPrice)/year")
-                                        if let perMonth = yearly.monthlyEquivalentDisplay {
-                                            Text(perMonth).font(.system(size: 11, weight: .regular))
+                                PurchaseButtonLabel(isPurchasing: purchasingProductID == yearly.id, tint: Clinical.surface) {
+                                    VStack(spacing: 2) {
+                                        if let offer {
+                                            Text("Start yearly — \(offer.intro) first year")
+                                            Text("First year — save \(offer.percentOff)%, then \(offer.base)/year · Limited-time")
+                                                .font(Clinical.body(11, weight: .regular))
+                                        } else {
+                                            Text("Yearly — \(yearly.displayPrice)/year")
+                                            if let perMonth = yearly.monthlyEquivalentDisplay {
+                                                Text(perMonth).font(Clinical.body(11, weight: .regular))
+                                            }
                                         }
                                     }
                                 }
                             }
                             .buttonStyle(ClinicalButtonStyle())
-                            .disabled(isPurchasing)
+                            .disabled(isBusy)
                             .accessibilityIdentifier("proGatePurchaseYearly")
                         }
                     }
@@ -102,28 +113,41 @@ struct ProGate<Content: View>: View {
                         Button {
                             buy(monthly)
                         } label: {
-                            if let trialText {
-                                Text("\(trialText)/month")
-                            } else {
-                                Text("Monthly — \(monthly.displayPrice)/month")
+                            PurchaseButtonLabel(isPurchasing: purchasingProductID == monthly.id, tint: Clinical.ink) {
+                                if let trialText {
+                                    Text("\(trialText)/month")
+                                } else {
+                                    Text("Monthly — \(monthly.displayPrice)/month")
+                                }
                             }
                         }
                         .buttonStyle(ClinicalButtonStyle(filled: false))
-                        .disabled(isPurchasing)
+                        .disabled(isBusy)
                         .accessibilityIdentifier("proGatePurchaseMonthly")
                     }
                 }
+            } else {
+                StoreUnavailableView(isLoading: purchases.isLoading) {
+                    Task { await purchases.load() }
+                }
             }
+
+            PurchaseStatusLine(purchaseState: purchases.purchaseState, restoreResult: purchases.restoreResult)
 
             Button {
                 Task { await purchases.restore() }
             } label: {
-                Text("Restore purchases")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Clinical.tertiary)
+                HStack(spacing: 6) {
+                    if purchases.isRestoring {
+                        ProgressView().tint(Clinical.tertiary)
+                    }
+                    Text("Restore purchases")
+                        .font(Clinical.caption(12))
+                        .foregroundStyle(Clinical.tertiary)
+                }
             }
             .buttonStyle(.plain)
-            .disabled(isPurchasing)
+            .disabled(isBusy)
 
             PaywallLegal()
 
@@ -134,11 +158,11 @@ struct ProGate<Content: View>: View {
     }
 
     private func buy(_ product: Product) {
-        guard !isPurchasing else { return }
-        isPurchasing = true
+        guard !isBusy else { return }
+        purchasingProductID = product.id
         Task {
             await purchases.purchase(product)
-            isPurchasing = false
+            purchasingProductID = nil
         }
     }
 }

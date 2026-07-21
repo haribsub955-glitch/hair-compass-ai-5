@@ -49,7 +49,7 @@ struct RitualView: View {
                         .foregroundStyle(Clinical.ink)
                         .multilineTextAlignment(.center)
                     Text(meta.hint)
-                        .font(.system(size: 13.5))
+                        .font(Clinical.caption(13.5))
                         .foregroundStyle(Clinical.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -69,7 +69,7 @@ struct RitualView: View {
                         .gesture(swipeDownGesture)
                     Button(action: skip) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(Clinical.body(15, weight: .semibold))
                             .foregroundStyle(Clinical.secondary)
                             .frame(width: 34, height: 34)
                             .background(Clinical.surface.opacity(0.85), in: Circle())
@@ -87,7 +87,7 @@ struct RitualView: View {
                 if reduceMotion {
                     Button(action: complete) {
                         Text("Done")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(Clinical.body(16, weight: .semibold))
                             .foregroundStyle(Clinical.surface)
                             .padding(.horizontal, 40).padding(.vertical, 14)
                             .background(Clinical.accent, in: Capsule())
@@ -105,7 +105,17 @@ struct RitualView: View {
                     .transition(.identity)
             }
         }
-        .onAppear { startedAt = Date() }
+        .onAppear {
+            startedAt = Date()
+            RitualActivityService.shared.start(kind: kind, title: meta.title, startDate: startedAt)
+        }
+        .onDisappear {
+            // Safety net: RootView can force-dismiss the ritual out from under us (app lock wins
+            // over an in-flight ritual — see RootView's `ritualKind = nil` on that path), which
+            // tears this view down without `skip()`/`complete()` ever running. `end` is a no-op
+            // once either of those has already cleared the activity.
+            RitualActivityService.shared.end(stepName: meta.title, progress: 0, completed: false)
+        }
     }
 
     // MARK: Canvas
@@ -117,8 +127,13 @@ struct RitualView: View {
                 var context = ctx
 
                 if reduceMotion {
-                    // Static representative frame — no stepping.
+                    // Static representative frame — no stepping, so push the Live Activity's
+                    // starting state once here (it otherwise only updates from the step loop
+                    // below) and leave it at 0% until the explicit "Done" button calls complete().
                     box.ritual?.draw(in: &context, size: size)
+                    if let ritual = box.ritual {
+                        RitualActivityService.shared.update(stepName: ritual.title, progress: 0, endDate: nil)
+                    }
                     return
                 }
 
@@ -127,6 +142,12 @@ struct RitualView: View {
                 box.last = now
                 let beats = box.ritual?.step(dt: dt, size: size) ?? 0
                 box.ritual?.draw(in: &context, size: size)
+
+                if let ritual = box.ritual {
+                    let endDate = ritual.estimatedDuration.map { startedAt.addingTimeInterval($0) }
+                    RitualActivityService.shared.update(
+                        stepName: ritual.title, progress: Double(ritual.progress), endDate: endDate)
+                }
 
                 if beats > 0 { box.impact.impactOccurred() }
 
@@ -169,6 +190,7 @@ struct RitualView: View {
 
     private func skip() {
         logger.debug("ritual_skipped kind=\(kind.rawValue, privacy: .public) at=\(Date().timeIntervalSince(startedAt), privacy: .public)")
+        RitualActivityService.shared.end(stepName: meta.title, progress: Double(box.ritual?.progress ?? 0), completed: false)
         onFinish()
     }
 
@@ -179,6 +201,7 @@ struct RitualView: View {
         finishing = true
         logger.debug("ritual_completed kind=\(kind.rawValue, privacy: .public) duration=\(Date().timeIntervalSince(startedAt), privacy: .public)")
         box.success.notificationOccurred(.success)   // haptics kept even under Reduce Motion
+        RitualActivityService.shared.end(stepName: meta.title, progress: 1, completed: true)
 
         if reduceMotion {
             onFinish()

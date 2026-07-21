@@ -1,6 +1,17 @@
 import Foundation
 import StoreKit
 
+/// The current purchase attempt's lifecycle — surfaced by callers so a failed purchase (network
+/// error, payment declined) or an Ask-to-Buy hold never leaves a silently re-enabled button.
+/// `.userCancelled` is deliberately NOT a case here: cancelling the system sheet resolves straight
+/// back to `.idle`, since that's an intentional dismissal, not a failure worth a message.
+enum PurchaseFlowState: Equatable {
+    case idle
+    case purchasing
+    case pending
+    case failed(String)
+}
+
 /// StoreKit 2 wrapper for the Pro subscription. Entitlement-driven: `hasPro` reflects
 /// `Transaction.currentEntitlements`, refreshed on launch, after purchases, and on
 /// transaction updates. Fully usable with the store unreachable — products just stay empty
@@ -14,6 +25,14 @@ final class PurchaseService {
     private(set) var products: [Product] = []
     private(set) var hasPro = false
     private(set) var isLoading = false
+    /// Lifecycle of the most recent `purchase(_:)` call — `.idle` once it's been consumed or
+    /// before any attempt. Callers reset it themselves (e.g. on the next tap) rather than this
+    /// service auto-clearing it, so a failure message stays visible until the user acts again.
+    private(set) var purchaseState: PurchaseFlowState = .idle
+    /// One-line, human-readable outcome of the most recent `restore()` call — "Pro restored." or
+    /// "No previous purchase found." `nil` before the first restore attempt.
+    private(set) var restoreResult: String?
+    private(set) var isRestoring = false
     private var updatesTask: Task<Void, Never>?
 
     init() {
@@ -23,33 +42,124 @@ final class PurchaseService {
                 await self?.refreshEntitlement()
             }
         }
+        // Set synchronously so the very first render (before the load Task below actually runs)
+        // never shows the "can't reach the store" empty state for a frame.
+        isLoading = true
         Task { await load() }
     }
 
     func load() async {
         isLoading = true
         defer { isLoading = false }
-        products = (try? await Product.products(for: [Self.monthlyID, Self.yearlyID])) ?? []
+        do {
+            products = try await Product.products(for: [Self.monthlyID, Self.yearlyID])
+        } catch {
+            products = []
+        }
         await refreshEntitlement()
     }
 
-    /// Returns true when the purchase completed (verified). Pending/cancelled return false.
+    /// Clears a stale `.failed`/`.pending` state — call when the user dismisses the message or
+    /// navigates away, so a later screen visit doesn't reopen on an old error.
+    func resetPurchaseState() {
+        purchaseState = .idle
+    }
+
+    /// Returns true when the purchase completed (verified). Pending/cancelled return false;
+    /// `purchaseState` carries the detail (pending vs. a genuine failure) for the UI.
     @discardableResult
     func purchase(_ product: Product) async -> Bool {
-        guard let result = try? await product.purchase() else { return false }
-        switch result {
-        case .success(let verification):
-            if case .verified(let t) = verification { await t.finish() }
-            await refreshEntitlement()
-            return hasPro
-        default:
+        purchaseState = .purchasing
+        do {
+            let result = try await product.purchase()
+            switch result {
+            case .success(let verification):
+                switch verification {
+                case .verified(let t):
+                    await t.finish()
+                    await refreshEntitlement()
+                    purchaseState = .idle
+                    return hasPro
+                case .unverified:
+                    purchaseState = .failed("We couldn't verify that purchase. Please try again.")
+                    return false
+                }
+            case .pending:
+                purchaseState = .pending
+                return false
+            case .userCancelled:
+                purchaseState = .idle
+                return false
+            @unknown default:
+                purchaseState = .idle
+                return false
+            }
+        } catch is CancellationError {
+            purchaseState = .idle
+            return false
+        } catch StoreKitError.userCancelled {
+            purchaseState = .idle
+            return false
+        } catch {
+            purchaseState = .failed(Self.message(for: error))
             return false
         }
     }
 
     func restore() async {
-        try? await AppStore.sync()
+        isRestoring = true
+        defer { isRestoring = false }
+        do {
+            try await AppStore.sync()
+        } catch is CancellationError {
+            return
+        } catch StoreKitError.userCancelled {
+            return
+        } catch {
+            restoreResult = Self.message(for: error)
+            return
+        }
         await refreshEntitlement()
+        restoreResult = hasPro ? "Pro restored." : "No previous purchase found."
+    }
+
+    /// One honest, plain-language line for a thrown StoreKit error — never the raw error text.
+    private static func message(for error: Error) -> String {
+        if let error = error as? Product.PurchaseError {
+            switch error {
+            case .productUnavailable:
+                return "This plan isn't available right now."
+            case .purchaseNotAllowed:
+                return "Purchases aren't allowed on this device."
+            case .ineligibleForOffer:
+                return "You're not eligible for that offer."
+            case .invalidOfferIdentifier, .invalidOfferPrice, .invalidOfferSignature, .missingOfferParameters:
+                return "That offer couldn't be applied. Please try again."
+            case .invalidQuantity:
+                return "That purchase couldn't be completed."
+            @unknown default:
+                return "That purchase couldn't be completed."
+            }
+        }
+        if let error = error as? StoreKitError {
+            switch error {
+            case .networkError:
+                return "Can't reach the App Store right now."
+            case .systemError:
+                return "A system error stopped the purchase."
+            case .notAvailableInStorefront:
+                return "This plan isn't available in your storefront."
+            case .notEntitled:
+                return "You're not entitled to make this purchase."
+            case .unsupported:
+                return "Purchases aren't supported on this device."
+            case .unknown, .userCancelled:
+                return "The purchase couldn't be completed. Please try again."
+            @unknown default:
+                return "The purchase couldn't be completed. Please try again."
+            }
+        }
+        return "The purchase couldn't be completed. Please try again."
     }
 
     private func refreshEntitlement() async {

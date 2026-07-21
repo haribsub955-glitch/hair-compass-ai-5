@@ -101,6 +101,22 @@ enum Clinical {
     static func headline(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
         .system(size: UIFontMetrics(forTextStyle: .title2).scaledValue(for: size), weight: weight, design: .serif)
     }
+
+    // Dynamic Type step 2: the general-purpose body/caption tokens the rest of the app's
+    // ~480 `.font(.system(size:))` call sites were hand-migrated onto. Same byte-identical-at-
+    // `.large` guarantee as the three tokens above — `UIFontMetrics.scaledValue(for:)` is a 1.0
+    // multiplier at the default content size category, so no call site's layout changes unless
+    // the user has actually turned their text size up or down. `body` mirrors the `.system(size:
+    // weight:)` initializer's own default `weight: .regular`; `caption` intentionally carries no
+    // weight parameter, matching the many call sites that never specified one and scales through
+    // `.caption1` so small labels/badges grow more conservatively than paragraph text at large
+    // accessibility sizes, echoing `eyebrow()`'s own use of `.caption2` above.
+    static func body(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .system(size: UIFontMetrics(forTextStyle: .body).scaledValue(for: size), weight: weight)
+    }
+    static func caption(_ size: CGFloat) -> Font {
+        .system(size: UIFontMetrics(forTextStyle: .caption1).scaledValue(for: size))
+    }
 }
 
 /// Generated brand artwork — one consistent painterly gouache style across the app.
@@ -551,7 +567,7 @@ struct Colophon: View {
         VStack(spacing: 0) {
             Divider().overlay(Clinical.hairline)
             Text(text)
-                .font(.system(size: 13))
+                .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 13)
@@ -602,7 +618,7 @@ struct HeaderActionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 20, weight: .semibold))
+                .font(Clinical.body(20, weight: .semibold))
                 .foregroundStyle(Clinical.accent)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
@@ -630,7 +646,7 @@ struct StatBlock: View {
                 .foregroundStyle(Clinical.tertiary)
             if let caption {
                 Text(caption)
-                    .font(.system(size: 11))
+                    .font(Clinical.caption(11))
                     .foregroundStyle(Clinical.secondary)
             }
         }
@@ -652,7 +668,7 @@ struct ClinicalSegmented<T: Hashable>: View {
                     withAnimation(.easeOut(duration: 0.18)) { selection = option }
                 } label: {
                     Text(label(option))
-                        .font(.system(size: 13, weight: isOn ? .semibold : .regular))
+                        .font(Clinical.body(13, weight: isOn ? .semibold : .regular))
                         .foregroundStyle(isOn ? Clinical.surface : Clinical.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -677,7 +693,7 @@ struct ClinicalButtonStyle: ButtonStyle {
     var filled: Bool = true
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 16, weight: .semibold))
+            .font(Clinical.body(16, weight: .semibold))
             .foregroundStyle(filled ? Clinical.surface : Clinical.ink)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
@@ -704,12 +720,12 @@ struct PipStepper: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(Clinical.body(15, weight: .medium))
                     .foregroundStyle(Clinical.ink)
                 Spacer()
                 if let caption {
                     Text(caption)
-                        .font(.system(size: 12))
+                        .font(Clinical.caption(12))
                         .foregroundStyle(Clinical.secondary)
                 }
             }
@@ -773,7 +789,7 @@ struct WhyDisclosure: View {
             }
             .buttonStyle(.plain)
             if expanded {
-                Text(text).font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                Text(text).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
             }
         }
     }

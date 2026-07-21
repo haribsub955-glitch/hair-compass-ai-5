@@ -80,7 +80,7 @@ struct LogSheet: View {
                             DateStripPicker(selection: $logDate, range: backfillRange)
                             if matchedEntry != nil {
                                 Text("This day already has an entry — you're editing it.")
-                                    .font(.system(size: 11))
+                                    .font(Clinical.caption(11))
                                     .foregroundStyle(Clinical.tertiary)
                             }
                         } else {
@@ -120,7 +120,7 @@ struct LogSheet: View {
                                     zones: ["NORMAL", "SLIGHT", "OILY", "VERY"], ends: nil,
                                     caption: oilinessCaption) { i in OilMotif(intensity: i) }
                         Text("An observation, not a risk driver — it doesn't feed the severity score.")
-                            .font(.system(size: 11))
+                            .font(Clinical.caption(11))
                             .foregroundStyle(Clinical.tertiary)
                     }
                     .id("checkInScalp")
@@ -139,7 +139,7 @@ struct LogSheet: View {
                         CountScrubber(title: "Cigarettes today", value: $cigarettes, range: 0...60, tint: Clinical.warning, motif: .smoke)
                         CountScrubber(title: "Alcoholic drinks", value: $alcoholDrinks, range: 0...30, tint: Clinical.secondary, motif: .drops)
                         Text("Smoking is a strong, quantified risk factor. Sleep and stress are context; alcohol is a weak signal.")
-                            .font(.system(size: 11))
+                            .font(Clinical.caption(11))
                             .foregroundStyle(Clinical.tertiary)
                     }
                     .id("checkInContext")
@@ -162,7 +162,7 @@ struct LogSheet: View {
                             axis: .vertical
                         )
                             .lineLimit(2...5)
-                            .font(.system(size: 15))
+                            .font(Clinical.caption(15))
                             .foregroundStyle(Clinical.ink)
                             .tint(Clinical.accent)
                             .padding(12)
@@ -187,7 +187,7 @@ struct LogSheet: View {
                         showAddTrigger = true
                     } label: {
                         Label("Anything notable happen recently?", systemImage: "calendar.badge.plus")
-                            .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.accent)
+                            .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.accent)
                     }
                     .buttonStyle(.plain)
 
@@ -200,7 +200,7 @@ struct LogSheet: View {
                             sideEffectTreatment = firstActiveDaily
                         } label: {
                             Label("Log a side effect", systemImage: "cross.case")
-                                .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.accent)
+                                .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.accent)
                         }
                         .buttonStyle(.plain)
                     }
@@ -283,9 +283,9 @@ struct LogSheet: View {
     private var washDayToggle: some View {
         Toggle(isOn: $washedHair) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Washed hair today").font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.ink)
+                Text("Washed hair today").font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.ink)
                 Text("Shed hairs are far more visible on wash days.")
-                    .font(.system(size: 11)).foregroundStyle(Clinical.secondary)
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.secondary)
             }
         }
         .tint(Clinical.accent)
@@ -317,16 +317,16 @@ struct LogSheet: View {
         if let appt = pendingProcedureToday {
             HStack(spacing: 10) {
                 Image(systemName: appt.type.symbol)
-                    .font(.system(size: 14)).foregroundStyle(Clinical.accent)
+                    .font(Clinical.caption(14)).foregroundStyle(Clinical.accent)
                     .frame(width: 31, height: 31)
                     .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(appt.type.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Clinical.ink)
-                    Text("Scheduled today").font(.system(size: 12)).foregroundStyle(Clinical.secondary)
+                    Text(appt.type.title).font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.ink)
+                    Text("Scheduled today").font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 }
                 Spacer()
                 Button("Mark done") { markProcedureDone(appt) }
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Clinical.surface)
+                    .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.surface)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(Clinical.accent, in: Capsule())
                     .buttonStyle(.plain)
@@ -335,7 +335,7 @@ struct LogSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(completedProceduresToday) { appt in
                     Label("\(appt.type.title) · logged", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.positive)
+                        .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.positive)
                 }
             }
         } else {
@@ -345,7 +345,7 @@ struct LogSheet: View {
                 }
             } label: {
                 Label("Did a procedure today?", systemImage: "plus.circle")
-                    .font(.system(size: 13, weight: .medium)).foregroundStyle(Clinical.accent)
+                    .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.accent)
             }
         }
     }
@@ -610,7 +610,7 @@ private struct CheckInJourneyHeader: View {
                                 .foregroundStyle(Clinical.accent)
                             Text(chapter.title)
                         }
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(Clinical.body(11, weight: .semibold))
                         .foregroundStyle(Clinical.ink)
                         .frame(maxWidth: .infinity, minHeight: 40)
                         .background(Clinical.canvas, in: Capsule())
@@ -683,7 +683,7 @@ private struct CheckInPortraitCard: View {
                         .foregroundStyle(Clinical.ink)
                         .contentTransition(.opacity)
                     Text(reflection.detail)
-                        .font(.system(size: 13))
+                        .font(Clinical.caption(13))
                         .foregroundStyle(Clinical.secondary)
                         .lineLimit(2)
                         .frame(maxWidth: 270, alignment: .leading)
@@ -715,7 +715,7 @@ private struct CheckInPortraitCard: View {
                 }
 
                 Label("One day is context. The pattern becomes useful over time.", systemImage: "calendar.badge.clock")
-                    .font(.system(size: 11))
+                    .font(Clinical.caption(11))
                     .foregroundStyle(Clinical.tertiary)
             }
             .padding(18)
@@ -749,7 +749,7 @@ private struct PortraitMetricRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
+                .font(Clinical.body(12, weight: .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 27, height: 27)
                 .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -757,11 +757,11 @@ private struct PortraitMetricRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(label)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(Clinical.body(11, weight: .medium))
                         .foregroundStyle(Clinical.secondary)
                     Spacer(minLength: 8)
                     Text(value)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(Clinical.body(11, weight: .semibold))
                         .foregroundStyle(Clinical.ink)
                         .contentTransition(.numericText())
                 }

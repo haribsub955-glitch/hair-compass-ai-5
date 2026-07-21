@@ -44,7 +44,7 @@ struct CapturePreviewChips: View {
                     .frame(width: 30, height: 26)
                     .accessibilityHidden(true)
                 Text(option)
-                    .font(.system(size: 11.5, weight: isOn ? .semibold : .regular))
+                    .font(Clinical.body(11.5, weight: isOn ? .semibold : .regular))
                     .foregroundStyle(isOn ? Clinical.accent : Clinical.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -98,7 +98,7 @@ struct CapturePreviewChips: View {
                 )
                 .frame(width: 28, height: 28)
             Image(systemName: style.symbol)
-                .font(.system(size: 15, weight: .medium))
+                .font(Clinical.body(15, weight: .medium))
                 .foregroundStyle(style.tint)
         }
     }

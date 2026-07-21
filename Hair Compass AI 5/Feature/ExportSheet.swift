@@ -20,6 +20,8 @@ struct ExportSheet: View {
 
     @State private var jsonURL: URL?
     @State private var pdfURL: URL?
+    @State private var backupURL: URL?
+    @State private var backupErrorMessage: String?
 
     private var summary: String {
         ExportService.clinicianSummary(
@@ -37,10 +39,10 @@ struct ExportSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Eyebrow(text: "For your clinician")
                             Text("A plain-language summary of your baseline, recent signals, treatments, labs and triggers — ready to hand to a dermatologist or GP.")
-                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                             ShareLink(item: summary) {
                                 Label("Share summary", systemImage: "square.and.arrow.up")
-                                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.surface)
+                                    .font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.surface)
                                     .frame(maxWidth: .infinity).padding(.vertical, 13)
                                     .background(Clinical.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
@@ -54,11 +56,11 @@ struct ExportSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Eyebrow(text: "Visit report")
                             Text("The summary above as a print-ready PDF, with your trend charts and baseline-vs-latest photos — one document to bring to the appointment.")
-                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                                .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                             if let pdfURL {
                                 ShareLink(item: pdfURL) {
                                     Label("Visit report (PDF)", systemImage: "doc.richtext")
-                                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                                        .font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.ink)
                                         .frame(maxWidth: .infinity).padding(.vertical, 13)
                                         .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
@@ -70,15 +72,31 @@ struct ExportSheet: View {
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 10) {
                             Eyebrow(text: "Your data")
-                            Text("Export everything as a JSON file — a portable backup you own and can keep off-device.")
-                                .font(.system(size: 13)).foregroundStyle(Clinical.secondary)
+                            Text("A full backup of every record and photo, in the app's restorable format — if you lose this phone, restore it on a new one from onboarding's \u{201C}Restoring from a backup?\u{201D} link.")
+                                .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                            if let backupURL {
+                                ShareLink(item: backupURL) {
+                                    Label("Back up everything (restorable, includes photos)", systemImage: "arrow.down.doc")
+                                        .font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.surface)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                                        .background(Clinical.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                }
+                            } else if let backupErrorMessage {
+                                Text(backupErrorMessage)
+                                    .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
+                            }
+
+                            Divider().overlay(Clinical.hairline).padding(.vertical, 2)
+
+                            Text("Machine-readable JSON for your own analysis — not restorable by the app; use \u{201C}Back up everything\u{201D} above for that.")
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                             if let jsonURL {
                                 ShareLink(item: jsonURL) {
-                                    Label("Export data (JSON)", systemImage: "arrow.down.doc")
-                                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(Clinical.ink)
-                                        .frame(maxWidth: .infinity).padding(.vertical, 13)
-                                        .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                                    Label("Export data (JSON)", systemImage: "doc.text")
+                                        .font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.ink)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 11)
+                                        .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
                                 }
                             }
                         }
@@ -92,7 +110,7 @@ struct ExportSheet: View {
                         .accessibilityHidden(true)
 
                     Text("This is a self-tracked record for documentation, not a diagnosis.")
-                        .font(.system(size: 11)).foregroundStyle(Clinical.tertiary)
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
                 .padding(20)
             }
@@ -101,9 +119,22 @@ struct ExportSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
             .onAppear {
+                writeBackup()
                 writeJSON()
                 writePDF()
             }
+        }
+    }
+
+    private func writeBackup() {
+        do {
+            backupURL = try BackupService.exportBackup(
+                profile: profiles.first, entries: entries, treatments: treatments,
+                labs: labs, photos: photos, snapshots: snapshots, triggers: triggers,
+                procedures: procedures, progressCheckIns: progressCheckIns
+            )
+        } catch {
+            backupErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
