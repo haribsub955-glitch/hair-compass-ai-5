@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 // App Store Connect product descriptions must be updated to match the in-app record-summary wording.
 #if canImport(FoundationModels)
@@ -122,6 +123,7 @@ final class OnDeviceAnalysisService {
             result = try await generate(
                 instructions: Self.analysisInstructions,
                 prompt: Self.analysisPrompt(context: context),
+                validationContext: context,
                 // Do not expose unvalidated partial prose. The final deterministic gate below
                 // is the sole publication boundary.
                 onPartial: { _ in }
@@ -162,6 +164,7 @@ final class OnDeviceAnalysisService {
     private func generate(
         instructions: String,
         prompt: String,
+        validationContext: AIContext? = nil,
         onPartial: @MainActor (String) -> Void = { _ in }
     ) async throws -> String {
         #if canImport(FoundationModels)
@@ -171,7 +174,7 @@ final class OnDeviceAnalysisService {
                 throw AnalysisError(message: "The analysis came back empty. Please try again.")
             }
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return AIOutputValidator.safeText(trimmed, suppliedFacts: prompt)
+            return validationContext.map { AIOutputValidator.safeText(trimmed, context: $0) } ?? trimmed
         }
         #endif
         throw AnalysisError(message: Self.unavailableMessage)
@@ -209,37 +212,100 @@ final class OnDeviceAnalysisService {
 enum AIOutputValidator {
     static let replacement = "I couldn't safely summarize that output. Keep using the tracked record for documentation, and discuss medical decisions or concerning symptoms with a qualified clinician. This is record-keeping, not diagnosis."
 
+    struct Facts: Sendable {
+        var numericValues: Set<String>
+        var groundedText: String
+        var treatmentReadiness: [String: Bool]
+
+        static func context(_ context: AIContext) -> Facts {
+            let data = (try? JSONEncoder().encode(context)) ?? Data()
+            let object = try? JSONSerialization.jsonObject(with: data)
+            var numbers = Set<String>()
+            func collect(_ value: Any) {
+                if let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() {
+                    numbers.insert(canonical(number.doubleValue))
+                } else if let string = value as? String {
+                    string.matches(of: /\b\d+(?:\.\d+)?\b/).forEach {
+                        if let number = Double($0.output) { numbers.insert(canonical(number)) }
+                    }
+                } else if let array = value as? [Any] { array.forEach(collect) }
+                else if let dictionary = value as? [String: Any] { dictionary.values.forEach(collect) }
+            }
+            if let object { collect(object) }
+            return Facts(
+                numericValues: numbers,
+                groundedText: String(data: data, encoding: .utf8)?.lowercased() ?? "",
+                treatmentReadiness: Dictionary(
+                    context.treatments.map { ($0.name.lowercased(), $0.outcomeReady) },
+                    uniquingKeysWith: { $0 && $1 })
+            )
+        }
+
+        private static func canonical(_ value: Double) -> String {
+            value.rounded() == value ? String(Int(value)) : String(value)
+        }
+    }
+
+    static func safeText(_ text: String, context: AIContext) -> String {
+        isSafe(text, facts: .context(context)) ? text : replacement
+    }
+
+    static func isSafe(_ text: String, context: AIContext) -> Bool {
+        isSafe(text, facts: .context(context))
+    }
+
     static func safeText(_ text: String, suppliedFacts: String, allTreatmentsOutcomeReady: Bool? = nil) -> String {
         isSafe(text, suppliedFacts: suppliedFacts, allTreatmentsOutcomeReady: allTreatmentsOutcomeReady)
             ? text : replacement
     }
 
     static func isSafe(_ text: String, suppliedFacts: String, allTreatmentsOutcomeReady: Bool? = nil) -> Bool {
+        let numbers = Set(suppliedFacts.matches(of: /\b\d+(?:\.\d+)?\b/).map { String($0.output) })
+        let readiness = allTreatmentsOutcomeReady
+            ?? (suppliedFacts.lowercased().contains("\"outcomeready\":false") ? false : nil)
+        return isSafe(text, facts: Facts(numericValues: numbers,
+                                        groundedText: suppliedFacts.lowercased(),
+                                        treatmentReadiness: readiness.map { ["treatment": $0] } ?? [:]))
+    }
+
+    static func isSafe(_ text: String, facts: Facts) -> Bool {
         let value = text.lowercased()
-        let facts = suppliedFacts.lowercased()
-        let forbidden = [
-            #"\b(you|this) (definitely |certainly )?(have|has|is) (alopecia|telogen effluvium|an infection|dermatitis)\b"#,
-            #"\b(this|that) (proves|confirms|establishes|means)\b"#,
-            #"\b(start|stop|discontinue|increase|decrease|double|halve|skip) (taking |using )?(your )?(medication|medicine|dose|dosage|minoxidil|finasteride)\b"#,
-            #"\b(you should|i recommend|you need to) (start|stop|discontinue|increase|decrease|take|use|apply)\b"#,
-            #"\b(take|use|apply) \d+(\.\d+)?\s*(mg|ml|tablet|capsule|times? (a|per) day)\b"#,
-            #"\b(no need|do not need|don't need) to (seek|get|call|contact).*(urgent|emergency|medical)\b"#,
-            #"\b(ignore|nothing to worry about|not serious|harmless)\b.*\b(chest pain|faint|severe|swelling|trouble breathing|suicid)\b"#
+        let safeNegations = [
+            #"\b(do not|don't|never) (stop|discontinue|change|increase|decrease)\b[^.!?]{0,80}\b(without|unless)\b[^.!?]{0,80}\b(clinician|doctor|prescriber|medical professional)\b"#,
+            #"\b(talk|speak|check|consult) (to|with) (your )?(clinician|doctor|prescriber) before\b[^.!?]{0,50}\b(stop|discontinue|change|increase|decrease)\b"#
         ]
-        if forbidden.contains(where: { value.range(of: $0, options: .regularExpression) != nil }) { return false }
+        var gatedValue = value
+        for pattern in safeNegations {
+            gatedValue = gatedValue.replacingOccurrences(of: pattern, with: " safe-medication-caution ", options: .regularExpression)
+        }
+        let forbidden = [
+            #"\b(you|your scalp|this|it)\s+(clearly |definitely |certainly |probably |likely )?(have|has|is|looks? like|appears? to be|suggests?|indicates?|shows?)\s+(an? )?(alopecia(?: areata| totalis| universalis)?|androgenetic alopecia|pattern hair loss|telogen effluvium|dermatitis|psoriasis|folliculitis|tinea capitis|ringworm|infection|scarring alopecia|lichen planopilaris|frontal fibrosing alopecia)\b"#,
+            #"\b(this|that|the pattern|the photo|your symptoms?) (proves|confirms|establishes|means|is diagnostic of|points to)\b"#,
+            #"\b(start|stop|discontinue|quit|increase|decrease|reduce|raise|lower|double|halve|skip|switch) (taking |using |applying )?(your )?(medication|medicine|dose|dosage|treatment|minoxidil|finasteride)\b"#,
+            #"\b(you should|i recommend|you need to) (start|stop|discontinue|increase|decrease|switch|change|take|use|apply)\b"#,
+            #"\b(take|use|apply)\s+(one|two|three|half|a)\s*(mg|ml|tablet|capsule|pill|drop|pump|times?)\b"#,
+            #"\b(take|use|apply) \d+(\.\d+)?\s*(mg|mcg|g|ml|tablet|capsule|pill|drop|pump|times? (a|per) day)\b"#,
+            #"\b(no need|do not need|don't need|not necessary) to (seek|get|call|contact).*(urgent|emergency|medical|clinician|doctor)\b"#,
+            #"\b(ignore|nothing to worry about|not serious|harmless|definitely safe|cannot be serious)\b.*\b(chest pain|faint|severe|swelling|trouble breathing|shortness of breath|suicid|sudden|bleeding)\b"#
+        ]
+        if forbidden.contains(where: { gatedValue.range(of: $0, options: .regularExpression) != nil }) { return false }
 
         let efficacy = value.range(
             of: #"\b(treatment|medication|minoxidil|finasteride|it) (is |has |isn't |hasn't )?(working|effective|ineffective|failed|improving regrowth)\b"#,
             options: .regularExpression) != nil
-        let factsShowEarlyTreatment = facts.contains("\"outcomeready\":false")
-        if efficacy && (allTreatmentsOutcomeReady == false || factsShowEarlyTreatment) { return false }
+        if efficacy {
+            let mentioned = facts.treatmentReadiness.filter { value.contains($0.key) }
+            if mentioned.isEmpty {
+                if facts.treatmentReadiness.values.contains(false) { return false }
+            } else if mentioned.values.contains(false) { return false }
+        }
 
         // Reject invented numeric measurements. Calendar dates and the app's fixed 24-week
         // policy are allowed; every other generated number must occur in the supplied facts.
-        let factNumbers = Set(facts.matches(of: /\b\d+(?:\.\d+)?\b/).map { String($0.output) })
         let numbers = value.matches(of: /\b\d+(?:\.\d+)?\b/).map { String($0.output) }
         for number in numbers where number != "24" {
-            if !factNumbers.contains(number) { return false }
+            let canonical = Double(number).map { $0.rounded() == $0 ? String(Int($0)) : String($0) } ?? number
+            if !facts.numericValues.contains(canonical) { return false }
         }
 
         // High-impact clinical facts must be present in the supplied record before generated
@@ -247,7 +313,7 @@ enum AIOutputValidator {
         // free to summarize recorded observations, never to invent a new clinical premise.
         let groundedTerms = ["pregnant", "pregnancy", "ferritin", "vitamin d", "thyroid",
                              "infection", "alopecia areata", "telogen effluvium"]
-        for term in groundedTerms where value.contains(term) && !facts.contains(term) {
+        for term in groundedTerms where value.contains(term) && !facts.groundedText.contains(term) {
             return false
         }
         return true

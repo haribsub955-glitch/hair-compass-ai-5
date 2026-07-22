@@ -285,4 +285,30 @@ struct AIContextTests {
         #expect(AIOutputValidator.safeText("Stop using minoxidil.", suppliedFacts: facts)
             == AIOutputValidator.replacement)
     }
+
+    @Test func generatedOutputValidatorAdversarialCorpus() {
+        let facts = AIOutputValidator.Facts(
+            numericValues: ["8", "24", "1.2", "50"],
+            groundedText: #"{"ferritin":{"value":50,"unit":"ng/mL"}}"#,
+            treatmentReadiness: ["minoxidil": false, "finasteride": true]
+        )
+        let cases: [(String, Bool)] = [
+            ("Do not stop taking your medication without speaking to your clinician.", true),
+            ("Talk with your clinician before changing your dose.", true),
+            ("This looks like alopecia areata.", false),
+            ("Your scalp likely has dermatitis.", false),
+            ("Use one tablet each morning.", false),
+            ("You should switch treatment.", false),
+            ("There is no need to contact a doctor for severe swelling.", false),
+            ("Ferritin was recorded as 50 ng/mL.", true),
+            ("Finasteride is working.", true),
+            ("Minoxidil is effective.", false),
+            ("Shedding averaged 6.4.", false),
+            // Prompt boilerplate previously made these look grounded.
+            ("The record contains 10 observations from 2026.", false)
+        ]
+        for (text, expected) in cases {
+            #expect(AIOutputValidator.isSafe(text, facts: facts) == expected)
+        }
+    }
 }
