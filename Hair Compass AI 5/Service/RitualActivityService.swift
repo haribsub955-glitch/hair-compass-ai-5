@@ -1,78 +1,122 @@
 import ActivityKit
 import Foundation
 
-/// Starts/updates/ends the Ritual Live Activity (Dynamic Island + Lock Screen) that mirrors a
-/// launch ritual (Feature/Ritual/RitualView.swift) while it's on screen. Entirely local — no push
-/// updates, `pushType: nil` throughout — and entirely best-effort: every entry point silently
-/// no-ops when Live Activities are unavailable/disabled or the OS refuses the request, so a
-/// ritual's own animation/haptics/completion flow never stalls or crashes because of ActivityKit.
+struct RitualActivitySnapshot: Sendable, Equatable {
+    var kind: RitualKind
+    var title: String
+    var startDate: Date
+    var stepName: String
+    var progress: Double
+    var endDate: Date?
+    var staleDate: Date
+}
+
+protocol RitualActivityClient: Sendable {
+    @MainActor var activitiesEnabled: Bool { get }
+    @MainActor func start(_ snapshot: RitualActivitySnapshot) throws
+    @MainActor func update(_ snapshot: RitualActivitySnapshot) async
+    @MainActor func endCurrent(_ snapshot: RitualActivitySnapshot, completed: Bool) async
+    @MainActor func endAll() async
+}
+
+@MainActor
+final class ActivityKitRitualClient: RitualActivityClient, @unchecked Sendable {
+    private var activity: Activity<RitualActivityAttributes>?
+    var activitiesEnabled: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
+
+    func start(_ snapshot: RitualActivitySnapshot) throws {
+        let attributes = RitualActivityAttributes(ritualName: snapshot.title,
+                                                  ritualKind: snapshot.kind.rawValue,
+                                                  startDate: snapshot.startDate)
+        activity = try Activity.request(attributes: attributes, content: content(snapshot), pushType: nil)
+    }
+    func update(_ snapshot: RitualActivitySnapshot) async { await activity?.update(content(snapshot)) }
+    func endCurrent(_ snapshot: RitualActivitySnapshot, completed: Bool) async {
+        guard let activity else { return }
+        self.activity = nil
+        let policy: ActivityUIDismissalPolicy = completed
+            ? .after(Date().addingTimeInterval(3)) : .immediate
+        await activity.end(content(snapshot), dismissalPolicy: policy)
+    }
+    func endAll() async {
+        activity = nil
+        for orphan in Activity<RitualActivityAttributes>.activities {
+            await orphan.end(nil, dismissalPolicy: .immediate)
+        }
+    }
+    private func content(_ snapshot: RitualActivitySnapshot) -> ActivityContent<RitualActivityAttributes.ContentState> {
+        let state = RitualActivityAttributes.ContentState(stepName: snapshot.stepName, stepIndex: 1,
+                                                          totalSteps: 1, progress: snapshot.progress,
+                                                          endDate: snapshot.endDate)
+        return ActivityContent(state: state, staleDate: snapshot.staleDate)
+    }
+}
+
+enum RitualActivityPolicy {
+    /// Interactive rituals have no estimated end. Ten minutes is deliberately longer than a
+    /// normal ritual but short enough that a force-quit cannot leave an all-day system surface.
+    static let maximumLifetime: TimeInterval = 10 * 60
+
+    static func staleDate(startDate: Date, estimatedEndDate: Date?) -> Date {
+        let hardLimit = startDate.addingTimeInterval(maximumLifetime)
+        guard let estimatedEndDate else { return hardLimit }
+        return min(hardLimit, estimatedEndDate.addingTimeInterval(60))
+    }
+
+    static func shouldEnd(isRitualPresented: Bool, sceneIsActive: Bool) -> Bool {
+        !isRitualPresented || !sceneIsActive
+    }
+}
+
+/// Best-effort local lifecycle coordinator. ActivityKit remains at the small client boundary;
+/// expiry and foreground/orphan decisions are pure and unit-testable.
 @MainActor
 final class RitualActivityService {
     static let shared = RitualActivityService()
-    private init() {}
-
-    private var activity: Activity<RitualActivityAttributes>?
-
-    /// Throttle: `RitualView`'s canvas steps every animation frame (~60/s), but ActivityKit
-    /// updates are rate-limited by the system — never push more than a handful of updates a
-    /// second. The very first and terminal (progress >= 1) updates always bypass the throttle so
-    /// the Dynamic Island never misses a ritual's start or its completed frame.
+    private let client: any RitualActivityClient
+    private var snapshot: RitualActivitySnapshot?
     private var lastUpdateAt: Date?
     private let minUpdateInterval: TimeInterval = 0.25
 
-    /// Begin tracking a ritual. Fails silently (no permission, Live Activities off in Settings,
-    /// simulator without support, over the OS's concurrent-activity limit, ...) — the ritual
-    /// itself never depends on this succeeding.
+    init(client: (any RitualActivityClient)? = nil) { self.client = client ?? ActivityKitRitualClient() }
+
+    func reconcileOrphans() async {
+        // An activation task can race a newly presented RitualView. Once this process owns a
+        // current snapshot it is not an orphan and must not be swept away.
+        guard snapshot == nil else { return }
+        await client.endAll()
+    }
+
     func start(kind: RitualKind, title: String, startDate: Date) {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-
-        // Defensive cleanup: a previous run that crashed or was force-quit mid-ritual could have
-        // left an orphaned activity behind (its own `end` never ran) — clear those before
-        // starting a fresh one so Live Activities never pile up.
-        for stale in Activity<RitualActivityAttributes>.activities {
-            Task { await stale.end(nil, dismissalPolicy: .immediate) }
-        }
-
-        let attributes = RitualActivityAttributes(ritualName: title, ritualKind: kind.rawValue, startDate: startDate)
-        let state = RitualActivityAttributes.ContentState(
-            stepName: title, stepIndex: 1, totalSteps: 1, progress: 0, endDate: nil)
-
-        activity = try? Activity.request(
-            attributes: attributes,
-            content: ActivityContent(state: state, staleDate: nil),
-            pushType: nil
-        )
-        lastUpdateAt = nil
+        guard client.activitiesEnabled else { return }
+        let value = RitualActivitySnapshot(kind: kind, title: title, startDate: startDate,
+            stepName: title, progress: 0, endDate: nil,
+            staleDate: RitualActivityPolicy.staleDate(startDate: startDate, estimatedEndDate: nil))
+        do { try client.start(value); snapshot = value; lastUpdateAt = nil } catch { snapshot = nil }
     }
 
-    /// Push a new content state. Throttled (see `minUpdateInterval`); a no-op if `start` never
-    /// produced an activity (Live Activities unavailable, request refused, ...).
     func update(stepName: String, progress: Double, endDate: Date?) {
-        guard let activity else { return }
-        let clamped = min(1, max(0, progress))
-        let now = Date()
-        if let last = lastUpdateAt, now.timeIntervalSince(last) < minUpdateInterval, clamped < 1 { return }
-        lastUpdateAt = now
-
-        let state = RitualActivityAttributes.ContentState(
-            stepName: stepName, stepIndex: 1, totalSteps: 1, progress: clamped, endDate: endDate)
-        Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
+        guard var value = snapshot else { return }
+        let clamped = min(1, max(0, progress)); let now = Date()
+        if let lastUpdateAt, now.timeIntervalSince(lastUpdateAt) < minUpdateInterval, clamped < 1 { return }
+        self.lastUpdateAt = now
+        value.stepName = stepName; value.progress = clamped; value.endDate = endDate
+        value.staleDate = RitualActivityPolicy.staleDate(startDate: value.startDate, estimatedEndDate: endDate)
+        snapshot = value
+        Task { await client.update(value) }
     }
 
-    /// End the activity. `completed` finishes at 100% and lingers briefly (`.after`) so a glance
-    /// at the Lock Screen/Dynamic Island still catches the "done" frame; a skip/cancel dismisses
-    /// immediately since there's nothing left worth showing.
     func end(stepName: String, progress: Double, completed: Bool) {
-        guard let activity else { return }
-        self.activity = nil
+        guard var value = snapshot else { return }
+        snapshot = nil
+        value.stepName = completed ? "Complete" : stepName
+        value.progress = completed ? 1 : min(1, max(0, progress)); value.endDate = nil
+        value.staleDate = Date()
+        Task { await client.endCurrent(value, completed: completed) }
+    }
 
-        let state = RitualActivityAttributes.ContentState(
-            stepName: completed ? "Complete" : stepName,
-            stepIndex: 1, totalSteps: 1,
-            progress: completed ? 1 : min(1, max(0, progress)),
-            endDate: nil
-        )
-        let policy: ActivityUIDismissalPolicy = completed ? .after(Date().addingTimeInterval(3)) : .immediate
-        Task { await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: policy) }
+    func ritualStoppedBeingForeground() {
+        guard snapshot != nil else { return }
+        end(stepName: snapshot?.stepName ?? "Ritual", progress: snapshot?.progress ?? 0, completed: false)
     }
 }

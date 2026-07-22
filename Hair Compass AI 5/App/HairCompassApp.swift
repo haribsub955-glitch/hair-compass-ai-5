@@ -1,6 +1,18 @@
 import SwiftData
 import SwiftUI
 
+protocol PersistenceFileOperating {
+    func urls(for directory: FileManager.SearchPathDirectory, in domainMask: FileManager.SearchPathDomainMask) -> [URL]
+    func fileExists(atPath path: String) -> Bool
+    func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool,
+                         attributes: [FileAttributeKey: Any]?) throws
+    func copyItem(at srcURL: URL, to dstURL: URL) throws
+    func removeItem(at URL: URL) throws
+    func contentsEqual(atPath path1: String, andPath path2: String) -> Bool
+}
+
+extension FileManager: PersistenceFileOperating {}
+
 enum HairCompassSchemaV1: VersionedSchema {
     static let versionIdentifier = Schema.Version(1, 0, 0)
     static var models: [any PersistentModel.Type] {
@@ -20,8 +32,12 @@ final class PersistenceController {
     private(set) var container: ModelContainer?
     private(set) var failureMessage: String?
     private(set) var recoveryURL: URL?
+    private let storeOpener: @MainActor () throws -> ModelContainer
 
-    init() { openStore() }
+    init(storeOpener: @escaping @MainActor () throws -> ModelContainer = PersistenceController.makeContainer) {
+        self.storeOpener = storeOpener
+        openStore()
+    }
 
     func retry() { openStore() }
 
@@ -36,11 +52,7 @@ final class PersistenceController {
 
     private func openStore() {
         do {
-            let schema = Schema(versionedSchema: HairCompassSchemaV1.self)
-            let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-            container = try ModelContainer(for: schema,
-                                           migrationPlan: HairCompassMigrationPlan.self,
-                                           configurations: configuration)
+            container = try storeOpener()
             failureMessage = nil
         } catch {
             container = nil
@@ -57,18 +69,45 @@ final class PersistenceController {
         }
     }
 
-    /// Explicit reset is recoverable: the store and SQLite sidecars are moved, never deleted.
-    static func moveStoreAside(fileManager: FileManager = .default, date: Date = .now) throws -> URL? {
+    private static func makeContainer() throws -> ModelContainer {
+        let schema = Schema(versionedSchema: HairCompassSchemaV1.self)
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        return try ModelContainer(for: schema, migrationPlan: HairCompassMigrationPlan.self,
+                                  configurations: configuration)
+    }
+
+    /// Copies and verifies the complete SQLite recovery set before touching any live file. A copy
+    /// failure therefore leaves the original store/WAL/SHM together and openable in place.
+    static func moveStoreAside(
+        fileManager: any PersistenceFileOperating = FileManager.default,
+        recoveryID: @Sendable () -> String = { UUID().uuidString }
+    ) throws -> URL? {
         guard let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
         let store = support.appendingPathComponent("default.store")
         guard fileManager.fileExists(atPath: store.path) else { return nil }
-        let stamp = Int(date.timeIntervalSince1970)
-        let directory = support.appendingPathComponent("HairCompass-Persistence-Recovery-\(stamp)", isDirectory: true)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let directory = support.appendingPathComponent("HairCompass-Persistence-Recovery-\(recoveryID())", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
+        var copied: [(source: URL, destination: URL)] = []
         for name in ["default.store", "default.store-wal", "default.store-shm"] {
             let source = support.appendingPathComponent(name)
             guard fileManager.fileExists(atPath: source.path) else { continue }
-            try fileManager.moveItem(at: source, to: directory.appendingPathComponent(name))
+            let destination = directory.appendingPathComponent(name)
+            try fileManager.copyItem(at: source, to: destination)
+            guard fileManager.contentsEqual(atPath: source.path, andPath: destination.path) else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            copied.append((source, destination))
+        }
+        // Commit only after every present member has a byte-identical recovery copy. If a later
+        // removal fails, restore any already-removed member from that verified copy before
+        // surfacing the error, so the live set is never left split.
+        do {
+            for item in copied { try fileManager.removeItem(at: item.source) }
+        } catch {
+            for item in copied where !fileManager.fileExists(atPath: item.source.path) {
+                try? fileManager.copyItem(at: item.destination, to: item.source)
+            }
+            throw error
         }
         return directory
     }

@@ -156,6 +156,9 @@ struct RootView: View {
         .environment(purchases)
         .environment(deepLinks)
         .task {
+            // A force-quit can bypass RitualView.onDisappear. Clear any ActivityKit survivors
+            // before launch decides whether to present a fresh ritual.
+            await RitualActivityService.shared.reconcileOrphans()
             guard !didBootstrap else { return }
             didBootstrap = true
             if ProcessInfo.processInfo.arguments.contains("HC_SEED_DEMO") {
@@ -300,10 +303,14 @@ struct RootView: View {
                 appLock.markBackgrounded()
                 ritualCoordinator.markBackgrounded()
                 privacyPresenter.present()
+                RitualActivityService.shared.ritualStoppedBeingForeground()
             case .inactive:
                 privacyPresenter.present()
+                RitualActivityService.shared.ritualStoppedBeingForeground()
             case .active:
                 privacyPresenter.dismiss()
+                // Activation may follow suspension/termination where no view teardown ran.
+                Task { await RitualActivityService.shared.reconcileOrphans() }
                 // A Siri/Shortcuts "Log check-in" hands off through the App Group — honour it on
                 // activation. The `&&` short-circuits so the flag is only consumed when we can act
                 // (never swallowed behind the lock or onboarding), and it suppresses a ritual roll.
