@@ -18,8 +18,6 @@ struct HairChatSheet: View {
     /// Header eyebrow — defaults to the original Compare-sheet copy so existing callers are
     /// unaffected. Override for entry points that aren't about a chart.
     var eyebrow: String = "Ask about your data"
-    /// Header title — defaults to the original Compare-sheet copy.
-    var title: String = "Explain this chart"
     /// Which starter questions to show in the empty state — see `HairChatPrompt.StarterKind`.
     var starterKind: HairChatPrompt.StarterKind = .chartComparison
 

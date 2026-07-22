@@ -237,7 +237,7 @@ struct TodayView: View {
         .sheet(isPresented: $showChat) {
             HairChatSheet(
                 contextJSON: chatContext, focus: chatFocus,
-                eyebrow: "Ask about your record", title: "Ask AI",
+                eyebrow: "Ask about your record",
                 starterKind: .fullRecord
             )
             .presentationDetents([.medium, .large], selection: $chatDetent)
@@ -355,15 +355,16 @@ struct TodayView: View {
                     // the Pro gate and the Apple-Intelligence availability check.
                     openChat()
                 } label: {
-                    HStack(spacing: 2) {
-                        Text("Ask AI")
+                    HStack(spacing: 4) {
+                        CompanionView(moment: .resting, variant: .avatar, size: 16)
+                        Text("Ask Wren")
                         Image(systemName: "chevron.right").font(Clinical.body(8, weight: .semibold))
                     }
                     .font(Clinical.body(11, weight: .semibold))
                     .foregroundStyle(Clinical.accent)
                 }
                 .buttonStyle(.clinicalPressable)
-                .accessibilityLabel("Ask AI about your tracking record")
+                .accessibilityLabel("Ask Wren about your tracking record")
 
                 Button {
                     showDeepAnalysis = true

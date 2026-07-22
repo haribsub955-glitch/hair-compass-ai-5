@@ -385,7 +385,7 @@ struct CompareView: View {
     /// hair-science chat over the comparison on screen.
     private var askAIChip: some View {
         Button { openChat() } label: {
-            Label("Ask AI about this", systemImage: "bubble.left.and.text.bubble.right")
+            Label("Ask Wren about this", systemImage: "bubble.left.and.text.bubble.right")
                 .font(Clinical.body(12, weight: .semibold))
                 .foregroundStyle(Clinical.accent)
                 .padding(.horizontal, 12).padding(.vertical, 7)
@@ -393,7 +393,7 @@ struct CompareView: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.clinicalPressable)
-        .accessibilityLabel("Ask AI about this comparison")
+        .accessibilityLabel("Ask Wren about this comparison")
     }
 
     /// One line telling the chat what's on screen, so answers land on it.
