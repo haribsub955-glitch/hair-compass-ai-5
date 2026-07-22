@@ -907,6 +907,31 @@ struct Hair_Compass_AI_5Tests {
         }
     }
 
+    @Test func homeDevicesSupportWeekdayScheduleSoTheirCadenceCanHold() {
+        // Microneedling and LLLT are home-use devices with an evidence-backed weekly-ish cadence —
+        // they must be able to hold a weekday schedule, or a permanently empty one reads as "every
+        // day" to `isDueToday()` forever (the bug this fixes).
+        #expect(TreatmentClass.microneedling.supportsWeekdaySchedule)
+        #expect(TreatmentClass.lllt.supportsWeekdaySchedule)
+        #expect(TreatmentClass.shampoo.supportsWeekdaySchedule)
+        #expect(TreatmentClass.oil.supportsWeekdaySchedule)
+        #expect(TreatmentClass.supplement.supportsWeekdaySchedule)
+        // PRP is done in-clinic on the provider's own calendar (ProcedureAppointment), not a home
+        // weekday picker; plain medications run daily regardless of weekday.
+        #expect(!TreatmentClass.prp.supportsWeekdaySchedule)
+        #expect(!TreatmentClass.minoxidil.supportsWeekdaySchedule)
+        #expect(!TreatmentClass.finasteride.supportsWeekdaySchedule)
+
+        // With a cadence actually set, isDueToday() holds it instead of reading the schedule as
+        // "every day" — a weekly microneedling session no longer shows due on its off days.
+        let today = Calendar.current.component(.weekday, from: .now)
+        let otherDay = today == 1 ? 2 : 1
+        let offDayMicroneedling = Treatment(name: "Dermaroller", treatmentClass: .microneedling, scheduledWeekdays: [otherDay])
+        #expect(!offDayMicroneedling.isDueToday())
+        let todaysLLLT = Treatment(name: "Laser cap", treatmentClass: .lllt, scheduledWeekdays: [today])
+        #expect(todaysLLLT.isDueToday())
+    }
+
     // MARK: - Science products → plan ("Add to plan")
 
     @Test func addToPlanMapsToAnEditableOtherTreatment() throws {

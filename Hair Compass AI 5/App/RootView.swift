@@ -176,7 +176,15 @@ struct RootView: View {
             }
             #endif
             // Cover the "onboarded but never toured" relaunch — the user killed the app mid-tutorial.
-            if !showOnboarding, profile?.hasOnboarded == true, !hasSeenTutorial {
+            // A DEBUG-forced ritual (HC_RITUAL_KIND / HC_RITUAL) is an explicit test/QA hook and
+            // must always win the one-cover slot, or forcing a kind wouldn't reliably show anything
+            // on a fresh install where hasSeenTutorial defaults false.
+            var forcingRitual = false
+            #if DEBUG
+            forcingRitual = ProcessInfo.processInfo.arguments.contains("HC_RITUAL_KIND")
+                || ProcessInfo.processInfo.arguments.contains("HC_RITUAL")
+            #endif
+            if !showOnboarding, profile?.hasOnboarded == true, !hasSeenTutorial, !forcingRitual {
                 showTutorial = true
             }
             // Launch-ritual roll — only once onboarding is resolved, and never over onboarding.
@@ -189,6 +197,13 @@ struct RootView: View {
             if !showOnboarding && !showTutorial && !suppressRitual && !appLock.isLocked {
                 ritualKind = ritualCoordinator.rollOnLaunch(hasOnboarded: profile?.hasOnboarded == true)
             }
+            // Re-derive notification permission the same way, for the same reason:
+            // `NotificationService.authorization` can only ever start at `.notDetermined`, so
+            // without this a previously granted user reads as never-asked on every relaunch.
+            // Each `plan*`/`reschedule` call below now self-refreshes too (belt-and-suspenders —
+            // it's the fix for the 2026-07-21 evening-reminder audit), but doing it once here
+            // up front keeps this launch task's intent explicit alongside HealthKit's bootstrap.
+            await notifications.refreshAuthorization()
             // Re-derive HealthKit request/query state first — `HealthKitService.init()` can
             // only ever start at `.notRequested`, so without this, a person who answered
             // the request in a prior session would look never-asked on every relaunch and the
@@ -235,6 +250,12 @@ struct RootView: View {
                 } else if identifier.hasPrefix("refill.") || identifier.hasPrefix("treatment.") {
                     tab = .care
                     deepLinks.openCareRequested = true
+                } else if identifier.hasPrefix("procedure.") {
+                    tab = .care
+                    deepLinks.openProceduresRequested = true
+                } else if identifier.hasPrefix("progressCheckIn.") {
+                    tab = .care
+                    deepLinks.openProgressCheckInRequested = true
                 }
             }
         }

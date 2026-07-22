@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 /// The Plan tab: what to do today (routine), how you're doing (coach + milestones), reminders to
 /// keep you on track, and the treatment regimen with its 24-week judging gate. Guidance is
@@ -9,6 +10,7 @@ struct CareView: View {
     @Environment(NotificationService.self) private var notifications
     @Environment(DeepLinkRouter.self) private var deepLinks
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
@@ -234,6 +236,21 @@ struct CareView: View {
         .onChange(of: deepLinks.openCareRequested) { _, requested in
             guard requested else { return }
             deepLinks.openCareRequested = false
+        }
+        // A procedure-reminder tap (the day-before consultation nudge) lands here already on
+        // Plan — open the procedures list, whose appointment detail sheet offers "Prepare visit
+        // report" for consultations, delivering on what the reminder promised.
+        .onChange(of: deepLinks.openProceduresRequested) { _, requested in
+            guard requested else { return }
+            deepLinks.openProceduresRequested = false
+            showProcedures = true
+        }
+        // The monthly progress check-in reminder lands here already on Plan — open the sheet
+        // directly instead of leaving the user to find it at staggered index 13.
+        .onChange(of: deepLinks.openProgressCheckInRequested) { _, requested in
+            guard requested else { return }
+            deepLinks.openProgressCheckInRequested = false
+            showProgressCheckIn = true
         }
         // Re-plans whenever today's logged state flips — the "cancel when logged" honesty rule:
         // once today is logged, today's pending reminder id is dropped from the schedule.
@@ -632,6 +649,38 @@ struct CareView: View {
                         .tint(Clinical.accent)
                 }
             }
+
+            if notifications.authorization == .denied {
+                notifDeniedNotice
+            }
+        }
+    }
+
+    /// iOS never re-presents the system permission sheet once someone has answered it, so a
+    /// toggle attempt while `.denied` fails silently — no sheet, no explanation, just the switch
+    /// snapping back off, indistinguishable from a broken control. This row replaces that silence:
+    /// shown both proactively (this only renders inside `remindersDetail`, i.e. while the section
+    /// is expanded) and immediately after either toggle above reverts itself, since both flip
+    /// `notifications.authorization` to `.denied` on the same read. `.notDetermined` — someone who
+    /// hasn't been asked yet — gets no special copy here; that toggle attempt still shows the
+    /// normal system prompt and only earns this row if they decline it.
+    private var notifDeniedNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider().overlay(Clinical.hairline).padding(.vertical, 4)
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "bell.slash.fill")
+                    .font(Clinical.caption(12))
+                    .foregroundStyle(Clinical.warning)
+                    .padding(.top, 1)
+                Text("Notifications are off for Hair Compass in iOS Settings.")
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+            }
+            Button("Open Settings") {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                openURL(url)
+            }
+            .buttonStyle(ClinicalButtonStyle(filled: false))
+            .accessibilityIdentifier("careRemindersOpenSettings")
         }
     }
 

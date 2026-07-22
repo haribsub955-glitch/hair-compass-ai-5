@@ -34,10 +34,12 @@ final class NotificationService {
     /// Fired on the main actor with the tapped notification's identifier — `RootView` wires this
     /// to switch tabs and set the matching `DeepLinkRouter` flag (milestone → progress report,
     /// evening check-in → the log sheet, monthly photo → guided capture, refill/treatment →
-    /// Plan), the same consume-once idiom the widget's `haircompass://log` URL already uses.
-    /// Round 4: previously only `milestone.*` taps were routed at all — every other reminder
-    /// (the evening check-in, the monthly photo prompt, a refill heads-up) dead-ended at the app
-    /// icon instead of opening the thing it invited, right at the moment the user said yes.
+    /// Plan, procedure → the procedures list, progress check-in → ProgressCheckInSheet), the same
+    /// consume-once idiom the widget's `haircompass://log` URL already uses. Round 4: previously
+    /// only `milestone.*` taps were routed at all — every other reminder (the evening check-in,
+    /// the monthly photo prompt, a refill heads-up) dead-ended at the app icon instead of opening
+    /// the thing it invited, right at the moment the user said yes. Round 5: `procedure.*` and
+    /// `progressCheckIn.*` were still unmatched and got the same fix.
     var onNotificationTapped: ((String) -> Void)? {
         get { tapDelegate.onTapped }
         set { tapDelegate.onTapped = newValue }
@@ -49,6 +51,16 @@ final class NotificationService {
 
     func refreshAuthorization() async {
         authorization = await center.notificationSettings().authorizationStatus
+    }
+
+    /// Pure guard condition shared by every `plan*`/`performReschedule` call: on, and the system
+    /// permission is actually granted. Pulled out so it can be unit-tested without a live
+    /// `UNUserNotificationCenter` (2026-07-21 audit: `authorization` starts `.notDetermined` on
+    /// every cold launch and was previously only refreshed from `CareView`, so a user who lived
+    /// on Today ate a silent remove-and-fail on every one of these calls — see the
+    /// `await refreshAuthorization()` each caller now runs first).
+    nonisolated static func canSchedule(enabled: Bool, authorization: UNAuthorizationStatus) -> Bool {
+        enabled && (authorization == .authorized || authorization == .provisional)
     }
 
     /// Requests notification permission if it hasn't been decided yet, otherwise just reports
@@ -110,7 +122,12 @@ final class NotificationService {
         treatments: [(name: String, slots: [String])],
         refills: [(name: String, refillBy: Date)]
     ) async {
-        guard isEnabled, authorization == .authorized || authorization == .provisional else { return }
+        // Self-refresh rather than trusting a caller to have called `refreshAuthorization()`
+        // first: `authorization` starts `.notDetermined` on every cold launch, and nothing but
+        // `CareView`'s `.task` previously re-derived it, so a user who never opened Plan would
+        // fail this guard on every relaunch — after the remove-all below already ran.
+        await refreshAuthorization()
+        guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else { return }
         center.removeAllPendingNotificationRequests()
         guard !Task.isCancelled else { return }
 
@@ -183,10 +200,11 @@ final class NotificationService {
     /// call just scheduled (see `CareView`'s shared `.task(id:)`). No-op (after clearing stale
     /// ids) when reminders are off.
     func planProcedureReminders(_ items: [(id: String, title: String, date: Date, isConsultation: Bool)]) async {
+        await refreshAuthorization()
         let pending = await center.pendingNotificationRequests()
         let staleIDs = pending.map(\.identifier).filter { $0.hasPrefix(procedurePrefix) }
         if !staleIDs.isEmpty { center.removePendingNotificationRequests(withIdentifiers: staleIDs) }
-        guard isEnabled, authorization == .authorized || authorization == .provisional else { return }
+        guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else { return }
         guard !Task.isCancelled else { return }
 
         for item in items {
@@ -214,8 +232,9 @@ final class NotificationService {
     /// (after clearing the stale id) when reminders are off — it shares the same "Reminders"
     /// toggle as the treatment/refill/procedure reminders rather than adding a new one.
     func planProgressCheckInReminder(lastCheckIn: Date?) async {
+        await refreshAuthorization()
         center.removePendingNotificationRequests(withIdentifiers: [progressCheckInID])
-        guard isEnabled, authorization == .authorized || authorization == .provisional else { return }
+        guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else { return }
         guard !Task.isCancelled else { return }
 
         let calendar = Calendar.current
@@ -249,10 +268,11 @@ final class NotificationService {
     /// `removeAllPendingNotificationRequests()`), so — like `planProcedureReminders` — it's safe
     /// to call after `reschedule()` in the same cycle.
     func planMilestoneReminders(_ treatments: [(id: String, name: String, startDate: Date)]) async {
+        await refreshAuthorization()
         let pending = await center.pendingNotificationRequests()
         let staleIDs = pending.map(\.identifier).filter { $0.hasPrefix(milestonePrefix) }
         if !staleIDs.isEmpty { center.removePendingNotificationRequests(withIdentifiers: staleIDs) }
-        guard isEnabled, authorization == .authorized || authorization == .provisional else { return }
+        guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else { return }
         guard !Task.isCancelled else { return }
 
         let calendar = Calendar.current
@@ -319,9 +339,14 @@ final class NotificationService {
     /// re-plans it on every relevant state change and again on every foreground, in addition to
     /// `CareView`'s own toggle UI re-planning it on the spot when the user flips it.
     func planEveningCheckIn(enabled: Bool, time: DateComponents, hasLoggedToday: Bool, streak: Int) async {
+        // Self-refresh first (see `canSchedule`'s doc comment): `RootView`'s launch/foreground
+        // replans are the only surface keeping this alive for a user who never opens Plan, and
+        // `authorization` starts `.notDetermined` on every cold launch — without this, the
+        // remove-below ran every relaunch and nothing ever got re-added.
+        await refreshAuthorization()
         let ids = (0..<3).map { "\(eveningCheckInPrefix)\($0)" }
         center.removePendingNotificationRequests(withIdentifiers: ids)
-        guard enabled, authorization == .authorized || authorization == .provisional else { return }
+        guard Self.canSchedule(enabled: enabled, authorization: authorization) else { return }
 
         let calendar = Calendar.current
         let body = streak >= 3

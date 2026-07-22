@@ -123,6 +123,8 @@ struct BackupServiceTests {
             profile: profile,
             entries: try context.fetch(FetchDescriptor<DailyEntry>()),
             treatments: try context.fetch(FetchDescriptor<Treatment>()),
+            doses: try context.fetch(FetchDescriptor<TreatmentDose>()),
+            sideEffects: try context.fetch(FetchDescriptor<SideEffectLog>()),
             labs: try context.fetch(FetchDescriptor<LabResult>()),
             photos: try context.fetch(FetchDescriptor<PhotoRecord>()),
             snapshots: try context.fetch(FetchDescriptor<HealthSnapshot>()),
@@ -172,6 +174,50 @@ struct BackupServiceTests {
         // The archive really is versioned ISO8601 JSON.
         let json = String(decoding: data, as: UTF8.self)
         #expect(json.contains("\"version\":1"))
+    }
+
+    /// Guards the regression this fixes: `makeEnvelope`'s `doses:`/`sideEffects:` parameters
+    /// must actually reach the archive and restore back out. A reintroduced `= []` default at
+    /// a call site (like ExportSheet once had) would make this test's counts fall to zero.
+    @Test func unattachedDosesAndSideEffectsRoundTripThroughMakeEnvelopeAndRestore() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let now = Date.now
+
+        // No treatment attached — this is the array-level path `doses:`/`sideEffects:` cover,
+        // distinct from the doses/side effects nested inside a treatment.
+        let dose = TreatmentDose(loggedAt: now, slot: "08:00")
+        let sideEffect = SideEffectLog(type: .scalpIrritation, severity: 2, date: now, note: "unattached log")
+        context.insert(dose)
+        context.insert(sideEffect)
+        try context.save()
+
+        let envelope = BackupService.makeEnvelope(
+            profile: nil, entries: [], treatments: [],
+            doses: try context.fetch(FetchDescriptor<TreatmentDose>()),
+            sideEffects: try context.fetch(FetchDescriptor<SideEffectLog>()),
+            labs: [], photos: [], snapshots: [], triggers: [],
+            procedures: [], progressCheckIns: [],
+            createdAt: now,
+            photoData: { _ in nil }
+        )
+        #expect(envelope.unattachedDoses?.count == 1)
+        #expect(envelope.unattachedSideEffects?.count == 1)
+
+        let restoreContainer = try makeContainer()
+        let restoreContext = ModelContext(restoreContainer)
+        let summary = try BackupService.restore(envelope, into: restoreContext, photoWriter: { _ in nil })
+        #expect(summary.inserted == 2)
+
+        let restoredDoses = try restoreContext.fetch(FetchDescriptor<TreatmentDose>())
+        let restoredSideEffects = try restoreContext.fetch(FetchDescriptor<SideEffectLog>())
+        #expect(restoredDoses.count == 1)
+        #expect(restoredDoses.first?.slot == "08:00")
+        #expect(restoredDoses.first?.treatment == nil)
+        #expect(restoredSideEffects.count == 1)
+        #expect(restoredSideEffects.first?.note == "unattached log")
+        #expect(restoredSideEffects.first?.typeRaw == SideEffectType.scalpIrritation.rawValue)
+        #expect(restoredSideEffects.first?.treatment == nil)
     }
 
     // MARK: - Version guard
@@ -317,8 +363,49 @@ struct BackupServiceTests {
         let photo = PhotoRecord(region: .vertex, imagePath: "missing.jpg")
         #expect(throws: BackupService.BackupError.missingPhotoFiles(["missing.jpg"])) {
             _ = try BackupService.exportBackup(profile: nil, entries: [], treatments: [],
+                                                doses: [], sideEffects: [],
                                                 labs: [], photos: [photo], snapshots: [], triggers: [],
+                                                procedures: [], progressCheckIns: [],
                                                 photoData: { _ in nil })
+        }
+    }
+
+    /// The async, off-main export path (round 6) must write the exact same archive the
+    /// synchronous path does — only *where* the base64 encoding happens changes, not what
+    /// ends up in the file.
+    @Test func exportBackupAsyncProducesTheSameArchiveAsTheSyncPath() async throws {
+        let now = Date.now
+        let photo = PhotoRecord(region: .vertex, imagePath: "fixture.jpg", createdAt: now, lighting: "daylight")
+        let photoData: @Sendable (String) -> Data? = { $0 == "fixture.jpg" ? validImageData : nil }
+
+        let syncURL = try BackupService.exportBackup(
+            profile: nil, entries: [], treatments: [], doses: [], sideEffects: [],
+            labs: [], photos: [photo], snapshots: [], triggers: [],
+            procedures: [], progressCheckIns: [], now: now, photoData: photoData
+        )
+        let syncEnvelope = try BackupService.decode(Data(contentsOf: syncURL))
+
+        let asyncURL = try await BackupService.exportBackupAsync(
+            profile: nil, entries: [], treatments: [], doses: [], sideEffects: [],
+            labs: [], photos: [photo], snapshots: [], triggers: [],
+            procedures: [], progressCheckIns: [], now: now, photoData: photoData
+        )
+        let asyncEnvelope = try BackupService.decode(Data(contentsOf: asyncURL))
+
+        #expect(asyncEnvelope.version == syncEnvelope.version)
+        #expect(asyncEnvelope.photos.count == syncEnvelope.photos.count)
+        #expect(asyncEnvelope.photos.first?.imageBase64 == validImageData.base64EncodedString())
+        #expect(asyncEnvelope.photos.first?.imageBase64 == syncEnvelope.photos.first?.imageBase64)
+    }
+
+    @Test func exportBackupAsyncRefusesAMissingPhotoFile() async {
+        let photo = PhotoRecord(region: .vertex, imagePath: "missing.jpg")
+        await #expect(throws: BackupService.BackupError.missingPhotoFiles(["missing.jpg"])) {
+            _ = try await BackupService.exportBackupAsync(profile: nil, entries: [], treatments: [],
+                                                           doses: [], sideEffects: [],
+                                                           labs: [], photos: [photo], snapshots: [], triggers: [],
+                                                           procedures: [], progressCheckIns: [],
+                                                           photoData: { _ in nil })
         }
     }
 

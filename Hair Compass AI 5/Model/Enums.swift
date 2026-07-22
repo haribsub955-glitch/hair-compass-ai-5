@@ -231,6 +231,18 @@ enum TreatmentClass: String, Codable, CaseIterable, Identifiable {
         default: return false
         }
     }
+
+    /// True for every periodic (non-daily) class that's actually done on a cadence of specific
+    /// weekdays rather than "as needed": the care products, plus home-use devices with an
+    /// evidence-backed weekly-ish rhythm (microneedling, LLLT). PRP stays out — it's done
+    /// in-clinic on the provider's own calendar via `ProcedureAppointment`, not a home weekday
+    /// picker. Drives whether `AddTreatmentSheet`/`TreatmentDetailSheet` show the weekday picker;
+    /// without it a periodic item's `scheduledWeekdays` stays empty forever, and
+    /// `Treatment.isDueToday()` treats an empty schedule as "every day" — so a weekly
+    /// microneedling session would otherwise read as due today, every day, forever.
+    var supportsWeekdaySchedule: Bool {
+        isCareProduct || self == .microneedling || self == .lllt
+    }
 }
 
 /// Pragmatic, class-agnostic tolerability vocabulary. Covers the common minoxidil

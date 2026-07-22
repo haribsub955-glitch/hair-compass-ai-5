@@ -72,6 +72,24 @@ extension TreatmentGuide {
         }
     }
 
+    /// A short cadence hint for the "Days" section in `AddTreatmentSheet`/`TreatmentDetailSheet`,
+    /// shown above the weekday picker for the home-use device classes — the ones that just gained
+    /// a schedule and whose evidence-backed rhythm isn't obvious the way "a few times a week" is
+    /// for shampoo. nil for classes without a distinct cadence to call out; the generic
+    /// "every day / selected days" line below the picker already covers those. Same
+    /// gentle-educator posture as `shortExpectation`/`expectations` — a typical practice, never a
+    /// prescription.
+    static func scheduleHint(for c: TreatmentClass) -> String? {
+        switch c {
+        case .microneedling:
+            return "Microneedling is typically done about weekly."
+        case .lllt:
+            return "LLLT devices are commonly used a few times a week."
+        default:
+            return nil
+        }
+    }
+
     /// The fuller paragraph shown in `TreatmentDetailSheet`'s "What to expect" card — what's
     /// typical during the early weeks, how results build, and when it's fair to judge. General
     /// orientation only; the prescriber's own instructions are always the authority.

@@ -20,36 +20,36 @@ struct VisitReportPDFTests {
         PDFDocument(data: data)?.pageCount ?? 0
     }
 
-    @Test func rendersAValidDocumentWithTextOnly() {
-        let data = VisitReportPDF.render(title: "Hair Compass — Visit Report", summaryText: "HAIR COMPASS — SUMMARY FOR YOUR CLINICIAN\nBASELINE\n• Focus: test\n")
+    @Test func rendersAValidDocumentWithTextOnly() async {
+        let data = await VisitReportPDF.render(title: "Hair Compass — Visit Report", summaryText: "HAIR COMPASS — SUMMARY FOR YOUR CLINICIAN\nBASELINE\n• Focus: test\n")
         #expect(!data.isEmpty)
         #expect(pageCount(data) >= 1)
     }
 
-    @Test func addsAChartsPageWhenThereAreAtLeastTwoEntries() {
+    @Test func addsAChartsPageWhenThereAreAtLeastTwoEntries() async {
         let now = Date.now
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now)!
-        let textOnly = VisitReportPDF.render(title: "Report", summaryText: "SUMMARY\n")
-        let withCharts = VisitReportPDF.render(
+        let textOnly = await VisitReportPDF.render(title: "Report", summaryText: "SUMMARY\n")
+        let withCharts = await VisitReportPDF.render(
             title: "Report", summaryText: "SUMMARY\n",
             entries: [DailyEntry(date: yesterday, shed: .normal), DailyEntry(date: now, shed: .heavy)]
         )
         #expect(pageCount(withCharts) == pageCount(textOnly) + 1)
     }
 
-    @Test func skipsChartsPageWithFewerThanTwoEntries() {
-        let textOnly = VisitReportPDF.render(title: "Report", summaryText: "SUMMARY\n")
-        let oneEntry = VisitReportPDF.render(
+    @Test func skipsChartsPageWithFewerThanTwoEntries() async {
+        let textOnly = await VisitReportPDF.render(title: "Report", summaryText: "SUMMARY\n")
+        let oneEntry = await VisitReportPDF.render(
             title: "Report", summaryText: "SUMMARY\n", entries: [DailyEntry(date: .now, shed: .normal)]
         )
         #expect(pageCount(oneEntry) == pageCount(textOnly))
     }
 
-    @Test func addsOnePhotoPagePerRegionWithABaselineAndLatest() {
+    @Test func addsOnePhotoPagePerRegionWithABaselineAndLatest() async {
         let now = Date.now
         let yesterday = Calendar.current.date(byAdding: .day, value: -30, to: now)!
-        let textOnly = VisitReportPDF.render(title: "Report", summaryText: "SUMMARY\n")
-        let onePairedRegion = VisitReportPDF.render(
+        let textOnly = await VisitReportPDF.render(title: "Report", summaryText: "SUMMARY\n")
+        let onePairedRegion = await VisitReportPDF.render(
             title: "Report", summaryText: "SUMMARY\n",
             photos: [
                 PhotoRecord(region: .frontal, imagePath: "missing-1.jpg", createdAt: yesterday, lighting: "daylight"),
@@ -58,7 +58,7 @@ struct VisitReportPDFTests {
         )
         #expect(pageCount(onePairedRegion) == pageCount(textOnly) + 1)
 
-        let twoPairedRegions = VisitReportPDF.render(
+        let twoPairedRegions = await VisitReportPDF.render(
             title: "Report", summaryText: "SUMMARY\n",
             photos: [
                 PhotoRecord(region: .frontal, imagePath: "missing-1.jpg", createdAt: yesterday),
@@ -70,9 +70,9 @@ struct VisitReportPDFTests {
         #expect(pageCount(twoPairedRegions) == pageCount(textOnly) + 2)
     }
 
-    @Test func skipsAPhotoPageForARegionWithOnlyOneCapture() {
-        let textOnly = VisitReportPDF.render(title: "Report", summaryText: "SUMMARY\n")
-        let singlePhoto = VisitReportPDF.render(
+    @Test func skipsAPhotoPageForARegionWithOnlyOneCapture() async {
+        let textOnly = await VisitReportPDF.render(title: "Report", summaryText: "SUMMARY\n")
+        let singlePhoto = await VisitReportPDF.render(
             title: "Report", summaryText: "SUMMARY\n",
             photos: [PhotoRecord(region: .frontal, imagePath: "missing.jpg", createdAt: .now)]
         )

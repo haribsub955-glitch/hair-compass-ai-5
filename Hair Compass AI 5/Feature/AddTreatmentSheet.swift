@@ -11,8 +11,9 @@ struct AddTreatmentSheet: View {
     @State private var dose = ""
     @State private var startDate = Date.now
     @State private var times = "08:00,21:00"
-    /// Which weekdays a care product is used (Calendar weekday numbers 1=Sun…7=Sat). Empty = every
-    /// day. Only shown/used for care products (shampoo/oil/supplement).
+    /// Which weekdays a periodic item is used (Calendar weekday numbers 1=Sun…7=Sat). Empty = every
+    /// day. Only shown/used for classes where `supportsWeekdaySchedule` is true — the care
+    /// products plus the home-use devices with a real weekly-ish cadence (microneedling, LLLT).
     @State private var scheduledWeekdays: Set<Int> = []
     @State private var refillBy: Date? = nil
     /// Non-nil while the prescription confirmation card is up — set by `save()` when the
@@ -107,9 +108,13 @@ struct AddTreatmentSheet: View {
                         }
                     }
 
-                    if treatmentClass.isCareProduct {
+                    if treatmentClass.supportsWeekdaySchedule {
                         section("Days") {
-                            weekdayPicker
+                            WeekdaySchedulePicker(selection: $scheduledWeekdays)
+                            if let hint = TreatmentGuide.scheduleHint(for: treatmentClass) {
+                                Text(hint)
+                                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                            }
                             Text(scheduledWeekdays.isEmpty
                                  ? "Every day. Tap days to use it only on those."
                                  : "Shows in your routine on the selected days.")
@@ -341,30 +346,6 @@ struct AddTreatmentSheet: View {
         .buttonStyle(.plain)
     }
 
-    /// Calendar weekday numbers 1=Sun…7=Sat, shown Sun→Sat with single-letter labels.
-    private static let weekdayOptions: [(num: Int, label: String)] =
-        [(1, "S"), (2, "M"), (3, "T"), (4, "W"), (5, "T"), (6, "F"), (7, "S")]
-
-    private var weekdayPicker: some View {
-        HStack(spacing: 8) {
-            ForEach(Self.weekdayOptions, id: \.num) { day in
-                let on = scheduledWeekdays.contains(day.num)
-                Button {
-                    if on { scheduledWeekdays.remove(day.num) } else { scheduledWeekdays.insert(day.num) }
-                    UISelectionFeedbackGenerator().selectionChanged()
-                } label: {
-                    Text(day.label)
-                        .font(Clinical.body(14, weight: on ? .semibold : .regular))
-                        .foregroundStyle(on ? Clinical.surface : Clinical.ink)
-                        .frame(width: 40, height: 40)
-                        .background(on ? Clinical.accent : Clinical.surface, in: Circle())
-                        .overlay(Circle().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
     @ViewBuilder
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) { Eyebrow(text: title); content() }
@@ -521,7 +502,7 @@ struct AddTreatmentSheet: View {
             treatmentClass: treatmentClass,
             dose: dose.trimmingCharacters(in: .whitespaces),
             scheduleTimes: treatmentClass.isDaily ? times : "",
-            scheduledWeekdays: treatmentClass.isCareProduct ? scheduledWeekdays : [],
+            scheduledWeekdays: treatmentClass.supportsWeekdaySchedule ? scheduledWeekdays : [],
             startDate: startDate,
             isActive: true,
             refillBy: refillBy,

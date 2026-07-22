@@ -20,6 +20,7 @@ struct ExportSheet: View {
 
     @State private var jsonURL: URL?
     @State private var pdfURL: URL?
+    @State private var pdfErrorMessage: String?
     @State private var backupURL: URL?
     @State private var backupErrorMessage: String?
 
@@ -65,9 +66,15 @@ struct ExportSheet: View {
                                         .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
                                 }
+                            } else if let pdfErrorMessage {
+                                Text(pdfErrorMessage)
+                                    .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
+                            } else {
+                                preparingRow("Preparing visit report…")
                             }
                         }
                     }
+                    .task { await preparePDF() }
 
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 10) {
@@ -84,6 +91,8 @@ struct ExportSheet: View {
                             } else if let backupErrorMessage {
                                 Text(backupErrorMessage)
                                     .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
+                            } else {
+                                preparingRow("Preparing backup…")
                             }
 
                             Divider().overlay(Clinical.hairline).padding(.vertical, 2)
@@ -98,9 +107,13 @@ struct ExportSheet: View {
                                         .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                                         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
                                 }
+                            } else {
+                                preparingRow("Preparing…")
                             }
                         }
                     }
+                    .task { await prepareBackup() }
+                    .task { await prepareJSON() }
 
                     Image("export-seal")
                         .resizable()
@@ -118,18 +131,30 @@ struct ExportSheet: View {
             .navigationTitle("Export")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-            .onAppear {
-                writeBackup()
-                writeJSON()
-                writePDF()
-            }
         }
     }
 
-    private func writeBackup() {
+    /// Quiet skeleton shown in place of a card's action button while its file is still being
+    /// generated — so the card reads as "working on it" rather than looking broken or empty.
+    private func preparingRow(_ label: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView().tint(Clinical.tertiary)
+            Text(label).font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 13)
+    }
+
+    /// Runs once per sheet presentation (`.task` on the card, not `onAppear` on the sheet), so
+    /// the sheet's own presentation animation isn't competing with this work for the main
+    /// actor. The actual byte-reading/base64/JSON-encoding happens off-main inside
+    /// `exportBackupAsync` — the one that can realistically be hundreds of MB with a year of
+    /// photos — so this `await` doesn't block the UI while it runs.
+    private func prepareBackup() async {
         do {
-            backupURL = try BackupService.exportBackup(
+            backupURL = try await BackupService.exportBackupAsync(
                 profile: profiles.first, entries: entries, treatments: treatments,
+                doses: doses, sideEffects: sideEffects,
                 labs: labs, photos: photos, snapshots: snapshots, triggers: triggers,
                 procedures: procedures, progressCheckIns: progressCheckIns
             )
@@ -138,17 +163,27 @@ struct ExportSheet: View {
         }
     }
 
-    private func writePDF() {
-        let data = VisitReportPDF.render(
+    /// `VisitReportPDF.render` is itself `async` — it renders the trend chart image on the main
+    /// actor (SwiftUI's `ImageRenderer` needs it) but does the CoreText pagination and photo-page
+    /// drawing off-main, so only the small, unavoidable part of this ever touches the main actor.
+    private func preparePDF() async {
+        let data = await VisitReportPDF.render(
             title: "Hair Compass — Visit Report", summaryText: summary,
             entries: entries, photos: photos
         )
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("HairCompassVisitReport.pdf")
-        try? data.write(to: url, options: .atomic)
-        pdfURL = url
+        do {
+            try data.write(to: url, options: .atomic)
+            pdfURL = url
+        } catch {
+            pdfErrorMessage = "Couldn't prepare the visit report. Try again."
+        }
     }
 
-    private func writeJSON() {
+    /// Cheap — plain records, no photo bytes — but still deferred to a `.task` so its button
+    /// appears through the same "preparing…" skeleton as the other two instead of just as an
+    /// asymmetric flash.
+    private func prepareJSON() async {
         guard let data = ExportService.dataJSON(
             profile: profiles.first, entries: entries, treatments: treatments, doses: doses,
             labs: labs, triggers: triggers, progressCheckIns: progressCheckIns, snapshots: snapshots,
