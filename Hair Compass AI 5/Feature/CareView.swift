@@ -221,9 +221,8 @@ struct CareView: View {
         // just open the report it pointed to, focused on the treatment the milestone was about
         // (round-5 fix: a second treatment's week-12 milestone used to always open the earliest
         // treatment's report instead of its own).
-        .onChange(of: deepLinks.openProgressReportRequested) { _, requested in
-            guard requested else { return }
-            deepLinks.openProgressReportRequested = false
+        .onChange(of: [deepLinks.openProgressReportRequested, deepLinks.canConsumeRoutes]) { _, _ in
+            guard deepLinks.consumeProgressReportRequest() else { return }
             if let focusID = deepLinks.progressReportFocusTreatmentID,
                let matched = dailyActiveTreatments.first(where: { String($0.persistentModelID.hashValue) == focusID }) {
                 reportFocusTreatment = matched
@@ -234,23 +233,20 @@ struct CareView: View {
         // A refill or treatment-schedule reminder tap lands here already on Plan (RootView
         // switches tabs) — the tab switch itself is the fix (round 4: these used to dead-end at
         // the app icon), so this just consumes the flag per the router's consume-once idiom.
-        .onChange(of: deepLinks.openCareRequested) { _, requested in
-            guard requested else { return }
-            deepLinks.openCareRequested = false
+        .onChange(of: [deepLinks.openCareRequested, deepLinks.canConsumeRoutes]) { _, _ in
+            guard deepLinks.consumeCareRequest() else { return }
         }
         // A procedure-reminder tap (the day-before consultation nudge) lands here already on
         // Plan — open the procedures list, whose appointment detail sheet offers "Prepare visit
         // report" for consultations, delivering on what the reminder promised.
-        .onChange(of: deepLinks.openProceduresRequested) { _, requested in
-            guard requested else { return }
-            deepLinks.openProceduresRequested = false
+        .onChange(of: [deepLinks.openProceduresRequested, deepLinks.canConsumeRoutes]) { _, _ in
+            guard deepLinks.consumeProceduresRequest() else { return }
             showProcedures = true
         }
         // The monthly progress check-in reminder lands here already on Plan — open the sheet
         // directly instead of leaving the user to find it at staggered index 13.
-        .onChange(of: deepLinks.openProgressCheckInRequested) { _, requested in
-            guard requested else { return }
-            deepLinks.openProgressCheckInRequested = false
+        .onChange(of: [deepLinks.openProgressCheckInRequested, deepLinks.canConsumeRoutes]) { _, _ in
+            guard deepLinks.consumeProgressCheckInRequest() else { return }
             showProgressCheckIn = true
         }
         // Re-plans whenever today's logged state flips — the "cancel when logged" honesty rule:

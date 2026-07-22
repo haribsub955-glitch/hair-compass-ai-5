@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Hair_Compass_AI_5
 
@@ -96,6 +97,34 @@ struct LaunchPresentationStateTests {
         input.isLocked = false
         #expect(LaunchPresentationState.reduce(input).surface == .pendingRoute)
         #expect(input.hasPendingRoute)
+    }
+
+    @MainActor
+    @Test func urlRouteIsRecordedDuringOnboardingAndConsumedAfterward() throws {
+        let router = DeepLinkRouter()
+        let destination = try #require(DeepLinkRouter.destination(for: URL(string: "haircompass://log")!))
+
+        router.record(destination)
+        #expect(router.openLogRequested)
+        #expect(!router.consumeLogRequest())
+        #expect(router.openLogRequested)
+
+        router.canConsumeRoutes = true
+        #expect(router.consumeLogRequest())
+        #expect(!router.openLogRequested)
+    }
+
+    @MainActor
+    @Test func pendingRouteIsNotConsumedWhileLocked() {
+        let router = DeepLinkRouter()
+        router.openProceduresRequested = true
+
+        #expect(!router.consumeProceduresRequest())
+        #expect(router.openProceduresRequested)
+
+        router.canConsumeRoutes = true
+        #expect(router.consumeProceduresRequest())
+        #expect(!router.openProceduresRequested)
     }
 
     @Test func reducerAlwaysYieldsExactlyOneSurface() {

@@ -37,6 +37,34 @@ final class DeepLinkRouter {
     /// CareView opens ProgressCheckInSheet and resets this.
     var openProgressCheckInRequested = false
 
+    /// RootView opens this gate only when no onboarding, privacy, or lock surface outranks a
+    /// route. Destination views use the consuming helpers below so mounted content cannot clear
+    /// a request while it is hidden behind a higher-priority surface.
+    var canConsumeRoutes = false
+
+    func record(_ destination: WidgetDeepLinkDestination) {
+        if destination == .checkIn { openLogRequested = true }
+    }
+
+    @discardableResult
+    func consumeLogRequest() -> Bool { Self.consume(allowed: canConsumeRoutes, request: &openLogRequested) }
+    @discardableResult
+    func consumeProgressReportRequest() -> Bool { Self.consume(allowed: canConsumeRoutes, request: &openProgressReportRequested) }
+    @discardableResult
+    func consumeGuidedCaptureRequest() -> Bool { Self.consume(allowed: canConsumeRoutes, request: &openGuidedCaptureRequested) }
+    @discardableResult
+    func consumeCareRequest() -> Bool { Self.consume(allowed: canConsumeRoutes, request: &openCareRequested) }
+    @discardableResult
+    func consumeProceduresRequest() -> Bool { Self.consume(allowed: canConsumeRoutes, request: &openProceduresRequested) }
+    @discardableResult
+    func consumeProgressCheckInRequest() -> Bool { Self.consume(allowed: canConsumeRoutes, request: &openProgressCheckInRequested) }
+
+    private static func consume(allowed: Bool, request: inout Bool) -> Bool {
+        guard allowed, request else { return false }
+        request = false
+        return true
+    }
+
     var hasPendingRoute: Bool {
         openLogRequested
             || openProgressReportRequested

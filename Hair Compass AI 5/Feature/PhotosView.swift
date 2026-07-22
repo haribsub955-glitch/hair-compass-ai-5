@@ -167,9 +167,8 @@ struct PhotosView: View {
         }
         // Tapping the monthly photo reminder lands here already on Photos (RootView switches
         // tabs) — just open guided capture, the thing the notification invited.
-        .onChange(of: deepLinks.openGuidedCaptureRequested) { _, requested in
-            guard requested else { return }
-            deepLinks.openGuidedCaptureRequested = false
+        .onChange(of: [deepLinks.openGuidedCaptureRequested, deepLinks.canConsumeRoutes]) { _, _ in
+            guard deepLinks.consumeGuidedCaptureRequest() else { return }
             showAdd = true
         }
     }
