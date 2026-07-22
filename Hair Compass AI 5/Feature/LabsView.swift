@@ -336,7 +336,7 @@ struct LabsView: View {
     private var reference: some View {
         ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
-                Eyebrow(text: "Tests derms order for hair loss")
+                Eyebrow(text: "Generic informational defaults")
                 ForEach(LabTest.allCases) { test in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
@@ -376,7 +376,7 @@ struct LabsView: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Text("Tests derms order for hair loss")
+                    Text("Generic informational lab ranges")
                         .font(Clinical.body(14, weight: .medium))
                         .foregroundStyle(Clinical.ink)
                     Spacer(minLength: 8)
@@ -389,7 +389,7 @@ struct LabsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.clinicalPressable)
-            .accessibilityLabel("Tests derms order for hair loss")
+            .accessibilityLabel("Generic informational lab ranges")
             .accessibilityHint(referenceExpanded ? "Collapses the list" : "Expands the list")
 
             if referenceExpanded {

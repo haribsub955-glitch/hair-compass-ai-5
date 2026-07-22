@@ -55,6 +55,7 @@ struct CareView: View {
     /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
     @AppStorage("eveningCheckInEnabled") private var eveningCheckInEnabled = false
     @AppStorage("eveningCheckInMinutes") private var eveningCheckInMinutes = 20 * 60 + 30
+    @AppStorage(NotificationService.genericWordingKey) private var genericNotificationWording = false
 
     private var profile: Profile? { profiles.first }
 
@@ -209,7 +210,7 @@ struct CareView: View {
         // `removeAllPendingNotificationRequests()`, so it must land before the
         // procedure/progress-check-in/evening calls or it would wipe the reminders they just
         // scheduled.
-        .task(id: "\(treatmentFingerprint)||\(procedureFingerprint)||\(checkIns.first?.date.timeIntervalSince1970 ?? 0)") {
+        .task(id: "\(treatmentFingerprint)||\(procedureFingerprint)||\(checkIns.first?.date.timeIntervalSince1970 ?? 0)||\(genericNotificationWording)") {
             await notifications.reschedule(treatments: notifTreatments, refills: notifRefills)
             await notifications.planProcedureReminders(notifProcedures)
             await notifications.planProgressCheckInReminder(lastCheckIn: checkIns.first?.date)
@@ -649,6 +650,18 @@ struct CareView: View {
                         .tint(Clinical.accent)
                 }
             }
+
+            Divider().overlay(Clinical.hairline).padding(.vertical, 12)
+
+            Toggle(isOn: $genericNotificationWording) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Private notification wording")
+                        .font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
+                    Text("Hide treatment names, procedures, refill status, and streaks on the Lock Screen.")
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                }
+            }
+            .tint(Clinical.accent)
 
             if notifications.authorization == .denied {
                 notifDeniedNotice

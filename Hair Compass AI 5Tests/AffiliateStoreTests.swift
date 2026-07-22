@@ -97,6 +97,42 @@ struct AffiliateStoreTests {
         #expect(store.ingestRemotePayload(Data("{\"links\":{}}".utf8)) == false) // missing version
     }
 
+    @Test func acceptsKnownProductWithOrdinaryHTTPSURL() throws {
+        let store = AffiliateStore(defaults: freshDefaults(), bundledLinks: [:])
+        #expect(store.ingestRemotePayload(try payloadData(
+            links: ["rosemary": "https://shop.example.com/products/rosemary?ref=hair"])))
+    }
+
+    @Test(arguments: [
+        "http://example.com/product",
+        "https://user:secret@example.com/product",
+        "https:///missing-host",
+        "https://.example.com/product",
+        "https://example..com/product",
+    ])
+    func rejectsUnsafeOrMalformedLink(url: String) throws {
+        let store = AffiliateStore(defaults: freshDefaults(), bundledLinks: [:])
+        #expect(store.ingestRemotePayload(try payloadData(links: ["rosemary": url])) == false)
+    }
+
+    @Test func rejectsUnknownProductID() throws {
+        let store = AffiliateStore(defaults: freshDefaults(), bundledLinks: [:])
+        #expect(store.ingestRemotePayload(try payloadData(
+            links: ["not-in-the-catalog": "https://example.com/product"])) == false)
+    }
+
+    @Test func rejectsOversizedPayloadAndTooManyLinks() throws {
+        let store = AffiliateStore(defaults: freshDefaults(), bundledLinks: [:])
+        let oversized = Data(repeating: 0x20, count: AffiliateStore.maximumPayloadBytes + 1)
+        #expect(store.ingestRemotePayload(oversized) == false)
+
+        var links: [String: String] = [:]
+        for index in 0...AffiliateStore.maximumLinkCount {
+            links["unknown-\(index)"] = "https://example.com/\(index)"
+        }
+        #expect(store.ingestRemotePayload(try payloadData(links: links)) == false)
+    }
+
     // MARK: - Offline cache survival
 
     @Test func acceptedRemotePayloadSurvivesRelaunch() throws {

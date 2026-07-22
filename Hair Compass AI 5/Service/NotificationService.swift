@@ -10,6 +10,7 @@ import UserNotifications
 @Observable
 final class NotificationService {
     static let enabledKey = "remindersEnabled"
+    static let genericWordingKey = "genericNotificationWording"
 
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
     /// User-visible scheduling failure. Callers can render this instead of silently pretending a
@@ -33,6 +34,11 @@ final class NotificationService {
     private var rescheduleTask: Task<Void, Never>?
 
     var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
+    var usesGenericWording: Bool { UserDefaults.standard.bool(forKey: Self.genericWordingKey) }
+
+    nonisolated static func wording(title: String, body: String, generic: Bool) -> (title: String, body: String) {
+        generic ? ("Hair Compass reminder", "Open Hair Compass to see what’s due.") : (title, body)
+    }
 
     /// Fired on the main actor with the tapped notification's identifier — `RootView` wires this
     /// to switch tabs and set the matching `DeepLinkRouter` flag (milestone → progress report,
@@ -150,8 +156,12 @@ final class NotificationService {
         for (slot, names) in namesBySlot {
             guard let comps = Self.components(from: slot) else { continue }
             let content = UNMutableNotificationContent()
-            content.title = Self.routineTitle(slot: slot, stepCount: names.count, firstName: names[0])
-            content.body = Self.routineBody(names: names)
+            let wording = Self.wording(
+                title: Self.routineTitle(slot: slot, stepCount: names.count, firstName: names[0]),
+                body: Self.routineBody(names: names), generic: usesGenericWording
+            )
+            content.title = wording.title
+            content.body = wording.body
             content.sound = .default
             content.threadIdentifier = "routine"
             content.interruptionLevel = .passive
@@ -166,8 +176,9 @@ final class NotificationService {
         for (i, r) in refills.enumerated() {
             guard let fireDate = Self.refillReminderDate(for: r.refillBy), fireDate > .now else { continue }
             let content = UNMutableNotificationContent()
-            content.title = "Running low"
-            content.body = "Time to reorder \(r.name)."
+            let wording = Self.wording(title: "Running low", body: "Time to reorder \(r.name).", generic: usesGenericWording)
+            content.title = wording.title
+            content.body = wording.body
             content.sound = .default
             content.threadIdentifier = "refill"
             content.interruptionLevel = .passive
@@ -181,8 +192,9 @@ final class NotificationService {
         // Monthly photo prompt — a comparable set on the 1st of each month.
         var monthly = DateComponents(); monthly.day = 1; monthly.hour = 10
         let photo = UNMutableNotificationContent()
-        photo.title = "Monthly photo"
-        photo.body = "Same light, same spot."
+        let photoWording = Self.wording(title: "Monthly photo", body: "Same light, same spot.", generic: usesGenericWording)
+        photo.title = photoWording.title
+        photo.body = photoWording.body
         photo.sound = .default
         photo.threadIdentifier = "photo"
         photo.interruptionLevel = .passive
@@ -215,8 +227,13 @@ final class NotificationService {
         for item in items {
             guard let fireDate = Self.procedureReminderDate(for: item.date), fireDate > .now else { continue }
             let content = UNMutableNotificationContent()
-            content.title = "Upcoming: \(item.title)"
-            content.body = Self.procedureReminderBody(fireDate: fireDate, appointmentDate: item.date, isConsultation: item.isConsultation)
+            let wording = Self.wording(
+                title: "Upcoming: \(item.title)",
+                body: Self.procedureReminderBody(fireDate: fireDate, appointmentDate: item.date, isConsultation: item.isConsultation),
+                generic: usesGenericWording
+            )
+            content.title = wording.title
+            content.body = wording.body
             content.sound = .default
             content.threadIdentifier = "procedure"   // day-before, time-relevant — default (active) level
             if let art = NotificationArt.attachment() { content.attachments = [art] }
@@ -252,8 +269,9 @@ final class NotificationService {
         guard let fireDate = calendar.date(from: comps), fireDate > .now else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Monthly progress check-in"
-        content.body = "A minute on how it's going."
+        let wording = Self.wording(title: "Monthly progress check-in", body: "A minute on how it's going.", generic: usesGenericWording)
+        content.title = wording.title
+        content.body = wording.body
         content.sound = .default
         content.threadIdentifier = "progress"
         content.interruptionLevel = .passive   // a gentle monthly nudge, never an interruption
@@ -292,8 +310,9 @@ final class NotificationService {
                 guard let fireDate = calendar.date(from: comps), fireDate > .now else { continue }
 
                 let content = UNMutableNotificationContent()
-                content.title = "Week \(week) of \(t.name)"
-                content.body = Self.milestoneBody(week: week)
+                let wording = Self.wording(title: "Week \(week) of \(t.name)", body: Self.milestoneBody(week: week), generic: usesGenericWording)
+                content.title = wording.title
+                content.body = wording.body
                 content.sound = .default
                 content.threadIdentifier = "milestone"   // the assessment-window moment — default (active) level
                 if let art = NotificationArt.attachment() { content.attachments = [art] }
@@ -371,8 +390,9 @@ final class NotificationService {
             guard let fireDate = calendar.date(from: comps), fireDate > .now else { continue }
 
             let content = UNMutableNotificationContent()
-            content.title = "Tonight's check-in"
-            content.body = body
+            let wording = Self.wording(title: "Tonight's check-in", body: body, generic: usesGenericWording)
+            content.title = wording.title
+            content.body = wording.body
             content.sound = .default
             content.threadIdentifier = "checkin"   // the user picked this time — default (active) level
             if let art = NotificationArt.attachment() { content.attachments = [art] }

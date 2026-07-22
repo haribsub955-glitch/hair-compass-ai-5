@@ -470,6 +470,6 @@ struct CompareView: View {
     }
 
     private func fmt(_ v: Double) -> String {
-        v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v)
+        v.formatted(.number.precision(.fractionLength(0...1)))
     }
 }

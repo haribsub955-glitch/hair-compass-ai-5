@@ -12,6 +12,18 @@ import Testing
 
 @MainActor
 struct ReminderCoalescingTests {
+    @Test func genericWordingConcealsSpecificReminderContent() {
+        let privateCopy = NotificationService.wording(
+            title: "Week 12 of Minoxidil", body: "Your refill is due.", generic: true
+        )
+        #expect(privateCopy.title == "Hair Compass reminder")
+        #expect(privateCopy.body == "Open Hair Compass to see what’s due.")
+        #expect(privateCopy.title.contains("Minoxidil") == false)
+
+        let specificCopy = NotificationService.wording(title: "Routine", body: "One step", generic: false)
+        #expect(specificCopy.title == "Routine")
+        #expect(specificCopy.body == "One step")
+    }
 
     @Test func routineTitleKeepsOneNameButBlocksSeveral() {
         // A single step keeps its own name — the reminder still feels personal.

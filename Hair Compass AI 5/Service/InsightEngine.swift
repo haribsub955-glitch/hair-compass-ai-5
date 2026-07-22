@@ -173,7 +173,7 @@ enum RuleBasedInsight {
         if c.usesScalpScale, let total = c.latestScalpTotal, let band = c.latestScalpBand {
             lines.append("Scalp severity: \(total)/16 (\(band)); trend \(trend(c.scalpDirection, invert: true)).")
         }
-        if let s = c.sleepHours { lines.append(String(format: "Sleep (auto): %.1f h.", s)) }
+        if let s = c.sleepHours { lines.append("Sleep (auto): \(s.formatted(.number.precision(.fractionLength(1)))) h.") }
         if let h = c.hrvSDNN { lines.append("HRV (auto, stress proxy only): \(Int(h.rounded())) ms.") }
         if let pct = c.rapidWeightLossPercent { lines.append("Body weight down ~\(Int(pct.rounded()))% recently (possible shedding trigger in 2–3 months).") }
         if c.tractionRisk { lines.append("Baseline notes tight styling/heat/chemical use (traction risk).") }
@@ -264,7 +264,7 @@ enum RuleBasedInsight {
     }
 
     private static func formattedLabValue(_ value: Double) -> String {
-        value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
+        value.formatted(.number.precision(.fractionLength(0...1)))
     }
 }
 

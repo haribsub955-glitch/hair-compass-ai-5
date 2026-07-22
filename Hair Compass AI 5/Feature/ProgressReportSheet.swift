@@ -362,6 +362,6 @@ struct ProgressReportSheet: View {
 
     private func fmt(_ v: Double) -> String {
         let rounded = (v * 10).rounded() / 10
-        return rounded == rounded.rounded() ? String(Int(rounded)) : String(format: "%.1f", rounded)
+        return rounded.formatted(.number.precision(.fractionLength(0...1)))
     }
 }
