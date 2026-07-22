@@ -250,6 +250,13 @@ final class ProcedureAppointment {
     var completedAt: Date? = nil
     var note: String = ""
     var createdAt: Date = Date.now
+    var agendaMainConcern: String = ""
+    var agendaChangedWhen: String = ""
+    var agendaTreatmentsToReview: String = ""
+    var agendaSafetyConcerns: String = ""
+    /// Newline-delimited editable questions. Plain text keeps the migration additive and makes
+    /// the user's agenda portable in backups and reports without introducing opaque blobs.
+    var agendaQuestionsRaw: String = ""
 
     init(
         type: ProcedureType = .prp,
@@ -258,7 +265,12 @@ final class ProcedureAppointment {
         isCompleted: Bool = false,
         completedAt: Date? = nil,
         note: String = "",
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        agendaMainConcern: String = "",
+        agendaChangedWhen: String = "",
+        agendaTreatmentsToReview: String = "",
+        agendaSafetyConcerns: String = "",
+        agendaQuestions: [String] = []
     ) {
         self.typeRaw = type.rawValue
         self.date = date
@@ -267,6 +279,11 @@ final class ProcedureAppointment {
         self.completedAt = completedAt
         self.note = note
         self.createdAt = createdAt
+        self.agendaMainConcern = agendaMainConcern
+        self.agendaChangedWhen = agendaChangedWhen
+        self.agendaTreatmentsToReview = agendaTreatmentsToReview
+        self.agendaSafetyConcerns = agendaSafetyConcerns
+        self.agendaQuestionsRaw = agendaQuestions.joined(separator: "\n")
     }
 
     var type: ProcedureType {
@@ -276,6 +293,16 @@ final class ProcedureAppointment {
 
     /// True for a future, not-yet-done appointment (the ones worth reminding about).
     var isUpcoming: Bool { !isCompleted && date >= Calendar.current.startOfDay(for: .now) }
+
+    var agendaQuestions: [String] {
+        get { agendaQuestionsRaw.split(separator: "\n").map(String.init).filter { !$0.isEmpty } }
+        set { agendaQuestionsRaw = newValue.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: "\n") }
+    }
+
+    var hasVisitAgenda: Bool {
+        !agendaMainConcern.isEmpty || !agendaChangedWhen.isEmpty || !agendaTreatmentsToReview.isEmpty
+            || !agendaSafetyConcerns.isEmpty || !agendaQuestions.isEmpty
+    }
 }
 
 /// A periodic (≈monthly) answer to the between-visit questions a dermatologist asks — new
@@ -297,6 +324,9 @@ final class ProgressCheckIn {
     var scalpPainNote: String = ""
     var note: String = ""
     var createdAt: Date = Date.now
+    /// Optional, unscored emotional context. Zero means the question was not answered.
+    var hairFeelingRaw: Int = HairFeeling.unspecified.rawValue
+    var hairFeelingNote: String = ""
 
     init(
         date: Date = .now,
@@ -309,7 +339,9 @@ final class ProgressCheckIn {
         scalpPain: Bool = false,
         scalpPainNote: String = "",
         note: String = "",
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        hairFeeling: HairFeeling = .unspecified,
+        hairFeelingNote: String = ""
     ) {
         self.date = date
         self.regrowthRaw = regrowth.rawValue
@@ -322,11 +354,17 @@ final class ProgressCheckIn {
         self.scalpPainNote = scalpPainNote
         self.note = note
         self.createdAt = createdAt
+        self.hairFeelingRaw = hairFeeling.rawValue
+        self.hairFeelingNote = hairFeelingNote
     }
 
     var regrowth: RegrowthLevel {
         get { RegrowthLevel(rawValue: regrowthRaw) ?? .none }
         set { regrowthRaw = newValue.rawValue }
+    }
+    var hairFeeling: HairFeeling {
+        get { HairFeeling(rawValue: hairFeelingRaw) ?? .unspecified }
+        set { hairFeelingRaw = newValue.rawValue }
     }
     var density: ProgressTrend {
         get { ProgressTrend(rawValue: densityRaw) ?? .same }
@@ -368,6 +406,9 @@ final class ProgressCheckIn {
             lines.append("⚠ Reports scalp pain/tenderness\(scalpPainNote.isEmpty ? "" : " — \(scalpPainNote)"). Worth prompt dermatology review.")
         }
         if !note.isEmpty { lines.append("Note: \(note)") }
+        if hairFeeling != .unspecified {
+            lines.append("Feeling about hair: \(hairFeeling.title)\(hairFeelingNote.isEmpty ? "" : " — \(hairFeelingNote)")")
+        }
         return lines
     }
 }

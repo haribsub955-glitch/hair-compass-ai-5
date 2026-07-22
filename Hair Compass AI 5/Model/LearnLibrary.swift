@@ -46,6 +46,7 @@ struct FlashCard: Identifiable {
     let question: String
     let answer: String
     let tier: EvidenceTier
+    var conditionTags: [HairCondition] = []
 
     /// Myth cards read as a verdict ("MYTH") rather than an evidence tier.
     var isMyth: Bool { category == .myths }
@@ -95,6 +96,27 @@ enum LearnLibrary {
         .init(id: "c8", category: .conditions, tierQ: .strong,
               q: "What if hair loss comes with feeling unwell?",
               a: "Rapid or patchy loss alongside fever, unexplained weight change, joint pain, or other new symptoms can point to something beyond hair — thyroid disease, another autoimmune condition, a nutritional deficiency. That combination is worth a prompt medical visit, not just tracking."),
+        .init(id: "c9", category: .conditions, tierQ: .moderate,
+              q: "What is useful to record after childbirth?",
+              a: "Diffuse shedding often begins a few months after birth and commonly settles gradually over the following months. Record timing and recovery; seek a review if it is severe, patchy, persistent, or comes with other symptoms.", tags: [.telogenEffluvium]),
+        .init(id: "c10", category: .conditions, tierQ: .moderate,
+              q: "Could shedding be associated with a medication?",
+              a: "Some shedding patterns may follow a medication start, stop, or dose change. Record the exact dates and discuss the timeline with the prescriber. Never stop or change medication through this app.", tags: [.telogenEffluvium, .unsure]),
+        .init(id: "c11", category: .conditions, tierQ: .moderate,
+              q: "Is it breakage or shedding from the root?",
+              a: "Short, uneven pieces and frayed ends suggest strand breakage; full-length hairs may reflect shedding from the root. Photograph examples and note styling, heat, and wash context rather than trying to diagnose it yourself.", tags: [.traction, .unsure]),
+        .init(id: "c12", category: .conditions, tierQ: .moderate,
+              q: "Can alopecia areata show beyond scalp patches?",
+              a: "Changes can also involve brows, lashes, body hair, or nails. Record where and when you notice them so you can mention the full pattern at a visit.", tags: [.alopeciaAreata]),
+        .init(id: "c13", category: .conditions, tierQ: .moderate,
+              q: "Inflamed scalp or a smooth patch — what should I document?",
+              a: "Flaking, redness, soreness, or scale differs from a smooth patch without obvious surface change. Photograph the area consistently and record itch, pain, scale, and timing for clinician review.", tags: [.seborrheicDermatitis, .alopeciaAreata, .unsure]),
+        .init(id: "c14", category: .conditions, tierQ: .moderate,
+              q: "Not sure yet — what should I document before a visit?",
+              a: "Capture consistent photos, where loss appears, whether hairs break or shed, scalp symptoms, timing, recent triggers, treatment changes, side effects, and relevant lab dates. These are observations, not a diagnosis.", tags: [.unsure]),
+        .init(id: "c15", category: .conditions, tierQ: .strong,
+              q: "Which scalp changes deserve a prompt review?",
+              a: "Persistent pain, burning, tenderness, redness, scale, pustules, or smooth shiny areas where follicles seem absent are worth prompt clinician review. These signs are not a diagnosis, but delaying documentation can lose useful context.", tags: [.unsure, .traction]),
     ]
 
     private static let treatments: [FlashCard] = [
@@ -168,5 +190,9 @@ enum LearnLibrary {
 private extension FlashCard {
     init(id: String, category: LearnCategory, tierQ tier: EvidenceTier, q question: String, a answer: String) {
         self.init(id: id, category: category, question: question, answer: answer, tier: tier)
+    }
+
+    init(id: String, category: LearnCategory, tierQ tier: EvidenceTier, q question: String, a answer: String, tags: [HairCondition]) {
+        self.init(id: id, category: category, question: question, answer: answer, tier: tier, conditionTags: tags)
     }
 }

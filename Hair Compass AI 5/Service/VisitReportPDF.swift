@@ -26,6 +26,7 @@ enum VisitReportPDF {
     /// can style them distinctly without re-parsing markup that doesn't exist in a plain-text
     /// summary.
     nonisolated private static let sectionHeaders = [
+        "VISIT AGENDA",
         "HAIR COMPASS — SUMMARY FOR YOUR CLINICIAN",
         "BASELINE", "RECENT SIGNALS", "TREATMENTS", "TOLERABILITY", "PROCEDURES",
         "LABS", "TRIGGER EVENTS", "PROGRESS CHECK-INS",

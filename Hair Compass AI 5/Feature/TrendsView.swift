@@ -255,6 +255,35 @@ struct TrendsView: View {
         }
     }
 
+    @ViewBuilder
+    private func emotionalHistory(checkIns: [ProgressCheckIn]) -> some View {
+        let answered = checkIns.filter { $0.hairFeeling != .unspecified }
+        if !answered.isEmpty {
+            Divider().overlay(Clinical.hairline)
+            VStack(alignment: .leading, spacing: 7) {
+                Text("How this month felt")
+                    .font(Clinical.body(12, weight: .medium)).foregroundStyle(Clinical.ink)
+                ForEach(answered.suffix(3)) { checkIn in
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(checkIn.date.formatted(.dateTime.month(.abbreviated).year()))
+                        Spacer()
+                        Text(checkIn.hairFeeling.title)
+                    }
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                    if !checkIn.hairFeelingNote.isEmpty {
+                        Text(checkIn.hairFeelingNote)
+                            .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
+                    }
+                }
+                if answered.suffix(2).count == 2 && answered.suffix(2).allSatisfy({ $0.hairFeeling == .moreDifficult }) {
+                    Text("You may want to mention how this is affecting you at your next appointment.")
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
     // MARK: - Monthly check-ins (slow-moving, self-reported)
 
     /// The monthly `ProgressCheckIn` answers are collected but were never shown back — this
@@ -302,6 +331,8 @@ struct TrendsView: View {
                         .font(Clinical.body(12, weight: .medium))
                         .foregroundStyle(Clinical.warning)
                     }
+
+                    emotionalHistory(checkIns: sorted)
                 }
             }
         }

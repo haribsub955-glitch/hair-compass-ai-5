@@ -5,11 +5,13 @@ import UniformTypeIdentifiers
 /// Share a clinician-readable summary or a full JSON export of the raw records. The data is the
 /// user's own; nothing leaves the device except through the share sheet they invoke.
 struct ExportSheet: View {
+    var consultation: ProcedureAppointment?
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
+    @Query private var missedDoses: [MissedDoseRecord]
     @Query(sort: \LabResult.collectedAt, order: .reverse) private var labs: [LabResult]
     @Query(sort: \TriggerEvent.date, order: .reverse) private var triggers: [TriggerEvent]
     @Query(sort: \ProgressCheckIn.date, order: .reverse) private var progressCheckIns: [ProgressCheckIn]
@@ -25,11 +27,19 @@ struct ExportSheet: View {
     @State private var backupErrorMessage: String?
 
     private var summary: String {
-        ExportService.clinicianSummary(
+        let report = ExportService.clinicianSummary(
             profile: profiles.first, entries: entries, treatments: treatments,
             doses: doses, labs: labs, triggers: triggers, progressCheckIns: progressCheckIns,
             sideEffects: sideEffects, procedures: procedures
         )
+        guard let visit = reportConsultation else { return report }
+        return ExportService.visitAgendaSection(visit) + report
+    }
+
+    private var reportConsultation: ProcedureAppointment? {
+        consultation ?? procedures
+            .filter { $0.type == .consultation && $0.hasVisitAgenda }
+            .sorted { $0.date < $1.date }.first
     }
 
     var body: some View {
@@ -156,7 +166,8 @@ struct ExportSheet: View {
                 profile: profiles.first, entries: entries, treatments: treatments,
                 doses: doses, sideEffects: sideEffects,
                 labs: labs, photos: photos, snapshots: snapshots, triggers: triggers,
-                procedures: procedures, progressCheckIns: progressCheckIns
+                procedures: procedures, progressCheckIns: progressCheckIns,
+                missedDoses: missedDoses
             )
         } catch {
             backupErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
