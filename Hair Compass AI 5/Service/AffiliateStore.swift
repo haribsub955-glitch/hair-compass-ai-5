@@ -31,6 +31,8 @@ final class AffiliateStore {
     }
 
     static let supportedVersion = 1
+    static let maximumPayloadBytes = 64 * 1024
+    static let maximumLinkCount = 32
     static let remoteCacheKey = "affiliate.remoteCache"
     #if DEBUG
     static let debugOverridePrefix = "affiliate.debugOverride."
@@ -84,7 +86,7 @@ final class AffiliateStore {
     /// design — the bundled links (and any previously cached remote payload) keep serving.
     func refresh() async {
         guard !RemoteConfig.catalogURLString.isEmpty,
-              let url = URL(string: RemoteConfig.catalogURLString) else { return }
+              let url = Self.validHTTPSURL(RemoteConfig.catalogURLString) else { return }
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return }
@@ -97,7 +99,8 @@ final class AffiliateStore {
     /// Validates a remote payload and, when accepted, caches the raw data in UserDefaults so
     /// the links survive offline and app relaunches. Rejects anything whose `version` isn't
     /// `supportedVersion`. Returns whether the payload was accepted. Internal so tests can
-    /// exercise validation without a network.
+    /// exercise validation without a network. Remote data is deliberately small and owner-only:
+    /// unknown products and unsafe/non-HTTPS destinations reject the complete payload.
     @discardableResult
     func ingestRemotePayload(_ data: Data) -> Bool {
         guard let links = Self.decodeLinks(from: data) else { return false }
@@ -135,10 +138,29 @@ final class AffiliateStore {
     }
 
     private static func decodeLinks(from data: Data?) -> [String: String]? {
-        guard let data,
+        guard let data, data.count <= maximumPayloadBytes,
               let payload = try? JSONDecoder().decode(Payload.self, from: data),
-              payload.version == supportedVersion else { return nil }
+              payload.version == supportedVersion,
+              payload.links.count <= maximumLinkCount else { return nil }
+        let knownIDs = Set(ScienceCatalog.products.map(\.id))
+        guard payload.links.keys.allSatisfy(knownIDs.contains),
+              payload.links.values.allSatisfy({ validHTTPSURL($0) != nil }) else { return nil }
         return payload.links
+    }
+
+    /// Accept only ordinary HTTPS web URLs with a syntactically usable host and no embedded
+    /// credentials. Fragments and paths are fine; an empty/whitespace link is not.
+    nonisolated static func validHTTPSURL(_ value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              var components = URLComponents(string: trimmed),
+              components.scheme?.lowercased() == "https",
+              components.user == nil, components.password == nil,
+              let host = components.host, !host.isEmpty,
+              !host.hasPrefix("."), !host.hasSuffix("."), !host.contains(".."),
+              host.unicodeScalars.allSatisfy({ CharacterSet.urlHostAllowed.contains($0) }) else { return nil }
+        components.scheme = "https"
+        return components.url
     }
 
     private static func loadBundledLinks() -> [String: String] {

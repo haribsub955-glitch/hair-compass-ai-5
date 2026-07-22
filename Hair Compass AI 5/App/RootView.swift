@@ -44,6 +44,7 @@ struct RootView: View {
     @State private var affiliates = AffiliateStore()
     @State private var appLock = AppLockService()
     @State private var lockPresenter = LockWindowPresenter()
+    @State private var privacyPresenter = PrivacyWindowPresenter()
     @StateObject private var ritualCoordinator = LaunchRitualCoordinator()
     @State private var ritualKind: RitualKind?
     @State private var purchases = PurchaseService()
@@ -298,7 +299,11 @@ struct RootView: View {
                 // coordinator just timestamps for the >4h re-roll.
                 appLock.markBackgrounded()
                 ritualCoordinator.markBackgrounded()
+                privacyPresenter.present()
+            case .inactive:
+                privacyPresenter.present()
             case .active:
+                privacyPresenter.dismiss()
                 // A Siri/Shortcuts "Log check-in" hands off through the App Group — honour it on
                 // activation. The `&&` short-circuits so the flag is only consumed when we can act
                 // (never swallowed behind the lock or onboarding), and it suppresses a ritual roll.
@@ -391,6 +396,49 @@ private final class LockWindowPresenter {
     func dismiss() {
         window?.isHidden = true
         window = nil
+    }
+}
+
+/// Covers every presentation layer before iOS captures the app-switcher snapshot. Snapshot
+/// privacy is always active, independently of the optional Face ID app lock.
+@MainActor
+private final class PrivacyWindowPresenter {
+    private var window: UIWindow?
+
+    func present() {
+        guard window == nil else { return }
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState != .unattached }) else { return }
+        let window = UIWindow(windowScene: scene)
+        window.windowLevel = .alert + 2
+        window.rootViewController = UIHostingController(rootView: PrivacySnapshotView())
+        window.isHidden = false
+        self.window = window
+    }
+
+    func dismiss() {
+        window?.isHidden = true
+        window = nil
+    }
+}
+
+private struct PrivacySnapshotView: View {
+    var body: some View {
+        ZStack {
+            Clinical.canvas.ignoresSafeArea()
+            VStack(spacing: 14) {
+                Image(systemName: "lock.shield.fill")
+                    .font(Clinical.body(30, weight: .medium))
+                    .foregroundStyle(Clinical.accent)
+                Text("Hair Compass")
+                    .font(Clinical.headline(28))
+                    .foregroundStyle(Clinical.ink)
+                Text("Your records are concealed.")
+                    .font(Clinical.caption(14))
+                    .foregroundStyle(Clinical.secondary)
+            }
+        }
     }
 }
 

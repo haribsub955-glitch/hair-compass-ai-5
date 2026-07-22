@@ -14,6 +14,36 @@ import Testing
 
 struct WidgetSnapshotTests {
 
+    /// Mirrors the widget-extension declaration. Cross-decoding in both directions makes a field
+    /// rename/type change fail in the app test target even though the two targets cannot import
+    /// one another.
+    private struct WidgetTargetSnapshot: Codable, Equatable {
+        let generatedAt: Date
+        let hasLoggedToday: Bool
+        let score: Int
+        let ringLog: Double
+        let ringCare: Double?
+        let ringLens: Double
+        let shedLabel: String
+        let scalpLabel: String
+        let streakDays: Int
+        let shieldsHeld: Int
+        let dueTitles: [String]
+    }
+
+    private struct WidgetTargetRitualAttributes: Codable, Equatable {
+        struct ContentState: Codable, Equatable {
+            var stepName: String
+            var stepIndex: Int
+            var totalSteps: Int
+            var progress: Double
+            var endDate: Date?
+        }
+        var ritualName: String
+        var ritualKind: String
+        var startDate: Date
+    }
+
     // MARK: - Log + Lens rings close, score matches CompassScore
 
     @Test @MainActor func loggedTodayWithPhotoThisWeekClosesLogAndLensRings() {
@@ -106,5 +136,42 @@ struct WidgetSnapshotTests {
         let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(Set(obj.keys) == ["generatedAt","hasLoggedToday","score","ringLog","ringCare",
             "ringLens","shedLabel","scalpLabel","streakDays","shieldsHeld","dueTitles"])
+    }
+
+    @Test func appAndWidgetSnapshotShapesCrossDecode() throws {
+        let app = WidgetSnapshot(
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000), hasLoggedToday: true,
+            score: 71, ringLog: 1, ringCare: 0.5, ringLens: 0, shedLabel: "Elevated",
+            scalpLabel: "Scalp mild", streakDays: 4, shieldsHeld: 1,
+            dueTitles: ["Minoxidil · 21:00"]
+        )
+        let widget = try JSONDecoder().decode(WidgetTargetSnapshot.self, from: JSONEncoder().encode(app))
+        let appAgain = try JSONDecoder().decode(WidgetSnapshot.self, from: JSONEncoder().encode(widget))
+        #expect(appAgain == app)
+    }
+
+    @Test func appAndWidgetRitualActivityShapesCrossDecode() throws {
+        let app = RitualActivityAttributes(
+            ritualName: "Breathe", ritualKind: "massage",
+            startDate: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let widget = try JSONDecoder().decode(
+            WidgetTargetRitualAttributes.self, from: JSONEncoder().encode(app)
+        )
+        #expect(widget.ritualName == app.ritualName)
+        #expect(widget.ritualKind == app.ritualKind)
+        #expect(widget.startDate == app.startDate)
+
+        let state = RitualActivityAttributes.ContentState(
+            stepName: "Breathe", stepIndex: 1, totalSteps: 1, progress: 0.5,
+            endDate: Date(timeIntervalSince1970: 1_700_000_030)
+        )
+        let widgetState = try JSONDecoder().decode(
+            WidgetTargetRitualAttributes.ContentState.self, from: JSONEncoder().encode(state)
+        )
+        let appState = try JSONDecoder().decode(
+            RitualActivityAttributes.ContentState.self, from: JSONEncoder().encode(widgetState)
+        )
+        #expect(appState == state)
     }
 }

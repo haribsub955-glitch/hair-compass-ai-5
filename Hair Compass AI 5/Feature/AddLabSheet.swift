@@ -118,7 +118,7 @@ struct AddLabSheet: View {
                         if let v = value {
                             let flag = HairAnalytics.flag(for: v, range: displayedRange)
                             HStack(spacing: 4) {
-                                Text("Reference \(displayedRange.lowerBound.formatted())–\(displayedRange.upperBound.formatted()) \(test.unit) · \(flag.title)")
+                                Text("\(validCustomRange == nil ? "Generic informational default" : "Reference") \(displayedRange.lowerBound.formatted())–\(displayedRange.upperBound.formatted()) \(test.unit) · \(flag.title)")
                                 if validCustomRange != nil {
                                     Text("· from your lab report").foregroundStyle(Clinical.tertiary)
                                 }

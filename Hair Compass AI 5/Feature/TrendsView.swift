@@ -583,7 +583,7 @@ struct TrajectorySummary {
     /// average captioned for exactly what it is.
     var heroStat: (value: String, caption: String, isDelta: Bool)? {
         if let delta, currentCount >= 2, previousCount >= 2 {
-            let text = String(format: "%+.1f", delta)
+            let text = delta.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1)))
             return (text, "BANDS VS LAST WK", true)
         }
         if let currentAverage {
@@ -610,7 +610,7 @@ struct TrajectorySummary {
             return "Shedding steady this week · \(coverageLabel)."
         }
         let direction = delta <= -0.15 ? "lower" : "higher"
-        let magnitude = String(format: "%+.1f", delta)
+        let magnitude = delta.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1)))
         return "Shedding \(direction) this week · \(magnitude) vs last wk · \(coverageLabel)."
     }
 

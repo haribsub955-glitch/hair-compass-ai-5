@@ -664,7 +664,7 @@ struct TodayTileGrid: View {
         let value: String
         let fraction: CGFloat
         if let sleepHours {
-            value = String(format: "%.1fh", sleepHours)
+            value = sleepHours.formatted(.number.precision(.fractionLength(1))) + "h"
             fraction = min(1, max(0, CGFloat(sleepHours) / 8))
         } else if let quality {
             value = "\(quality)/5"

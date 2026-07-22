@@ -239,7 +239,7 @@ enum ExportService {
     }
 
     private static func oneDecimal(_ v: Double) -> String {
-        v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v)
+        v.formatted(.number.precision(.fractionLength(0...1)))
     }
     private static func trend(_ d: Double) -> String {
         d < -0.05 ? "improving" : (d > 0.05 ? "rising" : "steady")

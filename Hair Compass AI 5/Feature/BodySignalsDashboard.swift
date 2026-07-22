@@ -70,10 +70,10 @@ enum BodySignal: String, CaseIterable, Identifiable {
     /// "7.2h" · "48 ms" · "62 bpm" · "77.5 kg" · "112 g"
     func format(_ value: Double) -> String {
         switch self {
-        case .sleep: return String(format: "%.1fh", value)
+        case .sleep: return value.formatted(.number.precision(.fractionLength(1))) + "h"
         case .hrv: return "\(Int(value.rounded())) ms"
         case .restingHR: return "\(Int(value.rounded())) bpm"
-        case .weight: return String(format: "%.1f kg", value)
+        case .weight: return value.formatted(.number.precision(.fractionLength(1))) + " kg"
         case .protein: return "\(Int(value.rounded())) g"
         }
     }
@@ -82,7 +82,9 @@ enum BodySignal: String, CaseIterable, Identifiable {
     func formatDelta(_ delta: Double) -> String {
         let sign = delta < 0 ? "−" : "+"
         let magnitude = abs(delta)
-        let number = usesDecimal ? String(format: "%.1f", magnitude) : "\(Int(magnitude.rounded()))"
+        let number = usesDecimal
+            ? magnitude.formatted(.number.precision(.fractionLength(1)))
+            : magnitude.formatted(.number.precision(.fractionLength(0)))
         let unit: String
         switch self {
         case .sleep: unit = "h"
