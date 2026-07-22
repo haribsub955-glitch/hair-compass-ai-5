@@ -74,6 +74,7 @@ struct HairChatSheet: View {
                     .overlay(Circle().strokeBorder(Clinical.hairline, lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .minimumHitTarget()
             .accessibilityLabel("Close chat")
         }
         .padding(.horizontal, 20)
@@ -263,6 +264,7 @@ struct HairChatSheet: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.clinicalPressable)
+            .minimumHitTarget()
             .disabled(sendDisabled)
             .opacity(sendDisabled ? 0.4 : 1)
             .accessibilityLabel("Send message")

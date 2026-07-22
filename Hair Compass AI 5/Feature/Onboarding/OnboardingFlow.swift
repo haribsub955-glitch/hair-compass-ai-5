@@ -122,6 +122,7 @@ struct OnboardingFlow: View {
                 Button { back() } label: {
                     Image(systemName: "chevron.left").font(Clinical.body(16, weight: .semibold)).foregroundStyle(Clinical.ink)
                 }
+                .minimumHitTarget()
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -136,6 +137,7 @@ struct OnboardingFlow: View {
                 Button { onDismiss() } label: {
                     Image(systemName: "xmark").font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.tertiary)
                 }
+                .minimumHitTarget()
                 .accessibilityLabel("Close walkthrough")
             }
         }

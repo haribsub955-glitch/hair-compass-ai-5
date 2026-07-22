@@ -389,12 +389,8 @@ private final class LockWindowPresenter {
             .first(where: { $0.activationState != .unattached }) else { return }
         let window = UIWindow(windowScene: scene)
         window.windowLevel = .alert + 1
-        // This window sits outside the WindowGroup's view hierarchy (its own UIHostingController),
-        // so it doesn't inherit the `.dynamicTypeSize` clamp applied to `RootView()` in
-        // HairCompassApp — restate it here for the same reason: the fixed 88×88 lock glyph circle
-        // shouldn't be asked to hold accessibility-size text past `.accessibility2`.
         window.rootViewController = UIHostingController(
-            rootView: LockScreenView(lock: lock).dynamicTypeSize(...DynamicTypeSize.accessibility2)
+            rootView: LockScreenView(lock: lock)
         )
         window.isHidden = false
         self.window = window
@@ -457,9 +453,10 @@ private struct LockScreenView: View {
     var body: some View {
         ZStack {
             Clinical.canvas.ignoresSafeArea()
-            VStack(spacing: 0) {
-                Spacer()
-                Image(systemName: "lock.fill")
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 32)
+                    Image(systemName: "lock.fill")
                     .font(Clinical.body(32, weight: .medium))
                     .foregroundStyle(Clinical.accent)
                     .frame(width: 88, height: 88)
@@ -492,6 +489,8 @@ private struct LockScreenView: View {
                 #else
                 Spacer().frame(height: 16)
                 #endif
+                }
+                .frame(maxWidth: .infinity, minHeight: UIScreen.main.bounds.height)
             }
         }
         .task {

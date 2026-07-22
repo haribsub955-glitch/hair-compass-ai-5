@@ -28,8 +28,8 @@ struct OnboardingPlanStep: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(showsIndicators: false) {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 18) {
                     header
                     projectionCard
@@ -38,8 +38,8 @@ struct OnboardingPlanStep: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
                 .padding(.bottom, 16)
+                footer
             }
-            footer
         }
         .task(id: purchases.yearly?.id) {
             guard let yearly = purchases.yearly else { return }

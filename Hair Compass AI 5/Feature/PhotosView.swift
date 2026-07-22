@@ -320,13 +320,14 @@ struct PhotosView: View {
                     .shadow(color: Clinical.accent.opacity(0.24), radius: 8, y: 3)
             }
             .buttonStyle(.clinicalPressable)
+            .minimumHitTarget()
             .accessibilityLabel("Capture \(region.title.lowercased()) photo")
             .padding(.top, 2)
             // The whole point of a baseline is that it can predate the app, and an example
             // journey shows the payoff before someone's built their own — both still one tap
             // away, now sharing a single quiet secondary line instead of two stacked links.
             HStack(spacing: 6) {
-                Button("Add older photos") { showAdd = true }
+                Button("Add older photos") { showAdd = true }.minimumHitTarget()
                 Text("·").foregroundStyle(Clinical.tertiary)
                 Button("See an example journey") {
                     journey = JourneyPresentation(frames: exampleFrames(), isExample: true)
@@ -385,6 +386,7 @@ struct PhotosView: View {
                     .shadow(color: Clinical.accent.opacity(0.24), radius: 8, y: 3)
             }
             .buttonStyle(.clinicalPressable)
+            .minimumHitTarget()
             .accessibilityLabel("Capture \(region.title.lowercased()) photo")
             Spacer(minLength: 8)
             if let lastCaptureRecency {
