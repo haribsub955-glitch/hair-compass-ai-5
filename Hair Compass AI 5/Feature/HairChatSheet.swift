@@ -57,12 +57,15 @@ struct HairChatSheet: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 5) {
-                Eyebrow(text: eyebrow)
-                Text(title)
-                    .font(Clinical.headline(24))
+        HStack(alignment: .center, spacing: 12) {
+            CompanionView(moment: .listening, variant: .avatar, size: 40)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Companion.name)
+                    .font(Clinical.headline(22))
                     .foregroundStyle(Clinical.ink)
+                Text(eyebrow)
+                    .font(Clinical.caption(12))
+                    .foregroundStyle(Clinical.secondary)
             }
             Spacer()
             Button { dismiss() } label: {
@@ -151,7 +154,7 @@ struct HairChatSheet: View {
                 : .asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity)
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(isUser ? "You" : "Assistant"): \(message.text)")
+        .accessibilityLabel("\(isUser ? "You" : Companion.name): \(message.text)")
         .id(message.id)
     }
 
@@ -176,24 +179,18 @@ struct HairChatSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .id("streaming")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Assistant is typing: \(text)")
+        .accessibilityLabel("\(Companion.name) is typing: \(text)")
     }
 
     private var thinkingRow: some View {
         HStack(spacing: 8) {
-            if reduceMotion {
-                // Reduce Motion: no looping animation — a static ellipsis.
-                Text("…")
-                    .font(Clinical.body(13, weight: .semibold))
-                    .foregroundStyle(Clinical.tertiary)
-                    .accessibilityHidden(true)
-            } else {
-                ThinkingDots()
-            }
-            Text("Thinking").font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
+            CompanionView(moment: .thinking, variant: .pose, size: 30)
+            Text("\(Companion.name) is thinking")
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.tertiary)
         }
         .transition(.opacity)
-        .accessibilityLabel("Assistant is thinking")
+        .accessibilityLabel("\(Companion.name) is thinking")
     }
 
     private func errorRow(_ text: String) -> some View {
@@ -207,13 +204,12 @@ struct HairChatSheet: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Image(BrandArt.sprig)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 84, height: 84)
-                .opacity(0.5)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            CompanionView(moment: .listening, variant: .pose, size: 84)
+            if let hello = Companion.line(for: .greeting) {
+                Text(hello)
+                    .font(Clinical.body(14, weight: .medium))
+                    .foregroundStyle(Clinical.ink)
+            }
             Text("Answers stay about hair science and your own data. Not medical advice.")
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
@@ -294,11 +290,7 @@ struct HairChatSheet: View {
         let status = service.availability
         return VStack(spacing: 12) {
             Spacer(minLength: 20)
-            Image(systemName: "sparkles")
-                .font(Clinical.caption(24))
-                .foregroundStyle(Clinical.accent)
-                .frame(width: 56, height: 56)
-                .background(Clinical.accentSoft, in: Circle())
+            CompanionView(moment: .resting, variant: .avatar, size: 56)
             Text("On-device AI unavailable")
                 .font(Clinical.headline(18))
                 .foregroundStyle(Clinical.ink)
@@ -319,32 +311,5 @@ struct HairChatSheet: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 28)
-    }
-}
-
-/// Three dots pulsing in sequence while the assistant is thinking — the app's only repeating
-/// animation, alive only while the thinking row is on screen (it's torn down with the row when
-/// `isRunning` flips off). Callers must swap this for static text under Reduce Motion.
-private struct ThinkingDots: View {
-    @State private var pulsing = false
-
-    var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { i in
-                Circle()
-                    .fill(Clinical.tertiary)
-                    .frame(width: 6, height: 6)
-                    .opacity(pulsing ? 1 : 0.3)
-                    .animation(
-                        .easeInOut(duration: 0.5)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(i) * 0.16),
-                        value: pulsing
-                    )
-            }
-        }
-        .onAppear { pulsing = true }
-        .onDisappear { pulsing = false }
-        .accessibilityHidden(true)
     }
 }
