@@ -19,7 +19,7 @@ struct AIContext: Codable, Equatable, Sendable {
 
     /// Bump on any change to field names or semantics. v1: the initial shape. v2: adds
     /// `progressCheckIns` (self-reported regrowth/density/shedding/hairline/overall + scalp-pain).
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     var schemaVersion: Int = AIContext.currentSchemaVersion
     /// ISO8601 (UTC, whole seconds) timestamp of the `now` the context was built against.
@@ -35,6 +35,14 @@ struct AIContext: Codable, Equatable, Sendable {
 
     /// Days of daily-log history shipped to the model, and the cap on the series length.
     static let dailyWindowDays = 120
+    /// Hard prompt budget. The builder's caps and string normalization keep compact JSON below
+    /// this value even for a deliberately adversarial local record.
+    static let maximumEncodedBytes = 24_000
+    static let maximumTreatments = 12
+    static let maximumLabs = 12
+    static let maximumTriggers = 12
+    static let maximumProgressCheckIns = 6
+    static let maximumSideEffectsPerTreatment = 6
 
     // MARK: - Sections
 
@@ -150,6 +158,26 @@ struct AIContext: Codable, Equatable, Sendable {
         var entryCount: Int
         var streak: Int
         var photos: PhotoSummary     // metadata only — image data never enters the context
+        var longTerm: LongTermAggregates
+        /// Counts excluded by the explicit prompt budget. These keep absence distinguishable
+        /// from truncation without sending another unbounded list to the model.
+        var omitted: OmittedCounts
+
+        struct OmittedCounts: Codable, Equatable, Sendable {
+            var dailyEntries: Int
+            var treatments: Int
+            var labs: Int
+            var triggers: Int
+            var progressCheckIns: Int
+            var sideEffects: Int
+        }
+
+        struct LongTermAggregates: Codable, Equatable, Sendable {
+            var firstEntryDate: String?
+            var lastEntryDate: String?
+            var averageShed: Double?
+            var averageScalpTotal: Double?
+        }
     }
 
     // MARK: - Build (SwiftData models → pure context)
@@ -179,9 +207,9 @@ struct AIContext: Codable, Equatable, Sendable {
             condition: condition.title,
             conditionCode: condition.shortLabel,
             sex: profile?.sex.rawValue,
-            ageBand: nonEmpty(profile?.ageBand),
+            ageBand: nonEmpty(profile?.ageBand).map { bounded($0) },
             familyHistory: profile?.familyHistory.rawValue,
-            baselineStage: nonEmpty(profile?.baselineStage),
+            baselineStage: nonEmpty(profile?.baselineStage).map { bounded($0) },
             tractionRisk: profile?.hasTractionRisk ?? false
         )
 
@@ -215,8 +243,9 @@ struct AIContext: Codable, Equatable, Sendable {
         // Treatments — all of them (isActive tells the model which are current), with the
         // adherence and 24-week gate math from HairAnalytics and 30 days of tolerability.
         let sideEffectCutoff = calendar.date(byAdding: .day, value: -30, to: now) ?? now
-        let treatmentFacts = treatments
-            .sorted { $0.startDate < $1.startDate }
+        let includedTreatments = Array(treatments.sorted { $0.startDate < $1.startDate }.suffix(maximumTreatments))
+        var omittedSideEffectCount = 0
+        let treatmentFacts = includedTreatments
             .map { t -> TreatmentFacts in
                 let weeks = HairAnalytics.weeksElapsed(since: t.startDate, now: now, calendar: calendar)
                 let doseDates = doses
@@ -224,18 +253,20 @@ struct AIContext: Codable, Equatable, Sendable {
                     .map(\.loggedAt)
                 let adherence = HairAnalytics.adherence(
                     doseDates: doseDates, expectedPerDay: t.slots.count, now: now, calendar: calendar)
-                let recent = sideEffects
+                let allRecent = sideEffects
                     .filter {
                         $0.treatment?.persistentModelID == t.persistentModelID
                             && $0.date >= sideEffectCutoff && $0.date <= now
                     }
                     .sorted { $0.date < $1.date }
-                    .map { TreatmentFacts.SideEffect(name: $0.type.title, severity: $0.severity) }
+                omittedSideEffectCount += max(0, allRecent.count - maximumSideEffectsPerTreatment)
+                let recent = Array(allRecent.suffix(maximumSideEffectsPerTreatment))
+                    .map { TreatmentFacts.SideEffect(name: bounded($0.type.title), severity: $0.severity) }
                 return TreatmentFacts(
-                    name: t.name.isEmpty ? t.treatmentClass.title : t.name,
+                    name: bounded(t.name.isEmpty ? t.treatmentClass.title : t.name, limit: 80),
                     treatmentClass: t.treatmentClass.rawValue,
-                    dose: nonEmpty(t.dose),
-                    slots: t.slots,
+                    dose: nonEmpty(t.dose).map { bounded($0, limit: 80) },
+                    slots: Array(t.slots.prefix(8)).map { bounded($0, limit: 12) },
                     isActive: t.isActive,
                     startDate: dayString(t.startDate, calendar: calendar),
                     weeksElapsed: weeks,
@@ -247,8 +278,8 @@ struct AIContext: Codable, Equatable, Sendable {
             }
 
         // Labs — value + reference range + the HairAnalytics flag, date-only.
-        let labFacts = labs
-            .sorted { $0.collectedAt < $1.collectedAt }
+        let includedLabs = Array(labs.sorted { $0.collectedAt < $1.collectedAt }.suffix(maximumLabs))
+        let labFacts = includedLabs
             .map { lab -> LabFacts in
                 let range = lab.test.referenceRange
                 return LabFacts(
@@ -264,8 +295,8 @@ struct AIContext: Codable, Equatable, Sendable {
             }
 
         // Triggers — dated TE context with the weeks-since math the lag rules key on.
-        let triggerFacts = triggers
-            .sorted { $0.date < $1.date }
+        let includedTriggers = Array(triggers.sorted { $0.date < $1.date }.suffix(maximumTriggers))
+        let triggerFacts = includedTriggers
             .map { t in
                 TriggerFacts(
                     type: t.type.rawValue,
@@ -279,7 +310,7 @@ struct AIContext: Codable, Equatable, Sendable {
         // dermatologist asks, most recent ~6, oldest first (same windowing convention as the
         // daily series). Context only: phrases, never a diagnosis or a "worked" claim.
         let progressCheckInFacts = Array(
-            progressCheckIns.sorted { $0.date < $1.date }.suffix(6)
+            progressCheckIns.sorted { $0.date < $1.date }.suffix(maximumProgressCheckIns)
         ).map { c in
             ProgressCheckInFacts(
                 date: dayString(c.date, calendar: calendar),
@@ -289,7 +320,7 @@ struct AIContext: Codable, Equatable, Sendable {
                 hairline: c.hairline.clinicianPhrase(for: .hairline),
                 overall: c.overall.clinicianPhrase(for: .overall),
                 scalpPain: c.scalpPain,
-                note: c.note
+                note: bounded(c.note, limit: 240)
             )
         }
 
@@ -324,6 +355,22 @@ struct AIContext: Codable, Equatable, Sendable {
                 regions: Set(photos.map(\.region.rawValue)).sorted(),
                 firstDate: photoDates.min().map { dayString($0, calendar: calendar) },
                 lastDate: photoDates.max().map { dayString($0, calendar: calendar) }
+            ),
+            longTerm: Meta.LongTermAggregates(
+                firstEntryDate: entries.map(\.date).min().map { dayString($0, calendar: calendar) },
+                lastEntryDate: entries.map(\.date).max().map { dayString($0, calendar: calendar) },
+                averageShed: entries.isEmpty ? nil : round2(
+                    entries.map { Double($0.shed.rawValue) }.reduce(0, +) / Double(entries.count)),
+                averageScalpTotal: entries.isEmpty ? nil : round2(
+                    entries.map { Double($0.scalpTotal) }.reduce(0, +) / Double(entries.count))
+            ),
+            omitted: Meta.OmittedCounts(
+                dailyEntries: max(0, entries.count - windowed.count),
+                treatments: max(0, treatments.count - includedTreatments.count),
+                labs: max(0, labs.count - includedLabs.count),
+                triggers: max(0, triggers.count - includedTriggers.count),
+                progressCheckIns: max(0, progressCheckIns.count - progressCheckInFacts.count),
+                sideEffects: omittedSideEffectCount
             )
         )
 
@@ -384,5 +431,9 @@ struct AIContext: Codable, Equatable, Sendable {
     private static func nonEmpty(_ value: String?) -> String? {
         guard let value, !value.isEmpty else { return nil }
         return value
+    }
+
+    private static func bounded(_ value: String, limit: Int = 160) -> String {
+        String(value.prefix(limit))
     }
 }
