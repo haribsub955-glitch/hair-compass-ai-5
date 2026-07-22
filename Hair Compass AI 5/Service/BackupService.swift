@@ -113,6 +113,9 @@ enum BackupService {
         var isActive = true
         var refillBy: Date?
         var endDate: Date?
+        /// Added to v1 after launch. Missing keys in older archives decode as nil.
+        var ingredientImageBase64: String?
+        var aiIngredientSummary: String?
         var doses: [DoseDTO] = []
         var sideEffects: [SideEffectDTO] = []
     }
@@ -247,6 +250,10 @@ enum BackupService {
                 scheduleTimes: t.scheduleTimes, scheduledWeekdaysRaw: t.scheduledWeekdaysRaw,
                 startDate: t.startDate,
                 isActive: t.isActive, refillBy: t.refillBy, endDate: t.endDate,
+                ingredientImageBase64: t.ingredientPhotoPath.isEmpty
+                    ? nil
+                    : photoData(t.ingredientPhotoPath)?.base64EncodedString(),
+                aiIngredientSummary: t.aiIngredientSummary,
                 doses: t.doses
                     .sorted { $0.loggedAt < $1.loggedAt }
                     .map { DoseDTO(loggedAt: $0.loggedAt, slot: $0.slot) },
@@ -360,8 +367,12 @@ enum BackupService {
             procedures: procedures, progressCheckIns: progressCheckIns,
             createdAt: now, photoData: photoData
         )
-        let missingPhotos = zip(photos, envelope.photos).compactMap { record, dto in
+        var missingPhotos = zip(photos, envelope.photos).compactMap { record, dto in
             !record.imagePath.isEmpty && dto.imageBase64 == nil ? record.imagePath : nil
+        }
+        missingPhotos += zip(treatments, envelope.treatments).compactMap { treatment, dto in
+            !treatment.ingredientPhotoPath.isEmpty && dto.ingredientImageBase64 == nil
+                ? treatment.ingredientPhotoPath : nil
         }
         guard missingPhotos.isEmpty else { throw BackupError.missingPhotoFiles(missingPhotos) }
         let data = try encode(envelope)
@@ -412,9 +423,12 @@ enum BackupService {
         // background task can splice byte-loaded base64 back into the right DTO by index
         // without needing the `PhotoRecord`s themselves.
         let imagePaths = photos.map(\.imagePath)
+        let ingredientImagePaths = treatments.map(\.ingredientPhotoPath)
 
         return try await Task.detached(priority: .userInitiated) {
-            try finishExportOffMain(envelope: envelope, imagePaths: imagePaths, now: now, photoData: photoData)
+            try finishExportOffMain(envelope: envelope, imagePaths: imagePaths,
+                                    ingredientImagePaths: ingredientImagePaths,
+                                    now: now, photoData: photoData)
         }.value
     }
 
@@ -425,7 +439,8 @@ enum BackupService {
     /// `photoData` is injected (defaulting to the real `PhotoStore`) so tests never touch disk,
     /// same reasoning as `makeEnvelope`'s own `photoData` parameter.
     nonisolated private static func finishExportOffMain(
-        envelope: Envelope, imagePaths: [String], now: Date, photoData: (String) -> Data?
+        envelope: Envelope, imagePaths: [String], ingredientImagePaths: [String],
+        now: Date, photoData: (String) -> Data?
     ) throws -> URL {
         var envelope = envelope
         var missingPhotos: [String] = []
@@ -436,6 +451,16 @@ enum BackupService {
             autoreleasepool {
                 if let data = photoData(path) {
                     envelope.photos[index].imageBase64 = data.base64EncodedString()
+                } else {
+                    missingPhotos.append(path)
+                }
+            }
+        }
+        for (index, path) in ingredientImagePaths.enumerated() {
+            guard !path.isEmpty else { continue }
+            autoreleasepool {
+                if let data = photoData(path) {
+                    envelope.treatments[index].ingredientImageBase64 = data.base64EncodedString()
                 } else {
                     missingPhotos.append(path)
                 }
@@ -473,7 +498,10 @@ enum BackupService {
             throw BackupError.unreadableFile
         }
         let envelope = try decode(data)
-        return try restore(envelope, into: context, photoWriter: { PhotoStore.shared.saveData($0) })
+        return try restore(envelope, into: context,
+                           photoWriter: { PhotoStore.shared.stageData($0) },
+                           photoRemover: { PhotoStore.shared.deleteStagedData($0) },
+                           photoCommitter: { try PhotoStore.shared.commitStagedData($0) })
     }
 
     /// Merge-safe upsert of a decoded envelope. Nothing is ever deleted; records that
@@ -492,9 +520,33 @@ enum BackupService {
     static func restore(
         _ envelope: Envelope,
         into context: ModelContext,
-        photoWriter: (Data) -> String?
+        photoWriter: (Data) -> String?,
+        photoRemover: (String) -> Void = { _ in },
+        photoCommitter: (String) throws -> Void = { _ in }
     ) throws -> RestoreSummary {
+        // Decode and validate the complete payload before touching either persistence layer.
+        // In particular, a corrupt image at the end cannot arrive after earlier files/rows.
+        let preparedTreatmentImages = try envelope.treatments.map {
+            try validatedImageData($0.ingredientImageBase64)
+        }
+        let preparedPhotos = try envelope.photos.map { try validatedImageData($0.imageBase64) }
+        try validateRawValues(in: envelope)
+
+        // The injected writer is the file-store staging boundary. Keep every returned path so
+        // any later writer/database failure can remove the whole staged set. Bytes are only
+        // written for records that are actually being inserted — staging happens lazily at each
+        // insert site so re-restoring the same payload never rewrites files for skipped duplicates.
+        var stagedPaths: [String] = []
+        func stage(_ data: Data?) throws -> String {
+            guard let data else { return "" }
+            guard let path = photoWriter(data) else { throw BackupError.invalidPhotoData }
+            stagedPaths.append(path)
+            return path
+        }
+
+        do {
         var summary = RestoreSummary()
+        var committedPaths = Set<String>()
         let calendar = Calendar.current
 
         // Profile — keep local edits; only a still-default profile takes the backup's fields.
@@ -567,7 +619,7 @@ enum BackupService {
         for t in try context.fetch(FetchDescriptor<Treatment>()) {
             treatmentsByKey[treatmentKey(name: t.name, startDate: t.startDate)] = t
         }
-        for dto in envelope.treatments {
+        for (treatmentIndex, dto) in envelope.treatments.enumerated() {
             let key = treatmentKey(name: dto.name, startDate: dto.startDate)
             let target: Treatment
             if let existing = treatmentsByKey[key] {
@@ -584,6 +636,9 @@ enum BackupService {
                 t.isActive = dto.isActive
                 t.refillBy = dto.refillBy
                 t.endDate = dto.endDate
+                t.ingredientPhotoPath = try stage(preparedTreatmentImages[treatmentIndex])
+                if !t.ingredientPhotoPath.isEmpty { committedPaths.insert(t.ingredientPhotoPath) }
+                t.aiIngredientSummary = dto.aiIngredientSummary ?? ""
                 context.insert(t)
                 treatmentsByKey[key] = t
                 target = t
@@ -643,23 +698,12 @@ enum BackupService {
             try context.fetch(FetchDescriptor<PhotoRecord>())
                 .map { photoKey(createdAt: $0.createdAt, regionRaw: $0.regionRaw) }
         )
-        for dto in envelope.photos {
+        for (photoIndex, dto) in envelope.photos.enumerated() {
             let k = photoKey(createdAt: dto.createdAt, regionRaw: dto.regionRaw)
             guard !photoKeys.contains(k) else { summary.skipped += 1; continue }
             photoKeys.insert(k)
-            var path = ""
-            autoreleasepool {
-                if let base64 = dto.imageBase64,
-                   let bytes = Data(base64Encoded: base64),
-                   let source = CGImageSourceCreateWithData(bytes as CFData, nil),
-                   CGImageSourceGetCount(source) > 0,
-                   let saved = photoWriter(bytes) {
-                    path = saved
-                } else if dto.imageBase64 != nil {
-                    path = "__invalid__"
-                }
-            }
-            if path == "__invalid__" { throw BackupError.invalidPhotoData }
+            let path = try stage(preparedPhotos[photoIndex])
+            if !path.isEmpty { committedPaths.insert(path) }
             if !path.isEmpty { summary.photosRestored += 1 }
             let record = PhotoRecord(imagePath: path, createdAt: dto.createdAt,
                                      lighting: dto.lighting, distance: dto.distance,
@@ -744,7 +788,56 @@ enum BackupService {
         }
 
         try context.save()
+        stagedPaths.filter { !committedPaths.contains($0) }.forEach(photoRemover)
+        for path in committedPaths { try photoCommitter(path) }
         return summary
+        } catch {
+            context.rollback()
+            stagedPaths.forEach(photoRemover)
+            throw error
+        }
+    }
+
+    private static func validatedImageData(_ base64: String?) throws -> Data? {
+        guard let base64 else { return nil }
+        guard let bytes = Data(base64Encoded: base64),
+              let source = CGImageSourceCreateWithData(bytes as CFData, nil),
+              CGImageSourceGetCount(source) > 0 else {
+            throw BackupError.invalidPhotoData
+        }
+        return bytes
+    }
+
+    /// Reject unknown enum encodings up front rather than silently coercing a partial restore.
+    private static func validateRawValues(in envelope: Envelope) throws {
+        let valid =
+            envelope.profile.map {
+                BiologicalSex(rawValue: $0.sexRaw) != nil
+                    && HairCondition(rawValue: $0.conditionRaw) != nil
+                    && FamilyHistory(rawValue: $0.familyHistoryRaw) != nil
+                    && PregnancyStatus(rawValue: $0.pregnancyStatusRaw) != nil
+            } ?? true
+            && envelope.entries.allSatisfy { ShedLevel(rawValue: $0.shedRaw) != nil }
+            && envelope.treatments.allSatisfy {
+                TreatmentClass(rawValue: $0.classRaw) != nil
+                    && $0.sideEffects.allSatisfy { SideEffectType(rawValue: $0.typeRaw) != nil }
+            }
+            && (envelope.unattachedSideEffects ?? []).allSatisfy {
+                SideEffectType(rawValue: $0.typeRaw) != nil
+            }
+            && envelope.labs.allSatisfy { LabTest(rawValue: $0.testRaw) != nil }
+            && envelope.photos.allSatisfy { PhotoRegion(rawValue: $0.regionRaw) != nil }
+            && envelope.triggers.allSatisfy { TriggerType(rawValue: $0.typeRaw) != nil }
+            && envelope.procedures.allSatisfy { ProcedureType(rawValue: $0.typeRaw) != nil }
+            && envelope.progressCheckIns.allSatisfy {
+                RegrowthLevel(rawValue: $0.regrowthRaw) != nil
+                    && ProgressTrend(rawValue: $0.densityRaw) != nil
+                    && ProgressTrend(rawValue: $0.sheddingRaw) != nil
+                    && ProgressTrend(rawValue: $0.hairlineRaw) != nil
+                    && ProgressTrend(rawValue: $0.overallRaw) != nil
+                    && ($0.patchTrendRaw == nil || ProgressTrend(rawValue: $0.patchTrendRaw!) != nil)
+            }
+        guard valid else { throw BackupError.unreadableFile }
     }
 
     // MARK: - Natural keys (pure, unit-tested)

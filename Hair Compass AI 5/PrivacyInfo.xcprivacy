@@ -20,7 +20,7 @@
 
 	<!--
 	  Required-reason API declarations — this is the part App Review scans the binary against.
-	  UserDefaults (app + App Group with the widget) and file timestamps (stored photos/backup).
+	  App Group UserDefaults (app + widget), plus backup-file attributes read only to show size.
 	-->
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
@@ -29,7 +29,7 @@
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
-				<string>CA92.1</string>
+				<string>1C8F.1</string>
 			</array>
 		</dict>
 		<dict>
@@ -38,14 +38,6 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>C617.1</string>
-			</array>
-		</dict>
-		<dict>
-			<key>NSPrivacyAccessedAPIType</key>
-			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
-			<key>NSPrivacyAccessedAPITypeReasons</key>
-			<array>
-				<string>E174.1</string>
 			</array>
 		</dict>
 	</array>

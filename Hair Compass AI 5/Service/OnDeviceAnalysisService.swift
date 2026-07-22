@@ -1,4 +1,6 @@
 import Foundation
+
+// App Store Connect product descriptions must be updated to match the in-app record-summary wording.
 #if canImport(FoundationModels)
 import FoundationModels
 #endif

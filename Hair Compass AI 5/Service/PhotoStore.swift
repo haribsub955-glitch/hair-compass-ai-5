@@ -99,4 +99,31 @@ final class PhotoStore {
             return nil
         }
     }
+
+    /// Writes restore bytes under a temporary sibling name. The returned value is the final
+    /// relative path stored in SwiftData; `commitStagedData` performs the atomic rename.
+    func stageData(_ data: Data) -> String? {
+        guard !data.isEmpty else { return nil }
+        let name = "\(UUID().uuidString).jpg"
+        do {
+            try data.write(to: stagedURL(for: name), options: .atomic)
+            return name
+        } catch {
+            return nil
+        }
+    }
+
+    func commitStagedData(_ path: String) throws {
+        try FileManager.default.moveItem(
+            at: stagedURL(for: path), to: directory.appendingPathComponent(path)
+        )
+    }
+
+    func deleteStagedData(_ path: String) {
+        try? FileManager.default.removeItem(at: stagedURL(for: path))
+    }
+
+    private func stagedURL(for path: String) -> URL {
+        directory.appendingPathComponent(".restore-\(path).staged")
+    }
 }

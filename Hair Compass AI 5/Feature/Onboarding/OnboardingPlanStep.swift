@@ -264,7 +264,7 @@ struct OnboardingPlanStep: View {
         VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: "What Pro adds")
             proRow("bubble.left.and.text.bubble.right", "AI hair chat", "Ask anything about your data")
-            proRow("photo.on.rectangle.angled", "AI deep photo analysis", "Standardized, objective photo reads")
+            proRow("doc.text.magnifyingglass", "AI record summary", "On-device analysis of your tracked record — not diagnosis")
             proRow("bell.badge", "Smart reminders & trends", "Stay consistent through week 6")
         }
     }

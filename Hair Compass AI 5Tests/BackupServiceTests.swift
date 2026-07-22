@@ -425,4 +425,68 @@ struct BackupServiceTests {
         }
         #expect(writer.calls == 0)
     }
+
+    @Test func treatmentIngredientAnalysisRoundTripsExactly() throws {
+        let sourceContainer = try makeContainer()
+        let sourceContext = ModelContext(sourceContainer)
+        let treatment = Treatment(
+            name: "Custom serum", treatmentClass: .other, dose: "3 drops",
+            startDate: Date(timeIntervalSince1970: 1_750_000_000),
+            ingredientPhotoPath: "ingredient-label.jpg",
+            aiIngredientSummary: "Record note: contains niacinamide; no diagnosis."
+        )
+        sourceContext.insert(treatment)
+        try sourceContext.save()
+
+        let envelope = BackupService.makeEnvelope(
+            profile: nil, entries: [], treatments: [treatment], doses: [], sideEffects: [],
+            labs: [], photos: [], snapshots: [], triggers: [], procedures: [],
+            progressCheckIns: [], photoData: { path in
+                path == "ingredient-label.jpg" ? self.validImageData : nil
+            }
+        )
+        let archive = try BackupService.encode(envelope)
+        let decoded = try BackupService.decode(archive)
+
+        let restoredContainer = try makeContainer()
+        let restoredContext = ModelContext(restoredContainer)
+        var restoredBytes: [String: Data] = [:]
+        _ = try BackupService.restore(decoded, into: restoredContext, photoWriter: { data in
+            let path = "restored-ingredient.jpg"
+            restoredBytes[path] = data
+            return path
+        }, photoRemover: { restoredBytes.removeValue(forKey: $0) })
+
+        let restored = try #require(restoredContext.fetch(FetchDescriptor<Treatment>()).first)
+        #expect(restored.aiIngredientSummary == treatment.aiIngredientSummary)
+        #expect(restored.ingredientPhotoPath == "restored-ingredient.jpg")
+        #expect(restoredBytes[restored.ingredientPhotoPath] == validImageData)
+    }
+
+    @Test func invalidLatePhotoLeavesNoFilesOrPendingDatabaseChanges() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        var envelope = fixtureEnvelope(now: .now)
+        envelope.photos.append(.init(
+            regionRaw: PhotoRegion.templeLeft.rawValue,
+            createdAt: Date.now.addingTimeInterval(1),
+            imageBase64: Data("late-corruption".utf8).base64EncodedString()
+        ))
+        var files: [String: Data] = [:]
+
+        #expect(throws: BackupService.BackupError.invalidPhotoData) {
+            _ = try BackupService.restore(envelope, into: context, photoWriter: { data in
+                let path = "staged-\(files.count).jpg"
+                files[path] = data
+                return path
+            }, photoRemover: { files.removeValue(forKey: $0) })
+        }
+
+        #expect(files.isEmpty)
+        #expect(!context.hasChanges)
+        #expect(try context.fetch(FetchDescriptor<Profile>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<DailyEntry>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<Treatment>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<PhotoRecord>()).isEmpty)
+    }
 }
