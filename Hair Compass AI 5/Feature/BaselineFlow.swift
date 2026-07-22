@@ -1,4 +1,5 @@
 import SwiftData
+import StoreKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -8,7 +9,9 @@ struct BaselineFlow: View {
     @Bindable var profile: Profile
     @Environment(\.dismiss) private var dismiss
     @Environment(AppLockService.self) private var appLock
+    @Environment(PurchaseService.self) private var purchases
     @State private var replayOnboarding = false
+    @State private var showManageSubscriptions = false
 
     private let ageBands = ["Under 25", "26–35", "36–45", "46–55", "56+"]
 
@@ -98,6 +101,10 @@ struct BaselineFlow: View {
 
                     privacySection
 
+                    if purchases.hasPro {
+                        subscriptionSection
+                    }
+
                     StrandDivider()
 
                     BackupRestoreSection()
@@ -110,6 +117,7 @@ struct BaselineFlow: View {
                 .padding(.bottom, 24)
             }
             .clinicalScreen()
+            .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
             .navigationTitle("Baseline")
             .navigationBarTitleDisplayMode(.inline)
             .fullScreenCover(isPresented: $replayOnboarding) {
@@ -244,6 +252,39 @@ struct BaselineFlow: View {
             .padding(14)
             .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+        }
+    }
+
+    private var subscriptionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(text: "Hair Compass Pro")
+            Button {
+                showManageSubscriptions = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "crown.fill")
+                        .font(Clinical.caption(15))
+                        .foregroundStyle(Clinical.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Manage subscription")
+                            .font(Clinical.body(15, weight: .semibold))
+                            .foregroundStyle(Clinical.ink)
+                        Text("View your plan or change and cancel it in the App Store.")
+                            .font(Clinical.caption(12))
+                            .foregroundStyle(Clinical.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(Clinical.caption(12))
+                        .foregroundStyle(Clinical.tertiary)
+                }
+                .padding(14)
+                .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Clinical.hairline, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("manageSubscription")
         }
     }
 

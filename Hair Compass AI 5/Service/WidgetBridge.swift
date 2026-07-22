@@ -38,6 +38,51 @@ struct WidgetSnapshot: Codable, Equatable {
         case generatedAt, hasLoggedToday, score, ringLog, ringCare, ringLens, shedLabel, scalpLabel,
              streakDays, shieldsHeld, dueTitles
     }
+
+    static let placeholder = WidgetSnapshot(
+        generatedAt: .now, hasLoggedToday: false, score: 0, ringLog: 0, ringCare: nil,
+        ringLens: 0, shedLabel: "", scalpLabel: "", streakDays: 0, shieldsHeld: 0,
+        dueTitles: []
+    )
+}
+
+/// Pure decoding boundary shared in behavior with the widget provider. Missing App Group data
+/// and malformed payloads are both ordinary first-run states, never fatal widget errors.
+enum WidgetSnapshotDecoder {
+    static func decode(_ data: Data?) -> WidgetSnapshot {
+        guard let data, let snapshot = try? JSONDecoder().decode(WidgetSnapshot.self, from: data) else {
+            return .placeholder
+        }
+        return snapshot
+    }
+}
+
+enum WidgetDeepLinkDestination: Equatable {
+    case checkIn
+    case normal
+    case lock
+}
+
+enum WidgetDeepLinkSurface: CaseIterable {
+    case systemSmall, systemMedium
+    case accessoryCircular, accessoryRectangular, accessoryInline
+    case liveActivity
+
+    var destination: WidgetDeepLinkDestination {
+        switch self {
+        case .systemSmall, .systemMedium: return .checkIn
+        case .accessoryCircular, .accessoryRectangular, .accessoryInline: return .lock
+        case .liveActivity: return .normal
+        }
+    }
+
+    var url: URL {
+        switch destination {
+        case .checkIn: return URL(string: "haircompass://log")!
+        case .lock: return URL(string: "haircompass://lock")!
+        case .normal: return URL(string: "haircompass://")!
+        }
+    }
 }
 
 enum WidgetBridge {

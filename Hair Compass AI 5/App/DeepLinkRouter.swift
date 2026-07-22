@@ -5,6 +5,15 @@ import Foundation
 @MainActor
 @Observable
 final class DeepLinkRouter {
+    nonisolated static func destination(for url: URL) -> WidgetDeepLinkDestination? {
+        guard url.scheme == "haircompass" else { return nil }
+        switch url.host {
+        case "log": return .checkIn
+        case "lock": return .lock
+        case nil, "": return .normal
+        default: return nil
+        }
+    }
     var openLogRequested = false
     /// Set when a milestone-reminder notification is tapped — CareView opens the progress
     /// report and resets this.
