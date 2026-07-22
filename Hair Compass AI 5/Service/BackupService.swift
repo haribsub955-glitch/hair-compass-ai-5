@@ -18,7 +18,7 @@ enum BackupService {
     /// Auditable contract: every SwiftData model is represented, and treatment ownership is
     /// preserved by nesting. Unattached relationship records have dedicated arrays below.
     static let manifest = [
-        "Profile", "DailyEntry", "Treatment", "TreatmentDose → Treatment?",
+        "Profile", "DailyEntry", "Treatment", "TreatmentDose → Treatment?", "MissedDoseRecord → Treatment?",
         "SideEffectLog → Treatment?", "LabResult", "PhotoRecord", "HealthSnapshot",
         "TriggerEvent", "ProcedureAppointment", "ProgressCheckIn"
     ]

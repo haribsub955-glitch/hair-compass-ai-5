@@ -167,6 +167,9 @@ final class Treatment {
     @Relationship(deleteRule: .cascade, inverse: \SideEffectLog.treatment)
     var sideEffects: [SideEffectLog] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \MissedDoseRecord.treatment)
+    var missedDoses: [MissedDoseRecord] = []
+
     init(
         name: String = "",
         treatmentClass: TreatmentClass = .other,
@@ -379,6 +382,51 @@ final class TreatmentDose {
         self.treatment = treatment
         self.loggedAt = loggedAt
         self.slot = slot
+    }
+}
+
+enum MissedDoseReason: String, CaseIterable, Identifiable, Sendable {
+    case forgot, supply, irritation, travel, clinicianDirectedPause
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .forgot: return "Forgot"
+        case .supply: return "Ran out / supply"
+        case .irritation: return "Discomfort or irritation"
+        case .travel: return "Travel or routine change"
+        case .clinicianDirectedPause: return "Clinician-directed pause"
+        }
+    }
+    var summaryLabel: String {
+        switch self {
+        case .forgot: return "forgot"
+        case .supply: return "supply"
+        case .irritation: return "irritation"
+        case .travel: return "travel"
+        case .clinicianDirectedPause: return "clinician-directed pause"
+        }
+    }
+}
+
+/// A scheduled application that did not happen. This is distinct from a completed dose and is
+/// neutral record-keeping; in particular, clinician-directed pauses are never scored as failure.
+@Model
+final class MissedDoseRecord {
+    var treatment: Treatment?
+    var date: Date = Date.now
+    var slot: String = ""
+    var reasonRaw: String = MissedDoseReason.forgot.rawValue
+
+    init(treatment: Treatment? = nil, date: Date = .now, slot: String = "", reason: MissedDoseReason = .forgot) {
+        self.treatment = treatment
+        self.date = date
+        self.slot = slot
+        self.reasonRaw = reason.rawValue
+    }
+
+    var reason: MissedDoseReason {
+        get { MissedDoseReason(rawValue: reasonRaw) ?? .forgot }
+        set { reasonRaw = newValue.rawValue }
     }
 }
 

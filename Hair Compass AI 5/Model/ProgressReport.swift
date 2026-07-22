@@ -100,6 +100,7 @@ struct ProgressReport {
     let tolerability: Tolerability
     let labs: [LabLine]
     let triggerLines: [String]
+    let omissionSummary: String?
     let honestRead: String
 
     var isMilestoneWeek: Bool { Self.isMilestone(week: weekNumber) }
@@ -154,6 +155,7 @@ struct ProgressReport {
         labs: [LabResult],
         sideEffects: [SideEffectLog],
         triggers: [TriggerEvent],
+        missedDoses: [MissedDoseRecord] = [],
         /// Which active daily treatment the report anchors to. Defaults to the earliest one
         /// (the old, only, behavior) — pass the treatment a user picks (or a milestone
         /// notification names) so a second, later-added treatment gets its own week clock,
@@ -258,6 +260,13 @@ struct ProgressReport {
             .sorted { $0.date < $1.date }
             .map { "\($0.type.title) — \(dayString($0.date))" }
 
+        let omissionSummary = missedDoseSummary(
+            missedDoses.filter {
+                $0.date >= periodStart && $0.date <= now &&
+                (primary == nil || $0.treatment?.persistentModelID == primary?.persistentModelID)
+            }
+        )
+
         let honest = honestRead(
             weekNumber: weekNumber, hasTreatment: primary != nil,
             shed: shedTrend, scalp: scalpTrend, adherence: adherenceSummary,
@@ -277,8 +286,19 @@ struct ProgressReport {
             tolerability: tolerability,
             labs: labLines,
             triggerLines: triggerLines,
+            omissionSummary: omissionSummary,
             honestRead: honest
         )
+    }
+
+    static func missedDoseSummary(_ records: [MissedDoseRecord]) -> String? {
+        guard !records.isEmpty else { return nil }
+        let counts = Dictionary(grouping: records, by: \.reason).mapValues(\.count)
+        let details = MissedDoseReason.allCases.compactMap { reason -> String? in
+            guard let count = counts[reason], count > 0 else { return nil }
+            return "\(count) \(reason.summaryLabel)"
+        }.joined(separator: ", ")
+        return "\(records.count) missed application\(records.count == 1 ? "" : "s"): \(details)"
     }
 
     // MARK: - Trend building
@@ -493,6 +513,7 @@ struct ProgressReport {
             for line in triggerLines { out += "• \(line)\n" }
             out += "\n"
         }
+        if let omissionSummary { out += "MISSED APPLICATIONS\n\(omissionSummary)\n\n" }
 
         out += "THE HONEST READ\n\(honestRead)\n\n"
         out += "Hair-density change is judged at 24 weeks in clinical trials — resist judging sooner."
@@ -542,5 +563,49 @@ struct ProgressReport {
             return (baseline, matched, nil)
         }
         return (baseline, trueLatest, "Conditions differ from baseline — read with care.")
+    }
+}
+
+/// One deliberately cautious answer for Trends. All inputs are already-recorded evidence; this
+/// chooses presentation only and makes no new clinical inference.
+enum CurrentProgressRead: Equatable {
+    case tooEarly(week: Int)
+    case buildingPhotos(remaining: Int)
+    case improving
+    case readyToReview
+
+    var title: String {
+        switch self {
+        case .tooEarly(let week): return "Too early to judge — week \(week) of 24"
+        case .buildingPhotos(let remaining): return "Building a fair comparison — \(remaining) more monthly photo\(remaining == 1 ? "" : "s") needed"
+        case .improving: return "Signals are improving, with consistent use"
+        case .readyToReview: return "Ready to review — compare photos and prepare your visit report"
+        }
+    }
+
+    var opensPhotos: Bool {
+        if case .buildingPhotos = self { return true }
+        return self == .readyToReview
+    }
+
+    static func evaluate(
+        week: Int,
+        treatmentPhase: String?,
+        honestRead: String,
+        loggingCoverage: Double,
+        adherence: Double?,
+        monthlyCheckInCount: Int,
+        sameRegionPhotoCount: Int
+    ) -> CurrentProgressRead {
+        // Reading the phase and honest synthesis keeps this card downstream of the app's existing
+        // 24-week framing; the explicit week remains the stable, testable threshold.
+        _ = treatmentPhase
+        if week < HairAnalytics.outcomeWindowWeeks { return .tooEarly(week: max(0, week)) }
+        let remaining = max(0, 2 - sameRegionPhotoCount)
+        if remaining > 0 { return .buildingPhotos(remaining: remaining) }
+        let consistent = loggingCoverage >= 0.5 && (adherence ?? 0) >= 0.8 && monthlyCheckInCount >= 2
+        let lowered = honestRead.lowercased()
+        let improving = lowered.contains("improving") || lowered.contains("trended down") || lowered.contains("has eased")
+        return improving && consistent ? .improving : .readyToReview
     }
 }

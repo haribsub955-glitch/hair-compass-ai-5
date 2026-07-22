@@ -85,6 +85,29 @@ struct DoseRepository {
     }
 }
 
+@MainActor
+struct MissedDoseRepository {
+    let context: ModelContext
+    var calendar: Calendar = .current
+
+    @discardableResult
+    func record(treatment: Treatment, day: Date = .now, slot: String, reason: MissedDoseReason) throws -> MissedDoseRecord {
+        let bounds = HairAnalytics.dayBounds(for: day, calendar: calendar)
+        let lower = bounds.lowerBound
+        let upper = bounds.upperBound
+        let records = try context.fetch(FetchDescriptor<MissedDoseRecord>(predicate: #Predicate {
+            $0.date >= lower && $0.date < upper && $0.slot == slot
+        }))
+        if let existing = records.first(where: { $0.treatment?.persistentModelID == treatment.persistentModelID }) {
+            existing.reason = reason
+            return existing
+        }
+        let record = MissedDoseRecord(treatment: treatment, date: day, slot: slot, reason: reason)
+        context.insert(record)
+        return record
+    }
+}
+
 struct PhotoDeletion: Equatable {
     let originalPath: String
     let stagedPath: String?

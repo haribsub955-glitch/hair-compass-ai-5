@@ -26,6 +26,7 @@ struct LogSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \ProcedureAppointment.date, order: .reverse) private var procedureAppointments: [ProcedureAppointment]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
+    @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
 
     /// The calendar day this log belongs to. Scrubbable (up to 60 days back) when creating a
     /// new entry; fixed to the entry's own day when editing an existing one.
@@ -41,6 +42,7 @@ struct LogSheet: View {
     /// When creating a new entry and the scrubbed day already has one, that entry — the form
     /// shows its values and save() writes into it instead of inserting a duplicate.
     @State private var matchedEntry: DailyEntry?
+    @State private var valuesPrefilled = false
 
     @State private var shed: ShedLevel = .normal
     /// Shed hair reads far heavier on wash days — this one tap keeps that confound out of the
@@ -74,6 +76,14 @@ struct LogSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     CheckInJourneyHeader(onSelect: scrollToChapter)
+
+                    if existing == nil, matchedEntry == nil, let priorEntry {
+                        PrefillYesterdayButton(highlighted: valuesPrefilled) {
+                            load(from: priorEntry)
+                            valuesPrefilled = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { valuesPrefilled = false }
+                        }
+                    }
 
                     section("Day") {
                         if existing == nil {
@@ -243,6 +253,10 @@ struct LogSheet: View {
     /// Someone tracking more than one daily treatment can still reach the others from Plan.
     private var firstActiveDaily: Treatment? {
         treatments.first { $0.isActive && !$0.slots.isEmpty }
+    }
+
+    private var priorEntry: DailyEntry? {
+        entries.first { $0.date < Calendar.current.startOfDay(for: logDate) }
     }
 
     // MARK: Day selection
@@ -521,6 +535,30 @@ struct LogSheet: View {
         if reward.isWorthCelebrating {
             onSaved?(reward)
         }
+    }
+}
+
+private struct PrefillYesterdayButton: View {
+    let highlighted: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: highlighted ? "checkmark.circle.fill" : "arrow.uturn.backward.circle")
+                    .foregroundStyle(highlighted ? Clinical.positive : Clinical.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(highlighted ? "Yesterday's values prefilled" : "Start with yesterday's values")
+                        .font(Clinical.body(14, weight: .semibold)).foregroundStyle(Clinical.ink)
+                    Text("Nothing is saved yet — every value remains editable.")
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.secondary)
+                }
+                Spacer()
+            }
+            .padding(12)
+            .background((highlighted ? Clinical.positive : Clinical.accent).opacity(0.08),
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.clinicalPressable)
     }
 }
 

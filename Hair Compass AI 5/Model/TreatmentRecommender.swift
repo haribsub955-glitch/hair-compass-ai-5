@@ -4,6 +4,26 @@ import Foundation
 /// ranked, with cautions and an always-present "confirm with a clinician" note. It EDUCATES and
 /// RANKS; it never prescribes a drug or a dose. Grounded in docs/TrackingSpec.md + the evidence pass.
 
+enum RecommendedAction: Equatable {
+    case addToPlan(TreatmentClass)
+    case scheduleDoctorVisit
+    case startPatchPhotoSeries
+    case recordTrigger
+    case addLabResult(LabTest)
+    case reviewPregnancyCaution
+
+    var title: String {
+        switch self {
+        case .addToPlan: return "Add to plan"
+        case .scheduleDoctorVisit: return "Plan a clinician visit"
+        case .startPatchPhotoSeries: return "Start a patch photo series"
+        case .recordTrigger: return "Record a possible trigger"
+        case .addLabResult: return "Add a lab result"
+        case .reviewPregnancyCaution: return "Review pregnancy caution"
+        }
+    }
+}
+
 struct RecommendedOption: Identifiable {
     let id: String
     let name: String
@@ -11,6 +31,13 @@ struct RecommendedOption: Identifiable {
     let summary: String
     let clinicianNote: String
     let caution: String?
+    let action: RecommendedAction?
+
+    init(id: String, name: String, tier: EvidenceTier, summary: String,
+         clinicianNote: String, caution: String?, action: RecommendedAction? = nil) {
+        self.id = id; self.name = name; self.tier = tier; self.summary = summary
+        self.clinicianNote = clinicianNote; self.caution = caution; self.action = action
+    }
 }
 
 enum TreatmentRecommender {
@@ -47,7 +74,7 @@ enum TreatmentRecommender {
         .init(id: "minox", name: "Minoxidil (topical)", tier: .strong,
               summary: "A well-studied over-the-counter topical that helps many. Expect an early shedding phase and results around 6 months.",
               clinicianNote: "Ask a pharmacist or clinician which strength suits you.",
-              caution: "Apply consistently — a temporary shed at the start is normal, not failure."),
+              caution: "Apply consistently — a temporary shed at the start is normal, not failure.", action: .addToPlan(.minoxidil)),
         .init(id: "fin", name: "Finasteride (oral)", tier: .strong,
               summary: "A prescription DHT-blocker with strong evidence for slowing and partly reversing male pattern loss.",
               clinicianNote: "Prescription only — review the side-effect profile with your doctor.",
@@ -64,26 +91,26 @@ enum TreatmentRecommender {
         .init(id: "minox-f", name: "Minoxidil (topical)", tier: .strong,
               summary: "The first-line, best-evidenced option for female pattern loss. Results build over about 6 months.",
               clinicianNote: "Ask a clinician which strength and routine fit you.",
-              caution: "A temporary shed at the start is normal."),
+              caution: "A temporary shed at the start is normal.", action: .addToPlan(.minoxidil)),
         .init(id: "antiandrogen", name: "Anti-androgen (e.g. spironolactone)", tier: .moderate,
               summary: "Prescription anti-androgens are used for female pattern loss under a clinician's guidance.",
               clinicianNote: "Specialist-guided and prescription-only — discuss suitability.",
-              caution: "Not during pregnancy; needs monitoring."),
+              caution: "Not during pregnancy; needs monitoring.", action: .reviewPregnancyCaution),
         .init(id: "lllt-f", name: "Low-level laser therapy", tier: .weak,
               summary: "Some devices show modest benefit; reasonable as an adjunct if you want a drug-free add-on.",
               clinicianNote: "Optional adjunct — set realistic expectations.", caution: nil),
         .init(id: "labs-f", name: "Rule out reversible causes", tier: .moderate,
               summary: "Diffuse thinning in women often has treatable drivers — iron, thyroid, vitamin D.",
-              clinicianNote: "Ask your clinician to check ferritin, thyroid and vitamin D (log them in Labs).", caution: nil),
+              clinicianNote: "Ask your clinician to check ferritin, thyroid and vitamin D (log them in Labs).", caution: nil, action: .addLabResult(.ferritin)),
     ]
 
     private static let telogen: [RecommendedOption] = [
         .init(id: "trigger", name: "Find and fix the trigger", tier: .strong,
               summary: "Telogen effluvium usually recovers on its own once the trigger (illness, crash diet, stress, childbirth) passes.",
-              clinicianNote: "Log the likely trigger date so the ~2–3 month lag makes sense.", caution: nil),
+              clinicianNote: "Log the likely trigger date so the ~2–3 month lag makes sense.", caution: nil, action: .recordTrigger),
         .init(id: "labs-te", name: "Check ferritin, thyroid, vitamin D", tier: .moderate,
               summary: "Low iron or thyroid problems are common, treatable drivers of diffuse shedding.",
-              clinicianNote: "Ask for these blood tests and correct any deficiency — log them in Labs.", caution: nil),
+              clinicianNote: "Ask for these blood tests and log the results here.", caution: nil, action: .addLabResult(.ferritin)),
         .init(id: "minox-te", name: "Minoxidil (optional)", tier: .weak,
               summary: "May help density while you recover, though the shedding often resolves without it.",
               clinicianNote: "Optional; discuss if the shedding drags on.", caution: nil),
@@ -95,10 +122,10 @@ enum TreatmentRecommender {
     private static let alopeciaAreata: [RecommendedOption] = [
         .init(id: "derm-aa", name: "See a dermatologist", tier: .strong,
               summary: "Alopecia areata is immune-mediated — over-the-counter products don't address it.",
-              clinicianNote: "Treatments (steroid injections, topical immunotherapy, JAK inhibitors) are specialist-guided.", caution: nil),
+              clinicianNote: "Treatments (steroid injections, topical immunotherapy, JAK inhibitors) are specialist-guided.", caution: nil, action: .scheduleDoctorVisit),
         .init(id: "track-aa", name: "Document the patches", tier: .moderate,
               summary: "Photos of each patch over time help your dermatologist judge activity and response.",
-              clinicianNote: "Use the guided camera to keep a consistent record.", caution: nil),
+              clinicianNote: "Use the guided camera to keep a consistent record.", caution: nil, action: .startPatchPhotoSeries),
     ]
 
     private static let traction: [RecommendedOption] = [
@@ -125,6 +152,6 @@ enum TreatmentRecommender {
               clinicianNote: "Bring your trends and photos to the appointment.", caution: nil),
         .init(id: "diagnose", name: "Get a diagnosis", tier: .strong,
               summary: "A clinician can tell pattern loss from shedding or an inflammatory cause — that decides everything else.",
-              clinicianNote: "A dermatologist or GP can examine your scalp and order the right tests.", caution: nil),
+              clinicianNote: "A dermatologist or GP can examine your scalp and order the right tests.", caution: nil, action: .scheduleDoctorVisit),
     ]
 }
