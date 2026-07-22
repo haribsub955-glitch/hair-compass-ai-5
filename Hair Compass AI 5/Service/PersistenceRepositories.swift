@@ -148,14 +148,16 @@ struct PhotoRepository {
         distance: String = "",
         parting: String = "",
         isWet: Bool = false,
-        note: String = ""
+        note: String = "",
+        patchSeriesLabel: String = ""
     ) throws -> PhotoRecord {
         guard let path = store.save(image, quality: 0.82) else {
             throw PhotoRepositoryError.fileWriteFailed
         }
         let record = PhotoRecord(
             region: region, imagePath: path, createdAt: createdAt, lighting: lighting,
-            distance: distance, parting: parting, isWet: isWet, note: note
+            distance: distance, parting: parting, isWet: isWet, note: note,
+            patchSeriesLabel: region == .patch ? patchSeriesLabel : ""
         )
         context.insert(record)
         do {

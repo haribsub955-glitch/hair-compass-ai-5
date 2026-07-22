@@ -562,6 +562,7 @@ final class PhotoRecord {
     var parting: String = ""
     var isWet: Bool = false
     var note: String = ""
+    var patchSeriesLabel: String = ""
 
     init(
         region: PhotoRegion = .frontal,
@@ -571,7 +572,8 @@ final class PhotoRecord {
         distance: String = "",
         parting: String = "",
         isWet: Bool = false,
-        note: String = ""
+        note: String = "",
+        patchSeriesLabel: String = ""
     ) {
         self.regionRaw = region.rawValue
         self.imagePath = imagePath
@@ -581,11 +583,21 @@ final class PhotoRecord {
         self.parting = parting
         self.isWet = isWet
         self.note = note
+        self.patchSeriesLabel = patchSeriesLabel
     }
 
     var region: PhotoRegion {
         get { PhotoRegion(rawValue: regionRaw) ?? .frontal }
         set { regionRaw = newValue.rawValue }
+    }
+
+    var normalizedPatchSeriesLabel: String {
+        patchSeriesLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func belongsToSameSeries(as other: PhotoRecord) -> Bool {
+        guard region == other.region else { return false }
+        return region != .patch || normalizedPatchSeriesLabel == other.normalizedPatchSeriesLabel
     }
 }
 

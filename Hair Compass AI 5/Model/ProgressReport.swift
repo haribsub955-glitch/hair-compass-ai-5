@@ -550,7 +550,9 @@ struct ProgressReport {
         guard treatment != nil else {
             return VisitReportPDF.comparisonPair(in: regionPhotos)
         }
-        let sorted = regionPhotos.sorted { $0.createdAt < $1.createdAt }
+        let chronological = regionPhotos.sorted { $0.createdAt < $1.createdAt }
+        guard let first = chronological.first else { return nil }
+        let sorted = chronological.filter { $0.belongsToSameSeries(as: first) }
         guard sorted.count >= 2,
               let baseline = sorted.min(by: {
                   abs($0.createdAt.timeIntervalSince(periodStart)) < abs($1.createdAt.timeIntervalSince(periodStart))

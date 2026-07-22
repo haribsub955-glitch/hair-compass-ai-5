@@ -34,6 +34,8 @@ struct GuidedCaptureView: View {
     @State private var distance = "Arm's length"
     @State private var parting = "Center"
     @State private var isWet = false
+    @State private var patchSeriesLabel = ""
+    @State private var newPatchSeriesLabel = ""
 
     private let lightingOptions = ["Daylight", "Warm indoor", "Cool indoor"]
     private let distanceOptions = ["Close", "Arm's length", "Far"]
@@ -44,7 +46,15 @@ struct GuidedCaptureView: View {
         _region = State(initialValue: defaultRegion)
     }
 
-    private var lastForRegion: PhotoRecord? { allPhotos.first { $0.region == region } }
+    private var existingPatchLabels: [String] {
+        Array(Set(allPhotos.filter { $0.region == .patch }.map(\.normalizedPatchSeriesLabel).filter { !$0.isEmpty })).sorted()
+    }
+
+    private var lastForRegion: PhotoRecord? {
+        allPhotos.first {
+            $0.region == region && (region != .patch || $0.normalizedPatchSeriesLabel == normalizedPatchLabel)
+        }
+    }
     private var ghostImage: UIImage? { lastForRegion.flatMap { PhotoStore.shared.loadThumbnail($0.imagePath, maxPixel: 900) } }
 
     var body: some View {
@@ -110,6 +120,8 @@ struct GuidedCaptureView: View {
             .padding(.horizontal, 20)
 
             regionChips
+
+            if region == .patch { patchSeriesPicker.padding(.horizontal, 20) }
 
             controls
             Spacer(minLength: 8)
@@ -257,6 +269,8 @@ struct GuidedCaptureView: View {
                     }
                 }
 
+                if region == .patch { section("Patch series") { patchSeriesPicker } }
+
                 section("Conditions") {
                     Text("Pre-filled to match your last \(region.title.lowercased()) shot — keep them the same so comparisons stay honest.")
                         .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
@@ -272,6 +286,7 @@ struct GuidedCaptureView: View {
                         .buttonStyle(ClinicalButtonStyle(filled: false))
                     Button("Save photo", action: save)
                         .buttonStyle(ClinicalButtonStyle())
+                        .disabled(region == .patch && normalizedPatchLabel.isEmpty)
                 }
             }
             .padding(20)
@@ -302,6 +317,45 @@ struct GuidedCaptureView: View {
         if !last.distance.isEmpty { distance = last.distance }
         if !last.parting.isEmpty { parting = last.parting }
         isWet = last.isWet
+    }
+
+    private var normalizedPatchLabel: String {
+        patchSeriesLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var patchSeriesPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Choose the patch this photo follows.")
+                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+            if !existingPatchLabels.isEmpty {
+                Menu {
+                    ForEach(existingPatchLabels, id: \.self) { label in
+                        Button(label) {
+                            patchSeriesLabel = label
+                            newPatchSeriesLabel = ""
+                            applyPrefill()
+                        }
+                    }
+                } label: {
+                    Label(normalizedPatchLabel.isEmpty ? "Choose an existing patch" : normalizedPatchLabel,
+                          systemImage: "chevron.down")
+                        .font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                        .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Clinical.hairline))
+                }
+            }
+            TextField("New label, e.g. Left temple patch", text: Binding(
+                get: { newPatchSeriesLabel },
+                set: { value in
+                    newPatchSeriesLabel = value
+                    patchSeriesLabel = value
+                }
+            ))
+                .font(Clinical.body(14)).textInputAutocapitalization(.words)
+                .padding(12).background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Clinical.hairline))
+        }
     }
 
     private func loadPicked(_ item: PhotosPickerItem?) {
@@ -349,9 +403,11 @@ struct GuidedCaptureView: View {
 
     private func save() {
         guard let captured else { return }
+        guard region != .patch || !normalizedPatchLabel.isEmpty else { return }
         guard (try? PhotoRepository(context: context).create(
             image: captured, region: region, createdAt: isFromLibrary ? takenOnDate : .now,
-            lighting: lighting, distance: distance, parting: parting, isWet: isWet
+            lighting: lighting, distance: distance, parting: parting, isWet: isWet,
+            patchSeriesLabel: normalizedPatchLabel
         )) != nil else { return }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()

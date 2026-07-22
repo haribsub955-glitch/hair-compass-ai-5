@@ -159,6 +159,7 @@ enum BackupService {
         var parting = ""
         var isWet = false
         var note = ""
+        var patchSeriesLabel: String?
         /// The JPEG bytes, base64. nil when the original file was already missing on disk.
         var imageBase64: String?
     }
@@ -301,6 +302,7 @@ enum BackupService {
                     regionRaw: record.regionRaw, createdAt: record.createdAt,
                     lighting: record.lighting, distance: record.distance,
                     parting: record.parting, isWet: record.isWet, note: record.note,
+                    patchSeriesLabel: record.region == .patch ? record.normalizedPatchSeriesLabel : nil,
                     imageBase64: record.imagePath.isEmpty
                         ? nil
                         : photoData(record.imagePath)?.base64EncodedString()
@@ -781,7 +783,8 @@ enum BackupService {
             if !path.isEmpty { summary.photosRestored += 1 }
             let record = PhotoRecord(imagePath: path, createdAt: dto.createdAt,
                                      lighting: dto.lighting, distance: dto.distance,
-                                     parting: dto.parting, isWet: dto.isWet, note: dto.note)
+                                     parting: dto.parting, isWet: dto.isWet, note: dto.note,
+                                     patchSeriesLabel: dto.patchSeriesLabel ?? "")
             record.regionRaw = dto.regionRaw
             context.insert(record)
             summary.inserted += 1
