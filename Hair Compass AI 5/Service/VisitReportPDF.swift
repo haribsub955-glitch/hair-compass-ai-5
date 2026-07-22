@@ -17,32 +17,110 @@ import UIKit
 enum VisitReportPDF {
 
     /// US Letter at 72pt/in — readable on both US and A4 printers with default margins.
-    private static let pageSize = CGSize(width: 612, height: 792)
-    private static let margin: CGFloat = 48
+    /// `nonisolated` (this module defaults unannotated declarations to the main actor) so the
+    /// background assembly below can read them without hopping back.
+    nonisolated private static let pageSize = CGSize(width: 612, height: 792)
+    nonisolated private static let margin: CGFloat = 48
 
     /// Section headers exactly as `ExportService.clinicianSummary` emits them, so the renderer
     /// can style them distinctly without re-parsing markup that doesn't exist in a plain-text
     /// summary.
-    private static let sectionHeaders = [
+    nonisolated private static let sectionHeaders = [
         "HAIR COMPASS — SUMMARY FOR YOUR CLINICIAN",
         "BASELINE", "RECENT SIGNALS", "TREATMENTS", "TOLERABILITY", "PROCEDURES",
         "LABS", "TRIGGER EVENTS", "PROGRESS CHECK-INS",
     ]
 
+    /// Plain, actor-agnostic snapshot of one region's baseline/latest comparison, captured from
+    /// the SwiftData `PhotoRecord`s on the main actor (cheap — metadata only) so the actual page
+    /// drawing (image decode + Core Graphics) can run in the background task alongside the rest
+    /// of the PDF assembly. No `PhotoRecord` — a SwiftData model — crosses the hop.
+    struct PhotoPageSnapshot: Sendable {
+        let regionTitle: String
+        let baselineImagePath: String
+        let baselineCreatedAt: Date
+        let baselineLighting: String
+        let baselineParting: String
+        let baselineIsWet: Bool
+        let latestImagePath: String
+        let latestCreatedAt: Date
+        let latestLighting: String
+        let latestParting: String
+        let latestIsWet: Bool
+        /// Printed when the true latest capture doesn't match the baseline's conditions and no
+        /// better-matching earlier capture exists (see `comparisonPair`).
+        let caveat: String?
+    }
+
     /// Renders `summaryText` (the output of `ExportService.clinicianSummary`) as a paginated
     /// PDF, followed by trend charts and photo comparison pages built from the same on-device
     /// data TrendsView/PhotosView already show — no new math, just assembly. `entries`/`photos`
     /// default to empty so existing callers (and tests) that only want the text pages still work.
+    ///
+    /// Only the trend-chart image needs the main actor (SwiftUI's `Chart` + `ImageRenderer`);
+    /// everything else — CoreText pagination of the summary, and the photo comparison pages —
+    /// is plain Core Graphics plus file reads, so it runs in a detached background task instead
+    /// of blocking whichever actor called `render`.
     @MainActor
     static func render(
         title: String, summaryText: String,
         entries: [DailyEntry] = [], photos: [PhotoRecord] = [],
         generatedAt: Date = .now
+    ) async -> Data {
+        // Trend charts — the same rolling-mean shedding/scalp series TrendsView draws,
+        // rasterized once via ImageRenderer. Skipped when there's too little data for a trend
+        // to mean anything (mirrors TrendsView's own "not enough data" threshold).
+        let chronological = entries.sorted { $0.date < $1.date }
+        let chartsImage: UIImage? = chronological.count >= 2 ? chartsPageImage(entries: chronological) : nil
+
+        // Baseline/latest pairing reads only metadata off the SwiftData `PhotoRecord`s (cheap,
+        // no image bytes) — captured into plain snapshots here, on the main actor, so the actual
+        // page drawing below can run off it.
+        let photoPages: [PhotoPageSnapshot] = PhotoRegion.allCases.compactMap { region in
+            let regionPhotos = photos.filter { $0.region == region }
+            guard let pair = comparisonPair(in: regionPhotos) else { return nil }
+            return PhotoPageSnapshot(
+                regionTitle: region.title,
+                baselineImagePath: pair.baseline.imagePath, baselineCreatedAt: pair.baseline.createdAt,
+                baselineLighting: pair.baseline.lighting, baselineParting: pair.baseline.parting,
+                baselineIsWet: pair.baseline.isWet,
+                latestImagePath: pair.latest.imagePath, latestCreatedAt: pair.latest.createdAt,
+                latestLighting: pair.latest.lighting, latestParting: pair.latest.parting,
+                latestIsWet: pair.latest.isWet,
+                caveat: pair.caveat
+            )
+        }
+
+        // Design-token colors resolved here (on the main actor) rather than inside the
+        // background assembly, since `Clinical`'s tokens are main-actor-isolated too.
+        let headerColor = UIColor(Clinical.accent)
+        let warningColor = UIColor(Clinical.warning)
+
+        return await Task.detached(priority: .userInitiated) {
+            renderOffMain(
+                title: title, summaryText: summaryText, generatedAt: generatedAt,
+                chartsImage: chartsImage, photoPages: photoPages,
+                headerColor: headerColor, warningColor: warningColor
+            )
+        }.value
+    }
+
+    // MARK: - Off-main assembly
+
+    /// The actual PDF assembly: CoreText pagination of the summary text, the running
+    /// header/footer on every page, the chart image (if any) on its own page, and one page per
+    /// region's baseline/latest photo pair. Pure Core Graphics/CoreText/file I/O — no SwiftUI,
+    /// no actor-isolated state — so it's safe and effective to run off the main actor.
+    /// `nonisolated` so it genuinely does (this module defaults unannotated declarations to the
+    /// main actor).
+    nonisolated private static func renderOffMain(
+        title: String, summaryText: String, generatedAt: Date,
+        chartsImage: UIImage?, photoPages: [PhotoPageSnapshot],
+        headerColor: UIColor, warningColor: UIColor
     ) -> Data {
         let bodyFont = UIFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         let headerFont = UIFont.monospacedSystemFont(ofSize: 11.5, weight: .bold)
         let bodyColor = UIColor.black
-        let headerColor = UIColor(Clinical.accent)
 
         let attributed = NSMutableAttributedString()
         let paragraphStyle = NSMutableParagraphStyle()
@@ -128,12 +206,9 @@ enum VisitReportPDF {
                 drawFooter()
             }
 
-            // Trend charts — the same rolling-mean shedding/scalp series TrendsView draws,
-            // rasterized once via ImageRenderer and placed on their own page. Skipped when
-            // there's too little data for a trend to mean anything (mirrors TrendsView's own
-            // "not enough data" threshold).
-            let chronological = entries.sorted { $0.date < $1.date }
-            if chronological.count >= 2, let chartsImage = chartsPageImage(entries: chronological) {
+            // Trend charts page — the image itself was rasterized on the main actor; this just
+            // places it.
+            if let chartsImage {
                 pageNumber += 1
                 context.beginPage()
                 drawRunningHeader(pageNumber)
@@ -156,16 +231,14 @@ enum VisitReportPDF {
             // best-matching later capture side by side with capture date + lighting/wet metadata
             // captioned under each, so the actual photos a clinician looks at first travel with
             // the report instead of being left for the user to remember separately.
-            for region in PhotoRegion.allCases {
-                let regionPhotos = photos.filter { $0.region == region }
-                guard let pair = Self.comparisonPair(in: regionPhotos) else { continue }
+            for page in photoPages {
                 pageNumber += 1
                 context.beginPage()
                 drawRunningHeader(pageNumber)
                 drawPhotoComparisonPage(
-                    region: region, baseline: pair.baseline, latest: pair.latest, caveat: pair.caveat,
+                    page: page,
                     contentRect: contentRect, contentTopInset: contentTopInset,
-                    headerColor: headerColor
+                    headerColor: headerColor, warningColor: warningColor
                 )
                 drawFooter()
             }
@@ -228,13 +301,15 @@ enum VisitReportPDF {
 
     // MARK: - Photo comparison page
 
-    private static func drawPhotoComparisonPage(
-        region: PhotoRegion, baseline: PhotoRecord, latest: PhotoRecord, caveat: String?,
-        contentRect: CGRect, contentTopInset: CGFloat, headerColor: UIColor
+    /// `nonisolated` so it runs inside `renderOffMain`'s background task; `PhotoStore.shared`'s
+    /// readers are themselves `nonisolated` for the same reason.
+    nonisolated private static func drawPhotoComparisonPage(
+        page: PhotoPageSnapshot,
+        contentRect: CGRect, contentTopInset: CGFloat, headerColor: UIColor, warningColor: UIColor
     ) {
         let margin = Self.margin
         let headerFont = UIFont(name: "Menlo-Bold", size: 11.5) ?? UIFont.boldSystemFont(ofSize: 11.5)
-        ("\(region.title.uppercased()) — BASELINE VS LATEST" as NSString).draw(
+        ("\(page.regionTitle.uppercased()) — BASELINE VS LATEST" as NSString).draw(
             at: CGPoint(x: margin, y: margin + contentTopInset),
             withAttributes: [.font: headerFont, .foregroundColor: headerColor]
         )
@@ -245,10 +320,10 @@ enum VisitReportPDF {
         // Printed when the true latest capture doesn't match the baseline's conditions and no
         // better-matching earlier capture exists — the same honesty CompareView's mismatch
         // caption gives on-screen, carried into the clinician-facing document.
-        if let caveat {
+        if let caveat = page.caveat {
             (caveat as NSString).draw(
                 at: CGPoint(x: margin, y: imageTop),
-                withAttributes: [.font: UIFont.italicSystemFont(ofSize: 9), .foregroundColor: UIColor(Clinical.warning)]
+                withAttributes: [.font: UIFont.italicSystemFont(ofSize: 9), .foregroundColor: warningColor]
             )
             imageTop += 14
         }
@@ -256,25 +331,28 @@ enum VisitReportPDF {
         let imageWidth = (contentRect.width - gap) / 2
         let imageHeight: CGFloat = 420
 
-        for (index, record) in [baseline, latest].enumerated() {
+        let sides: [(label: String, imagePath: String, createdAt: Date, lighting: String, isWet: Bool, parting: String)] = [
+            ("BASELINE", page.baselineImagePath, page.baselineCreatedAt, page.baselineLighting, page.baselineIsWet, page.baselineParting),
+            ("LATEST", page.latestImagePath, page.latestCreatedAt, page.latestLighting, page.latestIsWet, page.latestParting),
+        ]
+        for (index, side) in sides.enumerated() {
             let x = contentRect.minX + CGFloat(index) * (imageWidth + gap)
             let frame = CGRect(x: x, y: imageTop, width: imageWidth, height: imageHeight)
-            if let image = PhotoStore.shared.loadThumbnail(record.imagePath, maxPixel: 1200) {
+            if let image = PhotoStore.shared.loadThumbnail(side.imagePath, maxPixel: 1200) {
                 let scaled = aspectFitRect(imageSize: image.size, in: frame)
                 image.draw(in: scaled)
             }
             UIBezierPath(rect: frame).stroke()
 
-            let label = index == 0 ? "BASELINE" : "LATEST"
-            let dateString = record.createdAt.formatted(.dateTime.month(.abbreviated).day().year())
-            (("\(label) · \(dateString)") as NSString).draw(
+            let dateString = side.createdAt.formatted(.dateTime.month(.abbreviated).day().year())
+            (("\(side.label) · \(dateString)") as NSString).draw(
                 at: CGPoint(x: x, y: imageTop + imageHeight + 6),
                 withAttributes: [.font: captionFont, .foregroundColor: UIColor.black]
             )
             var meta: [String] = []
-            if !record.lighting.isEmpty { meta.append(record.lighting) }
-            if record.isWet { meta.append("wet") }
-            if !record.parting.isEmpty { meta.append("\(record.parting) parting") }
+            if !side.lighting.isEmpty { meta.append(side.lighting) }
+            if side.isWet { meta.append("wet") }
+            if !side.parting.isEmpty { meta.append("\(side.parting) parting") }
             if !meta.isEmpty {
                 (meta.joined(separator: " · ") as NSString).draw(
                     at: CGPoint(x: x, y: imageTop + imageHeight + 20),
@@ -285,7 +363,7 @@ enum VisitReportPDF {
     }
 
     /// Scales `imageSize` to fit inside `rect` preserving aspect ratio, centered.
-    private static func aspectFitRect(imageSize: CGSize, in rect: CGRect) -> CGRect {
+    nonisolated private static func aspectFitRect(imageSize: CGSize, in rect: CGRect) -> CGRect {
         guard imageSize.width > 0, imageSize.height > 0 else { return rect }
         let scale = min(rect.width / imageSize.width, rect.height / imageSize.height)
         let width = imageSize.width * scale

@@ -13,7 +13,7 @@ import SwiftData
 /// ones are inserted, and nothing is deleted.
 enum BackupService {
 
-    static let currentVersion = 1
+    nonisolated static let currentVersion = 1
 
     /// Auditable contract: every SwiftData model is represented, and treatment ownership is
     /// preserved by nesting. Unattached relationship records have dedicated arrays below.
@@ -25,7 +25,7 @@ enum BackupService {
 
     // MARK: - Errors
 
-    enum BackupError: LocalizedError, Equatable {
+    nonisolated enum BackupError: LocalizedError, Equatable, Sendable {
         case unsupportedVersion(Int)
         case unreadableFile
         case missingPhotoFiles([String])
@@ -50,7 +50,7 @@ enum BackupService {
     /// Codable mirror of the whole store. Enum raw values are stored as-is; dates are
     /// ISO8601 (whole seconds). Doses and side effects are nested inside their treatment
     /// so relationships survive the round trip.
-    struct Envelope: Codable {
+    nonisolated struct Envelope: Codable, Sendable {
         var version: Int = currentVersion
         var createdAt: Date = .now
         var appVersion: String = AppInfo.version
@@ -70,7 +70,7 @@ enum BackupService {
         var progressCheckIns: [ProgressCheckInDTO] = []
     }
 
-    struct ProfileDTO: Codable {
+    nonisolated struct ProfileDTO: Codable, Sendable {
         var name = ""
         var sexRaw = ""
         var ageBand = ""
@@ -86,7 +86,7 @@ enum BackupService {
         var pregnancyStatusRaw = PregnancyStatus.unspecified.rawValue
     }
 
-    struct EntryDTO: Codable {
+    nonisolated struct EntryDTO: Codable, Sendable {
         var date = Date.now
         var shedRaw = 0
         var flaking = 0
@@ -102,7 +102,7 @@ enum BackupService {
         var washedHair = false
     }
 
-    struct TreatmentDTO: Codable {
+    nonisolated struct TreatmentDTO: Codable, Sendable {
         var name = ""
         var classRaw = ""
         var dose = ""
@@ -117,19 +117,19 @@ enum BackupService {
         var sideEffects: [SideEffectDTO] = []
     }
 
-    struct DoseDTO: Codable {
+    nonisolated struct DoseDTO: Codable, Sendable {
         var loggedAt = Date.now
         var slot = ""
     }
 
-    struct SideEffectDTO: Codable {
+    nonisolated struct SideEffectDTO: Codable, Sendable {
         var date = Date.now
         var severity = 1
         var typeRaw = ""
         var note = ""
     }
 
-    struct LabDTO: Codable {
+    nonisolated struct LabDTO: Codable, Sendable {
         var testRaw = ""
         var value = 0.0
         var collectedAt = Date.now
@@ -140,7 +140,7 @@ enum BackupService {
         var refHigh: Double?
     }
 
-    struct PhotoDTO: Codable {
+    nonisolated struct PhotoDTO: Codable, Sendable {
         var regionRaw = ""
         var createdAt = Date.now
         var lighting = ""
@@ -152,7 +152,7 @@ enum BackupService {
         var imageBase64: String?
     }
 
-    struct SnapshotDTO: Codable {
+    nonisolated struct SnapshotDTO: Codable, Sendable {
         var date = Date.now
         var sleepHours: Double?
         var hrvSDNN: Double?
@@ -163,7 +163,7 @@ enum BackupService {
         var updatedAt = Date.now
     }
 
-    struct TriggerDTO: Codable {
+    nonisolated struct TriggerDTO: Codable, Sendable {
         var typeRaw = ""
         var date = Date.now
         var note = ""
@@ -171,7 +171,7 @@ enum BackupService {
 
     /// In-office / clinic events (transplant, PRP, LLLT session, etc.) — the dated,
     /// irreplaceable records a lost-phone restore must not silently drop.
-    struct ProcedureDTO: Codable {
+    nonisolated struct ProcedureDTO: Codable, Sendable {
         var typeRaw = ""
         var date = Date.now
         var location = ""
@@ -183,7 +183,7 @@ enum BackupService {
 
     /// Monthly self-reported regrowth/density/shedding/hairline/overall check-in, including
     /// the scalp-pain red flag.
-    struct ProgressCheckInDTO: Codable {
+    nonisolated struct ProgressCheckInDTO: Codable, Sendable {
         var date = Date.now
         var regrowthRaw = 0
         var densityRaw = 0
@@ -209,14 +209,14 @@ enum BackupService {
         profile: Profile?,
         entries: [DailyEntry],
         treatments: [Treatment],
-        doses: [TreatmentDose] = [],
-        sideEffects: [SideEffectLog] = [],
+        doses: [TreatmentDose],
+        sideEffects: [SideEffectLog],
         labs: [LabResult],
         photos: [PhotoRecord],
         snapshots: [HealthSnapshot],
         triggers: [TriggerEvent],
-        procedures: [ProcedureAppointment] = [],
-        progressCheckIns: [ProgressCheckIn] = [],
+        procedures: [ProcedureAppointment],
+        progressCheckIns: [ProgressCheckIn],
         createdAt: Date = .now,
         photoData: (String) -> Data?
     ) -> Envelope {
@@ -309,7 +309,10 @@ enum BackupService {
         return envelope
     }
 
-    static func encode(_ envelope: Envelope) throws -> Data {
+    // `nonisolated` (this module defaults unannotated declarations to the main actor) so
+    // `exportBackupAsync`'s background task can JSON-encode without hopping back to whichever
+    // actor called it — encoding the full archive is itself non-trivial once photos are in it.
+    nonisolated static func encode(_ envelope: Envelope) throws -> Data {
         let encoder = JSONEncoder()
         // Whole-second ISO8601 (no fractional seconds) — stable across encode/decode.
         encoder.dateEncodingStrategy = .iso8601
@@ -339,14 +342,14 @@ enum BackupService {
         profile: Profile?,
         entries: [DailyEntry],
         treatments: [Treatment],
-        doses: [TreatmentDose] = [],
-        sideEffects: [SideEffectLog] = [],
+        doses: [TreatmentDose],
+        sideEffects: [SideEffectLog],
         labs: [LabResult],
         photos: [PhotoRecord],
         snapshots: [HealthSnapshot],
         triggers: [TriggerEvent],
-        procedures: [ProcedureAppointment] = [],
-        progressCheckIns: [ProgressCheckIn] = [],
+        procedures: [ProcedureAppointment],
+        progressCheckIns: [ProgressCheckIn],
         now: Date = .now,
         photoData: (String) -> Data? = { PhotoStore.shared.loadData($0) }
     ) throws -> URL {
@@ -359,6 +362,84 @@ enum BackupService {
         )
         let missingPhotos = zip(photos, envelope.photos).compactMap { record, dto in
             !record.imagePath.isEmpty && dto.imageBase64 == nil ? record.imagePath : nil
+        }
+        guard missingPhotos.isEmpty else { throw BackupError.missingPhotoFiles(missingPhotos) }
+        let data = try encode(envelope)
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HairCompass-Backup-\(formatter.string(from: now)).json")
+        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        return url
+    }
+
+    /// Off-main variant of `exportBackup`. A year of 5-region photos base64-encoded into one
+    /// JSON string is genuinely hundreds of MB of string building — real work, not just a
+    /// long-running call — so unlike `exportBackup` this never runs it on the caller's actor.
+    ///
+    /// `makeEnvelope` still runs here, on the caller's actor, but with `photoData: { _ in nil }`
+    /// so it never touches a photo's bytes — it's cheap even with hundreds of records because
+    /// it only reads SwiftData model properties, which is exactly the part that must stay on
+    /// the caller's actor (`Profile`/`DailyEntry`/etc. are not `Sendable` and can't cross the
+    /// hop). Only the plain `imagePath` strings are extracted for the background task; the
+    /// `Envelope` and its DTOs are plain `Sendable` value types, so nothing SwiftData-owned
+    /// crosses the actor boundary.
+    static func exportBackupAsync(
+        profile: Profile?,
+        entries: [DailyEntry],
+        treatments: [Treatment],
+        doses: [TreatmentDose],
+        sideEffects: [SideEffectLog],
+        labs: [LabResult],
+        photos: [PhotoRecord],
+        snapshots: [HealthSnapshot],
+        triggers: [TriggerEvent],
+        procedures: [ProcedureAppointment],
+        progressCheckIns: [ProgressCheckIn],
+        now: Date = .now,
+        photoData: @Sendable @escaping (String) -> Data? = { PhotoStore.shared.loadData($0) }
+    ) async throws -> URL {
+        let envelope = makeEnvelope(
+            profile: profile, entries: entries, treatments: treatments, doses: doses,
+            sideEffects: sideEffects, labs: labs,
+            photos: photos, snapshots: snapshots, triggers: triggers,
+            procedures: procedures, progressCheckIns: progressCheckIns,
+            createdAt: now, photoData: { _ in nil }
+        )
+        // Same order as `envelope.photos` (both come from mapping `photos` in order), so the
+        // background task can splice byte-loaded base64 back into the right DTO by index
+        // without needing the `PhotoRecord`s themselves.
+        let imagePaths = photos.map(\.imagePath)
+
+        return try await Task.detached(priority: .userInitiated) {
+            try finishExportOffMain(envelope: envelope, imagePaths: imagePaths, now: now, photoData: photoData)
+        }.value
+    }
+
+    /// The actual expensive work: read every photo's JPEG bytes off disk, base64-encode them
+    /// into the envelope, JSON-encode the whole archive and write the temp file. `nonisolated`
+    /// so it genuinely runs on the detached task's background thread instead of hopping back to
+    /// the main actor (this module defaults unannotated declarations to the main actor).
+    /// `photoData` is injected (defaulting to the real `PhotoStore`) so tests never touch disk,
+    /// same reasoning as `makeEnvelope`'s own `photoData` parameter.
+    nonisolated private static func finishExportOffMain(
+        envelope: Envelope, imagePaths: [String], now: Date, photoData: (String) -> Data?
+    ) throws -> URL {
+        var envelope = envelope
+        var missingPhotos: [String] = []
+        // One photo at a time inside an autorelease pool, so the transient JPEG buffers are
+        // reclaimed between iterations instead of piling up (same reasoning as `makeEnvelope`).
+        for (index, path) in imagePaths.enumerated() {
+            guard !path.isEmpty else { continue }
+            autoreleasepool {
+                if let data = photoData(path) {
+                    envelope.photos[index].imageBase64 = data.base64EncodedString()
+                } else {
+                    missingPhotos.append(path)
+                }
+            }
         }
         guard missingPhotos.isEmpty else { throw BackupError.missingPhotoFiles(missingPhotos) }
         let data = try encode(envelope)

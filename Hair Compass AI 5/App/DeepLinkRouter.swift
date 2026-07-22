@@ -20,4 +20,11 @@ final class DeepLinkRouter {
     /// Set when a refill or treatment-schedule notification is tapped — CareView acknowledges
     /// and resets this (the tab switch itself is the main payoff; RootView already lands on Plan).
     var openCareRequested = false
+    /// Set when a procedure-reminder notification (`procedure.<id>`) is tapped — CareView opens
+    /// the procedures list, whose appointment detail sheet offers "Prepare visit report" for
+    /// consultations, and resets this.
+    var openProceduresRequested = false
+    /// Set when the monthly progress check-in notification (`progressCheckIn.0`) is tapped —
+    /// CareView opens ProgressCheckInSheet and resets this.
+    var openProgressCheckInRequested = false
 }

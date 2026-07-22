@@ -43,6 +43,7 @@ struct TreatmentDetailSheet: View {
                     header
                     whatToExpectCard
                     if let report = treatmentReport { progressReportRow(report) }
+                    scheduleSection
                     refillSection
                     ingredientsSection
                     tolerabilitySection
@@ -155,6 +156,37 @@ struct TreatmentDetailSheet: View {
                         Text(phase)
                             .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Schedule (weekday cadence)
+
+    /// Editable weekday cadence for the periodic classes with a real weekly-ish rhythm — the
+    /// care products plus the home-use devices (microneedling, LLLT). This is the only place the
+    /// cadence can be fixed after creation: `AddTreatmentSheet` sets it once at add time, but a
+    /// wrong or empty selection there (empty reads as "every day" to `isDueToday()`) previously
+    /// had no way back short of deleting and re-adding the treatment.
+    @ViewBuilder
+    private var scheduleSection: some View {
+        if treatment.treatmentClass.supportsWeekdaySchedule {
+            section("Days") {
+                ClinicalCard(padding: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        WeekdaySchedulePicker(selection: Binding(
+                            get: { treatment.scheduledWeekdays },
+                            set: { treatment.scheduledWeekdays = $0 }
+                        ))
+                        if let hint = TreatmentGuide.scheduleHint(for: treatment.treatmentClass) {
+                            Text(hint)
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                        }
+                        Text(treatment.scheduledWeekdays.isEmpty
+                             ? "Every day. Tap days to use it only on those."
+                             : "Shows in your routine on the selected days.")
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     }
                 }
             }

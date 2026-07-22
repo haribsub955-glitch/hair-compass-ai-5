@@ -332,7 +332,7 @@ private struct BackupRestoreSection: View {
                     Button("Review before sharing") { showSensitiveWarning = true }
                         .buttonStyle(ClinicalButtonStyle(filled: true))
                 } else {
-                    Button(action: generateBackup) {
+                    Button { Task { await generateBackup() } } label: {
                         Label(isBackingUp ? "Preparing backup…" : "Back up everything",
                               systemImage: "arrow.down.doc")
                             .font(Clinical.body(15, weight: .semibold))
@@ -411,10 +411,13 @@ private struct BackupRestoreSection: View {
         }
     }
 
-    private func generateBackup() {
+    /// `isBackingUp` now actually gets to render a frame — `exportBackupAsync` does the base64
+    /// encoding of every stored photo off the main actor, so setting the flag and awaiting the
+    /// call are two separate SwiftUI update cycles instead of one blocking call in between.
+    private func generateBackup() async {
         isBackingUp = true
         do {
-            backupURL = try BackupService.exportBackup(
+            backupURL = try await BackupService.exportBackupAsync(
                 profile: profiles.first, entries: entries, treatments: treatments,
                 doses: doses, sideEffects: sideEffects,
                 labs: labs, photos: photos, snapshots: snapshots, triggers: triggers,
@@ -422,7 +425,7 @@ private struct BackupRestoreSection: View {
             )
             sensitiveWarningAcknowledged = false
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
         isBackingUp = false
     }
