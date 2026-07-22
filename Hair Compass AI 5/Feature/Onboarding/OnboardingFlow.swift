@@ -241,9 +241,12 @@ struct OnboardingFlow: View {
             Spacer()
             BrandBanner(art: BrandArt.baselineHero, height: 260).padding(.horizontal, 20)
             VStack(alignment: .leading, spacing: 10) {
-                Eyebrow(text: "Welcome")
+                HStack(spacing: 10) {
+                    CompanionView(moment: .greeting, variant: .avatar, size: 40)
+                    Eyebrow(text: "Meet \(Companion.name)")
+                }
                 Text("Let's set your\ncompass").font(Clinical.headline(34)).foregroundStyle(Clinical.ink)
-                Text("A few questions — each one shows you something true about hair. It takes about a minute.")
+                Text("I'm \(Companion.name), your hair-tracking companion. A few questions first — each one shows you something true about hair. About a minute.")
                     .font(Clinical.caption(15)).foregroundStyle(Clinical.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(20)
