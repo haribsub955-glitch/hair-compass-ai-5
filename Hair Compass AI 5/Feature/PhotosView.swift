@@ -8,6 +8,7 @@ struct PhotosView: View {
     @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
 
     @State private var region: PhotoRegion = .frontal
+    @State private var patchSeriesLabel = ""
     @State private var showAdd = false
     @State private var comparePosition: CGFloat = 0.5
     @State private var detailRecord: PhotoRecord?
@@ -28,7 +29,17 @@ struct PhotosView: View {
     @Namespace private var regionNamespace
 
     private var regionPhotos: [PhotoRecord] {
-        photos.filter { $0.region == region }.sorted { $0.createdAt < $1.createdAt }
+        photos.filter {
+            $0.region == region && (region != .patch || $0.normalizedPatchSeriesLabel == patchSeriesLabel)
+        }.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    private var patchSeriesLabels: [String] {
+        Array(Set(photos.filter { $0.region == .patch }.map(\.normalizedPatchSeriesLabel))).sorted {
+            if $0.isEmpty { return false }
+            if $1.isEmpty { return true }
+            return $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
     }
 
     private var compareBaselineResolved: PhotoRecord {
@@ -104,6 +115,8 @@ struct PhotosView: View {
                 regionPicker
                     .staggeredEntrance(index: 2)
 
+                if region == .patch, !patchSeriesLabels.isEmpty { patchSeriesPicker }
+
                 if regionPhotos.count >= 2 {
                     compareCard
                         .staggeredEntrance(index: 4)
@@ -157,6 +170,7 @@ struct PhotosView: View {
             Text("It can't be recovered.")
         }
         .onAppear {
+            selectDefaultPatchSeriesIfNeeded()
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_ADDPHOTO") { showAdd = true }
             // Opens the example journey player headlessly for screenshot verification.
@@ -165,11 +179,41 @@ struct PhotosView: View {
             }
             #endif
         }
+        .onChange(of: region) { _, _ in selectDefaultPatchSeriesIfNeeded() }
+        .onChange(of: photos.count) { _, _ in selectDefaultPatchSeriesIfNeeded() }
         // Tapping the monthly photo reminder lands here already on Photos (RootView switches
         // tabs) — just open guided capture, the thing the notification invited.
         .onChange(of: [deepLinks.openGuidedCaptureRequested, deepLinks.canConsumeRoutes]) { _, _ in
             guard deepLinks.consumeGuidedCaptureRequest() else { return }
             showAdd = true
+        }
+    }
+
+    private var patchSeriesPicker: some View {
+        Menu {
+            ForEach(patchSeriesLabels, id: \.self) { label in
+                Button(label.isEmpty ? "Unlabeled earlier photos" : label) { patchSeriesLabel = label }
+            }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Eyebrow(text: "Patch series")
+                    Text(patchSeriesLabel.isEmpty ? "Unlabeled earlier photos" : patchSeriesLabel)
+                        .font(Clinical.body(14, weight: .semibold)).foregroundStyle(Clinical.ink)
+                }
+                Spacer()
+                Image(systemName: "chevron.down").foregroundStyle(Clinical.accent)
+            }
+            .padding(12).background(Clinical.surface, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Clinical.hairline))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func selectDefaultPatchSeriesIfNeeded() {
+        guard region == .patch else { return }
+        if !patchSeriesLabels.contains(patchSeriesLabel) {
+            patchSeriesLabel = photos.first(where: { $0.region == .patch })?.normalizedPatchSeriesLabel ?? ""
         }
     }
 

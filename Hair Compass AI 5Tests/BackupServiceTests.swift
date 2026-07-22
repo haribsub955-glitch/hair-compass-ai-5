@@ -83,6 +83,28 @@ struct BackupServiceTests {
         return env
     }
 
+    @Test func patchSeriesLabelSurvivesBackupAndRestore() throws {
+        let source = try makeContainer()
+        let sourceContext = ModelContext(source)
+        let photo = PhotoRecord(region: .patch, imagePath: "patch.jpg", patchSeriesLabel: "Back patch")
+        sourceContext.insert(photo)
+        try sourceContext.save()
+
+        let envelope = BackupService.makeEnvelope(
+            profile: nil, entries: [], treatments: [], doses: [], sideEffects: [], labs: [],
+            photos: [photo], snapshots: [], triggers: [], procedures: [], progressCheckIns: [],
+            photoData: { _ in self.validImageData }
+        )
+        let decoded = try BackupService.decode(BackupService.encode(envelope))
+        #expect(decoded.photos.first?.patchSeriesLabel == "Back patch")
+
+        let destination = try makeContainer()
+        let destinationContext = ModelContext(destination)
+        _ = try BackupService.restore(decoded, into: destinationContext, photoWriter: { _ in "restored.jpg" })
+        let restored = try #require(destinationContext.fetch(FetchDescriptor<PhotoRecord>()).first)
+        #expect(restored.patchSeriesLabel == "Back patch")
+    }
+
     // MARK: - Round trip
 
     @Test func roundTripPreservesCountsValuesAndDates() throws {

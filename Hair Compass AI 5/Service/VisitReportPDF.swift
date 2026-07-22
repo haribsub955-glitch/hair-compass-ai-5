@@ -259,7 +259,9 @@ enum VisitReportPDF {
     static func comparisonPair(
         in regionPhotos: [PhotoRecord]
     ) -> (baseline: PhotoRecord, latest: PhotoRecord, caveat: String?)? {
-        let sorted = regionPhotos.sorted { $0.createdAt < $1.createdAt }
+        let chronological = regionPhotos.sorted { $0.createdAt < $1.createdAt }
+        guard let first = chronological.first else { return nil }
+        let sorted = chronological.filter { $0.belongsToSameSeries(as: first) }
         guard let baseline = sorted.first, let trueLatest = sorted.last, sorted.count >= 2,
               baseline.id != trueLatest.id
         else { return nil }
