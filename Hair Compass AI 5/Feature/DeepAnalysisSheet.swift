@@ -139,7 +139,7 @@ struct DeepAnalysisSheet: View {
 
     // MARK: Chat follow-up
 
-    /// Same chip language as Compare's "Ask AI about this": opens the restricted hair-science
+    /// Same chip language as Compare's "Ask Wren about this": opens the restricted hair-science
     /// chat, grounded on the same full-record `AIContext` this summary was written from.
     private var followUpChip: some View {
         Button { openChat() } label: {

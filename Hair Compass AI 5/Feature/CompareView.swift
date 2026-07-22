@@ -374,7 +374,7 @@ struct CompareView: View {
                     Text(ChartMath.phrasing(assoc, hairTitle: hair.title, lifestyleTitle: overlay.title, lagDays: lag.days))
                         .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
                 }
-                askAIChip
+                askWrenChip
             }
         }
     }
@@ -383,9 +383,9 @@ struct CompareView: View {
 
     /// Same chip language as the presets above: a capsule action that opens the restricted
     /// hair-science chat over the comparison on screen.
-    private var askAIChip: some View {
+    private var askWrenChip: some View {
         Button { openChat() } label: {
-            Label("Ask Wren about this", systemImage: "bubble.left.and.text.bubble.right")
+            Label("Ask \(Companion.name) about this", systemImage: "bubble.left.and.text.bubble.right")
                 .font(Clinical.body(12, weight: .semibold))
                 .foregroundStyle(Clinical.accent)
                 .padding(.horizontal, 12).padding(.vertical, 7)
@@ -393,7 +393,7 @@ struct CompareView: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.clinicalPressable)
-        .accessibilityLabel("Ask Wren about this comparison")
+        .accessibilityLabel("Ask \(Companion.name) about this comparison")
     }
 
     /// One line telling the chat what's on screen, so answers land on it.
