@@ -80,7 +80,7 @@
           },
           "localizations" : [
             {
-              "description" : "Monthly access to Hair Compass Pro — AI hair chat, deep photo analysis, and smart reminders.",
+              "description" : "Monthly access to Hair Compass Pro — AI hair chat, on-device analysis of your tracked record, and smart reminders.",
               "displayName" : "Pro Monthly",
               "locale" : "en_US"
             }
@@ -107,7 +107,7 @@
           },
           "localizations" : [
             {
-              "description" : "Yearly access to Hair Compass Pro — AI hair chat, deep photo analysis, and smart reminders.",
+              "description" : "Yearly access to Hair Compass Pro — AI hair chat, on-device analysis of your tracked record, and smart reminders.",
               "displayName" : "Pro Yearly",
               "locale" : "en_US"
             }

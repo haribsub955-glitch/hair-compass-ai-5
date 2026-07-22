@@ -31,14 +31,14 @@ struct DeepAnalysisSheet: View {
     var body: some View {
         NavigationStack {
             ProGate(
-                feature: "AI deep analysis",
+                feature: "AI record summary",
                 symbol: "sparkles.rectangle.stack",
                 description: "A one-tap written read of your full tracking record — on-device and private, record-keeping, not diagnosis."
             ) {
                 analysisContent
             }
             .clinicalScreen()
-            .navigationTitle("Deep analysis")
+            .navigationTitle("Record summary")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
         }
@@ -58,7 +58,7 @@ struct DeepAnalysisSheet: View {
                 BrandBanner(art: BrandArt.analysis, height: 130)
                 ClinicalCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        Eyebrow(text: "Deep analysis · on-device")
+                        Eyebrow(text: "Record summary · on-device")
                         Text("Writes a plain-language summary of your recent readings, treatments and labs using Apple Intelligence. It runs entirely on your iPhone — nothing leaves the device — and it's record-keeping, not diagnosis.")
                             .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
                     }
@@ -126,7 +126,7 @@ struct DeepAnalysisSheet: View {
                             Text("Analyzing…")
                         }
                     } else {
-                        Text("Run deep analysis")
+                        Text("Create record summary")
                     }
                 }
                 .buttonStyle(ClinicalButtonStyle())
@@ -157,7 +157,7 @@ struct DeepAnalysisSheet: View {
     /// One line telling the chat what's on screen — the same full record the summary was
     /// written from, not a single chart.
     private var chatFocus: String {
-        "User just ran Deep analysis on their full tracking record and is asking a follow-up question about the summary."
+        "User just created an on-device summary of their full tracking record and is asking a follow-up question about it."
     }
 
     /// Snapshot the canonical AIContext at open time — the chat consumes the same versioned

@@ -367,7 +367,7 @@ struct TodayView: View {
                     showDeepAnalysis = true
                 } label: {
                     HStack(spacing: 2) {
-                        Text("Deep analysis")
+                        Text("AI record summary")
                         Image(systemName: "chevron.right").font(Clinical.body(8, weight: .semibold))
                     }
                     .font(Clinical.body(11, weight: .semibold))
