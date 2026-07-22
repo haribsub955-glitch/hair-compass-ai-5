@@ -86,6 +86,24 @@ enum HairCondition: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Optional monthly emotional reflection. It is deliberately unordered and never scored.
+enum HairFeeling: Int, Codable, CaseIterable, Identifiable {
+    case unspecified = 0
+    case lessWorried = 1
+    case aboutTheSame = 2
+    case moreDifficult = 3
+
+    var id: Int { rawValue }
+    var title: String {
+        switch self {
+        case .unspecified: return "Not answered"
+        case .lessWorried: return "Less worried"
+        case .aboutTheSame: return "About the same"
+        case .moreDifficult: return "More difficult"
+        }
+    }
+}
+
 enum FamilyHistory: String, Codable, CaseIterable, Identifiable {
     case none, oneParent, bothParents, extended
     var id: String { rawValue }

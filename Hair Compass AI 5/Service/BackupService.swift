@@ -58,6 +58,7 @@ enum BackupService {
         var entries: [EntryDTO] = []
         var treatments: [TreatmentDTO] = []
         var unattachedDoses: [DoseDTO]?
+        var unattachedMissedDoses: [MissedDoseDTO]?
         var unattachedSideEffects: [SideEffectDTO]?
         var labs: [LabDTO] = []
         var photos: [PhotoDTO] = []
@@ -117,12 +118,19 @@ enum BackupService {
         var ingredientImageBase64: String?
         var aiIngredientSummary: String?
         var doses: [DoseDTO] = []
+        var missedDoses: [MissedDoseDTO]?
         var sideEffects: [SideEffectDTO] = []
     }
 
     nonisolated struct DoseDTO: Codable, Sendable {
         var loggedAt = Date.now
         var slot = ""
+    }
+
+    nonisolated struct MissedDoseDTO: Codable, Sendable {
+        var date = Date.now
+        var slot = ""
+        var reasonRaw = MissedDoseReason.forgot.rawValue
     }
 
     nonisolated struct SideEffectDTO: Codable, Sendable {
@@ -182,6 +190,11 @@ enum BackupService {
         var completedAt: Date?
         var note = ""
         var createdAt = Date.now
+        var agendaMainConcern: String?
+        var agendaChangedWhen: String?
+        var agendaTreatmentsToReview: String?
+        var agendaSafetyConcerns: String?
+        var agendaQuestionsRaw: String?
     }
 
     /// Monthly self-reported regrowth/density/shedding/hairline/overall check-in, including
@@ -200,6 +213,8 @@ enum BackupService {
         var scalpPainNote = ""
         var note = ""
         var createdAt = Date.now
+        var hairFeelingRaw: Int?
+        var hairFeelingNote: String?
     }
 
     private struct VersionProbe: Codable { let version: Int }
@@ -220,6 +235,7 @@ enum BackupService {
         triggers: [TriggerEvent],
         procedures: [ProcedureAppointment],
         progressCheckIns: [ProgressCheckIn],
+        missedDoses: [MissedDoseRecord] = [],
         createdAt: Date = .now,
         photoData: (String) -> Data?
     ) -> Envelope {
@@ -257,6 +273,9 @@ enum BackupService {
                 doses: t.doses
                     .sorted { $0.loggedAt < $1.loggedAt }
                     .map { DoseDTO(loggedAt: $0.loggedAt, slot: $0.slot) },
+                missedDoses: t.missedDoses
+                    .sorted { $0.date < $1.date }
+                    .map { MissedDoseDTO(date: $0.date, slot: $0.slot, reasonRaw: $0.reasonRaw) },
                 sideEffects: t.sideEffects
                     .sorted { $0.date < $1.date }
                     .map { SideEffectDTO(date: $0.date, severity: $0.severity, typeRaw: $0.typeRaw, note: $0.note) }
@@ -264,6 +283,8 @@ enum BackupService {
         }
         envelope.unattachedDoses = doses.filter { $0.treatment == nil }
             .map { DoseDTO(loggedAt: $0.loggedAt, slot: $0.slot) }
+        envelope.unattachedMissedDoses = missedDoses.filter { $0.treatment == nil }
+            .map { MissedDoseDTO(date: $0.date, slot: $0.slot, reasonRaw: $0.reasonRaw) }
         envelope.unattachedSideEffects = sideEffects.filter { $0.treatment == nil }
             .map { SideEffectDTO(date: $0.date, severity: $0.severity, typeRaw: $0.typeRaw, note: $0.note) }
 
@@ -300,7 +321,12 @@ enum BackupService {
         envelope.procedures = procedures.map {
             ProcedureDTO(typeRaw: $0.typeRaw, date: $0.date, location: $0.location,
                          isCompleted: $0.isCompleted, completedAt: $0.completedAt,
-                         note: $0.note, createdAt: $0.createdAt)
+                         note: $0.note, createdAt: $0.createdAt,
+                         agendaMainConcern: $0.agendaMainConcern,
+                         agendaChangedWhen: $0.agendaChangedWhen,
+                         agendaTreatmentsToReview: $0.agendaTreatmentsToReview,
+                         agendaSafetyConcerns: $0.agendaSafetyConcerns,
+                         agendaQuestionsRaw: $0.agendaQuestionsRaw)
         }
 
         envelope.progressCheckIns = progressCheckIns.map {
@@ -309,7 +335,8 @@ enum BackupService {
                 sheddingRaw: $0.sheddingRaw, hairlineRaw: $0.hairlineRaw, overallRaw: $0.overallRaw,
                 patchTrendRaw: $0.patchTrendRaw,
                 scalpPain: $0.scalpPain, scalpPainNote: $0.scalpPainNote, note: $0.note,
-                createdAt: $0.createdAt
+                createdAt: $0.createdAt, hairFeelingRaw: $0.hairFeelingRaw,
+                hairFeelingNote: $0.hairFeelingNote
             )
         }
 
@@ -357,6 +384,7 @@ enum BackupService {
         triggers: [TriggerEvent],
         procedures: [ProcedureAppointment],
         progressCheckIns: [ProgressCheckIn],
+        missedDoses: [MissedDoseRecord] = [],
         now: Date = .now,
         photoData: (String) -> Data? = { PhotoStore.shared.loadData($0) }
     ) throws -> URL {
@@ -365,6 +393,7 @@ enum BackupService {
             sideEffects: sideEffects, labs: labs,
             photos: photos, snapshots: snapshots, triggers: triggers,
             procedures: procedures, progressCheckIns: progressCheckIns,
+            missedDoses: missedDoses,
             createdAt: now, photoData: photoData
         )
         var missingPhotos = zip(photos, envelope.photos).compactMap { record, dto in
@@ -409,6 +438,7 @@ enum BackupService {
         triggers: [TriggerEvent],
         procedures: [ProcedureAppointment],
         progressCheckIns: [ProgressCheckIn],
+        missedDoses: [MissedDoseRecord] = [],
         now: Date = .now,
         photoData: @Sendable @escaping (String) -> Data? = { PhotoStore.shared.loadData($0) }
     ) async throws -> URL {
@@ -417,6 +447,7 @@ enum BackupService {
             sideEffects: sideEffects, labs: labs,
             photos: photos, snapshots: snapshots, triggers: triggers,
             procedures: procedures, progressCheckIns: progressCheckIns,
+            missedDoses: missedDoses,
             createdAt: now, photoData: { _ in nil }
         )
         // Same order as `envelope.photos` (both come from mapping `photos` in order), so the
@@ -510,7 +541,8 @@ enum BackupService {
     ///
     /// Natural keys:
     /// - DailyEntry: calendar day (`HairAnalytics.dayBounds` — one entry per day)
-    /// - Treatment: (name, startDate); its doses by (calendar day, slot); side effects by (type, date)
+    /// - Treatment: (name, startDate); its doses by (calendar day, slot), missed doses by
+    ///   (treatment, calendar day, reason), and side effects by (type, date)
     /// - LabResult: (test, collectedAt)
     /// - PhotoRecord: (createdAt, region) — image bytes written back through `photoWriter`
     /// - HealthSnapshot: calendar day
@@ -661,6 +693,19 @@ enum BackupService {
                 summary.inserted += 1
             }
 
+            var missedKeys = Set(target.missedDoses.map {
+                missedDoseKey(date: $0.date, reasonRaw: $0.reasonRaw, calendar: calendar)
+            })
+            for missed in dto.missedDoses ?? [] {
+                let key = missedDoseKey(date: missed.date, reasonRaw: missed.reasonRaw, calendar: calendar)
+                guard !missedKeys.contains(key) else { summary.skipped += 1; continue }
+                missedKeys.insert(key)
+                let record = MissedDoseRecord(treatment: target, date: missed.date, slot: missed.slot)
+                record.reasonRaw = missed.reasonRaw
+                context.insert(record)
+                summary.inserted += 1
+            }
+
             var effectKeys = Set(target.sideEffects.map { sideEffectKey(typeRaw: $0.typeRaw, date: $0.date) })
             for s in dto.sideEffects {
                 let k = sideEffectKey(typeRaw: s.typeRaw, date: s.date)
@@ -689,6 +734,20 @@ enum BackupService {
             let log = SideEffectLog(severity: dto.severity, date: dto.date, note: dto.note)
             log.typeRaw = dto.typeRaw
             context.insert(log)
+            summary.inserted += 1
+        }
+        var unattachedMissedKeys = Set(
+            try context.fetch(FetchDescriptor<MissedDoseRecord>())
+                .filter { $0.treatment == nil }
+                .map { missedDoseKey(date: $0.date, reasonRaw: $0.reasonRaw, calendar: calendar) }
+        )
+        for dto in envelope.unattachedMissedDoses ?? [] {
+            let key = missedDoseKey(date: dto.date, reasonRaw: dto.reasonRaw, calendar: calendar)
+            guard !unattachedMissedKeys.contains(key) else { summary.skipped += 1; continue }
+            unattachedMissedKeys.insert(key)
+            let record = MissedDoseRecord(date: dto.date, slot: dto.slot)
+            record.reasonRaw = dto.reasonRaw
+            context.insert(record)
             summary.inserted += 1
         }
 
@@ -773,7 +832,12 @@ enum BackupService {
             context.insert(ProcedureAppointment(
                 type: ProcedureType(rawValue: dto.typeRaw) ?? .other,
                 date: dto.date, location: dto.location, isCompleted: dto.isCompleted,
-                completedAt: dto.completedAt, note: dto.note, createdAt: dto.createdAt
+                completedAt: dto.completedAt, note: dto.note, createdAt: dto.createdAt,
+                agendaMainConcern: dto.agendaMainConcern ?? "",
+                agendaChangedWhen: dto.agendaChangedWhen ?? "",
+                agendaTreatmentsToReview: dto.agendaTreatmentsToReview ?? "",
+                agendaSafetyConcerns: dto.agendaSafetyConcerns ?? "",
+                agendaQuestions: (dto.agendaQuestionsRaw ?? "").split(separator: "\n").map(String.init)
             ))
             summary.inserted += 1
         }
@@ -797,7 +861,9 @@ enum BackupService {
                 overall: ProgressTrend(rawValue: dto.overallRaw) ?? .same,
                 patchTrend: dto.patchTrendRaw.flatMap(ProgressTrend.init(rawValue:)),
                 scalpPain: dto.scalpPain, scalpPainNote: dto.scalpPainNote,
-                note: dto.note, createdAt: dto.createdAt
+                note: dto.note, createdAt: dto.createdAt,
+                hairFeeling: dto.hairFeelingRaw.flatMap(HairFeeling.init(rawValue:)) ?? .unspecified,
+                hairFeelingNote: dto.hairFeelingNote ?? ""
             ))
             summary.inserted += 1
         }
@@ -851,7 +917,11 @@ enum BackupService {
             && envelope.entries.allSatisfy { ShedLevel(rawValue: $0.shedRaw) != nil }
             && envelope.treatments.allSatisfy {
                 TreatmentClass(rawValue: $0.classRaw) != nil
+                    && ($0.missedDoses ?? []).allSatisfy { MissedDoseReason(rawValue: $0.reasonRaw) != nil }
                     && $0.sideEffects.allSatisfy { SideEffectType(rawValue: $0.typeRaw) != nil }
+            }
+            && (envelope.unattachedMissedDoses ?? []).allSatisfy {
+                MissedDoseReason(rawValue: $0.reasonRaw) != nil
             }
             && (envelope.unattachedSideEffects ?? []).allSatisfy {
                 SideEffectType(rawValue: $0.typeRaw) != nil
@@ -867,6 +937,7 @@ enum BackupService {
                     && ProgressTrend(rawValue: $0.hairlineRaw) != nil
                     && ProgressTrend(rawValue: $0.overallRaw) != nil
                     && ($0.patchTrendRaw == nil || ProgressTrend(rawValue: $0.patchTrendRaw!) != nil)
+                    && ($0.hairFeelingRaw == nil || HairFeeling(rawValue: $0.hairFeelingRaw!) != nil)
             }
         guard valid else { throw BackupError.unreadableFile }
     }
@@ -895,6 +966,10 @@ enum BackupService {
 
     static func sideEffectKey(typeRaw: String, date: Date) -> String {
         "\(typeRaw)|\(secondKey(date))"
+    }
+
+    static func missedDoseKey(date: Date, reasonRaw: String, calendar: Calendar) -> String {
+        "\(calendar.startOfDay(for: date).timeIntervalSinceReferenceDate)|\(reasonRaw)"
     }
 
     static func labKey(testRaw: String, collectedAt: Date) -> String {

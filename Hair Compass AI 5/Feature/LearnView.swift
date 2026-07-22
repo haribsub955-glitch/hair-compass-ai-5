@@ -1,12 +1,19 @@
+import SwiftData
 import SwiftUI
 
 /// The Learn library — evidence-based flash cards you flip to reveal the answer. Category art is the
 /// generated gouache brand style; every answer carries an honest evidence tier (or a "MYTH" verdict).
 struct LearnView: View {
+    @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     @State private var selected: LearnCategory?
 
     private var cards: [FlashCard] {
-        selected.map { LearnLibrary.cards(in: $0) } ?? LearnLibrary.cards
+        let source = selected.map { LearnLibrary.cards(in: $0) } ?? LearnLibrary.cards
+        guard let condition = profiles.first?.condition else { return source }
+        return source.sorted {
+            ($0.conditionTags.contains(condition) ? 0 : 1, $0.id) <
+            ($1.conditionTags.contains(condition) ? 0 : 1, $1.id)
+        }
     }
 
     var body: some View {
@@ -17,10 +24,10 @@ struct LearnView: View {
                 categoryChips
 
                 if let featured = cards.first {
-                    FlashCardView(card: featured, featured: true)
+                    FlashCardView(card: featured, featured: true, isBaselineMatch: isBaselineMatch(featured))
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
                         ForEach(cards.dropFirst()) { card in
-                            FlashCardView(card: card)
+                            FlashCardView(card: card, isBaselineMatch: isBaselineMatch(card))
                         }
                     }
                 }
@@ -34,6 +41,10 @@ struct LearnView: View {
             .padding(.bottom, 24)
         }
         .clinicalScreen()
+    }
+
+    private func isBaselineMatch(_ card: FlashCard) -> Bool {
+        profiles.first.map { card.conditionTags.contains($0.condition) } ?? false
     }
 
     private var categoryChips: some View {
@@ -67,6 +78,7 @@ struct LearnView: View {
 struct FlashCardView: View {
     let card: FlashCard
     var featured: Bool = false
+    var isBaselineMatch: Bool = false
     @State private var flipped = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -118,6 +130,12 @@ struct FlashCardView: View {
                     Eyebrow(text: card.category.eyebrow)
                     Spacer()
                     badge
+                }
+                if isBaselineMatch {
+                    Text("For your baseline")
+                        .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.accent)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Clinical.accentSoft, in: Capsule())
                 }
                 Text(card.question)
                     .font(Clinical.headline(featured ? 22 : 17))

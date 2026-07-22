@@ -335,6 +335,7 @@ private struct BackupRestoreSection: View {
     @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query(sort: \TreatmentDose.loggedAt) private var doses: [TreatmentDose]
+    @Query(sort: \MissedDoseRecord.date) private var missedDoses: [MissedDoseRecord]
     @Query(sort: \SideEffectLog.date) private var sideEffects: [SideEffectLog]
     @Query(sort: \LabResult.collectedAt) private var labs: [LabResult]
     @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
@@ -462,7 +463,8 @@ private struct BackupRestoreSection: View {
                 profile: profiles.first, entries: entries, treatments: treatments,
                 doses: doses, sideEffects: sideEffects,
                 labs: labs, photos: photos, snapshots: snapshots, triggers: triggers,
-                procedures: procedureAppointments, progressCheckIns: progressCheckIns
+                procedures: procedureAppointments, progressCheckIns: progressCheckIns,
+                missedDoses: missedDoses
             )
             sensitiveWarningAcknowledged = false
         } catch {

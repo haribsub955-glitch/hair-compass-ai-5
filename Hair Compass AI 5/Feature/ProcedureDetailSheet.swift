@@ -14,6 +14,7 @@ struct ProcedureDetailSheet: View {
     /// straight into the visit report the app already builds — the "see a dermatologist" loop's
     /// missing link.
     @State private var showExportSheet = false
+    @State private var showAgenda = false
     /// Drives the delete confirmation dialog — confirm-first, matching every other irreversible
     /// delete in the app.
     @State private var showDeleteConfirm = false
@@ -40,6 +41,7 @@ struct ProcedureDetailSheet: View {
                         .disabled(calendarFeedback != nil)
                     }
                     if appointment.type == .consultation {
+                        consultationAgendaCard
                         Button {
                             showExportSheet = true
                         } label: {
@@ -66,7 +68,8 @@ struct ProcedureDetailSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .sheet(isPresented: $showEdit) { AddProcedureSheet(existing: appointment) }
-            .sheet(isPresented: $showExportSheet) { ExportSheet() }
+            .sheet(isPresented: $showAgenda) { VisitAgendaEditor(appointment: appointment) }
+            .sheet(isPresented: $showExportSheet) { ExportSheet(consultation: appointment) }
             .confirmationDialog(
                 "Delete this procedure record?",
                 isPresented: $showDeleteConfirm,
@@ -84,6 +87,20 @@ struct ProcedureDetailSheet: View {
     }
 
     // MARK: Header
+
+    private var consultationAgendaCard: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow(text: "Visit agenda")
+                Text(appointment.hasVisitAgenda
+                     ? "Your editable talking points and questions are ready."
+                     : "Capture what changed, what you want reviewed, and questions you don't want to forget.")
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                Button(appointment.hasVisitAgenda ? "Edit agenda" : "Prepare agenda") { showAgenda = true }
+                    .buttonStyle(ClinicalButtonStyle(filled: false))
+            }
+        }
+    }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -233,5 +250,133 @@ struct ProcedureDetailSheet: View {
                 .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).strokeBorder(Clinical.critical.opacity(0.3), lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Consultation-only, user-owned checklist. Suggestions are neutral prompts derived entirely
+/// from existing records; they never interpret a condition or recommend a treatment change.
+private struct VisitAgendaEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Profile.createdAt) private var profiles: [Profile]
+    @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
+    @Query private var treatments: [Treatment]
+    @Query private var sideEffects: [SideEffectLog]
+    @Query private var labs: [LabResult]
+    @Bindable var appointment: ProcedureAppointment
+
+    @State private var mainConcern: String
+    @State private var changedWhen: String
+    @State private var treatmentsToReview: String
+    @State private var safetyConcerns: String
+    @State private var questions: [String]
+    @State private var newQuestion = ""
+
+    init(appointment: ProcedureAppointment) {
+        self.appointment = appointment
+        _mainConcern = State(initialValue: appointment.agendaMainConcern)
+        _changedWhen = State(initialValue: appointment.agendaChangedWhen)
+        _treatmentsToReview = State(initialValue: appointment.agendaTreatmentsToReview)
+        _safetyConcerns = State(initialValue: appointment.agendaSafetyConcerns)
+        _questions = State(initialValue: appointment.agendaQuestions)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    agendaField("My main concern", text: $mainConcern)
+                    agendaField("What changed and when", text: $changedWhen)
+                    agendaField("Treatments I want reviewed", text: $treatmentsToReview)
+                    agendaField("Side effects or safety concerns", text: $safetyConcerns)
+                    questionsSection
+                    Text("Suggestions organize your own records and neutral questions. They are not medical advice.")
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
+                }
+                .padding(20)
+            }
+            .clinicalScreen()
+            .navigationTitle("Visit agenda")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Save", action: save) }
+            }
+            .onAppear { if questions.isEmpty { questions = suggestedQuestions } }
+        }
+    }
+
+    private func agendaField(_ title: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Eyebrow(text: title)
+            TextField("Add your notes", text: text, axis: .vertical)
+                .font(Clinical.body(14)).foregroundStyle(Clinical.ink).lineLimit(2...5)
+                .padding(12).background(Clinical.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Clinical.hairline))
+        }
+    }
+
+    private var questionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(text: "Questions I don't want to forget")
+            ForEach(Array(questions.enumerated()), id: \.offset) { index, _ in
+                HStack(alignment: .top) {
+                    TextField("Question", text: $questions[index], axis: .vertical)
+                        .font(Clinical.body(14)).foregroundStyle(Clinical.ink)
+                    Button { questions.remove(at: index) } label: {
+                        Image(systemName: "minus.circle").foregroundStyle(Clinical.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(11).background(Clinical.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            HStack {
+                TextField("Add a question", text: $newQuestion)
+                    .font(Clinical.body(14)).textFieldStyle(.plain)
+                Button("Add", action: addQuestion).disabled(newQuestion.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(11).background(Clinical.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            Text("Suggested from your records — fully editable")
+                .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
+        }
+    }
+
+    private var suggestedQuestions: [String] {
+        var result: [String] = []
+        if entries.prefix(7).filter({ $0.shed == .heavy }).count >= 3 {
+            result.append("My records show persistent heavy shedding. What context would be useful to review?")
+        }
+        if sideEffects.contains(where: { $0.severity >= 3 }) {
+            result.append("I recorded a severe side effect. What should we review together?")
+        }
+        if labs.contains(where: { $0.flag != .normal }) {
+            result.append("I have a lab result outside its recorded reference range. How does it fit my overall history?")
+        }
+        if profiles.first?.pregnancyStatus.flagsMedicationCaution == true {
+            result.append("What pregnancy or breastfeeding context is relevant to reviewing my current plan?")
+        }
+        if !treatments.isEmpty {
+            result.append("Can we review the treatments and dates in my record?")
+        }
+        result.append("What would count as success at my next review?")
+        return result
+    }
+
+    private func addQuestion() {
+        let value = newQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        questions.append(value)
+        newQuestion = ""
+    }
+
+    private func save() {
+        appointment.agendaMainConcern = mainConcern.trimmingCharacters(in: .whitespacesAndNewlines)
+        appointment.agendaChangedWhen = changedWhen.trimmingCharacters(in: .whitespacesAndNewlines)
+        appointment.agendaTreatmentsToReview = treatmentsToReview.trimmingCharacters(in: .whitespacesAndNewlines)
+        appointment.agendaSafetyConcerns = safetyConcerns.trimmingCharacters(in: .whitespacesAndNewlines)
+        appointment.agendaQuestions = questions
+        dismiss()
     }
 }

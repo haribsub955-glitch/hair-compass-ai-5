@@ -19,7 +19,7 @@ struct BackupServiceTests {
     /// Fresh in-memory store over the full app schema — nothing touches disk.
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
-            Profile.self, DailyEntry.self, Treatment.self, TreatmentDose.self,
+            Profile.self, DailyEntry.self, Treatment.self, TreatmentDose.self, MissedDoseRecord.self,
             SideEffectLog.self, LabResult.self, PhotoRecord.self,
             HealthSnapshot.self, TriggerEvent.self,
             ProcedureAppointment.self, ProgressCheckIn.self
@@ -218,6 +218,67 @@ struct BackupServiceTests {
         #expect(restoredSideEffects.first?.note == "unattached log")
         #expect(restoredSideEffects.first?.typeRaw == SideEffectType.scalpIrritation.rawValue)
         #expect(restoredSideEffects.first?.treatment == nil)
+    }
+
+    @Test func missedDoseRecordsRoundTripAttachedAndUnattachedWithoutDuplicates() throws {
+        let source = try makeContainer()
+        let sourceContext = ModelContext(source)
+        let date = Date.now
+        let treatment = Treatment(name: "Topical record", startDate: date)
+        sourceContext.insert(treatment)
+        sourceContext.insert(MissedDoseRecord(treatment: treatment, date: date, slot: "21:00", reason: .supply))
+        sourceContext.insert(MissedDoseRecord(date: date.addingTimeInterval(-86_400), slot: "08:00", reason: .travel))
+        try sourceContext.save()
+
+        let envelope = BackupService.makeEnvelope(
+            profile: nil, entries: [], treatments: [treatment], doses: [], sideEffects: [],
+            labs: [], photos: [], snapshots: [], triggers: [], procedures: [], progressCheckIns: [],
+            missedDoses: try sourceContext.fetch(FetchDescriptor<MissedDoseRecord>()),
+            photoData: { _ in nil }
+        )
+        let decoded = try BackupService.decode(BackupService.encode(envelope))
+        #expect(decoded.treatments.first?.missedDoses?.first?.reasonRaw == MissedDoseReason.supply.rawValue)
+        #expect(decoded.unattachedMissedDoses?.first?.reasonRaw == MissedDoseReason.travel.rawValue)
+
+        let destination = try makeContainer()
+        let destinationContext = ModelContext(destination)
+        _ = try BackupService.restore(decoded, into: destinationContext, photoWriter: { _ in nil })
+        _ = try BackupService.restore(decoded, into: destinationContext, photoWriter: { _ in nil })
+        let restored = try destinationContext.fetch(FetchDescriptor<MissedDoseRecord>())
+        #expect(restored.count == 2)
+        #expect(restored.contains { $0.treatment?.name == "Topical record" && $0.slot == "21:00" && $0.reason == .supply })
+        #expect(restored.contains { $0.treatment == nil && $0.reason == .travel })
+    }
+
+    @Test func backupsWithoutNewOptionalFieldsStillDecode() throws {
+        var envelope = fixtureEnvelope(now: .now)
+        envelope.treatments[0].missedDoses = [.init(reasonRaw: MissedDoseReason.forgot.rawValue)]
+        envelope.procedures[0].agendaMainConcern = "Review timeline"
+        envelope.progressCheckIns[0].hairFeelingRaw = HairFeeling.moreDifficult.rawValue
+        let encoded = try BackupService.encode(envelope)
+        var json = try #require(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        if var treatments = json["treatments"] as? [[String: Any]] {
+            treatments[0].removeValue(forKey: "missedDoses")
+            json["treatments"] = treatments
+        }
+        if var procedures = json["procedures"] as? [[String: Any]] {
+            procedures[0].removeValue(forKey: "agendaMainConcern")
+            procedures[0].removeValue(forKey: "agendaChangedWhen")
+            procedures[0].removeValue(forKey: "agendaTreatmentsToReview")
+            procedures[0].removeValue(forKey: "agendaSafetyConcerns")
+            procedures[0].removeValue(forKey: "agendaQuestionsRaw")
+            json["procedures"] = procedures
+        }
+        if var checkIns = json["progressCheckIns"] as? [[String: Any]] {
+            checkIns[0].removeValue(forKey: "hairFeelingRaw")
+            checkIns[0].removeValue(forKey: "hairFeelingNote")
+            json["progressCheckIns"] = checkIns
+        }
+        let oldStyleData = try JSONSerialization.data(withJSONObject: json)
+        let decoded = try BackupService.decode(oldStyleData)
+        #expect(decoded.treatments[0].missedDoses == nil)
+        #expect(decoded.procedures[0].agendaMainConcern == nil)
+        #expect(decoded.progressCheckIns[0].hairFeelingRaw == nil)
     }
 
     // MARK: - Version guard

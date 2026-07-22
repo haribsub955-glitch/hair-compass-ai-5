@@ -31,6 +31,8 @@ struct ProgressCheckInSheet: View {
     @State private var scalpPain: Bool
     @State private var scalpPainNote: String
     @State private var note: String
+    @State private var hairFeeling: HairFeeling
+    @State private var hairFeelingNote: String
 
     init(existing: ProgressCheckIn? = nil, treatmentContext: String? = nil, showsPatchQuestion: Bool = false) {
         self.existing = existing
@@ -48,6 +50,8 @@ struct ProgressCheckInSheet: View {
         _scalpPain = State(initialValue: existing?.scalpPain ?? false)
         _scalpPainNote = State(initialValue: existing?.scalpPainNote ?? "")
         _note = State(initialValue: existing?.note ?? "")
+        _hairFeeling = State(initialValue: existing?.hairFeeling ?? .unspecified)
+        _hairFeelingNote = State(initialValue: existing?.hairFeelingNote ?? "")
     }
 
     var body: some View {
@@ -101,6 +105,8 @@ struct ProgressCheckInSheet: View {
                         }
                     }
 
+                    emotionalCheckInSection
+
                     section("Scalp symptoms") {
                         Toggle(isOn: $scalpPain) {
                             Text("Any scalp pain, burning, or tender spots?")
@@ -135,6 +141,17 @@ struct ProgressCheckInSheet: View {
         }
     }
 
+    private var emotionalCheckInSection: some View {
+        section("How are you feeling about your hair this month?") {
+            Text("Optional — this is reflected back as context, never scored.")
+                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+            chipRow(Array(HairFeeling.allCases.dropFirst()), selection: $hairFeeling) { $0.title }
+            if hairFeeling != .unspecified {
+                textField("Anything you want to remember? (optional)", text: $hairFeelingNote)
+            }
+        }
+    }
+
     @ViewBuilder
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) { Eyebrow(text: title); content() }
@@ -142,11 +159,11 @@ struct ProgressCheckInSheet: View {
 
     /// The `AddProcedureSheet`/`AddLabSheet` horizontal-chip idiom, generalized over any
     /// `CaseIterable` enum — used for the regrowth row (4 chips) and each trend row (3 chips).
-    private func chipRow<T: Hashable & CaseIterable>(
-        _ cases: T.AllCases,
+    private func chipRow<T: Hashable, C: RandomAccessCollection>(
+        _ cases: C,
         selection: Binding<T>,
         label: @escaping (T) -> String
-    ) -> some View where T.AllCases: RandomAccessCollection {
+    ) -> some View where C.Element == T {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(Array(cases), id: \.self) { c in
@@ -199,6 +216,8 @@ struct ProgressCheckInSheet: View {
             existing.scalpPain = scalpPain
             existing.scalpPainNote = scalpPain ? scalpPainNote.trimmingCharacters(in: .whitespaces) : ""
             existing.note = note.trimmingCharacters(in: .whitespaces)
+            existing.hairFeeling = hairFeeling
+            existing.hairFeelingNote = hairFeeling == .unspecified ? "" : hairFeelingNote.trimmingCharacters(in: .whitespaces)
         } else {
             context.insert(ProgressCheckIn(
                 regrowth: regrowth,
@@ -209,7 +228,9 @@ struct ProgressCheckInSheet: View {
                 patchTrend: patchTrend,
                 scalpPain: scalpPain,
                 scalpPainNote: scalpPain ? scalpPainNote.trimmingCharacters(in: .whitespaces) : "",
-                note: note.trimmingCharacters(in: .whitespaces)
+                note: note.trimmingCharacters(in: .whitespaces),
+                hairFeeling: hairFeeling,
+                hairFeelingNote: hairFeeling == .unspecified ? "" : hairFeelingNote.trimmingCharacters(in: .whitespaces)
             ))
         }
         UINotificationFeedbackGenerator().notificationOccurred(.success)

@@ -5,6 +5,22 @@ import SwiftData
 /// machine-readable JSON of the raw records (the user's own data, portable off-device).
 enum ExportService {
 
+    static func visitAgendaSection(_ visit: ProcedureAppointment) -> String {
+        var out = "VISIT AGENDA — \(visit.date.formatted(.dateTime.year().month().day()))\n"
+        func line(_ label: String, _ value: String) {
+            out += "• \(label): \(value.isEmpty ? "Not added" : value)\n"
+        }
+        line("My main concern", visit.agendaMainConcern)
+        line("What changed and when", visit.agendaChangedWhen)
+        line("Treatments I want reviewed", visit.agendaTreatmentsToReview)
+        line("Side effects or safety concerns", visit.agendaSafetyConcerns)
+        out += "• Questions I don't want to forget:\n"
+        if visit.agendaQuestions.isEmpty { out += "  – None added\n" }
+        for question in visit.agendaQuestions { out += "  – \(question)\n" }
+        out += "User-prepared talking points for discussion, not medical advice.\n\n"
+        return out
+    }
+
     // MARK: - Clinician summary (human-readable)
 
     @MainActor
