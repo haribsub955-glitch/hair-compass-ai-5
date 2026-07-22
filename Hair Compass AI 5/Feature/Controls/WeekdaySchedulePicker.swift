@@ -29,6 +29,7 @@ struct WeekdaySchedulePicker: View {
                         .overlay(Circle().strokeBorder(on ? Color.clear : Clinical.hairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .minimumHitTarget()
                 .accessibilityLabel(Self.fullWeekdayName(day.num))
                 .accessibilityAddTraits(on ? .isSelected : [])
             }

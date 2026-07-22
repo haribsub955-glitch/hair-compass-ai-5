@@ -111,9 +111,10 @@ struct LivingGauge<Motif: View>: View {
                                 .font(Clinical.eyebrow(9))
                                 .tracking(0.6)
                                 .foregroundStyle(index == band ? tint : Clinical.tertiary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
                                 .frame(maxWidth: .infinity)
+                                .frame(minHeight: 44)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)

@@ -10,11 +10,13 @@ struct RitualView: View {
     var onFinish: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @State private var box = RitualBox()
     @State private var finishing = false
     @State private var contentOpacity: Double = 1
     @State private var startedAt = Date()
     @State private var serumBurst = false
+    @State private var accessibilityProgress = 0
 
     private let logger = Logger(subsystem: "hair-compass", category: "ritual")
 
@@ -76,6 +78,7 @@ struct RitualView: View {
                             .overlay(Circle().strokeBorder(Clinical.hairline, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .minimumHitTarget()
                     .padding(.top, 10)
                     .padding(.trailing, 16)
                     .accessibilityLabel("Skip")
@@ -83,8 +86,8 @@ struct RitualView: View {
                 }
                 Spacer()
 
-                // Under Reduce Motion the frame is static, so offer explicit completion.
-                if reduceMotion {
+                // VoiceOver users need an explicit alternative to the spatial drag simulation.
+                if reduceMotion || voiceOverEnabled {
                     Button(action: complete) {
                         Text("Done")
                             .font(Clinical.body(16, weight: .semibold))
@@ -93,6 +96,9 @@ struct RitualView: View {
                             .background(Clinical.accent, in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    .minimumHitTarget()
+                    .accessibilityLabel("Complete \(meta.title)")
+                    .accessibilityHint("Marks this ritual complete and continues to Hair Compass")
                     .padding(.bottom, 44)
                 }
             }
@@ -108,6 +114,10 @@ struct RitualView: View {
         .onAppear {
             startedAt = Date()
             RitualActivityService.shared.start(kind: kind, title: meta.title, startDate: startedAt)
+            if voiceOverEnabled {
+                UIAccessibility.post(notification: .announcement,
+                                     argument: "\(meta.title) started. \(meta.hint)")
+            }
         }
         .onDisappear {
             // Safety net: RootView can force-dismiss the ritual out from under us (app lock wins
@@ -147,6 +157,16 @@ struct RitualView: View {
                     let endDate = ritual.estimatedDuration.map { startedAt.addingTimeInterval($0) }
                     RitualActivityService.shared.update(
                         stepName: ritual.title, progress: Double(ritual.progress), endDate: endDate)
+                    let milestone = min(3, Int(ritual.progress * 4))
+                    if voiceOverEnabled, milestone > box.announcedMilestone, milestone > 0 {
+                        box.announcedMilestone = milestone
+                        let percent = milestone * 25
+                        DispatchQueue.main.async {
+                            accessibilityProgress = percent
+                            UIAccessibility.post(notification: .announcement,
+                                                 argument: "\(percent) percent complete")
+                        }
+                    }
                 }
 
                 if beats > 0 { box.impact.impactOccurred() }
@@ -157,7 +177,15 @@ struct RitualView: View {
                 }
             }
         }
-        .accessibilityHidden(true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(meta.title) interaction")
+        .accessibilityValue(ritualAccessibilityValue)
+        .accessibilityHint("Use the Complete button to finish without the drag gesture")
+        .accessibilityAction(named: "Complete ritual", complete)
+    }
+
+    private var ritualAccessibilityValue: String {
+        "\(accessibilityProgress) percent complete"
     }
 
     // MARK: Gestures
@@ -202,6 +230,10 @@ struct RitualView: View {
         logger.debug("ritual_completed kind=\(kind.rawValue, privacy: .public) duration=\(Date().timeIntervalSince(startedAt), privacy: .public)")
         box.success.notificationOccurred(.success)   // haptics kept even under Reduce Motion
         RitualActivityService.shared.end(stepName: meta.title, progress: 1, completed: true)
+        if voiceOverEnabled {
+            accessibilityProgress = 100
+            UIAccessibility.post(notification: .announcement, argument: "\(meta.title) complete")
+        }
 
         if reduceMotion {
             onFinish()
@@ -312,6 +344,7 @@ private struct SerumBurst: View {
     var lastTouch: CGPoint?
     var dragging = false
     var finished = false
+    var announcedMilestone = 0
     let impact = UIImpactFeedbackGenerator(style: .light)
     let success = UINotificationFeedbackGenerator()
 }

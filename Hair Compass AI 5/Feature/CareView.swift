@@ -463,7 +463,7 @@ struct CareView: View {
             Text(milestoneDisplayTitle(m, progress: progress))
                 .font(Clinical.body(13, weight: .medium))
                 .foregroundStyle(Clinical.ink)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(m.title). \(m.body)")
@@ -970,6 +970,7 @@ struct CareView: View {
                         Image(systemName: "ellipsis").font(Clinical.caption(16)).foregroundStyle(Clinical.tertiary)
                             .frame(width: 30, height: 30)
                     }
+                    .minimumHitTarget()
                 }
 
                 VStack(alignment: .leading, spacing: 6) {

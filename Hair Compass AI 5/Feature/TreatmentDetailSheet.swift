@@ -343,6 +343,7 @@ struct TreatmentDetailSheet: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .minimumHitTarget()
             .accessibilityLabel("Delete this entry")
         }
     }

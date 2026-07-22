@@ -325,6 +325,18 @@ extension ButtonStyle where Self == ClinicalPressableStyle {
     static var clinicalPressable: ClinicalPressableStyle { .init() }
 }
 
+/// Expands compact visual controls to Apple's minimum interactive target without resizing their
+/// artwork. Apply this to the actionable control rather than to a decorative glyph in its label.
+private struct MinimumHitTargetModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
+}
+
+extension View {
+    func minimumHitTarget() -> some View { modifier(MinimumHitTargetModifier()) }
+}
+
 // MARK: - Motion scheduling
 
 /// Shared frame budgets for procedural Canvas animation. Interactive simulations stay fluid at
@@ -745,6 +757,7 @@ struct PipStepper: View {
                             )
                     }
                     .buttonStyle(.plain)
+                    .minimumHitTarget()
                 }
             }
         }

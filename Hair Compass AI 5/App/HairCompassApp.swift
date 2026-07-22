@@ -127,7 +127,6 @@ struct HairCompassApp: App {
                 }
             }
             .preferredColorScheme(.light)
-            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         }
     }
 }
@@ -137,20 +136,22 @@ private struct PersistenceRecoveryView: View {
     @State private var confirmReset = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Your data couldn't be opened")
-                .font(Clinical.headline(30)).foregroundStyle(Clinical.ink)
-            Text("Hair Compass has not deleted or replaced your records. Retry first. Reset only if retry continues to fail.")
-                .font(Clinical.body(16)).foregroundStyle(Clinical.secondary)
-            if let message = controller.failureMessage {
-                Text(message).font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Your data couldn't be opened")
+                    .font(Clinical.headline(30)).foregroundStyle(Clinical.ink)
+                Text("Hair Compass has not deleted or replaced your records. Retry first. Reset only if retry continues to fail.")
+                    .font(Clinical.body(16)).foregroundStyle(Clinical.secondary)
+                if let message = controller.failureMessage {
+                    Text(message).font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
+                }
+                Button("Retry opening data") { controller.retry() }
+                    .buttonStyle(ClinicalButtonStyle(filled: true))
+                Button("Reset app data…", role: .destructive) { confirmReset = true }
+                    .font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.critical)
             }
-            Button("Retry opening data") { controller.retry() }
-                .buttonStyle(ClinicalButtonStyle(filled: true))
-            Button("Reset app data…", role: .destructive) { confirmReset = true }
-                .font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.critical)
+            .padding(28).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(28).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(Clinical.canvas.ignoresSafeArea())
         .alert("Reset all app data?", isPresented: $confirmReset) {
             Button("Cancel", role: .cancel) {}
