@@ -36,4 +36,13 @@ final class DeepLinkRouter {
     /// Set when the monthly progress check-in notification (`progressCheckIn.0`) is tapped —
     /// CareView opens ProgressCheckInSheet and resets this.
     var openProgressCheckInRequested = false
+
+    var hasPendingRoute: Bool {
+        openLogRequested
+            || openProgressReportRequested
+            || openGuidedCaptureRequested
+            || openCareRequested
+            || openProceduresRequested
+            || openProgressCheckInRequested
+    }
 }

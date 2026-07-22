@@ -25,6 +25,12 @@ enum IntentHandoff {
         UserDefaults(suiteName: suiteName)?.set(true, forKey: pendingLogKey)
     }
 
+    /// Non-consuming visibility for launch precedence. Execution remains in RootView's existing
+    /// scene-phase handler so a lock or onboarding flow cannot swallow the request.
+    nonisolated static var hasPendingLog: Bool {
+        UserDefaults(suiteName: suiteName)?.bool(forKey: pendingLogKey) == true
+    }
+
     /// Reads and clears the pending-log flag; returns whether one was set.
     @discardableResult
     nonisolated static func consumePendingLog() -> Bool {
