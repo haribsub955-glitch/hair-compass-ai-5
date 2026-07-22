@@ -348,11 +348,11 @@ struct GuidedCaptureView: View {
     }
 
     private func save() {
-        guard let captured, let path = PhotoStore.shared.save(captured) else { return }
-        context.insert(PhotoRecord(
-            region: region, imagePath: path, createdAt: isFromLibrary ? takenOnDate : .now,
-            lighting: lighting, distance: distance, parting: parting, isWet: isWet, note: ""
-        ))
+        guard let captured else { return }
+        guard (try? PhotoRepository(context: context).create(
+            image: captured, region: region, createdAt: isFromLibrary ? takenOnDate : .now,
+            lighting: lighting, distance: distance, parting: parting, isWet: isWet
+        )) != nil else { return }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
     }

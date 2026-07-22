@@ -148,8 +148,7 @@ struct PhotosView: View {
         ) {
             Button("Delete", role: .destructive) {
                 if let record = deletePhotoCandidate {
-                    PhotoStore.shared.delete(record.imagePath)
-                    context.delete(record)
+                    try? PhotoRepository(context: context).delete(record)
                 }
                 deletePhotoCandidate = nil
             }

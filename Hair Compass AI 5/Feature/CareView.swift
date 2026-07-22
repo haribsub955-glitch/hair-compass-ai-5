@@ -1069,15 +1069,10 @@ struct CareView: View {
 
     private func toggle(_ treatment: Treatment, slot: String, currentlyDone: Bool) {
         if currentlyDone {
-            if let existing = doses.first(where: {
-                $0.treatment?.persistentModelID == treatment.persistentModelID
-                    && $0.slot == slot && calendar.isDateInToday($0.loggedAt)
-            }) {
-                context.delete(existing)
-            }
+            _ = try? DoseRepository(context: context).delete(treatment: treatment, slot: slot)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } else {
-            context.insert(TreatmentDose(treatment: treatment, loggedAt: .now, slot: slot))
+            _ = try? DoseRepository(context: context).log(treatment: treatment, slot: slot)
             // Light impact, paired with the check circle's spring pop — one quiet tap, not a fanfare.
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }

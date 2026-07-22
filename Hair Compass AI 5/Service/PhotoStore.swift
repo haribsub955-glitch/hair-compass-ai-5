@@ -80,6 +80,36 @@ final class PhotoStore {
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(path))
     }
 
+    func deleteCreatedFile(_ path: String) {
+        delete(path)
+    }
+
+    /// Moves a file aside before its SwiftData row is deleted. If saving that deletion fails,
+    /// `restoreDeletion` can put the file back; a missing legacy file remains a valid deletion.
+    func stageDeletion(_ path: String) throws -> PhotoDeletion {
+        guard !path.isEmpty else { return PhotoDeletion(originalPath: path, stagedPath: nil) }
+        let source = directory.appendingPathComponent(path)
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            return PhotoDeletion(originalPath: path, stagedPath: nil)
+        }
+        let staged = ".delete-\(UUID().uuidString)-\(path)"
+        try FileManager.default.moveItem(at: source, to: directory.appendingPathComponent(staged))
+        return PhotoDeletion(originalPath: path, stagedPath: staged)
+    }
+
+    func restoreDeletion(_ deletion: PhotoDeletion) {
+        guard let staged = deletion.stagedPath else { return }
+        try? FileManager.default.moveItem(
+            at: directory.appendingPathComponent(staged),
+            to: directory.appendingPathComponent(deletion.originalPath)
+        )
+    }
+
+    func finalizeDeletion(_ deletion: PhotoDeletion) {
+        guard let staged = deletion.stagedPath else { return }
+        try? FileManager.default.removeItem(at: directory.appendingPathComponent(staged))
+    }
+
     // MARK: - Raw bytes (backup / restore)
 
     /// The stored JPEG bytes exactly as written — used by backup so no lossy re-encode occurs.

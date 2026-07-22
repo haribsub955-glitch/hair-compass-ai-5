@@ -70,20 +70,18 @@ enum Seed {
             let noise = Double((offset * 7) % 9) - 4
 
             func clampBand(_ v: Double) -> Int { min(3, max(0, Int(v.rounded()))) }
-            let entry = DailyEntry(
-                date: day,
-                shed: ShedLevel(rawValue: clampBand(2.4 - progress * 1.6 + noise * 0.15)) ?? .normal,
-                flaking: clampBand(1.6 - progress * 1.0 + noise * 0.1),
-                erythema: clampBand(1.3 - progress * 0.9),
-                itch: clampBand(1.4 - progress * 0.9 + noise * 0.1),
-                sleepQuality: min(5, max(1, Int((3.2 + progress * 1.2 + noise * 0.1).rounded()))),
-                stress: min(5, max(1, Int((3.6 - progress * 1.1).rounded()))),
-                cigarettes: 0,
-                alcoholDrinks: offset % 6 == 0 ? 2 : 0,
-                oiliness: clampBand(1.4 - progress * 0.6),
-                note: ""
-            )
-            context.insert(entry)
+            _ = try? DailyEntryRepository(context: context, calendar: calendar).upsert(day: day) {
+                $0.shed = ShedLevel(rawValue: clampBand(2.4 - progress * 1.6 + noise * 0.15)) ?? .normal
+                $0.flaking = clampBand(1.6 - progress * 1.0 + noise * 0.1)
+                $0.erythema = clampBand(1.3 - progress * 0.9)
+                $0.itch = clampBand(1.4 - progress * 0.9 + noise * 0.1)
+                $0.sleepQuality = min(5, max(1, Int((3.2 + progress * 1.2 + noise * 0.1).rounded())))
+                $0.stress = min(5, max(1, Int((3.6 - progress * 1.1).rounded())))
+                $0.cigarettes = 0
+                $0.alcoholDrinks = offset % 6 == 0 ? 2 : 0
+                $0.oiliness = clampBand(1.4 - progress * 0.6)
+                $0.note = ""
+            }
 
             // A weekly HealthKit-style snapshot so Trends/AI have auto data to work with.
             if offset % 7 == 0 {
@@ -101,10 +99,12 @@ enum Seed {
             // Log doses with realistic ~85% adherence.
             if offset % 7 != 3 {
                 for slot in minox.slots where !(offset % 5 == 2 && slot == "08:00") {
-                    context.insert(TreatmentDose(treatment: minox, loggedAt: day, slot: slot))
+                    _ = try? DoseRepository(context: context, calendar: calendar)
+                        .log(treatment: minox, day: day, slot: slot)
                 }
                 for slot in fin.slots {
-                    context.insert(TreatmentDose(treatment: fin, loggedAt: day, slot: slot))
+                    _ = try? DoseRepository(context: context, calendar: calendar)
+                        .log(treatment: fin, day: day, slot: slot)
                 }
             }
         }

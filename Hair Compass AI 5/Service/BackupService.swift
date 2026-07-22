@@ -527,6 +527,8 @@ enum BackupService {
         finalizedPhotoRemover: (String) -> Void = { _ in },
         databaseSaver: (() throws -> Void)? = nil
     ) throws -> RestoreSummary {
+        // Intentionally remains outside the repositories in this pass. Restore already owns an
+        // atomic staged-file/database rollback; it is the last planned persistence migration.
         // Decode and validate the complete payload before touching either persistence layer.
         // In particular, a corrupt image at the end cannot arrive after earlier files/rows.
         let preparedTreatmentImages = try envelope.treatments.map {

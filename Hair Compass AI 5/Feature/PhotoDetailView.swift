@@ -138,8 +138,7 @@ struct PhotoDetailView: View {
     }
 
     private func delete() {
-        PhotoStore.shared.delete(record.imagePath)
-        context.delete(record)
+        guard (try? PhotoRepository(context: context).delete(record)) != nil else { return }
         onDelete()
         dismiss()
     }
