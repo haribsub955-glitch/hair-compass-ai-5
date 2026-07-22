@@ -2,6 +2,37 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+struct ScenePhaseDecision: Equatable {
+    var shouldShowPrivacyOverlay: Bool
+    var shouldMarkBackgrounded: Bool
+    var shouldEndRitualActivity: Bool
+
+    static func reduce(
+        phase: ScenePhase,
+        isLocked: Bool,
+        ritualPresented: Bool
+    ) -> ScenePhaseDecision {
+        switch phase {
+        case .inactive:
+            return ScenePhaseDecision(shouldShowPrivacyOverlay: true,
+                                      shouldMarkBackgrounded: false,
+                                      shouldEndRitualActivity: ritualPresented)
+        case .background:
+            return ScenePhaseDecision(shouldShowPrivacyOverlay: true,
+                                      shouldMarkBackgrounded: true,
+                                      shouldEndRitualActivity: ritualPresented)
+        case .active:
+            return ScenePhaseDecision(shouldShowPrivacyOverlay: false,
+                                      shouldMarkBackgrounded: false,
+                                      shouldEndRitualActivity: false)
+        @unknown default:
+            return ScenePhaseDecision(shouldShowPrivacyOverlay: isLocked,
+                                      shouldMarkBackgrounded: false,
+                                      shouldEndRitualActivity: false)
+        }
+    }
+}
+
 enum AppTab: String, CaseIterable, Identifiable {
     case today, trends, care, labs, photos
     var id: String { rawValue }
@@ -45,6 +76,7 @@ struct RootView: View {
     @State private var appLock = AppLockService()
     @State private var lockPresenter = LockWindowPresenter()
     @State private var privacyPresenter = PrivacyWindowPresenter()
+    @State private var owningWindowScene: UIWindowScene?
     @StateObject private var ritualCoordinator = LaunchRitualCoordinator()
     @State private var ritualKind: RitualKind?
     @State private var purchases = PurchaseService()
@@ -150,6 +182,7 @@ struct RootView: View {
                 .zIndex(100)
         }
         .background(Clinical.canvas.ignoresSafeArea())
+        .background(WindowSceneReader(scene: $owningWindowScene))
         .environment(healthKit)
         .environment(notifications)
         .environment(affiliates)
@@ -296,19 +329,31 @@ struct RootView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            let decision = ScenePhaseDecision.reduce(
+                phase: phase,
+                isLocked: appLock.isEnabled && appLock.isLocked,
+                ritualPresented: ritualKind != nil
+            )
+            if decision.shouldShowPrivacyOverlay {
+                privacyPresenter.present(in: owningWindowScene)
+            } else {
+                privacyPresenter.dismiss()
+            }
+            if decision.shouldEndRitualActivity {
+                RitualActivityService.shared.ritualStoppedBeingForeground()
+            }
+            if decision.shouldMarkBackgrounded {
+                appLock.markBackgrounded()
+                ritualCoordinator.markBackgrounded()
+            }
             switch phase {
             case .background:
                 // Both do their own bookkeeping: the lock relocks (if enabled), the ritual
                 // coordinator just timestamps for the >4h re-roll.
-                appLock.markBackgrounded()
-                ritualCoordinator.markBackgrounded()
-                privacyPresenter.present()
-                RitualActivityService.shared.ritualStoppedBeingForeground()
+                break
             case .inactive:
-                privacyPresenter.present()
-                RitualActivityService.shared.ritualStoppedBeingForeground()
+                break
             case .active:
-                privacyPresenter.dismiss()
                 // Activation may follow suspension/termination where no view teardown ran.
                 Task { await RitualActivityService.shared.reconcileOrphans() }
                 // A Siri/Shortcuts "Log check-in" hands off through the App Group — honour it on
@@ -358,9 +403,9 @@ struct RootView: View {
         .tint(Clinical.accent)
         .environment(appLock)
         .onOpenURL { url in
-            guard url.scheme == "haircompass" else { return }
+            guard let destination = DeepLinkRouter.destination(for: url) else { return }
             tab = .today
-            if url.host == "log", !showOnboarding { deepLinks.openLogRequested = true }
+            if destination == .checkIn, !showOnboarding { deepLinks.openLogRequested = true }
         }
     }
 
@@ -408,11 +453,9 @@ private final class LockWindowPresenter {
 private final class PrivacyWindowPresenter {
     private var window: UIWindow?
 
-    func present() {
+    func present(in scene: UIWindowScene?) {
         guard window == nil else { return }
-        guard let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState != .unattached }) else { return }
+        guard let scene else { return }
         let window = UIWindow(windowScene: scene)
         window.windowLevel = .alert + 2
         window.rootViewController = UIHostingController(rootView: PrivacySnapshotView())
@@ -423,6 +466,20 @@ private final class PrivacyWindowPresenter {
     func dismiss() {
         window?.isHidden = true
         window = nil
+    }
+}
+
+private struct WindowSceneReader: UIViewRepresentable {
+    @Binding var scene: UIWindowScene?
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        DispatchQueue.main.async { scene = view.window?.windowScene }
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        DispatchQueue.main.async { scene = view.window?.windowScene }
     }
 }
 

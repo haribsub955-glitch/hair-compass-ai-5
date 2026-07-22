@@ -11,6 +11,25 @@ struct RitualActivitySnapshot: Sendable, Equatable {
     var staleDate: Date
 }
 
+enum RitualActivityPresentation: CaseIterable {
+    case banner, expanded, compact, minimal
+}
+
+/// The four system presentations consume the same ActivityKit content state. Keeping that
+/// derivation pure prevents a banner/Island variant from quietly drifting from the others.
+enum RitualActivityContentStateBuilder {
+    static func build(
+        from snapshot: RitualActivitySnapshot,
+        for presentation: RitualActivityPresentation
+    ) -> RitualActivityAttributes.ContentState {
+        _ = presentation
+        return RitualActivityAttributes.ContentState(
+            stepName: snapshot.stepName, stepIndex: 1, totalSteps: 1,
+            progress: min(1, max(0, snapshot.progress)), endDate: snapshot.endDate
+        )
+    }
+}
+
 protocol RitualActivityClient: Sendable {
     @MainActor var activitiesEnabled: Bool { get }
     @MainActor func start(_ snapshot: RitualActivitySnapshot) throws
@@ -75,9 +94,7 @@ final class ActivityKitRitualClient: RitualActivityClient, @unchecked Sendable {
         }
     }
     private func content(_ snapshot: RitualActivitySnapshot) -> ActivityContent<RitualActivityAttributes.ContentState> {
-        let state = RitualActivityAttributes.ContentState(stepName: snapshot.stepName, stepIndex: 1,
-                                                          totalSteps: 1, progress: snapshot.progress,
-                                                          endDate: snapshot.endDate)
+        let state = RitualActivityContentStateBuilder.build(from: snapshot, for: .banner)
         return ActivityContent(state: state, staleDate: snapshot.staleDate)
     }
 }

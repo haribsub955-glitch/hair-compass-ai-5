@@ -81,11 +81,32 @@ struct HairCompassProvider: TimelineProvider {
     }
     private func load() -> WidgetSnapshot {
         guard let defaults = UserDefaults(suiteName: HairCompassWidgetStore.appGroup),
-              let data = defaults.data(forKey: HairCompassWidgetStore.snapshotKey),
-              let snap = try? JSONDecoder().decode(WidgetSnapshot.self, from: data) else {
+              let data = defaults.data(forKey: HairCompassWidgetStore.snapshotKey) else {
+            return WidgetSnapshotDecoder.decode(nil)
+        }
+        return WidgetSnapshotDecoder.decode(data)
+    }
+}
+
+private enum WidgetSnapshotDecoder {
+    static func decode(_ data: Data?) -> WidgetSnapshot {
+        guard let data, let snapshot = try? JSONDecoder().decode(WidgetSnapshot.self, from: data) else {
             return .placeholder
         }
-        return snap
+        return snapshot
+    }
+}
+
+private enum WidgetDeepLinkBuilder {
+    static func url(for family: WidgetFamily) -> URL {
+        switch family {
+        case .systemSmall, .systemMedium:
+            return URL(string: "haircompass://log")!
+        case .accessoryCircular, .accessoryRectangular, .accessoryInline:
+            return URL(string: "haircompass://lock")!
+        default:
+            return URL(string: "haircompass://")!
+        }
     }
 }
 
@@ -200,7 +221,7 @@ private struct SmallWidgetView: View {
                 .minimumScaleFactor(0.8)
                 .multilineTextAlignment(.center)
         }
-        .widgetURL(URL(string: "haircompass://log"))
+        .widgetURL(WidgetDeepLinkBuilder.url(for: .systemSmall))
         .containerBackground(WidgetPalette.canvas, for: .widget)
     }
 
@@ -258,7 +279,7 @@ private struct MediumWidgetView: View {
             }
             Spacer(minLength: 0)
         }
-        .widgetURL(URL(string: "haircompass://log"))
+        .widgetURL(WidgetDeepLinkBuilder.url(for: .systemMedium))
         .containerBackground(WidgetPalette.canvas, for: .widget)
     }
 
@@ -291,7 +312,7 @@ private struct AccessoryCircularWidgetView: View {
             Text("\(snapshot.streakDays)")
         }
         .gaugeStyle(.accessoryCircular)
-        .widgetURL(URL(string: "haircompass://log"))
+        .widgetURL(WidgetDeepLinkBuilder.url(for: .accessoryCircular))
     }
 }
 
@@ -311,7 +332,7 @@ private struct AccessoryRectangularWidgetView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
-        .widgetURL(URL(string: "haircompass://log"))
+        .widgetURL(WidgetDeepLinkBuilder.url(for: .accessoryRectangular))
     }
 
     private var streakStatusLine: String {
@@ -331,7 +352,7 @@ private struct AccessoryInlineWidgetView: View {
 
     var body: some View {
         Label(inlineText, systemImage: snapshot.hasLoggedToday ? "checkmark.circle.fill" : "circle")
-            .widgetURL(URL(string: "haircompass://log"))
+        .widgetURL(WidgetDeepLinkBuilder.url(for: .accessoryInline))
     }
 
     private var inlineText: String {
