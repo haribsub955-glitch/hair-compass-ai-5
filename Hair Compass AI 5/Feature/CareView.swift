@@ -1037,6 +1037,9 @@ struct CareView: View {
         .opacity(t.isActive ? 1 : 0.6)
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onTapGesture { detailTreatment = t }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens treatment details.")
+        .accessibilityAction(named: "Open treatment details") { detailTreatment = t }
     }
 
     /// True when a progress photo exists within ±7 days of the treatment's start — close enough

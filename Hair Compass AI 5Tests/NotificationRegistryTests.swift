@@ -33,6 +33,17 @@ struct NotificationRegistryTests {
         #expect(result.error?.contains("could not be scheduled") == true)
     }
 
+    @Test func addFailureKeepsExistingStillDesiredReminder() async {
+        let existing = Self.request("owned.existing")
+        let client = NotificationClientFake(initial: [existing], failingAdds: ["owned.new"])
+        let result = await NotificationRegistry(client: client).reconcile(
+            key: "owned", generation: 1, prefixes: ["owned."],
+            desired: [existing, Self.request("owned.new")], limit: 64)
+
+        #expect(result.error?.contains("could not be scheduled") == true)
+        #expect(await client.identifiers().contains("owned.existing"))
+    }
+
     @Test func sixtyFourBoundaryCountsForeignRequestsOnce() async {
         let foreign = (0..<63).map { Self.request("foreign.\($0)") }
         let client = NotificationClientFake(initial: foreign)

@@ -489,4 +489,66 @@ struct BackupServiceTests {
         #expect(try context.fetch(FetchDescriptor<Treatment>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<PhotoRecord>()).isEmpty)
     }
+
+    @Test func secondPhotoCommitFailureRemovesRowsAndEveryFile() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        var envelope = BackupService.Envelope()
+        envelope.photos = [
+            .init(regionRaw: PhotoRegion.vertex.rawValue, createdAt: Date(timeIntervalSince1970: 1),
+                  imageBase64: validImageData.base64EncodedString()),
+            .init(regionRaw: PhotoRegion.templeLeft.rawValue, createdAt: Date(timeIntervalSince1970: 2),
+                  imageBase64: validImageData.base64EncodedString())
+        ]
+        var staged = Set<String>()
+        var finalized = Set<String>()
+        var writes = 0
+        var commits = 0
+
+        #expect(throws: (any Error).self) {
+            _ = try BackupService.restore(envelope, into: context, photoWriter: { _ in
+                writes += 1
+                let path = "photo-\(writes).jpg"
+                staged.insert(path)
+                return path
+            }, photoRemover: { staged.remove($0) }, photoCommitter: { path in
+                commits += 1
+                if commits == 2 { throw CocoaError(.fileWriteUnknown) }
+                staged.remove(path)
+                finalized.insert(path)
+            }, finalizedPhotoRemover: { finalized.remove($0) })
+        }
+
+        #expect(staged.isEmpty)
+        #expect(finalized.isEmpty)
+        #expect(!context.hasChanges)
+        #expect(try context.fetch(FetchDescriptor<PhotoRecord>()).isEmpty)
+    }
+
+    @Test func databaseSaveFailureRemovesFinalizedPhotosAndRows() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        var envelope = BackupService.Envelope()
+        envelope.photos = [.init(regionRaw: PhotoRegion.vertex.rawValue,
+                                 imageBase64: validImageData.base64EncodedString())]
+        var staged = Set<String>()
+        var finalized = Set<String>()
+
+        #expect(throws: (any Error).self) {
+            _ = try BackupService.restore(envelope, into: context, photoWriter: { _ in
+                staged.insert("photo.jpg")
+                return "photo.jpg"
+            }, photoRemover: { staged.remove($0) }, photoCommitter: { path in
+                staged.remove(path)
+                finalized.insert(path)
+            }, finalizedPhotoRemover: { finalized.remove($0) }, databaseSaver: {
+                throw CocoaError(.fileWriteUnknown)
+            })
+        }
+
+        #expect(staged.isEmpty)
+        #expect(finalized.isEmpty)
+        #expect(!context.hasChanges)
+        #expect(try context.fetch(FetchDescriptor<PhotoRecord>()).isEmpty)
+    }
 }

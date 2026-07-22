@@ -501,7 +501,8 @@ enum BackupService {
         return try restore(envelope, into: context,
                            photoWriter: { PhotoStore.shared.stageData($0) },
                            photoRemover: { PhotoStore.shared.deleteStagedData($0) },
-                           photoCommitter: { try PhotoStore.shared.commitStagedData($0) })
+                           photoCommitter: { try PhotoStore.shared.commitStagedData($0) },
+                           finalizedPhotoRemover: { PhotoStore.shared.delete($0) })
     }
 
     /// Merge-safe upsert of a decoded envelope. Nothing is ever deleted; records that
@@ -522,7 +523,9 @@ enum BackupService {
         into context: ModelContext,
         photoWriter: (Data) -> String?,
         photoRemover: (String) -> Void = { _ in },
-        photoCommitter: (String) throws -> Void = { _ in }
+        photoCommitter: (String) throws -> Void = { _ in },
+        finalizedPhotoRemover: (String) -> Void = { _ in },
+        databaseSaver: (() throws -> Void)? = nil
     ) throws -> RestoreSummary {
         // Decode and validate the complete payload before touching either persistence layer.
         // In particular, a corrupt image at the end cannot arrive after earlier files/rows.
@@ -787,9 +790,25 @@ enum BackupService {
             summary.inserted += 1
         }
 
-        try context.save()
+        let pathsToCommit = stagedPaths.filter { committedPaths.contains($0) }
         stagedPaths.filter { !committedPaths.contains($0) }.forEach(photoRemover)
-        for path in committedPaths { try photoCommitter(path) }
+        var finalizedPaths: [String] = []
+        do {
+            for path in pathsToCommit {
+                try photoCommitter(path)
+                finalizedPaths.append(path)
+            }
+        } catch {
+            finalizedPaths.forEach(finalizedPhotoRemover)
+            pathsToCommit.dropFirst(finalizedPaths.count).forEach(photoRemover)
+            throw error
+        }
+        do {
+            if let databaseSaver { try databaseSaver() } else { try context.save() }
+        } catch {
+            finalizedPaths.forEach(finalizedPhotoRemover)
+            throw error
+        }
         return summary
         } catch {
             context.rollback()

@@ -19,6 +19,36 @@ protocol RitualActivityClient: Sendable {
     @MainActor func endAll() async
 }
 
+protocol RitualExpiryCancellation: Sendable {
+    func cancel()
+}
+
+@MainActor
+protocol RitualExpiryScheduling: Sendable {
+    func schedule(deadline: Date, action: @escaping @MainActor @Sendable () async -> Void)
+        -> any RitualExpiryCancellation
+}
+
+private final class RitualExpiryTask: RitualExpiryCancellation, @unchecked Sendable {
+    let task: Task<Void, Never>
+    init(task: Task<Void, Never>) { self.task = task }
+    func cancel() { task.cancel() }
+}
+
+@MainActor
+private struct SystemRitualExpiryScheduler: RitualExpiryScheduling {
+    func schedule(deadline: Date, action: @escaping @MainActor @Sendable () async -> Void)
+        -> any RitualExpiryCancellation {
+        let task = Task { @MainActor in
+            let delay = max(0, deadline.timeIntervalSinceNow)
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard !Task.isCancelled else { return }
+            await action()
+        }
+        return RitualExpiryTask(task: task)
+    }
+}
+
 @MainActor
 final class ActivityKitRitualClient: RitualActivityClient, @unchecked Sendable {
     private var activity: Activity<RitualActivityAttributes>?
@@ -74,25 +104,38 @@ enum RitualActivityPolicy {
 final class RitualActivityService {
     static let shared = RitualActivityService()
     private let client: any RitualActivityClient
+    private let expiryScheduler: any RitualExpiryScheduling
     private var snapshot: RitualActivitySnapshot?
+    private var expiryCancellation: (any RitualExpiryCancellation)?
+    private var expiryID: UUID?
     private var lastUpdateAt: Date?
     private let minUpdateInterval: TimeInterval = 0.25
 
-    init(client: (any RitualActivityClient)? = nil) { self.client = client ?? ActivityKitRitualClient() }
+    init(client: (any RitualActivityClient)? = nil,
+         expiryScheduler: (any RitualExpiryScheduling)? = nil) {
+        self.client = client ?? ActivityKitRitualClient()
+        self.expiryScheduler = expiryScheduler ?? SystemRitualExpiryScheduler()
+    }
 
     func reconcileOrphans() async {
         // An activation task can race a newly presented RitualView. Once this process owns a
         // current snapshot it is not an orphan and must not be swept away.
         guard snapshot == nil else { return }
+        cancelExpiry()
         await client.endAll()
     }
 
     func start(kind: RitualKind, title: String, startDate: Date) {
+        cancelExpiry()
         guard client.activitiesEnabled else { return }
         let value = RitualActivitySnapshot(kind: kind, title: title, startDate: startDate,
             stepName: title, progress: 0, endDate: nil,
             staleDate: RitualActivityPolicy.staleDate(startDate: startDate, estimatedEndDate: nil))
-        do { try client.start(value); snapshot = value; lastUpdateAt = nil } catch { snapshot = nil }
+        do {
+            try client.start(value)
+            snapshot = value; lastUpdateAt = nil
+            scheduleExpiry(at: startDate.addingTimeInterval(RitualActivityPolicy.maximumLifetime))
+        } catch { snapshot = nil }
     }
 
     func update(stepName: String, progress: Double, endDate: Date?) {
@@ -107,6 +150,7 @@ final class RitualActivityService {
     }
 
     func end(stepName: String, progress: Double, completed: Bool) {
+        cancelExpiry()
         guard var value = snapshot else { return }
         snapshot = nil
         value.stepName = completed ? "Complete" : stepName
@@ -118,5 +162,31 @@ final class RitualActivityService {
     func ritualStoppedBeingForeground() {
         guard snapshot != nil else { return }
         end(stepName: snapshot?.stepName ?? "Ritual", progress: snapshot?.progress ?? 0, completed: false)
+    }
+
+
+    private func scheduleExpiry(at deadline: Date) {
+        let id = UUID()
+        expiryID = id
+        expiryCancellation = expiryScheduler.schedule(deadline: deadline) { [weak self] in
+            self?.expire(id: id)
+        }
+    }
+
+    private func cancelExpiry() {
+        expiryCancellation?.cancel()
+        expiryCancellation = nil
+        expiryID = nil
+    }
+
+    private func expire(id: UUID) {
+        guard expiryID == id, let value = snapshot else { return }
+        expiryCancellation = nil
+        expiryID = nil
+        snapshot = nil
+        var expired = value
+        expired.endDate = nil
+        expired.staleDate = Date()
+        Task { await client.endCurrent(expired, completed: false) }
     }
 }

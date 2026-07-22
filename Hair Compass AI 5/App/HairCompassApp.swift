@@ -13,6 +13,19 @@ protocol PersistenceFileOperating {
 
 extension FileManager: PersistenceFileOperating {}
 
+struct PersistenceRecoveryRollbackError: LocalizedError {
+    let originalErrorDescription: String
+    let recoveryDirectory: URL
+    let rollbackFailureDescriptions: [String]
+
+    var errorDescription: String? {
+        "Persistence recovery left the live SQLite set split after rollback failed "
+            + "(original error: \(originalErrorDescription); rollback: "
+            + "\(rollbackFailureDescriptions.joined(separator: "; "))). The verified recovery set is at "
+            + recoveryDirectory.path
+    }
+}
+
 enum HairCompassSchemaV1: VersionedSchema {
     static let versionIdentifier = Schema.Version(1, 0, 0)
     static var models: [any PersistentModel.Type] {
@@ -104,8 +117,19 @@ final class PersistenceController {
         do {
             for item in copied { try fileManager.removeItem(at: item.source) }
         } catch {
+            var rollbackFailures: [String] = []
             for item in copied where !fileManager.fileExists(atPath: item.source.path) {
-                try? fileManager.copyItem(at: item.destination, to: item.source)
+                do { try fileManager.copyItem(at: item.destination, to: item.source) }
+                catch {
+                    rollbackFailures.append("\(item.source.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+            if !rollbackFailures.isEmpty {
+                throw PersistenceRecoveryRollbackError(
+                    originalErrorDescription: error.localizedDescription,
+                    recoveryDirectory: directory,
+                    rollbackFailureDescriptions: rollbackFailures
+                )
             }
             throw error
         }

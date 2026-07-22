@@ -88,12 +88,18 @@ struct FlashCardView: View {
                 .rotation3DEffect(.degrees(flipped ? 180 : 0), axis: (x: 0, y: 1, z: 0))
             }
         }
-        .onTapGesture {
-            withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.5, dampingFraction: 0.82)) {
-                flipped.toggle()
-            }
-            UISelectionFeedbackGenerator().selectionChanged()
+        .onTapGesture { flip() }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityValue(flipped ? "Back" : "Front")
+        .accessibilityHint("Shows the other side of this learning card.")
+        .accessibilityAction(named: "Flip card") { flip() }
+    }
+
+    private func flip() {
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.5, dampingFraction: 0.82)) {
+            flipped.toggle()
         }
+        UISelectionFeedbackGenerator().selectionChanged()
     }
 
     // MARK: Faces
