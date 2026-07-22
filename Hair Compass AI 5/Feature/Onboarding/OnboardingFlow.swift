@@ -189,17 +189,25 @@ struct OnboardingFlow: View {
     private func finish() {
         // Seed today's full status (shedding + scalp + stress/sleep) so day one has data, plus
         // one TriggerEvent per recent trigger the user flagged.
-        let today = Calendar.current.startOfDay(for: .now)
-        let hasToday = (try? context.fetch(FetchDescriptor<DailyEntry>(predicate: #Predicate { $0.date >= today })))?.isEmpty == false
-        if !hasToday {
-            context.insert(OnboardingSeed.dayOneEntry(
+        let seed = OnboardingSeed.dayOneEntry(
                 shedIntensity: shedIntensity,
                 oiliness: GaugeBand.index(oilI, count: 4),
                 flaking: GaugeBand.index(flakeI, count: 4),
                 itch: GaugeBand.index(itchI, count: 4),
                 stress: GaugeBand.index(stressI, count: 5) + 1,
                 sleepQuality: GaugeBand.index(sleepI, count: 5) + 1
-            ))
+            )
+        _ = try? DailyEntryRepository(context: context).upsert(
+            day: .now, updateExisting: false
+        ) { entry in
+            // Onboarding has always seeded only an empty day. A resumed flow must not replace
+            // any existing entry, including one whose values happen to equal model defaults.
+            entry.shed = seed.shed
+            entry.oiliness = seed.oiliness
+            entry.flaking = seed.flaking
+            entry.itch = seed.itch
+            entry.stress = seed.stress
+            entry.sleepQuality = seed.sleepQuality
         }
         for event in OnboardingSeed.triggerEvents(selectedTriggers) {
             context.insert(event)

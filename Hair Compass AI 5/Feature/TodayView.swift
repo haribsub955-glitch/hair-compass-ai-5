@@ -128,7 +128,9 @@ struct TodayView: View {
                         if let entry = todayEntry {
                             entry.shed = level
                         } else {
-                            context.insert(DailyEntry(date: .now, shed: level))
+                            try? DailyEntryRepository(context: context).upsert(day: .now) {
+                                $0.shed = level
+                            }
                         }
                     }
                 )
@@ -435,16 +437,10 @@ struct TodayView: View {
 
     private func toggle(_ treatment: Treatment, slot: String, currentlyDone: Bool) {
         if currentlyDone {
-            if let existing = doses.first(where: {
-                $0.treatment?.persistentModelID == treatment.persistentModelID
-                    && $0.slot == slot
-                    && calendar.isDateInToday($0.loggedAt)
-            }) {
-                context.delete(existing)
-            }
+            _ = try? DoseRepository(context: context).delete(treatment: treatment, slot: slot)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } else {
-            context.insert(TreatmentDose(treatment: treatment, loggedAt: .now, slot: slot))
+            _ = try? DoseRepository(context: context).log(treatment: treatment, slot: slot)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
     }

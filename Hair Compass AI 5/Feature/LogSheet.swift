@@ -493,28 +493,21 @@ struct LogSheet: View {
         // mutates (dates/timestamps), and a newly inserted entry isn't in the before arrays.
         let before = CheckInReward.Snapshot(context: context)
 
-        let target: DailyEntry
-        if let e = existing {
-            target = e
-        } else if let sameDay = fetchEntry(on: logDate) {
-            // Upsert: a row for this calendar day already exists — write into it,
-            // never insert a duplicate.
-            target = sameDay
-        } else {
-            target = DailyEntry(date: HairAnalytics.normalizedLogDate(for: logDate))
-            context.insert(target)
+        // `existing` remains a presentation hint; the repository re-resolves by calendar day
+        // so every entry path shares the same one-row invariant without replacing richer data.
+        _ = try? DailyEntryRepository(context: context).upsert(day: logDate) { target in
+            target.shed = shed
+            target.washedHair = washedHair
+            target.flaking = flaking
+            target.erythema = erythema
+            target.itch = itch
+            target.sleepQuality = sleepQuality
+            target.stress = stress
+            target.cigarettes = cigarettes
+            target.alcoholDrinks = alcoholDrinks
+            target.oiliness = oiliness
+            target.note = note
         }
-        target.shed = shed
-        target.washedHair = washedHair
-        target.flaking = flaking
-        target.erythema = erythema
-        target.itch = itch
-        target.sleepQuality = sleepQuality
-        target.stress = stress
-        target.cigarettes = cigarettes
-        target.alcoholDrinks = alcoholDrinks
-        target.oiliness = oiliness
-        target.note = note
 
         let after = CheckInReward.Snapshot(context: context)
         let reward = CheckInReward.build(before: before, after: after)
