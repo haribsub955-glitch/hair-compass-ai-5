@@ -339,7 +339,7 @@ struct TodayView: View {
     }
 
     /// Source label + "record-keeping, not diagnosis" + the flagship AI affordances, said once
-    /// on one line instead of stacking separate statements down a card. "Ask AI" is the
+    /// on one line instead of stacking separate statements down a card. "Ask Wren" is the
     /// first-class entry point into the on-device hair chat — previously reachable only three
     /// levels deep inside Compare; "Deep analysis" opens the one-tap written summary.
     private var insightFootnote: some View {
@@ -357,14 +357,14 @@ struct TodayView: View {
                 } label: {
                     HStack(spacing: 4) {
                         CompanionView(moment: .resting, variant: .avatar, size: 16)
-                        Text("Ask Wren")
+                        Text("Ask \(Companion.name)")
                         Image(systemName: "chevron.right").font(Clinical.body(8, weight: .semibold))
                     }
                     .font(Clinical.body(11, weight: .semibold))
                     .foregroundStyle(Clinical.accent)
                 }
                 .buttonStyle(.clinicalPressable)
-                .accessibilityLabel("Ask Wren about your tracking record")
+                .accessibilityLabel("Ask \(Companion.name) about your tracking record")
 
                 Button {
                     showDeepAnalysis = true

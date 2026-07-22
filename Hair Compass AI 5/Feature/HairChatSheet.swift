@@ -1,12 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// The hair-science chat sheet — opened from the Compare screen's "Ask AI" chip over a specific
-/// chart, from Today's "Ask AI" button over the whole record, and from Deep analysis's
+/// The hair-science chat sheet — opened from the Compare screen's "Ask Wren" chip over a specific
+/// chart, from Today's "Ask Wren" button over the whole record, and from Deep analysis's
 /// "Ask a follow-up question" chip. Explains the on-screen context over the canonical `AIContext`
 /// JSON and allows restricted chatting — hair science and the person's own data only (the
 /// restriction lives in `HairChatPrompt.system`). Header copy and starter questions are
-/// parameterized (`eyebrow`/`title`/`starterKind`) so each entry point reads naturally. Text
+/// parameterized (`eyebrow`/`starterKind`) so each entry point reads naturally. Text
 /// only: photos never enter this feature, and it runs entirely on-device (Apple Intelligence) —
 /// nothing leaves the device. Shows a clear card on hardware without on-device AI.
 struct HairChatSheet: View {

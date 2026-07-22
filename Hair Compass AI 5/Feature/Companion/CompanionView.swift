@@ -26,7 +26,7 @@ struct CompanionView: View {
             LivingArtwork(art: Companion.pose(for: moment), contentMode: .fit)
                 .frame(width: size, height: size)
         case .avatar:
-            Image(Companion.pose(for: moment))
+            Image(CompanionArt.avatar)
                 .resizable()
                 .scaledToFill()
                 .frame(width: size, height: size)
