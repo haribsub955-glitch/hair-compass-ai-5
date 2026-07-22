@@ -45,7 +45,7 @@ struct DeepAnalysisSheet: View {
         .sheet(isPresented: $showChat) {
             HairChatSheet(
                 contextJSON: chatContext, focus: chatFocus,
-                eyebrow: "Ask about your record", title: "Ask a follow-up",
+                eyebrow: "Ask about your record",
                 starterKind: .fullRecord
             )
             .presentationDetents([.medium, .large], selection: $chatDetent)
