@@ -24,13 +24,14 @@ struct CheckInCelebration: View {
                 Spacer(minLength: 0)
 
                 LivingArtwork(
-                    art: BrandArt.medallion,
+                    art: CompanionArt.celebrating,
                     contentMode: .fit,
                     travel: 2,
                     zoom: 0.025,
                     phase: 0.8
                 )
                 .frame(width: 72, height: 72)
+                .accessibilityHidden(true)
 
                 if reward.leveledUp {
                     levelUpHeadline
