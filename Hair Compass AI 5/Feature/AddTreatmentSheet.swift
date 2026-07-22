@@ -44,6 +44,14 @@ struct AddTreatmentSheet: View {
     @State private var aiIngredientSummary = ""
     @State private var analysisService = OnDeviceAnalysisService()
 
+    init(initialClass: TreatmentClass = .minoxidil) {
+        _treatmentClass = State(initialValue: initialClass)
+        let preset = TreatmentGuide.presets(for: initialClass).first
+        _name = State(initialValue: preset?.name ?? "")
+        _dose = State(initialValue: preset?.dose ?? "")
+        _times = State(initialValue: preset?.scheduleTimes ?? (initialClass.isDaily ? "08:00,21:00" : ""))
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {

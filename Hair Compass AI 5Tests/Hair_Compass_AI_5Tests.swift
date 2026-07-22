@@ -981,3 +981,44 @@ struct Hair_Compass_AI_5Tests {
         #expect(abs(pct - 1.0) < 0.001)
     }
 }
+
+@Suite("Current progress read")
+struct CurrentProgressReadTests {
+    @Test func tooEarlyBeforeWeek24() {
+        #expect(CurrentProgressRead.evaluate(week: 23, treatmentPhase: "Week 23", honestRead: "Improving",
+            loggingCoverage: 1, adherence: 1, monthlyCheckInCount: 3, sameRegionPhotoCount: 3) == .tooEarly(week: 23))
+    }
+
+    @Test func buildsComparisonUntilTwoSameRegionPhotos() {
+        #expect(CurrentProgressRead.evaluate(week: 24, treatmentPhase: "Week 24", honestRead: "Stable",
+            loggingCoverage: 1, adherence: 1, monthlyCheckInCount: 3, sameRegionPhotoCount: 1) == .buildingPhotos(remaining: 1))
+    }
+
+    @Test func improvingRequiresCoverageConsistencyAndCheckIns() {
+        #expect(CurrentProgressRead.evaluate(week: 24, treatmentPhase: "Week 24", honestRead: "Signals are improving",
+            loggingCoverage: 0.5, adherence: 0.8, monthlyCheckInCount: 2, sameRegionPhotoCount: 2) == .improving)
+    }
+
+    @Test func readyWhenEvidenceIsReviewableButNotConsistentlyImproving() {
+        #expect(CurrentProgressRead.evaluate(week: 24, treatmentPhase: "Week 24", honestRead: "Signals are stable",
+            loggingCoverage: 0.49, adherence: 0.79, monthlyCheckInCount: 2, sameRegionPhotoCount: 2) == .readyToReview)
+    }
+}
+
+@Suite("Missed dose records")
+struct MissedDoseRecordTests {
+    @Test func storesReasonWithoutCreatingACompletedDose() {
+        let treatment = Treatment(name: "Topical", treatmentClass: .minoxidil)
+        let omission = MissedDoseRecord(treatment: treatment, slot: "21:00", reason: .supply)
+        #expect(omission.reason == .supply)
+        #expect(treatment.doses.isEmpty)
+    }
+
+    @Test func neutralSummaryGroupsReasons() {
+        let records = [
+            MissedDoseRecord(reason: .supply), MissedDoseRecord(reason: .supply),
+            MissedDoseRecord(reason: .supply), MissedDoseRecord(reason: .irritation)
+        ]
+        #expect(ProgressReport.missedDoseSummary(records) == "4 missed applications: 3 supply, 1 irritation")
+    }
+}

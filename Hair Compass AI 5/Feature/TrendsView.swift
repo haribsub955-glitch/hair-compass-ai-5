@@ -5,6 +5,7 @@ struct TrendsView: View {
     @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
+    @Query private var missedDoseRecords: [MissedDoseRecord]
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
     @Query(sort: \TriggerEvent.date, order: .reverse) private var triggers: [TriggerEvent]
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
@@ -17,6 +18,7 @@ struct TrendsView: View {
     @State private var showCompare = false
     @State private var showExport = false
     @State private var showBadges = false
+    @State private var showReport = false
 
     // Round-5 addition: 1Y and All. The app's central teaching is "judge at 24 weeks" and
     // treatment journeys run multi-year — a 180-day cap meant the moment someone passed ~week
@@ -88,6 +90,8 @@ struct TrendsView: View {
 
                 trajectoryAnnotation
 
+                currentReadCard
+
                 JourneyChart(
                     entries: entries,
                     treatments: treatments,
@@ -157,6 +161,9 @@ struct TrendsView: View {
             }
         }
         .sheet(isPresented: $showExport) { ExportSheet() }
+        .sheet(isPresented: $showReport) {
+            if let report = progressReport { ProgressReportSheet(report: report, photos: photos) }
+        }
         .sheet(isPresented: $showBadges) {
             AchievementsSheet(
                 entries: entries, treatments: treatments, doses: doses,
@@ -367,6 +374,50 @@ struct TrendsView: View {
     // MARK: Baseline context
 
     private var profile: Profile? { profiles.first }
+
+    private var progressReport: ProgressReport? {
+        ProgressReport.build(entries: entries, treatments: treatments, doses: doses, labs: labs,
+                             sideEffects: sideEffectLogs, triggers: triggers, missedDoses: missedDoseRecords)
+    }
+
+    private var currentRead: CurrentProgressRead? {
+        guard let report = progressReport else { return nil }
+        let elapsedDays = max(1, report.weekNumber * 7)
+        let coverage = Double(report.entryCount) / Double(elapsedDays)
+        let sameRegionCount = Dictionary(grouping: photos, by: \.regionRaw).values.map(\.count).max() ?? 0
+        return .evaluate(
+            week: report.weekNumber,
+            treatmentPhase: report.treatment.map { TreatmentGuide.phase(for: $0.treatmentClass, weeksElapsed: report.weekNumber) } ?? nil,
+            honestRead: report.honestRead,
+            loggingCoverage: min(1, coverage),
+            adherence: report.adherence?.overall,
+            monthlyCheckInCount: progressCheckIns.count,
+            sameRegionPhotoCount: sameRegionCount
+        )
+    }
+
+    @ViewBuilder private var currentReadCard: some View {
+        if let read = currentRead {
+            Button {
+                if read.opensPhotos { showCompare = true } else { showReport = true }
+            } label: {
+                ClinicalCard(padding: 14) {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Eyebrow(text: "Your current read")
+                            Text(read.title)
+                                .font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.accent)
+                    }
+                }
+            }
+            .buttonStyle(.clinicalPressable)
+        }
+    }
 
     // MARK: At-a-glance trajectory
 

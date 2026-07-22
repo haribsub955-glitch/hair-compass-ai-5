@@ -5,6 +5,7 @@ import SwiftUI
 struct RecommenderView: View {
     let condition: HairCondition
     let sex: BiologicalSex
+    var onAction: (RecommendedAction) -> Void = { _ in }
 
     private var options: [RecommendedOption] { TreatmentRecommender.options(condition: condition, sex: sex) }
 
@@ -40,6 +41,11 @@ struct RecommenderView: View {
                             note(icon: "stethoscope", option.clinicianNote, color: Clinical.accent)
                             if let caution = option.caution {
                                 note(icon: "exclamationmark.triangle", caution, color: Clinical.warning)
+                            }
+                            if let action = option.action {
+                                Button(action.title) { onAction(action) }
+                                    .buttonStyle(ClinicalButtonStyle(filled: false))
+                                    .padding(.top, 3)
                             }
                         }
                     }

@@ -19,6 +19,7 @@ struct TreatmentDetailSheet: View {
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query private var allTreatments: [Treatment]
     @Query private var doses: [TreatmentDose]
+    @Query(sort: \MissedDoseRecord.date, order: .reverse) private var missedDoseRecords: [MissedDoseRecord]
     @Query private var labs: [LabResult]
     @Query private var sideEffectLogs: [SideEffectLog]
     @Query private var triggerEvents: [TriggerEvent]
@@ -47,6 +48,7 @@ struct TreatmentDetailSheet: View {
                     refillSection
                     ingredientsSection
                     tolerabilitySection
+                    omissionSection
                     Text("A private record for your own prescriber conversations — not medical advice.")
                         .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
@@ -67,6 +69,27 @@ struct TreatmentDetailSheet: View {
         }
     }
 
+    @ViewBuilder private var omissionSection: some View {
+        let records = missedDoseRecords.filter { $0.treatment?.persistentModelID == treatment.persistentModelID }
+        if !records.isEmpty {
+            section("Missed applications") {
+                ClinicalCard(padding: 16) {
+                    VStack(alignment: .leading, spacing: 9) {
+                        if let summary = ProgressReport.missedDoseSummary(records) {
+                            Text(summary).font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.ink)
+                        }
+                        ForEach(records) { record in
+                            Text("\(record.date.formatted(date: .abbreviated, time: .omitted)) · \(record.reason.title)")
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                        }
+                        Text("A neutral record for review; clinician-directed pauses are not treated as a failure.")
+                            .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
+                    }
+                }
+            }
+        }
+    }
+
     /// This treatment's own progress report — focused via `ProgressReport.build(focus:)` so a
     /// treatment added well after another one gets its own week clock and honest read instead of
     /// reusing whichever treatment happens to be earliest (round-5 fix).
@@ -74,6 +97,7 @@ struct TreatmentDetailSheet: View {
         ProgressReport.build(
             entries: entries, treatments: allTreatments, doses: doses,
             labs: labs, sideEffects: sideEffectLogs, triggers: triggerEvents,
+            missedDoses: missedDoseRecords,
             focus: treatment
         )
     }

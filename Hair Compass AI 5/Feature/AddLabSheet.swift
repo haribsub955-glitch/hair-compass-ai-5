@@ -23,6 +23,11 @@ struct AddLabSheet: View {
     /// below), never before.
     @State private var proposal: LabProposal?
 
+    init(initialTest: LabTest = .ferritin) {
+        _test = State(initialValue: initialTest)
+        _unitLabel = State(initialValue: initialTest.unit)
+    }
+
     private var enteredValue: Double? { Double(valueText.replacingOccurrences(of: ",", with: ".")) }
     private var selectedUnit: LabUnitOption { test.unitOptions.first { $0.label == unitLabel } ?? test.unitOptions[0] }
     /// The value actually stored — converted to `test`'s canonical unit if a non-canonical

@@ -29,7 +29,7 @@ struct PersistenceRecoveryRollbackError: LocalizedError {
 enum HairCompassSchemaV1: VersionedSchema {
     static let versionIdentifier = Schema.Version(1, 0, 0)
     static var models: [any PersistentModel.Type] {
-        [Profile.self, DailyEntry.self, Treatment.self, TreatmentDose.self,
+        [Profile.self, DailyEntry.self, Treatment.self, TreatmentDose.self, MissedDoseRecord.self,
          SideEffectLog.self, LabResult.self, PhotoRecord.self, HealthSnapshot.self,
          TriggerEvent.self, ProcedureAppointment.self, ProgressCheckIn.self]
     }

@@ -13,6 +13,7 @@ struct CareView: View {
     @Environment(\.openURL) private var openURL
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
+    @Query private var missedDoseRecords: [MissedDoseRecord]
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     @Query private var sideEffectLogs: [SideEffectLog]
@@ -50,6 +51,12 @@ struct CareView: View {
     /// `.cascade` delete rules), so this is a confirm-first path with "Mark inactive instead"
     /// offered alongside the destructive action.
     @State private var deleteTreatmentCandidate: Treatment?
+    @State private var recommendedTreatmentClass: TreatmentClass?
+    @State private var showRecommendedLab = false
+    @State private var recommendedLabTest: LabTest = .ferritin
+    @State private var showRecommendedTrigger = false
+    @State private var showRecommendedPhoto = false
+    @State private var missedDoseCandidate: MissedDoseCandidate?
 
     /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
     /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
@@ -128,6 +135,10 @@ struct CareView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
+        .sheet(item: $recommendedTreatmentClass) { AddTreatmentSheet(initialClass: $0) }
+        .sheet(isPresented: $showRecommendedLab) { AddLabSheet(initialTest: recommendedLabTest) }
+        .sheet(isPresented: $showRecommendedTrigger) { AddTriggerSheet() }
+        .sheet(isPresented: $showRecommendedPhoto) { GuidedCaptureView(defaultRegion: .frontal) }
         .sheet(item: $detailTreatment) { TreatmentDetailSheet(treatment: $0) }
         // Deleting a treatment cascades away every logged dose and side-effect entry
         // (`Models.swift`'s `.cascade` delete rules) — the adherence history the 24-week
@@ -156,6 +167,16 @@ struct CareView: View {
         } message: {
             Text(deleteTreatmentMessage)
         }
+        .confirmationDialog("Why couldn't you do it?", isPresented: Binding(
+            get: { missedDoseCandidate != nil }, set: { if !$0 { missedDoseCandidate = nil } }
+        ), titleVisibility: .visible) {
+            ForEach(MissedDoseReason.allCases) { reason in
+                Button(reason.title) { recordMissedDose(reason) }
+            }
+            Button("Cancel", role: .cancel) { missedDoseCandidate = nil }
+        } message: {
+            Text("This records a missed application. It does not change or start any treatment.")
+        }
         .sheet(isPresented: $showProcedures) { ProceduresView() }
         .sheet(isPresented: $showLifeEvents) { LifeEventsSheet() }
         .sheet(isPresented: $showProgressCheckIn) {
@@ -169,7 +190,10 @@ struct CareView: View {
         }
         .sheet(isPresented: $showRecommender) {
             NavigationStack {
-                RecommenderView(condition: profile?.condition ?? .unsure, sex: profile?.sex ?? .male)
+                RecommenderView(condition: profile?.condition ?? .unsure, sex: profile?.sex ?? .male) { action in
+                    showRecommender = false
+                    DispatchQueue.main.async { presentRecommendedAction(action) }
+                }
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showRecommender = false } } }
             }
         }
@@ -272,6 +296,17 @@ struct CareView: View {
 
     // MARK: Derived state
 
+    private func presentRecommendedAction(_ action: RecommendedAction) {
+        switch action {
+        case .addToPlan(let treatmentClass): recommendedTreatmentClass = treatmentClass
+        case .scheduleDoctorVisit: showProcedures = true
+        case .startPatchPhotoSeries: showRecommendedPhoto = true
+        case .recordTrigger: showRecommendedTrigger = true
+        case .addLabResult(let test): recommendedLabTest = test; showRecommendedLab = true
+        case .reviewPregnancyCaution: recommendedTreatmentClass = .spironolactone
+        }
+    }
+
     /// "Delete "Minoxidil"?" — the treatment name, quoted, falling back to its class title for
     /// treatments the user never named.
     private var deleteTreatmentTitle: String {
@@ -373,6 +408,7 @@ struct CareView: View {
         ProgressReport.build(
             entries: entries, treatments: treatments, doses: doses,
             labs: labs, sideEffects: sideEffectLogs, triggers: triggerEvents,
+            missedDoses: missedDoseRecords,
             focus: reportFocusTreatment
         )
     }
@@ -539,11 +575,33 @@ struct CareView: View {
             periodic: periodic,
             done: isLogged(t, slot: slot),
             expanded: expandedSteps.contains(key),
+            overdue: isOverdue(t, slot: slot),
             onToggle: { toggle(t, slot: slot, currentlyDone: isLogged(t, slot: slot)) },
             onInfo: {
                 if expandedSteps.contains(key) { expandedSteps.remove(key) } else { expandedSteps.insert(key) }
-            }
+            },
+            onMissed: { missedDoseCandidate = MissedDoseCandidate(treatment: t, slot: slot) }
         )
+    }
+
+    private func isOverdue(_ treatment: Treatment, slot: String) -> Bool {
+        guard !isLogged(treatment, slot: slot), !slot.isEmpty,
+              !missedDoseRecords.contains(where: {
+                  $0.treatment?.persistentModelID == treatment.persistentModelID && $0.slot == slot && calendar.isDateInToday($0.date)
+              }) else { return false }
+        let pieces = slot.split(separator: ":").compactMap { Int($0) }
+        guard pieces.count == 2 else { return false }
+        let current = calendar.dateComponents([.hour, .minute], from: .now)
+        return pieces[0] * 60 + pieces[1] < (current.hour ?? 0) * 60 + (current.minute ?? 0)
+    }
+
+    private func recordMissedDose(_ reason: MissedDoseReason) {
+        guard let candidate = missedDoseCandidate else { return }
+        _ = try? MissedDoseRepository(context: context).record(
+            treatment: candidate.treatment, slot: candidate.slot, reason: reason
+        )
+        missedDoseCandidate = nil
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     // MARK: Reminders
@@ -1084,8 +1142,10 @@ private struct RoutineStepRow: View {
     let periodic: Bool
     let done: Bool
     let expanded: Bool
+    let overdue: Bool
     let onToggle: () -> Void
     let onInfo: () -> Void
+    let onMissed: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pop = false
@@ -1164,6 +1224,12 @@ private struct RoutineStepRow: View {
                     .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                     .padding(.leading, 58)   // aligns under the text column (46pt time column + 12 gap)
             }
+            if overdue && !done {
+                Button("Couldn't do it", action: onMissed)
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                    .buttonStyle(.plain)
+                    .padding(.leading, 58)
+            }
         }
     }
 
@@ -1212,6 +1278,12 @@ private struct RoutineStepRow: View {
         .accessibilityLabel(name)
         .accessibilityValue(done ? "Logged" : "Not logged")
     }
+}
+
+private struct MissedDoseCandidate: Identifiable {
+    let treatment: Treatment
+    let slot: String
+    var id: String { "\(treatment.persistentModelID.hashValue)|\(slot)" }
 }
 
 /// Round-7: the milestone footnote's leading mark — a tiny 12pt copper ring standing in for the

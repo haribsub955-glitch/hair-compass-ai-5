@@ -32,6 +32,16 @@ struct ProgressReportSheet: View {
                     if !photoPairs.isEmpty { photoCard }
                     StrandDivider()
                     honestReadCard
+                    if let omissionSummary = report.omissionSummary {
+                        ClinicalCard(padding: 14) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Eyebrow(text: "Missed applications")
+                                Text(omissionSummary).font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                                Text("Recorded as context, not a score. Clinician-directed pauses are never treated as failure.")
+                                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
+                            }
+                        }
+                    }
                     Text("A self-tracked record for your own clinician conversations — not medical advice.")
                         .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
