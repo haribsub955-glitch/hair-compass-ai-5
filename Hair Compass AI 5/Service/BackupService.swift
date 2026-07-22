@@ -510,7 +510,7 @@ enum BackupService {
     ///
     /// Natural keys:
     /// - DailyEntry: calendar day (`HairAnalytics.dayBounds` — one entry per day)
-    /// - Treatment: (name, startDate); its doses by (loggedAt, slot); side effects by (type, date)
+    /// - Treatment: (name, startDate); its doses by (calendar day, slot); side effects by (type, date)
     /// - LabResult: (test, collectedAt)
     /// - PhotoRecord: (createdAt, region) — image bytes written back through `photoWriter`
     /// - HealthSnapshot: calendar day
@@ -650,9 +650,11 @@ enum BackupService {
                 summary.inserted += 1
             }
 
-            var doseKeys = Set(target.doses.map { doseKey(loggedAt: $0.loggedAt, slot: $0.slot) })
+            var doseKeys = Set(target.doses.map {
+                doseKey(loggedAt: $0.loggedAt, slot: $0.slot, calendar: calendar)
+            })
             for d in dto.doses {
-                let k = doseKey(loggedAt: d.loggedAt, slot: d.slot)
+                let k = doseKey(loggedAt: d.loggedAt, slot: d.slot, calendar: calendar)
                 guard !doseKeys.contains(k) else { summary.skipped += 1; continue }
                 doseKeys.insert(k)
                 context.insert(TreatmentDose(treatment: target, loggedAt: d.loggedAt, slot: d.slot))
@@ -671,7 +673,15 @@ enum BackupService {
             }
         }
 
+        var unattachedDoseKeys = Set(
+            try context.fetch(FetchDescriptor<TreatmentDose>())
+                .filter { $0.treatment == nil }
+                .map { doseKey(loggedAt: $0.loggedAt, slot: $0.slot, calendar: calendar) }
+        )
         for dto in envelope.unattachedDoses ?? [] {
+            let key = doseKey(loggedAt: dto.loggedAt, slot: dto.slot, calendar: calendar)
+            guard !unattachedDoseKeys.contains(key) else { summary.skipped += 1; continue }
+            unattachedDoseKeys.insert(key)
             context.insert(TreatmentDose(loggedAt: dto.loggedAt, slot: dto.slot))
             summary.inserted += 1
         }
@@ -874,8 +884,13 @@ enum BackupService {
         "\(name)|\(secondKey(startDate))"
     }
 
-    static func doseKey(loggedAt: Date, slot: String) -> String {
-        "\(secondKey(loggedAt))|\(slot)"
+    static func doseKey(
+        loggedAt: Date,
+        slot: String,
+        calendar: Calendar = .current
+    ) -> String {
+        let day = HairAnalytics.dayBounds(for: loggedAt, calendar: calendar).lowerBound
+        return "\(secondKey(day))|\(slot)"
     }
 
     static func sideEffectKey(typeRaw: String, date: Date) -> String {

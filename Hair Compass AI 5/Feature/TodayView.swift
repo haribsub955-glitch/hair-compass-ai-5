@@ -209,12 +209,12 @@ struct TodayView: View {
             }
             #endif
         }
-        .onChange(of: deepLinks.openLogRequested) { _, requested in
-            if requested { showLog = true; deepLinks.openLogRequested = false }
+        .onChange(of: [deepLinks.openLogRequested, deepLinks.canConsumeRoutes]) { _, _ in
+            if deepLinks.consumeLogRequest() { showLog = true }
         }
         .onAppear {
             // Covers the cold-start case where the widget's URL arrives before this view exists.
-            if deepLinks.openLogRequested { showLog = true; deepLinks.openLogRequested = false }
+            if deepLinks.consumeLogRequest() { showLog = true }
         }
         // Celebration presentation uses the same onDismiss chain as the AI-consent →
         // deep-analysis pair: the log sheet stores the reward, and only its onDismiss

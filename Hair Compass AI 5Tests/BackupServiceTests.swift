@@ -322,6 +322,60 @@ struct BackupServiceTests {
         #expect(try context.fetch(FetchDescriptor<DailyEntry>()).count == 1)
     }
 
+    @Test func attachedDosesDedupeByTreatmentCalendarDayAndSlot() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: .now)
+        let morning = try #require(calendar.date(byAdding: .hour, value: 8, to: day))
+        let afternoon = try #require(calendar.date(byAdding: .hour, value: 15, to: day))
+        let startDate = try #require(calendar.date(byAdding: .day, value: -30, to: day))
+
+        let treatment = Treatment(name: "Minoxidil", treatmentClass: .minoxidil,
+                                  startDate: startDate)
+        context.insert(treatment)
+        context.insert(TreatmentDose(treatment: treatment, loggedAt: morning, slot: "08:00"))
+        try context.save()
+
+        var envelope = BackupService.Envelope()
+        envelope.treatments = [
+            .init(name: "Minoxidil", classRaw: TreatmentClass.minoxidil.rawValue,
+                  startDate: startDate, doses: [.init(loggedAt: afternoon, slot: "08:00")])
+        ]
+
+        let summary = try BackupService.restore(envelope, into: context, photoWriter: { _ in nil })
+        #expect(summary.inserted == 0)
+        #expect(summary.skipped == 2) // matched treatment + matched dose
+        #expect(try context.fetch(FetchDescriptor<TreatmentDose>()).count == 1)
+    }
+
+    @Test func unattachedDosesDedupeByCalendarDayAndSlot() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: .now)
+        let morning = try #require(calendar.date(byAdding: .hour, value: 8, to: day))
+        let evening = try #require(calendar.date(byAdding: .hour, value: 20, to: day))
+        context.insert(TreatmentDose(loggedAt: morning, slot: "08:00"))
+        try context.save()
+
+        var envelope = BackupService.Envelope()
+        envelope.unattachedDoses = [
+            .init(loggedAt: evening, slot: "08:00"),
+            .init(loggedAt: evening, slot: "21:00")
+        ]
+
+        let first = try BackupService.restore(envelope, into: context, photoWriter: { _ in nil })
+        #expect(first.inserted == 1)
+        #expect(first.skipped == 1)
+        #expect(try context.fetch(FetchDescriptor<TreatmentDose>()).count == 2)
+
+        let second = try BackupService.restore(envelope, into: context, photoWriter: { _ in nil })
+        #expect(second.inserted == 0)
+        #expect(second.skipped == 2)
+        #expect(try context.fetch(FetchDescriptor<TreatmentDose>()).count == 2)
+    }
+
     // MARK: - Pure key helpers
 
     @Test func naturalKeysMatchAtSecondGranularity() {

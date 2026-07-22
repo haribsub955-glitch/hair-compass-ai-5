@@ -151,20 +151,24 @@ struct RootView: View {
         return .today
     }
 
-    var body: some View {
+    @ViewBuilder private var tabContent: some View {
+        switch tab {
+        case .today: TodayView(profile: profile,
+                               onOpenBaseline: { showProfileEdit = true },
+                               onOpenPlan: { tab = .care })
+        case .trends: TrendsView()
+        case .care: CareView()
+        case .labs: LabsView()
+        case .photos: PhotosView()
+        }
+    }
+
+    // The tab canvas plus its layout/overlay chrome. Split out of `body` so the modifier chain
+    // type-checks in reasonable time; `body` applies the environment/task/handler modifiers to it.
+    private var styledContent: some View {
         ZStack {
-            Group {
-                switch tab {
-                case .today: TodayView(profile: profile,
-                                       onOpenBaseline: { showProfileEdit = true },
-                                       onOpenPlan: { tab = .care })
-                case .trends: TrendsView()
-                case .care: CareView()
-                case .labs: LabsView()
-                case .photos: PhotosView()
-                }
-            }
-            .transition(tabTransition)
+            Group { tabContent }
+                .transition(tabTransition)
         }
         // Design V2: a quiet crossfade connects destinations while the matched tab pill carries
         // spatial continuity. Reduce Motion keeps only the short fade.
@@ -196,6 +200,10 @@ struct RootView: View {
         }
         .background(Clinical.canvas.ignoresSafeArea())
         .background(WindowSceneReader(scene: $owningWindowScene))
+    }
+
+    var body: some View {
+        styledContent
         .environment(healthKit)
         .environment(notifications)
         .environment(affiliates)
@@ -427,12 +435,15 @@ struct RootView: View {
                 lockPresenter.dismiss()
             }
         }
+        .onChange(of: launchPresentation.surface, initial: true) { _, surface in
+            deepLinks.canConsumeRoutes = surface == .pendingRoute || surface == .normal
+        }
         .tint(Clinical.accent)
         .environment(appLock)
         .onOpenURL { url in
             guard let destination = DeepLinkRouter.destination(for: url) else { return }
             tab = .today
-            if destination == .checkIn, !showOnboarding { deepLinks.openLogRequested = true }
+            deepLinks.record(destination)
         }
     }
 
