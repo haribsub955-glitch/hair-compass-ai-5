@@ -49,16 +49,27 @@ actor NotificationRegistry {
         // remove anything once it has lost ownership.
         guard latestGeneration[key] == generation else { return Result(error: nil, acceptedCount: 0, applied: false) }
         let owns: (String) -> Bool = { id in prefixes.contains { id.hasPrefix($0) } }
-        let stale = pending.map(\.identifier).filter(owns)
-        if !stale.isEmpty { await client.removePendingNotificationRequests(withIdentifiers: stale) }
         let capacity = max(0, limit - pending.filter { !owns($0.identifier) }.count)
         let accepted = Array(desired.sorted { $0.identifier < $1.identifier }.prefix(capacity))
         var message = desired.count > capacity
             ? "Some reminders could not be scheduled because iOS allows at most \(limit) pending notifications." : nil
-        // Once removal commits, finish this replacement even if the caller task is cancelled.
-        for request in accepted {
+        let pendingIDs = Set(pending.map(\.identifier))
+        var additionsSucceeded = true
+        for request in accepted where !pendingIDs.contains(request.identifier) {
             do { try await client.add(request) }
-            catch { message = "A reminder could not be scheduled: \(error.localizedDescription)" }
+            catch {
+                additionsSucceeded = false
+                message = "A reminder could not be scheduled: \(error.localizedDescription)"
+            }
+        }
+        // Removing is the commit point. Until every desired addition succeeds, retain the old
+        // valid schedule so a partial Notification Center failure cannot destroy it.
+        if additionsSucceeded {
+            let acceptedIDs = Set(accepted.map(\.identifier))
+            let obsolete = pending.map(\.identifier).filter { owns($0) && !acceptedIDs.contains($0) }
+            if !obsolete.isEmpty {
+                await client.removePendingNotificationRequests(withIdentifiers: obsolete)
+            }
         }
         return Result(error: message, acceptedCount: accepted.count, applied: true)
     }
@@ -93,8 +104,8 @@ final class NotificationService {
     private let milestonePrefix = "milestone."
 
     /// Coalescing guard for `reschedule()` (audit #5): a second call cancels the first's task
-    /// before it starts a fresh remove+add sequence, so a stale removeAll from an old call can
-    /// never race an add from a newer one — latest call always wins.
+    /// before it starts a fresh reconciliation, so an older planner cannot prune requests after
+    /// a newer generation has taken ownership — latest call always wins.
     private var generations: [String: UInt64] = [:]
 
     var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }

@@ -65,6 +65,20 @@ struct PersistenceRecoveryTests {
         for (name, data) in files { #expect(try Data(contentsOf: ops.support.appendingPathComponent(name)) == data) }
     }
 
+    @Test func rollbackCopyFailureSurfacesSplitStoreAndRecoveryDirectory() throws {
+        let files = ["default.store": Data("main".utf8), "default.store-wal": Data("wal".utf8),
+                     "default.store-shm": Data("shm".utf8)]
+        let ops = try RecoveryTestFileOps(files: files, failCopyNumber: 4, failRemoveNumber: 2)
+        do {
+            _ = try PersistenceController.moveStoreAside(fileManager: ops, recoveryID: { "split" })
+            Issue.record("Expected rollback failure")
+        } catch let error as PersistenceRecoveryRollbackError {
+            #expect(error.localizedDescription.localizedCaseInsensitiveContains("split"))
+            #expect(error.localizedDescription.contains("HairCompass-Persistence-Recovery-split"))
+            #expect(error.recoveryDirectory.lastPathComponent == "HairCompass-Persistence-Recovery-split")
+        }
+    }
+
 
     @Test func corruptStoreOpenFailurePreservesBytesForRecovery() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

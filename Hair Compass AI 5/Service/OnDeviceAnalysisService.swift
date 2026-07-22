@@ -280,9 +280,13 @@ enum AIOutputValidator {
         }
         let forbidden = [
             #"\b(you|your scalp|this|it)\s+(clearly |definitely |certainly |probably |likely )?(have|has|is|looks? like|appears? to be|suggests?|indicates?|shows?)\s+(an? )?(alopecia(?: areata| totalis| universalis)?|androgenetic alopecia|pattern hair loss|telogen effluvium|dermatitis|psoriasis|folliculitis|tinea capitis|ringworm|infection|scarring alopecia|lichen planopilaris|frontal fibrosing alopecia)\b"#,
+            #"\b(you|your scalp|this|it)\s+(could|should|would|may|might)\s+be\s+(an? )?(alopecia(?: areata| totalis| universalis)?|androgenetic alopecia|pattern hair loss|telogen effluvium|dermatitis|psoriasis|folliculitis|tinea capitis|ringworm|infection|scarring alopecia|lichen planopilaris|frontal fibrosing alopecia)\b"#,
             #"\b(this|that|the pattern|the photo|your symptoms?) (proves|confirms|establishes|means|is diagnostic of|points to)\b"#,
             #"\b(start|stop|discontinue|quit|increase|decrease|reduce|raise|lower|double|halve|skip|switch) (taking |using |applying )?(your )?(medication|medicine|dose|dosage|treatment|minoxidil|finasteride)\b"#,
             #"\b(you should|i recommend|you need to) (start|stop|discontinue|increase|decrease|switch|change|take|use|apply)\b"#,
+            #"\b(medication|medicine|dose|dosage|treatment|minoxidil|finasteride)\s+(should|could|would|may|might)\s+be\s+(started|stopped|discontinued|increased|decreased|changed|switched|doubled|halved|skipped)\b"#,
+            #"\b(safe|okay|ok|advisable|appropriate)\s+to\s+(start|stop|discontinue|quit|increase|decrease|change|switch|take|use|apply)\b[^.!?]{0,60}\b(medication|medicine|dose|dosage|treatment|minoxidil|finasteride)\b"#,
+            #"\b(i recommend|you should|you need to)\s+(starting|stopping|discontinuing|increasing|decreasing|changing|switching|taking|using|applying)\b"#,
             #"\b(take|use|apply)\s+(one|two|three|half|a)\s*(mg|ml|tablet|capsule|pill|drop|pump|times?)\b"#,
             #"\b(take|use|apply) \d+(\.\d+)?\s*(mg|mcg|g|ml|tablet|capsule|pill|drop|pump|times? (a|per) day)\b"#,
             #"\b(no need|do not need|don't need|not necessary) to (seek|get|call|contact).*(urgent|emergency|medical|clinician|doctor)\b"#,
