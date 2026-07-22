@@ -163,9 +163,10 @@ final class HairChatService {
         if #available(iOS 26.0, *), status.isAvailable {
             if let reply = await OnDeviceChat.reply(
                 system: system, turns: turns,
-                onPartial: { [weak self] partial in self?.streamingText = partial }
+                // Generated prose is not shown before the deterministic post-generation gate.
+                onPartial: { _ in }
             ), !reply.isEmpty {
-                return reply
+                return AIOutputValidator.safeText(reply, suppliedFacts: context)
             }
             throw ChatError(message: "Couldn't get a reply. Please try again.")
         }

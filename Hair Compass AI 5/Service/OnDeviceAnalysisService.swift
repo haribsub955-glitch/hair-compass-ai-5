@@ -120,7 +120,9 @@ final class OnDeviceAnalysisService {
             result = try await generate(
                 instructions: Self.analysisInstructions,
                 prompt: Self.analysisPrompt(context: context),
-                onPartial: { [weak self] partial in self?.streamingText = partial }
+                // Do not expose unvalidated partial prose. The final deterministic gate below
+                // is the sole publication boundary.
+                onPartial: { _ in }
             )
         } catch let e as AnalysisError {
             errorMessage = e.message
@@ -166,7 +168,8 @@ final class OnDeviceAnalysisService {
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw AnalysisError(message: "The analysis came back empty. Please try again.")
             }
-            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return AIOutputValidator.safeText(trimmed, suppliedFacts: prompt)
         }
         #endif
         throw AnalysisError(message: Self.unavailableMessage)
@@ -197,6 +200,56 @@ final class OnDeviceAnalysisService {
     it's largely inactive or a marketing myth. Be brief (2–4 sentences). This is record-keeping, \
     not medical advice; do not diagnose.
     """
+}
+
+/// Deterministic safety boundary after generation. Model instructions are defense-in-depth; this
+/// validator is the authoritative final gate before generated prose reaches UI or export paths.
+enum AIOutputValidator {
+    static let replacement = "I couldn't safely summarize that output. Keep using the tracked record for documentation, and discuss medical decisions or concerning symptoms with a qualified clinician. This is record-keeping, not diagnosis."
+
+    static func safeText(_ text: String, suppliedFacts: String, allTreatmentsOutcomeReady: Bool? = nil) -> String {
+        isSafe(text, suppliedFacts: suppliedFacts, allTreatmentsOutcomeReady: allTreatmentsOutcomeReady)
+            ? text : replacement
+    }
+
+    static func isSafe(_ text: String, suppliedFacts: String, allTreatmentsOutcomeReady: Bool? = nil) -> Bool {
+        let value = text.lowercased()
+        let facts = suppliedFacts.lowercased()
+        let forbidden = [
+            #"\b(you|this) (definitely |certainly )?(have|has|is) (alopecia|telogen effluvium|an infection|dermatitis)\b"#,
+            #"\b(this|that) (proves|confirms|establishes|means)\b"#,
+            #"\b(start|stop|discontinue|increase|decrease|double|halve|skip) (taking |using )?(your )?(medication|medicine|dose|dosage|minoxidil|finasteride)\b"#,
+            #"\b(you should|i recommend|you need to) (start|stop|discontinue|increase|decrease|take|use|apply)\b"#,
+            #"\b(take|use|apply) \d+(\.\d+)?\s*(mg|ml|tablet|capsule|times? (a|per) day)\b"#,
+            #"\b(no need|do not need|don't need) to (seek|get|call|contact).*(urgent|emergency|medical)\b"#,
+            #"\b(ignore|nothing to worry about|not serious|harmless)\b.*\b(chest pain|faint|severe|swelling|trouble breathing|suicid)\b"#
+        ]
+        if forbidden.contains(where: { value.range(of: $0, options: .regularExpression) != nil }) { return false }
+
+        let efficacy = value.range(
+            of: #"\b(treatment|medication|minoxidil|finasteride|it) (is |has |isn't |hasn't )?(working|effective|ineffective|failed|improving regrowth)\b"#,
+            options: .regularExpression) != nil
+        let factsShowEarlyTreatment = facts.contains("\"outcomeready\":false")
+        if efficacy && (allTreatmentsOutcomeReady == false || factsShowEarlyTreatment) { return false }
+
+        // Reject invented numeric measurements. Calendar dates and the app's fixed 24-week
+        // policy are allowed; every other generated number must occur in the supplied facts.
+        let factNumbers = Set(facts.matches(of: /\b\d+(?:\.\d+)?\b/).map { String($0.output) })
+        let numbers = value.matches(of: /\b\d+(?:\.\d+)?\b/).map { String($0.output) }
+        for number in numbers where number != "24" {
+            if !factNumbers.contains(number) { return false }
+        }
+
+        // High-impact clinical facts must be present in the supplied record before generated
+        // prose may assert them. This deliberately stays small and deterministic; the model is
+        // free to summarize recorded observations, never to invent a new clinical premise.
+        let groundedTerms = ["pregnant", "pregnancy", "ferritin", "vitamin d", "thyroid",
+                             "infection", "alopecia areata", "telogen effluvium"]
+        for term in groundedTerms where value.contains(term) && !facts.contains(term) {
+            return false
+        }
+        return true
+    }
 }
 
 #if canImport(FoundationModels)

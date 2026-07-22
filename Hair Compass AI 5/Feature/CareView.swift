@@ -653,6 +653,13 @@ struct CareView: View {
             if notifications.authorization == .denied {
                 notifDeniedNotice
             }
+            if let schedulingError = notifications.schedulingError {
+                Label(schedulingError, systemImage: "exclamationmark.triangle.fill")
+                    .font(Clinical.caption(12))
+                    .foregroundStyle(Clinical.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+            }
         }
     }
 

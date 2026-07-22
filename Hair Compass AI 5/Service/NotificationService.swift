@@ -12,6 +12,9 @@ final class NotificationService {
     static let enabledKey = "remindersEnabled"
 
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
+    /// User-visible scheduling failure. Callers can render this instead of silently pretending a
+    /// reminder exists when Notification Center rejected it.
+    private(set) var schedulingError: String?
     private let center = UNUserNotificationCenter.current()
     /// Routes a notification tap back to the app by identifier prefix (see `onNotificationTapped`).
     private let tapDelegate = NotificationTapDelegate()
@@ -96,7 +99,8 @@ final class NotificationService {
 
     func disable() {
         UserDefaults.standard.set(false, forKey: Self.enabledKey)
-        center.removeAllPendingNotificationRequests()
+        Task { await reconcile(prefixes: [treatmentPrefix, refillPrefix, photoReminderID,
+                                          procedurePrefix, progressCheckInID, milestonePrefix], desired: []) }
     }
 
     /// Replace all scheduled reminders with fresh ones for the current active daily treatments.
@@ -128,8 +132,8 @@ final class NotificationService {
         // fail this guard on every relaunch — after the remove-all below already ran.
         await refreshAuthorization()
         guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else { return }
-        center.removeAllPendingNotificationRequests()
         guard !Task.isCancelled else { return }
+        var desired: [UNNotificationRequest] = []
 
         // Coalesce every treatment that shares a time slot into ONE notification: a 21:00 regimen
         // of three items becomes a single "Evening routine — 3 steps" banner instead of three
@@ -154,7 +158,7 @@ final class NotificationService {
             if let art = NotificationArt.attachment() { content.attachments = [art] }
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
             let request = UNNotificationRequest(identifier: "\(treatmentPrefix)\(slot)", content: content, trigger: trigger)
-            try? await center.add(request)
+            desired.append(request)
         }
 
         // One-off refill heads-up, 7 days before each refill-by date at 10:00. Skipped when
@@ -171,7 +175,7 @@ final class NotificationService {
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
             let request = UNNotificationRequest(identifier: "\(refillPrefix)\(i)", content: content, trigger: trigger)
-            try? await center.add(request)
+            desired.append(request)
         }
 
         // Monthly photo prompt — a comparable set on the 1st of each month.
@@ -188,7 +192,8 @@ final class NotificationService {
             content: photo,
             trigger: UNCalendarNotificationTrigger(dateMatching: monthly, repeats: true)
         )
-        try? await center.add(photoRequest)
+        desired.append(photoRequest)
+        await reconcile(prefixes: [treatmentPrefix, refillPrefix, photoReminderID], desired: desired)
     }
 
     /// One reminder ~1 day before each upcoming, not-yet-completed procedure appointment (a PRP
@@ -201,11 +206,11 @@ final class NotificationService {
     /// ids) when reminders are off.
     func planProcedureReminders(_ items: [(id: String, title: String, date: Date, isConsultation: Bool)]) async {
         await refreshAuthorization()
-        let pending = await center.pendingNotificationRequests()
-        let staleIDs = pending.map(\.identifier).filter { $0.hasPrefix(procedurePrefix) }
-        if !staleIDs.isEmpty { center.removePendingNotificationRequests(withIdentifiers: staleIDs) }
-        guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else { return }
+        guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else {
+            await reconcile(prefixes: [procedurePrefix], desired: []); return
+        }
         guard !Task.isCancelled else { return }
+        var desired: [UNNotificationRequest] = []
 
         for item in items {
             guard let fireDate = Self.procedureReminderDate(for: item.date), fireDate > .now else { continue }
@@ -218,8 +223,9 @@ final class NotificationService {
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
             let request = UNNotificationRequest(identifier: "\(procedurePrefix)\(item.id)", content: content, trigger: trigger)
-            try? await center.add(request)
+            desired.append(request)
         }
+        await reconcile(prefixes: [procedurePrefix], desired: desired)
     }
 
     /// ONE low-frequency monthly nudge toward the Plan tab's Progress check-in — the between-
@@ -233,8 +239,9 @@ final class NotificationService {
     /// toggle as the treatment/refill/procedure reminders rather than adding a new one.
     func planProgressCheckInReminder(lastCheckIn: Date?) async {
         await refreshAuthorization()
-        center.removePendingNotificationRequests(withIdentifiers: [progressCheckInID])
-        guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else { return }
+        guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else {
+            await reconcile(prefixes: [progressCheckInID], desired: []); return
+        }
         guard !Task.isCancelled else { return }
 
         let calendar = Calendar.current
@@ -256,7 +263,7 @@ final class NotificationService {
             repeats: false
         )
         let request = UNNotificationRequest(identifier: progressCheckInID, content: content, trigger: trigger)
-        try? await center.add(request)
+        await reconcile(prefixes: [progressCheckInID], desired: [request])
     }
 
     /// One-shot reminders for the app's central honest promise — "judge treatment response at
@@ -269,13 +276,13 @@ final class NotificationService {
     /// to call after `reschedule()` in the same cycle.
     func planMilestoneReminders(_ treatments: [(id: String, name: String, startDate: Date)]) async {
         await refreshAuthorization()
-        let pending = await center.pendingNotificationRequests()
-        let staleIDs = pending.map(\.identifier).filter { $0.hasPrefix(milestonePrefix) }
-        if !staleIDs.isEmpty { center.removePendingNotificationRequests(withIdentifiers: staleIDs) }
-        guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else { return }
+        guard Self.canSchedule(enabled: isEnabled, authorization: authorization) else {
+            await reconcile(prefixes: [milestonePrefix], desired: []); return
+        }
         guard !Task.isCancelled else { return }
 
         let calendar = Calendar.current
+        var desired: [UNNotificationRequest] = []
         for t in treatments {
             for week in Self.milestoneWeeks {
                 guard let day = calendar.date(byAdding: .weekOfYear, value: week, to: calendar.startOfDay(for: t.startDate))
@@ -297,9 +304,10 @@ final class NotificationService {
                 let request = UNNotificationRequest(
                     identifier: "\(milestonePrefix)\(t.id).\(week)", content: content, trigger: trigger
                 )
-                try? await center.add(request)
+                desired.append(request)
             }
         }
+        await reconcile(prefixes: [milestonePrefix], desired: desired)
     }
 
     /// Same weeks `ProgressReport`'s milestone cadence starts with — 4 · 12 · 24. The report
@@ -344,15 +352,16 @@ final class NotificationService {
         // `authorization` starts `.notDetermined` on every cold launch — without this, the
         // remove-below ran every relaunch and nothing ever got re-added.
         await refreshAuthorization()
-        let ids = (0..<3).map { "\(eveningCheckInPrefix)\($0)" }
-        center.removePendingNotificationRequests(withIdentifiers: ids)
-        guard Self.canSchedule(enabled: enabled, authorization: authorization) else { return }
+        guard Self.canSchedule(enabled: enabled, authorization: authorization) else {
+            await reconcile(prefixes: [eveningCheckInPrefix], desired: []); return
+        }
 
         let calendar = Calendar.current
         let body = streak >= 3
             ? "Day \(streak + 1). Twenty seconds."
             : "Twenty seconds."
 
+        var desired: [UNNotificationRequest] = []
         for offset in 0..<3 {
             if offset == 0 && hasLoggedToday { continue }
             guard let day = calendar.date(byAdding: .day, value: offset, to: .now) else { continue }
@@ -372,8 +381,36 @@ final class NotificationService {
                 repeats: false
             )
             let request = UNNotificationRequest(identifier: "\(eveningCheckInPrefix)\(offset)", content: content, trigger: trigger)
-            try? await center.add(request)
+            desired.append(request)
         }
+        await reconcile(prefixes: [eveningCheckInPrefix], desired: desired)
+    }
+
+    /// One immutable desired schedule followed by one ownership-scoped reconciliation. Existing
+    /// requests owned by other apps/features are counted and never removed. Stable identifier
+    /// ordering makes the 64-request cap deterministic.
+    private func reconcile(prefixes: [String], desired: [UNNotificationRequest]) async {
+        let pending = await center.pendingNotificationRequests()
+        let owns: (String) -> Bool = { id in prefixes.contains { id.hasPrefix($0) } }
+        let stale = pending.map(\.identifier).filter(owns)
+        if !stale.isEmpty { center.removePendingNotificationRequests(withIdentifiers: stale) }
+        let foreignCount = pending.filter { !owns($0.identifier) }.count
+        let capacity = max(0, Self.pendingRequestLimit - foreignCount)
+        let accepted = desired.sorted { $0.identifier < $1.identifier }.prefix(capacity)
+        schedulingError = desired.count > capacity
+            ? "Some reminders could not be scheduled because iOS allows at most \(Self.pendingRequestLimit) pending notifications."
+            : nil
+        for request in accepted {
+            do { try await center.add(request) }
+            catch { schedulingError = "A reminder could not be scheduled: \(error.localizedDescription)" }
+        }
+    }
+
+    static let pendingRequestLimit = 64
+
+    /// Pure cap computation used by tests and by reconciliation.
+    nonisolated static func acceptedOwnedCount(desired: Int, foreignPending: Int) -> Int {
+        min(max(0, desired), max(0, pendingRequestLimit - max(0, foreignPending)))
     }
 
     /// 10:00 local time, 7 days before the refill-by date. nil if the calendar math fails.

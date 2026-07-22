@@ -67,9 +67,9 @@ struct AIContextTests {
         let empty = AIContext.build(
             entries: [], treatments: [], doses: [], snapshots: [], triggers: [],
             labs: [], sideEffects: [], photos: [], profile: nil, now: now, calendar: calendar)
-        #expect(empty.schemaVersion == 2)
+        #expect(empty.schemaVersion == 3)
         #expect(empty.schemaVersion == AIContext.currentSchemaVersion)
-        #expect(empty.jsonString().contains("\"schemaVersion\":2"))
+        #expect(empty.jsonString().contains("\"schemaVersion\":3"))
         // generatedAt is derived from the passed-in now, not a hidden Date.now.
         #expect(empty.generatedAt == AIContext.iso8601(now))
     }
@@ -238,5 +238,51 @@ struct AIContextTests {
         // Photos are metadata only — the stored image paths stay on-device too.
         #expect(!json.contains("a.jpg"))
         #expect(json.contains("\"regions\":[\"frontal\",\"vertex\"]"))
+    }
+
+    @Test func contextBudgetCapsRecentRecordsAndReportsOmissions() {
+        let huge = String(repeating: "x", count: 10_000)
+        let treatments = (0..<40).map {
+            Treatment(name: huge + "\($0)", treatmentClass: .other, dose: huge,
+                      scheduleTimes: "08:00", startDate: day(-$0))
+        }
+        let labs = (0..<80).map { LabResult(test: .ferritin, value: Double($0), collectedAt: day(-$0)) }
+        let triggers = (0..<80).map { TriggerEvent(type: .illness, date: day(-$0), note: huge) }
+        let checkIns = (0..<30).map {
+            ProgressCheckIn(date: day(-$0), regrowth: .none, density: .same,
+                            shedding: .same, hairline: .same, overall: .same, note: huge)
+        }
+        let ctx = AIContext.build(
+            entries: (0..<300).map { DailyEntry(date: day(-$0), shed: .normal) },
+            treatments: treatments, doses: [], snapshots: [], triggers: triggers,
+            labs: labs, sideEffects: [], photos: [], profile: nil,
+            progressCheckIns: checkIns, now: now, calendar: calendar)
+        let bytes = Data(ctx.jsonString().utf8).count
+        #expect(bytes <= AIContext.maximumEncodedBytes)
+        #expect(ctx.treatments.count == AIContext.maximumTreatments)
+        #expect(ctx.labs.count == AIContext.maximumLabs)
+        #expect(ctx.triggers.count == AIContext.maximumTriggers)
+        #expect(ctx.meta.omitted.dailyEntries == 180)
+        #expect(ctx.meta.omitted.treatments == 28)
+        #expect(ctx.meta.omitted.labs == 68)
+        #expect(ctx.meta.omitted.triggers == 68)
+        #expect(ctx.meta.omitted.progressCheckIns == 24)
+    }
+
+    @Test func generatedOutputValidatorRejectsClinicalAndUngroundedClaims() {
+        let facts = #"{"outcomeReady":false,"weeksElapsed":8,"shed7d":1.2}"#
+        #expect(!AIOutputValidator.isSafe("You definitely have alopecia.", suppliedFacts: facts))
+        #expect(!AIOutputValidator.isSafe("Stop taking your medication.", suppliedFacts: facts))
+        #expect(!AIOutputValidator.isSafe("Take 5 mg twice a day.", suppliedFacts: facts))
+        #expect(!AIOutputValidator.isSafe("No need to seek urgent medical care for severe swelling.", suppliedFacts: facts))
+        #expect(!AIOutputValidator.isSafe("Minoxidil is working.", suppliedFacts: facts))
+        #expect(!AIOutputValidator.isSafe("Shedding averaged 9.7.", suppliedFacts: facts))
+        #expect(!AIOutputValidator.isSafe("Your ferritin is low.", suppliedFacts: facts))
+        #expect(!AIOutputValidator.isSafe("This confirms hair loss.", suppliedFacts: facts))
+        #expect(!AIOutputValidator.isSafe("You should increase minoxidil.", suppliedFacts: facts))
+        #expect(AIOutputValidator.isSafe(
+            "At week 8, the record is still before the 24-week assessment window.", suppliedFacts: facts))
+        #expect(AIOutputValidator.safeText("Stop using minoxidil.", suppliedFacts: facts)
+            == AIOutputValidator.replacement)
     }
 }

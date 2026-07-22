@@ -30,4 +30,10 @@ struct ReminderCoalescingTests {
         #expect(body.contains("Finasteride"))
         #expect(body.contains("Biotin"))
     }
+
+    @Test func ownedRequestsRespectSystemLimitWithoutTouchingForeignCapacity() {
+        #expect(NotificationService.acceptedOwnedCount(desired: 20, foreignPending: 50) == 14)
+        #expect(NotificationService.acceptedOwnedCount(desired: 3, foreignPending: 10) == 3)
+        #expect(NotificationService.acceptedOwnedCount(desired: 3, foreignPending: 64) == 0)
+    }
 }

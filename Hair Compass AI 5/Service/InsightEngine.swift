@@ -285,7 +285,11 @@ enum InsightEngine {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *), OnDeviceInsight.isAvailable {
             if let text = await OnDeviceInsight.generate(facts: facts, instructions: instructions),
-               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               AIOutputValidator.isSafe(
+                    text, suppliedFacts: facts,
+                    allTreatmentsOutcomeReady: context.treatments.allSatisfy(\.outcomeReady)
+               ) {
                 return DailyInsight(text: text, source: .onDevice)
             }
         }
