@@ -94,6 +94,19 @@ struct RootView: View {
     @AppStorage("eveningCheckInMinutes") private var eveningCheckInMinutes = 20 * 60 + 30
 
     private var profile: Profile? { profiles.first }
+    private var launchPresentation: LaunchPresentationState {
+        LaunchPresentationState.reduce(.init(
+            // Persistence recovery is selected by HairCompassApp before RootView exists.
+            persistenceFailed: false,
+            isLocked: appLock.isEnabled && appLock.isLocked,
+            // Keep the established request flags so bootstrap and dismissal timing stay unchanged.
+            hasOnboarded: !showOnboarding,
+            hasPendingRoute: deepLinks.hasPendingRoute || IntentHandoff.hasPendingLog,
+            hasSeenTutorial: !showTutorial,
+            ritualDueOrForced: ritualKind != nil,
+            appActive: scenePhase == .active
+        ))
+    }
     private var widgetFingerprint: String {
         let latestEntry = entries.first.map { "\($0.shedRaw)-\($0.flaking)-\($0.erythema)-\($0.itch)" } ?? "none"
         let activeTreatments = treatments.filter(\.isActive).count
@@ -161,7 +174,7 @@ struct RootView: View {
         // itself. Placed BEFORE `.safeAreaInset` below so the tab bar (zIndex 100) composites
         // above the overlay's scrim and stays interactive-looking while the tour is active.
         .overlay {
-            if showTutorial {
+            if launchPresentation.surface == .tutorial {
                 TutorialOverlay(tab: $tab) {
                     hasSeenTutorial = true
                     showTutorial = false
@@ -299,7 +312,13 @@ struct RootView: View {
         // Owner-controlled affiliate links: pull the remote catalog once per launch. A no-op
         // while RemoteConfig.catalogURLString is unset; failures are silent (bundled links serve).
         .task { await affiliates.refresh() }
-        .fullScreenCover(isPresented: $showOnboarding) {
+        .fullScreenCover(isPresented: Binding(
+            get: { launchPresentation.surface == .onboarding },
+            // Preserve the request when a higher-precedence privacy/lock surface temporarily wins.
+            set: { presented in
+                if !presented, launchPresentation.surface == .onboarding { showOnboarding = false }
+            }
+        )) {
             if let profile {
                 // Presented covers inherit the environment from where `.fullScreenCover` is
                 // attached — here, OUTSIDE the `.environment(healthKit)` / `.environment(purchases)`
@@ -313,10 +332,18 @@ struct RootView: View {
                 .environment(purchases)
             }
         }
-        // Onboarding wins: we only ever set `ritualKind` when not onboarding, so the two covers
-        // never contend. Dismissing the ritual reveals the normal Today screen underneath.
-        .fullScreenCover(item: $ritualKind) { kind in
-            RitualView(kind: kind) { ritualKind = nil }
+        // The pure launch reducer makes these cover predicates mutually exclusive. Effect
+        // extraction and presenter/window ownership remain intentionally deferred.
+        .fullScreenCover(isPresented: Binding(
+            get: { launchPresentation.surface == .ritual },
+            // Preserve the request when a higher-precedence privacy/lock surface temporarily wins.
+            set: { presented in
+                if !presented, launchPresentation.surface == .ritual { ritualKind = nil }
+            }
+        )) {
+            if let ritualKind {
+                RitualView(kind: ritualKind) { self.ritualKind = nil }
+            }
         }
         .sheet(isPresented: $showProfileEdit) {
             if let profile {
