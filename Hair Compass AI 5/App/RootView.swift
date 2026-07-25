@@ -192,11 +192,17 @@ struct RootView: View {
         // ivory capsule) moved onto `FloatingTabBar` itself — the bar owns its own scrim so the
         // frame speaks the same ink grammar wherever it's hosted, not just in RootView.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            FloatingTabBar(selection: $tab)
-                // Charts can establish their own compositing layers. Flatten the complete bar
-                // above them so no tab item is painted underneath a scrolling chart card.
-                .compositingGroup()
-                .zIndex(100)
+            VStack(spacing: 8) {
+                // Wren rides directly above the bar, inside the same inset, so she reserves real
+                // layout space instead of floating over the last card on every screen — the same
+                // reason the tab bar itself is an inset rather than an overlay.
+                WrenChatButton(tab: tab, profile: profile)
+                FloatingTabBar(selection: $tab)
+            }
+            // Charts can establish their own compositing layers. Flatten the complete bar
+            // above them so no tab item is painted underneath a scrolling chart card.
+            .compositingGroup()
+            .zIndex(100)
         }
         .background(Clinical.canvas.ignoresSafeArea())
         .background(WindowSceneReader(scene: $owningWindowScene))
@@ -215,9 +221,17 @@ struct RootView: View {
             await RitualActivityService.shared.reconcileOrphans()
             guard !didBootstrap else { return }
             didBootstrap = true
-            if ProcessInfo.processInfo.arguments.contains("HC_SEED_DEMO") {
+            // Demo seeding is a QA hook, so it stays out of the shipping binary entirely rather
+            // than merely being unreachable behind a launch argument a release user can't set.
+            #if DEBUG
+            let seededDemo = ProcessInfo.processInfo.arguments.contains("HC_SEED_DEMO")
+            if seededDemo {
                 Seed.demo(context: context, profiles: profiles, entries: entries)
-            } else {
+            }
+            #else
+            let seededDemo = false
+            #endif
+            if !seededDemo {
                 Seed.bootstrapIfNeeded(context: context, profiles: profiles)
             }
             try? await Task.sleep(for: .milliseconds(150))

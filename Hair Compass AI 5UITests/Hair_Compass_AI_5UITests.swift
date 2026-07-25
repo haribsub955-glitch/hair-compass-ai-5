@@ -6,19 +6,27 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    /// First run presents the cinematic onboarding: welcome → name step.
+    /// First run presents the illustrated cover (`OnboardingIntro`, which replaced the old single
+    /// "Begin" welcome step), and walking it through hands off to the name step.
     @MainActor
     func testOnboardingFirstRunReachesNameStep() throws {
         let app = XCUIApplication()
         app.launchArguments = ["HC_ONBOARD"]
         app.launch()
 
-        let begin = app.buttons["Begin"]
-        XCTAssertTrue(begin.waitForExistence(timeout: 8))
-        begin.tap()
+        let primary = app.buttons["onboardIntroPrimary"]
+        XCTAssertTrue(primary.waitForExistence(timeout: 8), "first run should open on the illustrated cover")
 
-        // Second screen collects the name.
-        XCTAssertTrue(app.textFields["onboardName"].waitForExistence(timeout: 6))
+        // Walk the cover to its end — "Continue" on each page, "Set up my compass" on the last.
+        // Bounded rather than a fixed four taps so adding a page doesn't break the test.
+        let name = app.textFields["onboardName"]
+        for _ in 0..<8 {
+            if name.exists { break }
+            guard primary.waitForExistence(timeout: 4) else { break }
+            primary.tap()
+        }
+
+        XCTAssertTrue(name.waitForExistence(timeout: 6), "the cover should hand off to the name step")
     }
 
     /// The profile (Baseline) can replay the onboarding, and the replay can be closed again.
@@ -32,8 +40,8 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(replay.waitForExistence(timeout: 8))
         replay.tap()
 
-        // The animated walkthrough opens on its welcome screen.
-        XCTAssertTrue(app.buttons["Begin"].waitForExistence(timeout: 6))
+        // The walkthrough opens on the illustrated cover's first page.
+        XCTAssertTrue(app.buttons["onboardIntroPrimary"].waitForExistence(timeout: 6))
 
         // A replay can be exited early via the close button, returning to the profile.
         app.buttons["Close walkthrough"].tap()

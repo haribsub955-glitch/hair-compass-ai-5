@@ -29,7 +29,5 @@
 	<string>Hair Compass uses your photo library for scalp and hair photos kept as records and comparisons. Only text on ingredient labels is summarized, fully on-device.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
-	<key>UIBackgroundModes</key>
-	<array/>
 </dict>
 </plist>

@@ -4,8 +4,9 @@ import SwiftUI
 
 /// Onboarding step 12 — "your plan". The honest Pro offer: a scientifically grounded projection
 /// (the ONLY quantitative number is the published male-AGA combination-therapy average from
-/// `docs/TrackingSpec.md`; everyone else gets qualitative milestones), three "what Pro adds"
-/// rows, and purchase buttons that never show a placeholder price — until real products load
+/// `docs/TrackingSpec.md`; everyone else gets qualitative milestones), an illustrated card per
+/// genuinely-gated feature — there are exactly two, and only what `hasPro` actually gates may be
+/// listed here — and purchase buttons that never show a placeholder price. Until real products load
 /// they're replaced by `StoreUnavailableView` (a spinner, or an honest "can't reach the store"
 /// message with Retry). "Continue free" sits directly under them, same size of voice, and there
 /// is no countdown, no fake discount, no back navigation trap: this screen only moves forward,
@@ -23,22 +24,48 @@ struct OnboardingPlanStep: View {
 
     private var isBusy: Bool { purchasingProductID != nil || purchases.isRestoring }
 
+    /// Read fresh on every body evaluation rather than cached in `@State`: Apple Intelligence can
+    /// be switched on, or finish downloading, while this step is on screen.
+    private var availability: OnDeviceAvailability { ProAvailability.current }
+
+    /// Scroll target for the DEBUG bottom-of-page screenshot hook.
+    private static let footerAnchor = "planFooter"
+
     private var model: ProjectionModel {
         ProjectionModel.make(condition: profile.condition, sex: profile.sex)
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 18) {
-                    header
-                    projectionCard
-                    proAdds
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        header
+                        // Sits above the projection card: the felt version of the same claim the
+                        // card then makes with data. Both describe visibility, never regrowth.
+                        ClarityContrast(sex: profile.sex)
+                        projectionCard
+                        proAdds
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 16)
+                    footer.id(Self.footerAnchor)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                .padding(.bottom, 16)
-                footer
+            }
+            .onAppear {
+                // This screen is taller than any phone, so QA screenshots of the offer itself
+                // need a way to land below the fold. DEBUG-only, same spirit as HC_ONBOARD_STEP.
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("HC_PAYWALL_BOTTOM") {
+                    Task { @MainActor in
+                        // Long enough for the step transition and the store's product load to
+                        // settle, or the anchor moves out from under the scroll.
+                        try? await Task.sleep(for: .milliseconds(1800))
+                        proxy.scrollTo(Self.footerAnchor, anchor: .bottom)
+                    }
+                }
+                #endif
             }
         }
         .task(id: purchases.yearly?.id) {
@@ -260,39 +287,47 @@ struct OnboardingPlanStep: View {
 
     // MARK: What Pro adds
 
+    /// Exactly the two things `hasPro` actually gates — `HairChatSheet` and `DeepAnalysisSheet`.
+    ///
+    /// This list previously carried a third row, "Smart reminders & trends". Nothing gates those:
+    /// `PurchaseService` is referenced in five files total and `hasPro` appears at two feature
+    /// call sites, so reminders and trends ship free to everyone. Selling them here was a claim
+    /// the app doesn't honour, so the row is gone. If a benefit isn't behind `hasPro`, it does not
+    /// belong on this screen — check before adding one.
     private var proAdds: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Eyebrow(text: "What Pro adds")
-            proRow("bubble.left.and.text.bubble.right", "AI hair chat", "Ask anything about your data")
-            proRow("doc.text.magnifyingglass", "AI record summary", "On-device analysis of your tracked record — not diagnosis")
-            proRow("bell.badge", "Smart reminders & trends", "Stay consistent through week 6")
+            ProFeatureCard(
+                art: CompanionArt.listening,
+                title: "Ask \(Companion.name) anything",
+                line: "Your record, in plain language. \"Is my shedding actually improving?\" — answered from your own entries, on-device.",
+                footnote: "Runs on Apple Intelligence. Nothing leaves your phone."
+            )
+            ProFeatureCard(
+                art: "pro-analysis",
+                title: "Deep record analysis",
+                line: "\(Companion.name) reads months of your entries at once and surfaces what moved together — the connections you'd need a spreadsheet to spot.",
+                footnote: "A reading of your record, never a diagnosis."
+            )
         }
-    }
-
-    private func proRow(_ symbol: String, _ title: String, _ line: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .font(Clinical.body(15, weight: .medium))
-                .foregroundStyle(Clinical.accent)
-                .frame(width: 30, height: 30)
-                .background(Clinical.accentSoft, in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Clinical.body(14, weight: .semibold)).foregroundStyle(Clinical.ink)
-                Text(line).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
     }
 
     // MARK: Footer — purchase, free path, restore. No back navigation, no timers.
 
     private var footer: some View {
         VStack(spacing: 10) {
-            if !purchases.products.isEmpty {
+            wrenClose
+
+            // Directly above the price. `proAdds` has just promised two Apple Intelligence
+            // features; if this iPhone can't run them, that has to be said before the buttons,
+            // not discovered after the charge.
+            ProAvailabilityNotice(status: availability)
+
+            if !ProAvailability.sellable(availability) {
+                // Nothing to sell on hardware that can never run either Pro feature — the free
+                // path below becomes the only forward move, which is the honest outcome here.
+                EmptyView()
+            } else if !purchases.products.isEmpty {
                 purchaseButtons
             } else {
                 StoreUnavailableView(isLoading: purchases.isLoading) {
@@ -337,12 +372,44 @@ struct OnboardingPlanStep: View {
         .padding(.top, 8)
     }
 
+    /// The last thing before the price. Wren is not decoration here — she *is* the thing being
+    /// sold (the chat's face and name), so putting her at the decision point is both the warmest
+    /// and the most accurate close available. Deliberately no urgency, no scarcity, no countdown:
+    /// this screen's whole design contract is that it only ever moves forward honestly.
+    private var wrenClose: some View {
+        HStack(alignment: .top, spacing: 12) {
+            CompanionView(moment: .greeting, variant: .avatar, size: 44)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(Companion.name) comes with Pro")
+                    .font(Clinical.body(14, weight: .semibold))
+                    .foregroundStyle(Clinical.ink)
+                Text("Six months from now you'll either have a record worth reading — or you'll be asking the same questions with nothing to check them against.")
+                    .font(Clinical.caption(12))
+                    .foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Clinical.accent.opacity(0.22), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .padding(.bottom, 4)
+    }
+
     @ViewBuilder
     private var purchaseButtons: some View {
         if let yearly = purchases.yearly {
             // Eligibility-gated: the launch offer only renders for Apple IDs that haven't
             // already used the group's introductory offer — never a placeholder discount.
             let offer = yearlyIntroEligible ? purchases.launchOffer(for: yearly) : nil
+            // Only shown when there's no real intro offer to display instead, so the screen never
+            // stacks two different discount stories on top of each other.
+            let versus = offer == nil ? purchases.yearlyVersusMonthly() : nil
             VStack(spacing: 8) {
                 if let offer {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -357,6 +424,36 @@ struct OnboardingPlanStep: View {
                             .font(Clinical.caption(13))
                             .foregroundStyle(Clinical.secondary)
                     }
+                } else if let versus {
+                    // "$118.80 billed monthly / $39.99 / year". The struck figure is the REAL cost
+                    // of a year on the monthly plan — never a former price of the yearly plan —
+                    // and the words "billed monthly" sit with it so it cannot be read as one.
+                    // See `PurchaseService.yearlyVersusMonthly()` for why that distinction is legal
+                    // rather than cosmetic.
+                    VStack(spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(versus.monthlyForAYear)
+                                .font(Clinical.caption(14))
+                                .strikethrough()
+                                .foregroundStyle(Clinical.tertiary)
+                            Text(versus.yearly)
+                                .font(Clinical.body(18, weight: .semibold))
+                                .foregroundStyle(Clinical.ink)
+                            Text("/year")
+                                .font(Clinical.caption(13))
+                                .foregroundStyle(Clinical.secondary)
+                        }
+                        Text("\(versus.monthlyForAYear) is what a year costs billed monthly")
+                            .font(Clinical.caption(11))
+                            .foregroundStyle(Clinical.tertiary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(
+                        "\(versus.yearly) per year, versus \(versus.monthlyForAYear) for the same "
+                        + "year billed monthly. Save \(versus.percentOff) percent."
+                    )
                 }
                 Button {
                     buy(yearly)
@@ -370,7 +467,13 @@ struct OnboardingPlanStep: View {
                                     .foregroundStyle(Clinical.secondary)
                             } else {
                                 Text("Start with yearly — \(yearly.displayPrice)/year")
-                                if let perMonth = yearly.monthlyEquivalentDisplay {
+                                if let perMonth = yearly.monthlyEquivalentDisplay, let versus {
+                                    // Both halves are derived from the two real products: the
+                                    // per-month figure from the yearly price, the percentage from
+                                    // the yearly-vs-monthly comparison.
+                                    Text("\(perMonth) · save \(versus.percentOff)% vs monthly")
+                                        .font(Clinical.body(11, weight: .regular))
+                                } else if let perMonth = yearly.monthlyEquivalentDisplay {
                                     Text(perMonth)
                                         .font(Clinical.body(11, weight: .regular))
                                 }
@@ -410,5 +513,64 @@ struct OnboardingPlanStep: View {
             purchasingProductID = nil
             if bought { onContinue() }
         }
+    }
+}
+
+/// One genuinely-gated feature, sold with its own gouache emblem rather than a 15pt SF Symbol.
+/// The `footnote` line is load-bearing: each card states its own limit (on-device, not a
+/// diagnosis) so the honesty sits *with* the claim instead of in a disclaimer far below it.
+private struct ProFeatureCard: View {
+    let art: String
+    let title: String
+    let line: String
+    var footnote: String? = nil
+
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        // Art beside copy normally; stacked once the text is large enough that an 84pt emblem
+        // would squeeze the words into a sliver.
+        let stacked = typeSize.isAccessibilitySize
+        return VStack(alignment: .leading, spacing: 10) {
+            if stacked { emblem }
+            HStack(alignment: .top, spacing: 14) {
+                if !stacked { emblem }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(Clinical.body(15, weight: .semibold))
+                        .foregroundStyle(Clinical.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(line)
+                        .font(Clinical.caption(13))
+                        .foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let footnote {
+                        Text(footnote)
+                            .font(Clinical.caption(11))
+                            .foregroundStyle(Clinical.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Clinical.surfaceWash, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Clinical.hairline, lineWidth: 1)
+        )
+        .shadow(color: Clinical.cardShadow, radius: 8, y: 3)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var emblem: some View {
+        Image(art)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 84, height: 84)
+            .accessibilityHidden(true)
     }
 }

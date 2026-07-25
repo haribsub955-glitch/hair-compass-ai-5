@@ -80,7 +80,7 @@
           },
           "localizations" : [
             {
-              "description" : "Monthly access to Hair Compass Pro — AI hair chat, on-device analysis of your tracked record, and smart reminders.",
+              "description" : "On-device AI chat and record analysis.",
               "displayName" : "Pro Monthly",
               "locale" : "en_US"
             }
@@ -94,20 +94,14 @@
         {
           "adHocOffers" : [],
           "codeOffers" : [],
-          "displayPrice" : "79.00",
+          "displayPrice" : "39.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "9C1A4E22",
-          "introductoryOffer" : {
-            "displayPrice" : "39.00",
-            "internalID" : "9C1A4E33",
-            "numberOfPeriods" : 1,
-            "paymentMode" : "payUpFront",
-            "subscriptionPeriod" : "P1Y"
-          },
+          "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Yearly access to Hair Compass Pro — AI hair chat, on-device analysis of your tracked record, and smart reminders.",
+              "description" : "On-device AI chat and record analysis.",
               "displayName" : "Pro Yearly",
               "locale" : "en_US"
             }

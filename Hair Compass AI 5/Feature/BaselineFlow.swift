@@ -9,11 +9,36 @@ struct BaselineFlow: View {
     @Bindable var profile: Profile
     @Environment(\.dismiss) private var dismiss
     @Environment(AppLockService.self) private var appLock
+    /// Owned here rather than injected app-wide: nothing else reads it yet, because nothing acts
+    /// on it yet. Promote to an `@Environment` service when a contribution pipeline actually exists.
+    @State private var researchConsent = ResearchConsent()
+    // Read only to build the contribution preview, so the person sees their real numbers rather
+    // than a mock-up of them.
+    @Query(sort: \DailyEntry.date) private var researchEntries: [DailyEntry]
+    @Query(sort: \Treatment.startDate) private var researchTreatments: [Treatment]
+    @Query private var researchLabs: [LabResult]
+    @Query private var researchTriggers: [TriggerEvent]
     @Environment(PurchaseService.self) private var purchases
     @State private var replayOnboarding = false
     @State private var showManageSubscriptions = false
 
     private let ageBands = ["Under 25", "26–35", "36–45", "46–55", "56+"]
+
+    /// Built with `consentGiven: true` regardless of the live toggle — this is the *preview*, and
+    /// someone deciding whether to opt in has to be able to see what they'd be agreeing to before
+    /// they agree. Nothing is transmitted either way; the real pipeline, when it exists, must read
+    /// the actual consent state.
+    private var researchPayload: ResearchPayload? {
+        ResearchAggregator.build(
+            consentGiven: true,
+            consentTermsVersion: ResearchConsent.currentTermsVersion,
+            profile: profile,
+            entries: researchEntries,
+            treatments: researchTreatments,
+            hasLabs: !researchLabs.isEmpty,
+            hasTriggers: !researchTriggers.isEmpty
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -101,6 +126,8 @@ struct BaselineFlow: View {
 
                     privacySection
 
+                    ResearchConsentSection(consent: researchConsent, payload: researchPayload)
+
                     if purchases.hasPro {
                         subscriptionSection
                     }
@@ -156,27 +183,16 @@ struct BaselineFlow: View {
         }
     }
 
+    /// This row was already the medallion-and-chevron shape by hand; `BrandNavRow` is that shape
+    /// named, so the two stay in step instead of drifting. It stays a *card* — unlike Plan's
+    /// ledger headers, which Round-9 deliberately de-chromed — because this is a standalone
+    /// destination inside a form, not a section heading in a ledger.
     private var replayRow: some View {
-        Button { replayOnboarding = true } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "sparkles")
-                    .font(Clinical.caption(18))
-                    .foregroundStyle(Clinical.accent)
-                    .frame(width: 40, height: 40)
-                    .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Replay the walkthrough").font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
-                    Text("Revisit the animated intro anytime").font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right").font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.tertiary)
-            }
-            .padding(12)
-            .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        BrandNavRow(
+            symbol: "sparkles",
+            title: "Replay the walkthrough",
+            line: "Revisit the animated intro anytime"
+        ) { replayOnboarding = true }
         .accessibilityIdentifier("replayOnboarding")
     }
 

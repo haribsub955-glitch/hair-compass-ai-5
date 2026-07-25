@@ -150,3 +150,98 @@ extension ProcedureGuide {
         transplantTimeline.first { $0.weekRange.contains(weeksElapsed) } ?? transplantTimeline[transplantTimeline.count - 1]
     }
 }
+
+// MARK: - Catalogue content for the in-clinic options screen
+
+/// What each procedure *is*, how strong the evidence for it is, and how often it's typically done.
+///
+/// `ProcedureGuide`'s original members answer "I've booked this — what happens after?".
+/// These answer "what is this, and is it worth asking my clinician about?" — the browsing case
+/// the in-clinic options screen serves.
+///
+/// The posture is unchanged and load-bearing: **education, never a recommendation to undergo.**
+/// Evidence grades are deliberately conservative and describe the *state of the literature for
+/// androgenetic hair loss*, not a prediction for any individual. They must not be inflated to make
+/// the screen more exciting — `.weak` on mesotherapy is the honest reading and it stays.
+extension ProcedureGuide {
+
+    /// One plain sentence: what the procedure actually involves.
+    static func summary(for type: ProcedureType) -> String {
+        switch type {
+        case .prp:
+            return "A sample of your own blood is spun to concentrate its platelets, then injected into the thinning areas of the scalp."
+        case .microneedling:
+            return "Fine needles make controlled micro-injuries in the scalp to prompt a repair response. Most often used alongside minoxidil rather than on its own."
+        case .transplant:
+            return "Follicles are moved from a denser donor area to thinning areas. It redistributes the hair you have — it doesn't create new hair."
+        case .lllt:
+            return "Red-light devices — caps, combs or helmets — used on a regular schedule, at home or in clinic."
+        case .mesotherapy:
+            return "Injections of vitamin, drug or nutrient mixtures into the scalp. Formulations vary widely between clinics and aren't standardised."
+        case .consultation:
+            return "A dermatologist or GP examines your scalp, reviews your history, and decides what — if anything — is worth doing next."
+        case .other:
+            return "Anything else a clinic offers that isn't listed here."
+        }
+    }
+
+    /// How strong the published evidence is *for hair loss*, using the app's shared vocabulary so
+    /// a procedure is graded on the same scale as everything else the app rates.
+    static func evidence(for type: ProcedureType) -> EvidenceTier {
+        switch type {
+        case .transplant:
+            // Long-established surgical redistribution with predictable results in suitable
+            // candidates — the strongest evidence base of anything on this list.
+            return .strong
+        case .prp, .microneedling, .lllt:
+            // All three have randomised trials showing benefit, but with small samples and
+            // inconsistent protocols between studies. Genuinely promising, not settled.
+            return .moderate
+        case .mesotherapy:
+            // Little good-quality evidence, and no standard formulation to study. Graded honestly
+            // even though it is widely sold.
+            return .weak
+        case .consultation, .other:
+            // Not treatments, so not evidence-graded — context for the rest of the list.
+            return .context
+        }
+    }
+
+    /// The typical rhythm, phrased as a range because protocols genuinely differ between clinics.
+    static func cadence(for type: ProcedureType) -> String? {
+        switch type {
+        case .prp: return "Often monthly for 3 sessions, then maintenance"
+        case .microneedling: return "Weekly to fortnightly, over months"
+        case .transplant: return "One or two sessions · judged at 12–18 months"
+        case .lllt: return "Several short sessions a week, ongoing"
+        case .mesotherapy: return "A series of sessions · protocol varies widely"
+        case .consultation: return "As needed"
+        case .other: return nil
+        }
+    }
+
+    /// The single most useful caution for someone considering this — the thing worth raising with
+    /// a clinician before agreeing to it. `nil` where there's nothing specific to flag.
+    static func caution(for type: ProcedureType) -> String? {
+        switch type {
+        case .prp:
+            return "Protocols and costs vary a lot between clinics, and a series is usually needed before anything can be judged."
+        case .microneedling:
+            return "Needle depth matters, and at-home rollers carry an infection risk if they aren't kept clean."
+        case .transplant:
+            return "It moves existing hair rather than adding any, so ongoing loss elsewhere usually still needs treating. Donor supply is finite."
+        case .lllt:
+            return "Effects are modest and depend on using the device consistently for months."
+        case .mesotherapy:
+            return "Because mixtures aren't standardised, ask exactly what's being injected and why."
+        case .consultation, .other:
+            return nil
+        }
+    }
+
+    /// The order the catalogue lists them in: strongest evidence first, with the two non-treatment
+    /// entries last, so the screen never leads with the weakest option.
+    static var catalogueOrder: [ProcedureType] {
+        [.transplant, .prp, .microneedling, .lllt, .mesotherapy, .consultation, .other]
+    }
+}
