@@ -365,7 +365,7 @@ struct OnboardingPlanStep: View {
             .buttonStyle(.plain)
             .disabled(isBusy)
 
-            PaywallLegal()
+            PaywallLegal(showsRenewalDisclosure: ProAvailability.sellable(availability))
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
