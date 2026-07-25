@@ -1,4 +1,5 @@
 import StoreKit
+import SwiftData
 import SwiftUI
 
 /// Wraps premium content: shows it for Pro users, otherwise an inline, honest upsell
@@ -16,6 +17,8 @@ struct ProGate<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     @Environment(PurchaseService.self) private var purchases
+    /// Only for picking the matching illustration pair — the gate itself stays profile-agnostic.
+    @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
     /// only the button the user actually tapped shows its spinner.
     @State private var purchasingProductID: String?
@@ -23,6 +26,10 @@ struct ProGate<Content: View>: View {
     @State private var monthlyIntroEligible = false
 
     private var isBusy: Bool { purchasingProductID != nil || purchases.isRestoring }
+
+    /// Read fresh on every body evaluation rather than cached in `@State`: Apple Intelligence can
+    /// be switched on, or finish downloading, while this gate is on screen.
+    private var availability: OnDeviceAvailability { ProAvailability.current }
 
     var body: some View {
         if purchases.hasPro {
@@ -64,7 +71,20 @@ struct ProGate<Content: View>: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if !purchases.products.isEmpty {
+            // Same component as the onboarding paywall, so both conversion surfaces make the
+            // identical (and identically bounded) promise. `.compact` because this one lives
+            // inside a sheet alongside the feature's own chrome.
+            ClarityContrast(size: .compact, sex: profiles.first?.sex ?? .male)
+
+            // Above the price, always: this gate's own feature is one of the two that need Apple
+            // Intelligence, so an unavailable model is the single most important thing on screen.
+            ProAvailabilityNotice(status: availability)
+
+            if !ProAvailability.sellable(availability) {
+                // Nothing to sell on hardware that can never run either Pro feature. Restore and
+                // the legal footer stay below, so an existing subscriber isn't stranded.
+                EmptyView()
+            } else if !purchases.products.isEmpty {
                 VStack(spacing: 10) {
                     if let yearly = purchases.yearly {
                         // Eligibility-gated: the launch offer only renders for Apple IDs that

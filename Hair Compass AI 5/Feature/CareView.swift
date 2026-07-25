@@ -39,6 +39,8 @@ struct CareView: View {
     /// second treatment's milestone opens THAT treatment's report.
     @State private var reportFocusTreatment: Treatment?
     @State private var showProcedures = false
+    /// The educational catalogue, kept distinct from `showProcedures` (this person's own log).
+    @State private var showInClinicOptions = false
     @State private var showProgressCheckIn = false
     /// Opens `LifeEventsSheet` — the full list of dated `TriggerEvent`s, view/edit/delete —
     /// rather than jumping straight to the add form; mirrors `showProcedures`.
@@ -178,6 +180,7 @@ struct CareView: View {
             Text("This records a missed application. It does not change or start any treatment.")
         }
         .sheet(isPresented: $showProcedures) { ProceduresView() }
+        .sheet(isPresented: $showInClinicOptions) { InClinicOptionsView() }
         .sheet(isPresented: $showLifeEvents) { LifeEventsSheet() }
         .sheet(isPresented: $showProgressCheckIn) {
             ProgressCheckInSheet(
@@ -201,6 +204,7 @@ struct CareView: View {
             await notifications.refreshAuthorization()
             remindersOn = notifications.isEnabled
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("HC_INCLINIC") { showInClinicOptions = true }
             if ProcessInfo.processInfo.arguments.contains("HC_SCROLL_PRODUCTS") {
                 try? await Task.sleep(for: .milliseconds(250))
                 withAnimation { proxy.scrollTo("science", anchor: .top) }
@@ -894,6 +898,18 @@ struct CareView: View {
                         .padding(.bottom, 10)
                 }
             }
+
+            // The catalogue sits directly under this section's own log, so "what have I booked?"
+            // and "what exists, and is it worth asking about?" are one tap apart but never mixed
+            // into one list. A card rather than a bare `ledgerSectionHeader`, because unlike the
+            // headings around it this is a standalone destination, not a heading over rows.
+            BrandNavRow(
+                symbol: "cross.case",
+                title: "Explore in-clinic options",
+                line: "What clinics offer, evidence-graded. Discuss with your clinician."
+            ) { showInClinicOptions = true }
+            .padding(.bottom, 13)
+
             Divider().overlay(Clinical.hairline)
         }
     }

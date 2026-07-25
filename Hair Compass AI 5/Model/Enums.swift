@@ -48,6 +48,21 @@ enum HairCondition: String, Codable, CaseIterable, Identifiable {
     /// Whether the seborrheic-dermatitis 16-point scalp scale is the headline metric.
     var usesScalpScale: Bool { self == .seborrheicDermatitis }
 
+    /// Gouache vignette for the onboarding picker's card grid — the characteristic look of each
+    /// pattern, painted rather than photographed, so the choice can be made by recognition instead
+    /// of by reading six clinical names. Educational framing only: this is how a person identifies
+    /// what they're seeing, never a diagnosis, and never a before/after.
+    var art: String {
+        switch self {
+        case .androgenetic: return "cond-androgenetic"
+        case .alopeciaAreata: return "cond-alopecia-areata"
+        case .telogenEffluvium: return "cond-telogen-effluvium"
+        case .traction: return "cond-traction"
+        case .seborrheicDermatitis: return "cond-seborrheic-dermatitis"
+        case .unsure: return "cond-unsure"
+        }
+    }
+
     /// Plain-language title for onboarding's "what are you noticing?" step — the clinical
     /// `title` stays the source of truth for charts and Care and is shown demoted alongside this.
     var plainTitle: String {
@@ -459,14 +474,19 @@ enum ProcedureType: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// The bundled gouache procedure art, where one exists (else empty → callers fall back to the symbol).
+    /// The bundled gouache procedure art. Every case now has one — `mesotherapy`, `consultation`
+    /// and `other` previously returned "" and fell back to an SF Symbol, which left three of the
+    /// seven rows visibly plainer than the rest. Callers may still guard on `isEmpty`; nothing
+    /// returns empty today.
     var art: String {
         switch self {
         case .prp: return "procedure-prp"
         case .microneedling: return "procedure-microneedling"
         case .transplant: return "procedure-hair-transplant"
         case .lllt: return "procedure-low-level-laser"
-        case .mesotherapy, .consultation, .other: return ""
+        case .mesotherapy: return "procedure-mesotherapy"
+        case .consultation: return "procedure-consultation"
+        case .other: return "procedure-other"
         }
     }
 }

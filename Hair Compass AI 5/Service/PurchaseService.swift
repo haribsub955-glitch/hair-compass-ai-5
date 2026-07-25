@@ -204,6 +204,35 @@ final class PurchaseService {
         return "\(period.value)-\(unit) free trial, then \(product.displayPrice)"
     }
 
+    /// What a year on the **monthly** plan actually costs, versus the yearly plan — e.g.
+    /// "$118.80" vs "$39.99", 66% saved.
+    ///
+    /// This is the only "was/now" style comparison this app is allowed to draw, and the
+    /// distinction is legal, not stylistic:
+    ///
+    /// - **Legitimate** (this): 12 × the *real, currently-sold* monthly price. The customer
+    ///   genuinely would pay that much over a year, so it is a true comparison — provided the UI
+    ///   labels it as the monthly-plan cost ("billed monthly") and never as a former price of the
+    ///   yearly plan. Apple's own subscription sheets present savings this way.
+    /// - **Illegal** (never do this): inventing a higher "original" yearly price the product was
+    ///   never sold at. That is a fictitious reference price under the FTC Act, the EU Omnibus
+    ///   Directive and the UK CPRs, and it breaches App Store Review 3.1.2.
+    ///
+    /// Returns `nil` unless both products are loaded, so the UI simply omits the comparison
+    /// rather than inventing one. A genuine App Store Connect introductory offer is a separate,
+    /// also-legitimate mechanism — see `launchOffer(for:)`.
+    func yearlyVersusMonthly() -> (monthlyForAYear: String, yearly: String, percentOff: Int)? {
+        guard let yearly, let monthly, monthly.price > 0, yearly.price > 0 else { return nil }
+        let twelveMonths = monthly.price * 12
+        guard twelveMonths > yearly.price else { return nil }
+        let pct = ((twelveMonths - yearly.price) / twelveMonths * 100)
+        return (
+            monthlyForAYear: twelveMonths.formatted(monthly.priceFormatStyle),
+            yearly: yearly.displayPrice,
+            percentOff: Int((pct as NSDecimalNumber).doubleValue.rounded())
+        )
+    }
+
     /// For a product whose intro offer is a paid launch discount (pay-up-front / pay-as-you-go):
     /// the intro price, the base price, and the honest rounded percent off — all from real prices.
     func launchOffer(for product: Product) -> (intro: String, base: String, percentOff: Int)? {

@@ -54,6 +54,7 @@ Info.plist keys are the exception (they're real project config — see §9).
 | `HC_LEARN` | Opens the Learn sheet on launch |
 | `HC_SCROLL_PRODUCTS` | Scrolls Plan to the science-products section |
 | `HC_COMPARE` / `HC_EXPORT` | Opens the Compare / Export sheet from Trends |
+| `HC_AI_AVAILABLE` | Forces `ProAvailability.current` to `.available`. The Simulator can't run Foundation Models, so it always reports `.deviceNotEligible` — which now (correctly) hides the purchase buttons. Needed to screenshot the paywall's selling state without a physical Apple Intelligence device. |
 
 Example: `xcrun simctl launch <SIM> harib.Hair-Compass-AI-5 HC_SEED_DEMO HC_TAB care`
 
@@ -221,18 +222,45 @@ building + launching + screenshotting in the Simulator.
 
 ---
 
-## 10. Open items before App Store submission (decisions, not code)
+## 10. Open items before App Store submission
 
-1. **Privacy policy + support URLs** — fill `AppInfo` (docs/ GitHub Pages site).
-2. **App Privacy labels** — complete the questionnaire in App Store Connect (HealthKit read, photos, optional off-device cloud AI).
-3. **Paywall decision** — the Fable cloud "deep analysis" costs per request. Decide free / subscription (`PurchaseManager` + subscription group `21442176` exist to build on) / one-off, then gate `DeepAnalysisSheet`.
-4. **Cloud API key** provisioning for release (a shipped app can't read a scheme env var — decide on a proxy/backend or a user-provided key).
-5. **Screenshot every tab on device** at release for the store listing.
+Items 3 and 4 of the old list are gone — AI is fully on-device now (no cloud, no key to provision)
+and both AI sheets are gated behind `hasPro`.
 
-Everything the user requested through 2026-07-03 is implemented (measurement layer, HealthKit,
-guided camera, hybrid AI, Learn, Plan/coaching/reminders, science-backed affiliate products, the
-Compare chart-builder, the treatment recommender, clinician + data export, the widget, and the
-legal footer). There are no half-built features pending — only the business/config decisions above.
+### In this repo
+
+1. **Privacy policy + support URLs** — `AppInfo.privacyPolicyURLString` / `.supportURLString` still
+   point at a GitHub Pages site that has never resolved (the repo is private and Pages was never
+   enabled). `SubmissionReadinessTests` fails until they point somewhere real; see
+   [docs/README.md](docs/README.md). This is a hard blocker: App Store Connect requires a resolving
+   privacy policy URL, and `PaywallLegal` renders the link on the paywall itself (Guideline 3.1.2).
+
+### In App Store Connect (nothing in the repo can verify these)
+
+2. **App record + App ID capabilities** — bundle id `harib.Hair-Compass-AI-5`, with HealthKit and
+   App Group `group.harib.Hair-Compass-AI-5` enabled on the identifier, or the entitlements won't
+   sign.
+3. **Subscriptions** — create both products in group `21442176` and get them to *Ready to Submit*:
+   localized display name (≤30 chars), description (≤45 chars), price, and an IAP review screenshot.
+   `HairCompass.storekit` is a local simulator fixture only; it configures nothing on Apple's side.
+   Keep the ASC descriptions matching the in-app claim — **exactly two features are gated**
+   (`HairChatSheet`, `DeepAnalysisSheet`), so don't list reminders or trends, which ship free.
+4. **Paid Apps agreement + banking/tax** signed, or products never load and the paywall shows
+   `StoreUnavailableView` to every reviewer.
+5. **App Privacy questionnaire** → *Data Not Collected*, matching both `PrivacyInfo.xcprivacy`
+   files and the fact that the app makes no network requests at all.
+6. **Age rating**, description, keywords, support URL, and screenshots — taken on a real device.
+7. **App Review notes** — say that no account is needed, and that the two Pro features require
+   Apple Intelligence, naming a device that has it. A reviewer on ineligible hardware now sees the
+   honest "Pro wouldn't work on this iPhone" notice instead of purchase buttons (see
+   `Feature/ProAvailability.swift`), and should not read that as a broken paywall.
+
+### Before the archive
+
+8. **TestFlight on a physical device.** HealthKit, Face ID, the widget, Live Activities and
+   Foundation Models are all things the Simulator cannot prove.
+
+There are no half-built features pending — only the items above.
 
 ---
 

@@ -1,2 +1,6 @@
 # Claude Code personal/local settings (not for the team)
 .claude/settings.local.json
+
+# npm install output for the shadcn CLI in package.json — restorable from package-lock.json,
+# and nothing in the iOS app links against it.
+node_modules/

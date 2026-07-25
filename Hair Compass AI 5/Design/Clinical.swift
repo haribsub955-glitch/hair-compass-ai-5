@@ -764,6 +764,100 @@ struct PipStepper: View {
     }
 }
 
+/// A destination row with a tinted medallion, a serif title and a plain second line — the shape
+/// the sibling skin app uses for "Explore products by goal" / "Explore in-clinic procedures".
+///
+/// It exists because the app kept re-declaring the same row inline as a 15pt SF Symbol beside two
+/// `Text`s, which reads as a settings list rather than as this brand. The medallion (accent symbol
+/// on `accentSoft` in a circle) plus a serif title is what makes a navigation row look like it
+/// belongs to the same hand as the gouache artwork.
+struct BrandNavRow: View {
+    let symbol: String
+    let title: String
+    let line: String
+    var action: () -> Void
+
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: symbol)
+                    .font(Clinical.body(17, weight: .medium))
+                    .foregroundStyle(Clinical.accent)
+                    .frame(width: 44, height: 44)
+                    .background(Clinical.accentSoft, in: Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(Clinical.headline(17))
+                        .foregroundStyle(Clinical.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(line)
+                        .font(Clinical.caption(13))
+                        .foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // At accessibility sizes the chevron is pure decoration competing for width the
+                // two lines need, and VoiceOver already announces the button.
+                if !typeSize.isAccessibilitySize {
+                    Image(systemName: "chevron.right")
+                        .font(Clinical.body(14, weight: .semibold))
+                        .foregroundStyle(Clinical.tertiary)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Clinical.surfaceWash, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Clinical.hairline, lineWidth: 1)
+            )
+            .shadow(color: Clinical.cardShadow, radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// The bordered "read this first" card — an `i` medallion beside a short paragraph, used where a
+/// screen has to set expectations before the content starts (education-only framing, scope limits,
+/// "discuss with your clinician"). The sibling skin app opens its procedures screen with exactly
+/// this, and it reads as deliberate authorship in a way a loose grey paragraph never does.
+///
+/// Distinct from `Colophon`, which *closes* a screen with one quiet sentence. This one opens it.
+struct InfoCallout: View {
+    let text: String
+    var symbol: String = "info.circle.fill"
+    var tint: Color = Clinical.accent
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .font(Clinical.body(15, weight: .medium))
+                .foregroundStyle(tint)
+                .frame(width: 28, height: 28)
+                .background(tint.opacity(0.12), in: Circle())
+
+            Text(text)
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(tint.opacity(0.25), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// A small pill stating how strong the evidence for a signal is — the app's honesty made visible.
 struct TierBadge: View {
     let tier: EvidenceTier

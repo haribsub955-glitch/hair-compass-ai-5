@@ -31,6 +31,9 @@ struct OnboardingFlow: View {
     // Restore-from-backup, offered quietly on the welcome step for anyone migrating phones —
     // see `runRestore(from:)`. A migrating user shouldn't have to re-answer 14 questions just
     // to find the door back to their existing records.
+    /// True only while the system Health permission sheet is up — drives the pairing animation's
+    /// `.connecting` state.
+    @State private var requestingHealth = false
     @State private var showRestoreImporter = false
     @State private var restoreSummary: BackupService.RestoreSummary?
     @State private var restoreErrorMessage: String?
@@ -54,7 +57,10 @@ struct OnboardingFlow: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            topBar
+            // Step 0 is the full-bleed illustrated cover, which carries its own page dots — the
+            // progress bar would only compete with them. A *replayed* walkthrough still shows the
+            // bar there, because that's where its close button lives.
+            if step > 0 || onDismiss != nil { topBar }
             ZStack {
                 content
                     .id(step)
@@ -98,6 +104,14 @@ struct OnboardingFlow: View {
         } message: {
             if let restoreErrorMessage { Text(restoreErrorMessage) }
         }
+        // NOTE ON DARK MODE: the cover's step 0 (`OnboardingIntro`) is fully dark-aware via
+        // `IntroPalette`, and its artwork is transparent so it reads on either ground. It renders
+        // light today only because `HairCompassApp` pins the whole window with
+        // `.preferredColorScheme(.light)`. A child cannot opt out of that — `.preferredColorScheme(nil)`
+        // means "no preference", so the ancestor's `.light` still wins — and forcing `.dark` here
+        // would flip the user into a dark cover and straight back to a light questionnaire one tap
+        // later. Lifting the window-level lock is the correct fix, and is a deliberate migration of
+        // the app's ~480 hardcoded `Clinical.*` call sites rather than a change to make here.
     }
 
     /// Reads and merges a backup picked from the welcome step's "Restoring from a backup?"
@@ -146,7 +160,10 @@ struct OnboardingFlow: View {
 
     @ViewBuilder private var content: some View {
         switch step {
-        case 0: welcome
+        case 0: OnboardingIntro(
+            onFinish: { next() },
+            onRestore: { showRestoreImporter = true }
+        )
         case 1: nameStep
         case 2: sexStep
         case 3: pregnancyStep
@@ -235,34 +252,6 @@ struct OnboardingFlow: View {
     }
 
     // MARK: Steps
-
-    private var welcome: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            BrandBanner(art: BrandArt.baselineHero, height: 260).padding(.horizontal, 20)
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    CompanionView(moment: .greeting, variant: .avatar, size: 40)
-                    Eyebrow(text: "Meet \(Companion.name)")
-                }
-                Text("Let's set your\ncompass").font(Clinical.headline(34)).foregroundStyle(Clinical.ink)
-                Text("I'm \(Companion.name), your hair-tracking companion. A few questions first — each one shows you something true about hair. About a minute.")
-                    .font(Clinical.caption(15)).foregroundStyle(Clinical.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(20)
-            Spacer()
-            primary("Begin") { next() }
-            Button {
-                UISelectionFeedbackGenerator().selectionChanged()
-                showRestoreImporter = true
-            } label: {
-                Text("Restoring from a backup?")
-                    .font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
-            }
-            .padding(.bottom, 24)
-            .accessibilityIdentifier("onboardRestoreFromBackup")
-        }
-    }
 
     private var nameValid: Bool { profile.name.trimmingCharacters(in: .whitespaces).count >= 2 }
 
@@ -381,36 +370,13 @@ struct OnboardingFlow: View {
     private var concernStep: some View {
         VStack(spacing: 0) {
             head("What are you noticing?", "Pick the closest match", "Plain words — the clinical name is underneath. You can change this anytime.")
-            ConditionDemo(condition: profile.condition)
-                .frame(height: 190).frame(maxWidth: .infinity)
-                .background(Clinical.surface).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
-                .padding(.horizontal, 20).padding(.top, 12)
-            Text(profile.condition.demoCaption)
-                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                .contentTransition(.opacity)
-                .padding(.horizontal, 20).padding(.top, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // The animated `ConditionDemo` box used to sit here, previewing the selected pattern.
+            // Now that every card carries its own vignette, it was showing the same idea twice and
+            // costing ~250pt of the screen the grid needs — so the grid absorbed its job.
+            // `ConditionDemo` itself is unchanged and still used elsewhere.
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 8) {
-                    ForEach(HairCondition.allCases) { c in
-                        let on = profile.condition == c
-                        Button { withAnimation(.easeInOut(duration: 0.3)) { profile.condition = c }; UISelectionFeedbackGenerator().selectionChanged() } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(c.plainTitle).font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
-                                    Text(c.title.uppercased()).font(Clinical.eyebrow(10)).tracking(1.0).foregroundStyle(Clinical.tertiary)
-                                    Text(c.plainSummary).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: on ? "largecircle.fill.circle" : "circle").foregroundStyle(on ? Clinical.accent : Clinical.tertiary)
-                            }
-                            .padding(12)
-                            .background(on ? Clinical.accentSoft : Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(on ? Clinical.accent.opacity(0.4) : Clinical.hairline, lineWidth: 1))
-                        }.buttonStyle(.plain)
-                    }
-                }.padding(.horizontal, 20).padding(.top, 12)
+                ConditionPicker(selection: $profile.condition)
+                    .padding(.horizontal, 20).padding(.top, 12)
             }
             primary("Continue") { next() }
         }
@@ -622,6 +588,10 @@ struct OnboardingFlow: View {
     private var healthConnectStep: some View {
         VStack(spacing: 0) {
             head("Automatic signals", "Connect Apple Health?", "Sleep, body weight, and recovery fill in automatically — no typing. You control exactly what's shared, and you can change it anytime in Settings.")
+
+            HealthPairingView(state: healthPairingState)
+                .padding(.top, 26)
+
             // Question and benefit list anchor together at the top with a fixed gap; leftover
             // vertical space accumulates below the list, never between question and content.
             VStack(spacing: 10) {
@@ -632,6 +602,14 @@ struct OnboardingFlow: View {
             Spacer()
             healthConnectCTA
         }
+    }
+
+    /// Maps the real HealthKit state onto the pairing animation, so the picture is a status
+    /// readout rather than decoration. `requestingAuthorization` covers the window while the
+    /// system permission sheet is up.
+    private var healthPairingState: HealthPairingView.State {
+        if healthKit.authorization.isQueryable { return .joined }
+        return requestingHealth ? .connecting : .idle
     }
 
     @ViewBuilder private var healthConnectCTA: some View {
@@ -651,8 +629,13 @@ struct OnboardingFlow: View {
         default:
             primary("Connect Apple Health") {
                 Task {
+                    requestingHealth = true
                     await healthKit.requestAuthorization()
                     if healthKit.authorization.isQueryable { await healthKit.refreshSnapshot(context: context) }
+                    requestingHealth = false
+                    // Let the connector settle into its joined state before the step advances,
+                    // so the animation resolves rather than being cut off mid-transition.
+                    try? await Task.sleep(for: .milliseconds(650))
                     next()
                 }
             }

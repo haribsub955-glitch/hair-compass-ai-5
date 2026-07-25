@@ -44,6 +44,41 @@ enum Companion {
         }
     }
 
+    /// What Wren offers from the floating chat button, phrased for the screen the person is
+    /// actually on. Lives here rather than in the view because this file is the single home of the
+    /// companion's voice — same reason `line(for:)` does — and because a pure mapping is
+    /// unit-testable.
+    ///
+    /// Each line names something the chat can genuinely do with the person's own record. None of
+    /// them promise an outcome or imply a diagnosis; the chat's real limits still live in
+    /// `HairChatPrompt.system`.
+    static func openingLine(for tab: AppTab) -> String {
+        switch tab {
+        case .today:
+            return "Logged today? I can tell you how this week compares to your last one."
+        case .trends:
+            return "See a dip or a climb here? Ask me what else moved at the same time."
+        case .care:
+            return "Ask me whether your routine is actually landing — and where it slips."
+        case .labs:
+            return "Ask me what a result means in the context of everything else you've logged."
+        case .photos:
+            return "Ask me what's changed since your baseline photo — and what hasn't."
+        }
+    }
+
+    /// The focus line handed to `HairChatSheet` so answers land on the screen the chat was opened
+    /// from. Deliberately terse — it's read by the model, not the person.
+    static func chatFocus(for tab: AppTab) -> String {
+        switch tab {
+        case .today:  return "The person's whole tracked record, opened from the Today screen."
+        case .trends: return "The person's trends over time, opened from the Trends screen."
+        case .care:   return "The person's routine and treatment adherence, opened from the Plan screen."
+        case .labs:   return "The person's lab results in the context of their record, opened from the Labs screen."
+        case .photos: return "The person's progress photos over time, opened from the Photos screen."
+        }
+    }
+
     /// Wren's line for a moment, or `nil` for ambient moments that should stay silent.
     static func line(for moment: CompanionMoment) -> String? {
         switch moment {
