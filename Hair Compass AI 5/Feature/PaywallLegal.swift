@@ -4,12 +4,19 @@ import SwiftUI
 /// disclosure plus **functional** links to the Terms of Use (EULA) and the Privacy Policy. Shared
 /// by the onboarding paywall and the in-app `ProGate` upsell so both stay compliant.
 struct PaywallLegal: View {
+    /// False when the purchase buttons have been withdrawn (see `ProAvailability.sellable`), where
+    /// a renewal disclosure would describe a subscription this screen isn't offering. The Terms and
+    /// Privacy links stay either way — they're useful, and restore is still on screen.
+    var showsRenewalDisclosure: Bool = true
+
     var body: some View {
         VStack(spacing: 6) {
-            Text("Auto-renews until cancelled. Manage or cancel anytime in Settings.")
-                .font(Clinical.caption(10))
-                .foregroundStyle(Clinical.tertiary)
-                .multilineTextAlignment(.center)
+            if showsRenewalDisclosure {
+                Text("Auto-renews until cancelled. Manage or cancel anytime in Settings.")
+                    .font(Clinical.caption(10))
+                    .foregroundStyle(Clinical.tertiary)
+                    .multilineTextAlignment(.center)
+            }
             HStack(spacing: 14) {
                 if let terms = AppInfo.termsOfUseURL {
                     Link("Terms of Use", destination: terms)

@@ -169,7 +169,7 @@ struct ProGate<Content: View>: View {
             .buttonStyle(.plain)
             .disabled(isBusy)
 
-            PaywallLegal()
+            PaywallLegal(showsRenewalDisclosure: ProAvailability.sellable(availability))
 
             Spacer(minLength: 20)
         }

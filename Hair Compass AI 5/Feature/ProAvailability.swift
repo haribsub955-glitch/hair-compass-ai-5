@@ -18,16 +18,32 @@ import SwiftUI
 enum ProAvailability {
     /// What the paywalls should read instead of `OnDeviceAvailability.current`.
     ///
-    /// Identical to it in release. The DEBUG override exists because the Simulator always reports
-    /// `.deviceNotEligible` (FoundationModels doesn't run there), which now correctly hides the
-    /// purchase buttons — and would otherwise make it impossible to screenshot the offer itself
-    /// without a physical Apple Intelligence device. Same spirit as `HC_PAYWALL_BOTTOM`.
+    /// Identical to it in release. The DEBUG override exists because the unavailable states are
+    /// otherwise unreachable in QA: an iOS 26 Simulator on an Apple Intelligence Mac reports
+    /// `.available`, so the notice and the withdrawn purchase buttons could only ever be seen by
+    /// finding a physically ineligible iPhone. `HC_AI_STATUS <case>` forces any of the four.
+    /// Same shape as `HC_ONBOARD_STEP <n>` and `HC_RITUAL_KIND <kind>`.
     static var current: OnDeviceAvailability {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("HC_AI_AVAILABLE") { return .available }
+        if let forced = forcedStatus { return forced }
         #endif
         return OnDeviceAvailability.current
     }
+
+    #if DEBUG
+    /// `HC_AI_STATUS available | notEnabled | modelNotReady | deviceNotEligible`.
+    static var forcedStatus: OnDeviceAvailability? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "HC_AI_STATUS"), i + 1 < args.count else { return nil }
+        switch args[i + 1] {
+        case "available": return .available
+        case "notEnabled": return .notEnabled
+        case "modelNotReady": return .modelNotReady
+        case "deviceNotEligible": return .deviceNotEligible
+        default: return nil
+        }
+    }
+    #endif
 
     /// Whether the purchase buttons should be offered at all. False only for permanently
     /// ineligible hardware — see the type doc for why the transient reasons still sell.

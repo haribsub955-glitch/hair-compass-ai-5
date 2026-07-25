@@ -54,7 +54,7 @@ Info.plist keys are the exception (they're real project config — see §9).
 | `HC_LEARN` | Opens the Learn sheet on launch |
 | `HC_SCROLL_PRODUCTS` | Scrolls Plan to the science-products section |
 | `HC_COMPARE` / `HC_EXPORT` | Opens the Compare / Export sheet from Trends |
-| `HC_AI_AVAILABLE` | Forces `ProAvailability.current` to `.available`. The Simulator can't run Foundation Models, so it always reports `.deviceNotEligible` — which now (correctly) hides the purchase buttons. Needed to screenshot the paywall's selling state without a physical Apple Intelligence device. |
+| `HC_AI_STATUS <available\|notEnabled\|modelNotReady\|deviceNotEligible>` | Forces what `ProAvailability.current` reports, which drives the paywall's Apple Intelligence notice and whether the purchase buttons appear at all. An iOS 26 Simulator on an Apple Intelligence Mac reports `.available`, so without this the unavailable states can only be seen on physically ineligible hardware. |
 
 Example: `xcrun simctl launch <SIM> harib.Hair-Compass-AI-5 HC_SEED_DEMO HC_TAB care`
 
