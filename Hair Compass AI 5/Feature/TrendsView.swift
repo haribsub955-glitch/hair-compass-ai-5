@@ -73,6 +73,19 @@ struct TrendsView: View {
                     condensed: headerCondense
                 )
                 .padding(.top, 8)
+                // Header wash: `art-trends` is itself a rising line over hills, so the plate
+                // states the screen's subject before a single datum is drawn. Negative gutter
+                // padding lets it bleed past the VStack's 20pt inset to the screen edges; as a
+                // background it takes no layout space, so the scroll content can't widen.
+                // It stays put while the serif title condenses over it — a free parallax.
+                .background(alignment: .top) {
+                    // Sized to finish dissolving above the range picker: at 172pt the foliage
+                    // still had presence behind the 1M/3M/6M row, which is a control strip and
+                    // needs to stay unambiguously readable.
+                    BrandWash(art: BrandArt.trends, height: 148, opacity: 0.5, fade: 0.55)
+                        .padding(.horizontal, -20)
+                        .offset(y: -8)
+                }
 
                 // A quiet text-tab row instead of a bordered 5-segment capsule — the active
                 // range reads by weight + a sliding copper underline, not a filled pill.
@@ -104,6 +117,10 @@ struct TrendsView: View {
                 clinicianReviewCard
 
                 progressCheckInsCard
+
+                // The page turns here: everything above reads the hair, everything below reads
+                // the tracking. A painted seam says that more quietly than a heading would.
+                StrandDivider()
 
                 ConsistencyCard(
                     entries: entries,

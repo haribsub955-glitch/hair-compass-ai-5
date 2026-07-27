@@ -85,6 +85,13 @@ struct CareView: View {
                     condensed: headerCondense
                 ).padding(.top, 8)
                     .staggeredEntrance(index: 0)
+                    // Plan's edge accent. At ~1400 lines this is the app's longest scroll and it
+                    // carried exactly one piece of art, near the very bottom — so the top of the
+                    // page had nothing at all. `CornerSprig` already keeps its mass clear of the
+                    // 44pt "+" that sits in this same corner.
+                    .background(alignment: .topTrailing) {
+                        CornerSprig(width: 190, opacity: 0.42)
+                    }
 
                 // One entrance sequence down the card stack; indices are fixed positions, so a
                 // missing conditional card just leaves an invisible 50ms gap. The coach card —
@@ -93,11 +100,23 @@ struct CareView: View {
                 // circles of the list below, so the header now flows straight into the routine
                 // section itself, the page's uncontested focal object.
                 if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
-                if !routine.isEmpty { routineSection.staggeredEntrance(index: 3) }
+                if !routine.isEmpty {
+                    routineSection.staggeredEntrance(index: 3)
+                } else {
+                    // `v2-plan-ritual` — dropper bottles, a comb and a notepad — was drawn to
+                    // explain what a routine *is*, so it stands in for the routine section on the
+                    // one visit where there isn't one yet. Same contract as Labs' context plate:
+                    // it teaches while the screen is empty and retires the moment there's data.
+                    planRitualPlate.staggeredEntrance(index: 3)
+                }
                 guidanceCard.staggeredEntrance(index: 4)
                 remindersCard.staggeredEntrance(index: 5)
                 gateExplainer.staggeredEntrance(index: 6)
                 if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
+
+                // The page changes subject here: everything above is what you do today, everything
+                // below is the longer record of what you're on and what you've had done.
+                StrandDivider()
 
                 if treatments.isEmpty {
                     empty.staggeredEntrance(index: 8)
@@ -460,6 +479,21 @@ struct CareView: View {
     }
 
     // MARK: Routine — the ritual is the page, so it sits directly on the canvas
+
+    /// Stands in for `routineSection` on the one visit where no routine exists yet. Plan's whole
+    /// argument is that a repeated ritual is what makes six months of data mean anything, and an
+    /// empty page argues it badly — so the illustration carries it until the real list can.
+    private var planRitualPlate: some View {
+        TeachingPlate(art: BrandArt.planRitualV2, minHeight: 146, phase: 2.4) {
+            Label("Your ritual", systemImage: "drop.fill")
+                .font(Clinical.body(14, weight: .semibold))
+                .foregroundStyle(Clinical.ink)
+            Text("Add a treatment and it becomes a daily step here. Consistency is what makes months of tracking comparable — the routine is the part that does the work.")
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 
     /// No enclosing card — MORNING/EVENING/PERIODIC blocks sit on the ivory under hairline
     /// section rules, and the gold milestone (formerly its own separate card in the stack) closes

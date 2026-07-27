@@ -42,6 +42,62 @@ enum Clinical {
         LinearGradient(colors: [surface, surfaceWarm], startPoint: .top, endPoint: .bottom)
     }
 
+    /// `canvas` lifted ~1% — the top stop of the page wash, where the light falls.
+    static let canvasLight = Color(red: 0.992, green: 0.976, blue: 0.953)
+    /// `canvas` settled ~1% toward copper — the bottom stop, where the page rests in shadow.
+    static let canvasWarm = Color(red: 0.973, green: 0.949, blue: 0.914)
+    /// The page's light source, as a wash. `ClinicalCard` already earns its depth from a vertical
+    /// wash plus layered shadows; before this the canvas *behind* those cards was a single flat
+    /// fill, so the cards floated on nothing. Same instinct, one layer down.
+    static var canvasWash: LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: canvasLight, location: 0),
+                .init(color: canvas, location: 0.45),
+                .init(color: canvasWarm, location: 1),
+            ],
+            startPoint: .top, endPoint: .bottom
+        )
+    }
+
+    /// Paper grain for the page surface — generated once at first use rather than shipped as an
+    /// asset, so it costs zero download size and stays resolution-independent when tiled.
+    ///
+    /// The noise is warm espresso (the `shadowWarm` family, never grey) written straight into a
+    /// premultiplied pixel buffer — ~16k pixels, about a millisecond, versus the tens of
+    /// milliseconds per-pixel `CGContext` fills would cost on the first screen to render. Built at
+    /// scale 3 so one noise pixel is a third of a point: fine tooth, not visible speckle.
+    ///
+    /// Alpha tops out around 12% before the view layer thins it further. The intent is that the
+    /// canvas stops reading as a flat digital fill — not that anyone ever notices a texture.
+    static let grainTile: UIImage = {
+        let side = 128
+        let bytesPerRow = side * 4
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        // Espresso #5A4637-ish, matching the warm-shadow family rather than a neutral grey.
+        let (r, g, b) = (90.0, 70.0, 55.0)
+        for i in 0..<(side * side) {
+            let alpha = Double(UInt8.random(in: 0...255)) / 8.0   // 0…31
+            let scale = alpha / 255.0                              // premultiply
+            pixels[i * 4 + 0] = UInt8(r * scale)
+            pixels[i * 4 + 1] = UInt8(g * scale)
+            pixels[i * 4 + 2] = UInt8(b * scale)
+            pixels[i * 4 + 3] = UInt8(alpha)
+        }
+        guard
+            let provider = CGDataProvider(data: Data(pixels) as CFData),
+            let cgImage = CGImage(
+                width: side, height: side,
+                bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                provider: provider, decode: nil, shouldInterpolate: false,
+                intent: .defaultIntent
+            )
+        else { return UIImage() }
+        return UIImage(cgImage: cgImage, scale: 3, orientation: .up)
+    }()
+
     /// Maps a scroll content offset to a 0…1 header-condense fraction for `ScreenHeader`'s
     /// title — the serif title shrinks toward its eyebrow as the first ~64pt of content scrolls
     /// under it, then holds condensed for the rest of the scroll.
@@ -120,10 +176,32 @@ enum Clinical {
 }
 
 /// Generated brand artwork — one consistent painterly gouache style across the app.
+///
+/// **Screen-art grammar.** Every constant here has exactly one job, and a screen may carry at most
+/// one of each. This is what keeps "more depth" from decaying back into the clutter that rounds
+/// 1–13 removed:
+///
+/// - **Header wash** — a plate bleeding full-width behind a `ScreenHeader`, dissolving into the
+///   canvas via `BrandWash`. Sets the screen's mood; never competes with the data below it.
+/// - **Focal plate** — one illustration that *teaches* something (`LivingArtwork`, empty-state
+///   art). Usually transient: it retires once the user no longer needs the lesson.
+/// - **Page closer** — a bottom-bleeding garland that ends the scroll (`meadow` on Today).
+/// - **Edge accent** — `CornerSprig` / `StrandDivider`. Punctuation, not imagery; a divider is a
+///   seam between sections and doesn't count against a screen's art budget.
+///
+/// Every constant below must be referenced by a view. `BrandArtCoverageTests` fails the build if
+/// one is declared and never rendered — the whole catalog silently drifted out of the UI once
+/// already, and the test is what stops that happening twice.
 enum BrandArt {
-    static let todayHero = "hero-today"
+    // `hero-today` was retired rather than wired. Today's hero is an edgeless `EllipticalGradient`
+    // glow that Round 13 built specifically so the screen would not break into sections — a banner
+    // or wash behind it would put back the very edge that change removed. Today gets its depth
+    // from the `meadow` page-closer and a section seam instead.
+    // `hero-photos-empty` was retired for a shape reason, not a taste one: it is a centered square
+    // composition, so any header-band crop parks the mirror behind the region-picker chips and
+    // dims their labels. Photos teaches capture through `photoCaptureV2` and gets its atmosphere
+    // from a corner sprig instead.
     static let baselineHero = "hero-baseline"
-    static let photosEmpty = "hero-photos-empty"
 
     // Learn-library category art (generated in the same painterly gouache style).
     static let learnBasics = "learn-basics"
@@ -134,19 +212,21 @@ enum BrandArt {
     static let learnSupplements = "learn-supplements"
 
     // Section/screen banners (same gouache language).
-    static let guidance = "art-guidance"    // Recommender "What helps"
-    static let analysis = "art-analysis"    // Deep analysis
-    static let trends = "art-trends"        // Trends header
+    static let guidance = "art-guidance"    // Recommender "What helps" — banner
+    static let analysis = "art-analysis"    // Deep analysis — banner
+    static let trends = "art-trends"        // Trends — header wash (the plate is itself a trend line)
 
     // Design V2 — screen-specific narrative art. These stay data-adjacent: Plan explains the
-    // routine, Labs frames context, Photos teaches repeatable capture.
+    // routine, Labs frames context, Photos teaches repeatable capture. All three are focal
+    // plates shown on first run and retired once the lesson has landed.
     static let planRitualV2 = "v2-plan-ritual"
     static let labsContextV2 = "v2-labs-context"
     static let photoCaptureV2 = "v2-photo-capture"
 
-    // Launch-ritual art (botanical backdrop + the comb that follows the finger).
+    // Launch-ritual art. `comb-tool` (a draggable comb that followed the finger) is gone with the
+    // interaction it belonged to: `CombRitual` is now an automatic smoothing pass — "no combing
+    // required" — so the tool had nothing left to be dragged across.
     static let ritualBackdrop = "comb-bg"
-    static let combTool = "comb-tool"
 
     // Transparent overlay accents — unboxed art that bleeds from screen edges instead of
     // sitting in banner boxes (rendered by CornerSprig / StrandDivider below).
@@ -158,6 +238,120 @@ enum BrandArt {
     // Medication emblems (transparent gouache) — the Rx confirmation card's centered art.
     static let remedy = "brand-remedy"      // amber pill bottle + tablets (oral)
     static let dropper = "brand-dropper"    // amber dropper bottle (topical liquids)
+}
+
+/// A first-run **focal plate**: living gouache art bleeding behind a left-anchored scrim, with the
+/// lesson set over the legible side. Labs shipped the first one by hand; Plan and Photos now want
+/// the same thing, so the construction lives here once instead of as three hand-tuned copies that
+/// would drift apart.
+///
+/// The scrim is horizontal on purpose — these plates put their subject on the right and their
+/// empty space on the left, so fading left-to-right lets the art stay fully saturated where it is
+/// actually drawn and fully covered where the words go. No text ever sits on top of paint.
+///
+/// Every use is transient by contract: show it while the screen is empty, retire it once the user
+/// has data. That is what keeps a teaching illustration from becoming permanent furniture.
+struct TeachingPlate<Content: View>: View {
+    let art: String
+    var minHeight: CGFloat = 140
+    var artOpacity: Double = 0.50
+    /// Offsets this plate's drift so two on-screen plates never breathe in lockstep.
+    var phase: Double = 0
+    var textMaxWidth: CGFloat = 245
+
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ClinicalCard(padding: 0) {
+            ZStack {
+                LivingArtwork(art: art, travel: 3.5, zoom: 0.012, phase: phase)
+                    .frame(maxWidth: .infinity, minHeight: minHeight)
+                    .clipped()
+                    .opacity(artOpacity)
+                LinearGradient(
+                    stops: [
+                        .init(color: Clinical.surface.opacity(0.99), location: 0),
+                        .init(color: Clinical.surface.opacity(0.94), location: 0.58),
+                        .init(color: Clinical.surface.opacity(0.42), location: 1),
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                VStack(alignment: .leading, spacing: 7) {
+                    content
+                }
+                .frame(maxWidth: textMaxWidth, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+            }
+        }
+    }
+}
+
+/// The app's page surface, behind every screen via `.clinicalScreen()`.
+///
+/// Two layers, each imperceptible alone: a vertical wash so the page has a light source, and a
+/// tiled paper grain so it stops reading as a flat digital fill. Deliberately contains no imagery
+/// — that is what makes it safe to apply to all five tabs at once. It adds depth that cannot
+/// become clutter, which is the only kind every screen can take.
+struct ClinicalCanvas: View {
+    var body: some View {
+        Clinical.canvasWash
+            .overlay {
+                Image(uiImage: Clinical.grainTile)
+                    .resizable(resizingMode: .tile)
+                    .opacity(0.55)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The unboxed counterpart to `BrandBanner`, and the screen-art grammar's "header wash".
+///
+/// A banner puts art *inside* a bordered, shadowed, corner-radiused rectangle. Rounds 1–13 spent
+/// their effort dissolving exactly that kind of chrome, so this renders the same plates with no
+/// border, no shadow and no corner radius: the art bleeds the full screen width and dissolves
+/// into the canvas through a bottom gradient mask. It reads as painted-on paper rather than as a
+/// picture in a frame.
+///
+/// It works because the gouache plates are painted on the same warm ivory as `Clinical.canvas`,
+/// so once the bottom edge is masked away there is no visible boundary at all. Art is top-anchored
+/// because these plates put their empty sky at the top and their saturated mass at the bottom —
+/// cropping from the bottom keeps ink text in front legible without needing a scrim.
+///
+/// Attach as a `.background(alignment: .top)` so it takes no layout space, and give it
+/// `.padding(.horizontal, -n)` to escape the parent's gutter — a background can't widen a
+/// ScrollView's content, so the bleed is clipped harmlessly at the screen edge.
+/// Purely decorative: never hit-tested, invisible to VoiceOver.
+struct BrandWash: View {
+    let art: String
+    var height: CGFloat = 168
+    var opacity: Double = 0.55
+    /// Fraction of the height over which the plate dissolves into the canvas at the bottom.
+    var fade: Double = 0.45
+
+    var body: some View {
+        Image(art)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(maxWidth: .infinity)
+            .frame(height: height, alignment: .top)
+            .clipped()
+            .opacity(opacity)
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: max(0, 1 - fade)),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
 }
 
 /// A rounded brand-art banner in the warm gouache style — reused across screens so imagery reads as
@@ -936,7 +1130,7 @@ extension View {
     /// Standard screen scaffold: warm ivory canvas.
     func clinicalScreen() -> some View {
         self
-            .background(Clinical.canvas.ignoresSafeArea())
+            .background(ClinicalCanvas().ignoresSafeArea())
     }
 
     /// Fades the trailing edge of a horizontally scrolling row (chip rows, region pickers) to
