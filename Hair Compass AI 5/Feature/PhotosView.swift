@@ -89,6 +89,15 @@ struct PhotosView: View {
                     title: "Photos",
                     condensed: headerCondense
                 ).padding(.top, 8)
+                // The sprig Round 5 removed can come back: it was pulled because it collided with
+                // a header subtitle and a trailing "+" that no longer exist (see the note above),
+                // and an edge accent leaves the region-picker row beneath it completely clear.
+                // A full-width wash was tried here first and was wrong — `hero-photos-empty` is a
+                // centered square composition, so cropping it to a header band parked the mirror
+                // directly behind the region tabs and washed out the last chip's label.
+                .background(alignment: .topTrailing) {
+                    CornerSprig(width: 160, opacity: 0.34)
+                }
 
                 // Empty state carries its own single instruction + CTA below, so the header
                 // subtitle only earns its place once there's real data to summarize — otherwise
@@ -102,12 +111,19 @@ struct PhotosView: View {
                 // something to actually match against — demoted to appear after the first
                 // capture instead of competing with the empty-state instruction on day one.
                 if !photos.isEmpty {
-                    ClinicalCard(padding: 14) {
-                        HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: "camera.metering.center.weighted").font(Clinical.caption(15)).foregroundStyle(Clinical.accent)
-                            Text("Compare only same-region shots taken under matched lighting, distance and parting. A phone can't do trichoscopy — that needs a clip-on dermatoscope.")
-                                .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
-                        }
+                    // `v2-photo-capture` was drawn for exactly this lesson — a phone framing the
+                    // back of a head beside a mirror — so the card that teaches repeatable capture
+                    // now shows it instead of only describing it. Deliberately *not* moved to the
+                    // empty state: Round 5 demoted this guidance past the first capture so it
+                    // wouldn't compete on day one, and an illustrated version would compete harder.
+                    TeachingPlate(art: BrandArt.photoCaptureV2, minHeight: 132, phase: 0.6) {
+                        Label("Repeatable capture", systemImage: "camera.metering.center.weighted")
+                            .font(Clinical.body(14, weight: .semibold))
+                            .foregroundStyle(Clinical.ink)
+                        Text("Compare only same-region shots taken under matched lighting, distance and parting. A phone can't do trichoscopy — that needs a clip-on dermatoscope.")
+                            .font(Clinical.caption(13))
+                            .foregroundStyle(Clinical.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .staggeredEntrance(index: 1)
                 }
@@ -130,6 +146,9 @@ struct PhotosView: View {
                         .staggeredEntrance(index: 3)
                     captureRow
                         .staggeredEntrance(index: 4)
+                    // Seam between the region's story (journey, capture) and its raw contact
+                    // sheet — the grid reads as an archive rather than more of the same list.
+                    StrandDivider()
                     grid
                 }
             }

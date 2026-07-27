@@ -72,6 +72,16 @@ struct LabsView: View {
                     condensed: headerCondense
                 )
                 .padding(.top, 8)
+                // Labs' edge accent. Mirrored to the leading corner because the header's own 44pt
+                // "+" button owns the trailing one, and because Labs is the only tab whose focal
+                // plate can sit directly beneath the header — keeping the two on opposite sides
+                // stops the page starting with two pieces of art stacked in the same column.
+                // Lighter and narrower than Plan's: mirrored to the leading corner, this one lands
+                // on the "BLOODWORK" eyebrow rather than on empty margin, so it has to sit further
+                // back to keep small caps crisp.
+                .background(alignment: .topLeading) {
+                    CornerSprig(corner: .topLeading, width: 148, opacity: 0.26)
+                }
 
                 // The full illustrated disclaimer only earns its space on a first visit, before
                 // there's any data to compete with it.
@@ -140,37 +150,18 @@ struct LabsView: View {
         }
     }
 
-    /// First-visit-only illustrated disclaimer — full LivingArtwork treatment, shown while the
+    /// First-visit-only illustrated disclaimer — full focal-plate treatment, shown while the
     /// list is still empty and there's nothing else competing for the top of the screen.
+    /// Construction now comes from the shared `TeachingPlate`, which Plan and Photos use too.
     private var labContextCard: some View {
-        ClinicalCard(padding: 0) {
-            ZStack {
-                LivingArtwork(art: BrandArt.labsContextV2, travel: 3.5, zoom: 0.012, phase: 1.7)
-                    .frame(maxWidth: .infinity, minHeight: 140)
-                    .clipped()
-                    .opacity(0.50)
-                LinearGradient(
-                    stops: [
-                        .init(color: Clinical.surface.opacity(0.99), location: 0),
-                        .init(color: Clinical.surface.opacity(0.94), location: 0.58),
-                        .init(color: Clinical.surface.opacity(0.42), location: 1),
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                VStack(alignment: .leading, spacing: 7) {
-                    Label("Lab context", systemImage: "testtube.2")
-                        .font(Clinical.body(14, weight: .semibold))
-                        .foregroundStyle(Clinical.ink)
-                    Text("Use reference ranges as context—not a diagnosis. Choose tests with a clinician rather than ordering a blanket panel.")
-                        .font(Clinical.caption(13))
-                        .foregroundStyle(Clinical.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 245, alignment: .leading)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-            }
+        TeachingPlate(art: BrandArt.labsContextV2, phase: 1.7) {
+            Label("Lab context", systemImage: "testtube.2")
+                .font(Clinical.body(14, weight: .semibold))
+                .foregroundStyle(Clinical.ink)
+            Text("Use reference ranges as context—not a diagnosis. Choose tests with a clinician rather than ordering a blanket panel.")
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
