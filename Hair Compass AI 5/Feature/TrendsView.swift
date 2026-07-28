@@ -153,6 +153,10 @@ struct TrendsView: View {
                 }
 
                 excludedFootnote
+
+                // Ends the scroll the way Today does, so the app's two longest reference pages
+                // close in one voice. Inset rather than full-bleed on purpose — see `PageCloser`.
+                PageCloser(opacity: 0.8)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)

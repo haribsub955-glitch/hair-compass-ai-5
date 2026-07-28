@@ -288,6 +288,33 @@ struct TeachingPlate<Content: View>: View {
     }
 }
 
+/// The bottom bookend of a long scroll: a botanical garland growing out of the end of the page,
+/// unboxed. Today has closed this way since the field-journal round; the app's other long scrolls
+/// now end in the same voice rather than stopping dead on their last footnote.
+///
+/// The plate's transparent upper canvas *is* the breathing room above it, so callers should not add
+/// their own top padding.
+///
+/// **Do not give this a negative horizontal padding to force a full bleed inside a gutter.** Unlike
+/// `CornerSprig` or `BrandWash` — which attach as backgrounds and therefore take no layout space —
+/// this is real content, so widening it past its parent widens the ScrollView's content and the
+/// page starts drifting sideways under a finger. Today can bleed because its closer already sits
+/// outside the padded stack; everywhere else it stays inside the gutter.
+struct PageCloser: View {
+    var art: String = BrandArt.meadow
+    var opacity: Double = 1
+
+    var body: some View {
+        Image(art)
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: .infinity)
+            .opacity(opacity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
 /// The app's page surface, behind every screen via `.clinicalScreen()`.
 ///
 /// Two layers, each imperceptible alone: a vertical wash so the page has a light source, and a

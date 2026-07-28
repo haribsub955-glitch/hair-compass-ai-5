@@ -145,6 +145,11 @@ struct CareView: View {
                 // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
                 // straight to it and must never catch a mid-fade frame.
                 ScienceProductsSection().id("science")
+
+                // Closes the app's longest scroll. Deliberately after the science section rather
+                // than before it: a garland placed above would read as decoration *for* the
+                // product rows, and this page needs an ending more than it needs another seam.
+                PageCloser(opacity: 0.8)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
