@@ -13,8 +13,16 @@ struct RecommenderView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenHeader(eyebrow: "Guidance", title: "What helps").padding(.top, 8)
-
-                BrandBanner(art: BrandArt.guidance, height: 140)
+                    // Was a `BrandBanner` stacked underneath this header — a bordered, shadowed
+                    // rectangle of art sitting directly below a title, which is two separate
+                    // announcements of the same thing. As a wash the plate lives *behind* the
+                    // title instead, so the screen opens on one object rather than two, and the
+                    // last framed artwork on this screen goes the way of the card chrome.
+                    .background(alignment: .top) {
+                        BrandWash(art: BrandArt.guidance, height: 150, opacity: 0.5, fade: 0.55)
+                            .padding(.horizontal, -20)
+                            .offset(y: -8)
+                    }
 
                 ClinicalCard(padding: 14) {
                     HStack(alignment: .top, spacing: 10) {

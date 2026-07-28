@@ -55,7 +55,14 @@ struct DeepAnalysisSheet: View {
     private var analysisContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
-                BrandBanner(art: BrandArt.analysis, height: 130)
+                // A masthead rather than a framed picture: the plate bleeds to the sheet's edges
+                // and dissolves into the canvas instead of sitting in a bordered, shadowed
+                // rectangle. `-20` cancels the `.padding(20)` on this stack; the sheet clips the
+                // overflow at its own edge. `-8` on top pulls the art up under the grabber so the
+                // sheet opens on paint, not on a margin.
+                BrandWash(art: BrandArt.analysis, height: 138, opacity: 0.55, fade: 0.5)
+                    .padding(.horizontal, -20)
+                    .padding(.top, -8)
                 ClinicalCard {
                     VStack(alignment: .leading, spacing: 10) {
                         Eyebrow(text: "Record summary · on-device")

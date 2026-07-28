@@ -171,12 +171,7 @@ struct TodayView: View {
                 // Ground flourish: the botanical garland grows out of the bottom of the page —
                 // full-bleed, unboxed; its transparent upper canvas is the breathing room. The
                 // 110pt clearance below keeps it above the floating tab bar.
-                Image(BrandArt.meadow)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+                PageCloser()
 
                 // A colophon, not a card: the one honest "is this current" line closes the page
                 // like the last line of a journal entry, under the garland rather than boxed
