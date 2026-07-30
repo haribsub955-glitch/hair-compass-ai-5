@@ -31,7 +31,10 @@ enum HairCompassSchemaV1: VersionedSchema {
     static var models: [any PersistentModel.Type] {
         [Profile.self, DailyEntry.self, Treatment.self, TreatmentDose.self, MissedDoseRecord.self,
          SideEffectLog.self, LabResult.self, PhotoRecord.self, HealthSnapshot.self,
-         TriggerEvent.self, ProcedureAppointment.self, ProgressCheckIn.self]
+         TriggerEvent.self, ProcedureAppointment.self, ProgressCheckIn.self,
+         // Agent memory lives on the device with everything else personal. The server reads it by
+         // asking (`recall_memory`); only matching rows ever cross the wire.
+         AgentMemory.self]
     }
 }
 
