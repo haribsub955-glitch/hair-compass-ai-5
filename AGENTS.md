@@ -2,10 +2,10 @@
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
-## ⚠️ Start with HANDOVER_CLIENT.md — this file predates the server
+## ⚠️ Start with MOOSAWI_HANDOVER.md — this file predates the server
 
 The app gained a **server-side agent** after this document was written, and most of what a change
-now touches lives on the far side of that boundary. [HANDOVER_CLIENT.md](HANDOVER_CLIENT.md) is the
+now touches lives on the far side of that boundary. [MOOSAWI_HANDOVER.md](MOOSAWI_HANDOVER.md) is the
 current entry point and is kept up to date. Everything below still describes the app itself
 correctly; it simply says nothing about the server.
 

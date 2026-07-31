@@ -1,4 +1,11 @@
-# Client handover — continuing this on macOS
+# Moosawi handover — continuing this on macOS
+
+**From:** Mohammed Al Moosawi (server, agent platform)
+**To:** whoever picks up the client on a Mac
+
+Named after its author on purpose: when you hand work back, write your own — `<yourname>_handover.md`
+— rather than editing this one. Two documents that each say who wrote them and what they knew at the
+time are worth more than one that has been overwritten twice and belongs to nobody.
 
 Written so you should not need to ask anything to get started. Where something is unknown or
 undecided it says so explicitly rather than leaving you to discover it.
