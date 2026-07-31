@@ -29,16 +29,27 @@ public actor AgentClient {
         /// e.g. `http://192.168.68.132:8010` in development, the hosted URL later. This single
         /// value is the entire difference between a laptop on the LAN and a datacenter.
         public var baseURL: URL
-        /// Stable per install. Survives app restarts; changes on reinstall. The server derives the
-        /// principal from it — the client never states who it is.
+        /// Stable per install. Survives app restarts; changes on reinstall.
+        ///
+        /// Sent to `/v1/session` and **nowhere else**. It says which install is asking, but it is
+        /// not a credential: the app generates it, so anyone who learned it could otherwise act as
+        /// that user. The session token is the credential.
         public var installationID: String
         /// StoreKit JWS. Ignored in development, verified server-side in production.
         public var subscriptionToken: String
+        /// Current app build, so the server can tell a stale client to update.
+        public var appBuild: String
 
-        public init(baseURL: URL, installationID: String, subscriptionToken: String = "") {
+        public init(
+            baseURL: URL,
+            installationID: String,
+            subscriptionToken: String = "",
+            appBuild: String = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
+        ) {
             self.baseURL = baseURL
             self.installationID = installationID
             self.subscriptionToken = subscriptionToken
+            self.appBuild = appBuild
         }
     }
 
@@ -67,14 +78,78 @@ public actor AgentClient {
     public enum AgentError: Error, Sendable {
         case badResponse(status: Int)
         case transport(String)
+        /// The session expired or was refused. Recoverable: open a new one and retry once.
+        case unauthenticated
+        /// This build may no longer talk to this server.
+        case upgradeRequired
+    }
+
+    /// What `/v1/session` established.
+    public struct Session: Sendable {
+        public let token: String
+        public let entitlement: String
+        /// `current`, `encouraged` or `required` — so the app can nag before it is ever cut off.
+        public let upgrade: String
+        /// Tool names this build may run: the server's allowlist intersected with what we
+        /// advertised. It only ever narrows.
+        public let tools: [String]
     }
 
     private let configuration: Configuration
     private let session: URLSession
+    /// Held for the process lifetime and re-obtained on expiry. Deliberately not persisted: it is
+    /// a bearer credential with a short life, and the installation id can always mint a new one.
+    private var current: Session?
 
     public init(configuration: Configuration, session: URLSession = .shared) {
         self.configuration = configuration
         self.session = session
+    }
+
+    // MARK: - Session
+
+    /// Open a session and keep the token. Safe to call repeatedly; only the first does work.
+    ///
+    /// This is the ONLY request that carries the installation id. Everything afterwards proves
+    /// itself with the returned token, which the server signed — so knowing someone's installation
+    /// id no longer lets you act as them.
+    @discardableResult
+    public func startSession(force: Bool = false) async throws -> Session {
+        if let current, !force { return current }
+
+        var request = URLRequest(url: configuration.baseURL.appendingPathComponent("v1/session"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "installation_id": configuration.installationID,
+            "subscription_token": configuration.subscriptionToken,
+            "hints": [
+                "platform": "ios",
+                "app_build": configuration.appBuild,
+                "os_version": ProcessInfo.processInfo.operatingSystemVersionString,
+                "available_capabilities": [] as [String],
+            ],
+        ])
+
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        if status == 426 { throw AgentError.upgradeRequired }
+        guard status == 200 else { throw AgentError.badResponse(status: status) }
+
+        let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        guard let token = payload["session_token"] as? String, !token.isEmpty else {
+            throw AgentError.unauthenticated
+        }
+        let principal = payload["principal"] as? [String: Any] ?? [:]
+        let established = Session(
+            token: token,
+            entitlement: principal["entitlement"] as? String ?? "free",
+            upgrade: payload["upgrade"] as? String ?? "current",
+            tools: (payload["tools"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+        )
+        current = established
+        return established
     }
 
     // MARK: - One turn
@@ -97,17 +172,23 @@ public actor AgentClient {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 300
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "installation_id": configuration.installationID,
-            "subscription_token": configuration.subscriptionToken,
+            "session_token": try await startSession().token,
             "user_text": userText,
             "platform": "ios",
             "available_capabilities": executor.implementedTools,
         ])
 
         let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw AgentError.badResponse(status: (response as? HTTPURLResponse)?.statusCode ?? -1)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        if status == 401 {
+            // The token expired mid-session, which is ordinary after a day. Drop it and surface
+            // the error rather than retrying here: a silent retry re-sends a turn the user may
+            // already have been metered for.
+            current = nil
+            throw AgentError.unauthenticated
         }
+        if status == 426 { throw AgentError.upgradeRequired }
+        guard status == 200 else { throw AgentError.badResponse(status: status) }
 
         var answer: String?
         var event = ""
@@ -205,9 +286,9 @@ public actor AgentClient {
         request.timeoutInterval = 30
         // No principal, no run id, no tool name: the server already knows all three from the call
         // id it issued. Anything stated here would be a claim it has to verify.
+        guard let token = current?.token else { return }
         let body: [String: Any] = [
-            "installation_id": configuration.installationID,
-            "subscription_token": configuration.subscriptionToken,
+            "session_token": token,
             "result": [
                 "call_id": callID,
                 "status": status,
