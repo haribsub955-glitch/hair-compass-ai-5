@@ -291,6 +291,38 @@ gets specified server-side.
 
 ---
 
+## 6b. The agent is not connected to any screen — verified, not assumed
+
+`AgentClient` is referenced by **zero views**. Searched: every `.swift` outside `Service/Agent/`
+mentions it nowhere. The agent runs no user-visible flow today.
+
+What exists instead:
+
+* **`Feature/HairChatSheet.swift`** — a working chat UI, scope-guarded, backed by
+  `HairChatService` (the older on-device / one-shot cloud path). It does **not** use the agent.
+* **`Feature/DeepAnalysisSheet.swift`** — likewise, on the pre-agent path.
+* **No attachment control in either.** No `PhotosPicker`, no `fileImporter`, no paperclip.
+
+So there are two clients to the same idea living side by side: the shipped chat, and the agent that
+was built to replace it. Connecting them is real work and it is yours. Two honest options:
+
+1. **Point `HairChatSheet` at `AgentClient`.** Keeps the screen users already have, swaps what is
+   behind it. Smaller, and the UI is already scope-guarded and styled.
+2. **Give the agent its own surface.** Justified only if the agent's tool-calling loop needs to
+   show something the chat cannot — tool progress, multi-step reasoning.
+
+Option 1 unless you find a reason. Note that the agent's turn is a *stream* with tool round-trips
+in the middle, so the sheet needs to render intermediate state (`tool_request` waves) that a
+one-shot chat never had to.
+
+**On the attachment button specifically:** if you add one, it cannot reach the model through the
+agent — there is no transport for it (§6). Wiring a picker to the agent would silently drop the
+attachment. Either route attachments through the existing `CloudAnalysisService` path, which does
+handle photos behind `AIConsent`, or raise it and get the protocol extended first. Do not build a
+button that appears to work.
+
+---
+
 ## 7. What is already on the phone
 
 | File | What it is |
