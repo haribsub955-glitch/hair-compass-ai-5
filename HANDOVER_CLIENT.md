@@ -382,3 +382,277 @@ A green build is not a working screen.
 
 The server's own outstanding list lives in its repo as `docs/READINESS.md`. It is blunt about what
 does not work. Ask for it.
+
+---
+
+# Part II — the things that touch your UI
+
+Everything above is how to get running. This part is what you actually build against, written for
+someone maintaining the interface rather than the backend. Where a thing lives on the server it says
+so, and says whether you can change it.
+
+---
+
+## 11. Running the agent, and using your own API key
+
+**The phone never holds a provider API key.** It is server-side and always was — that is the point
+of the whole architecture. A key shipped in an app is a key extracted from the app.
+
+Two ways to work:
+
+### A. Point at Mohammed's server *(recommended, nothing to set up)*
+
+Set `baseURL` and `HC_ACCESS_KEY` (§1). You need no provider key at all — the server holds one and
+meters your turns against a plan. This is the fastest path and the one that tests the real thing.
+
+### B. Run the server yourself, with your own key
+
+Useful when you want to change the system prompt, try another model, or work offline. You need the
+server repository and Docker:
+
+```bash
+cp .env.example .env      # then edit:
+#   LLM_PROVIDER=anthropic
+#   LLM_API_KEY=sk-ant-…              your own key
+#   SECRET_KEY=<32+ random chars>
+#   DATABASE_URL=postgresql+asyncpg://agent:pw@db:5432/agent_platform
+#   ACCESS_KEYS=                       leave empty locally — no front door needed on a laptop
+
+docker compose up -d
+curl localhost:8100/health
+```
+
+Then point the app at `http://<your-mac-lan-ip>:8100`.
+
+**Free local option — no API key, no cost:** install LM Studio, load any model, and set
+
+```
+LLM_PROVIDER=lmstudio
+LLM_BASE_URL=http://127.0.0.1:1234/v1
+LLM_MODEL=                    # blank means "whatever is already loaded"
+```
+
+Leave `LLM_MODEL` blank deliberately. Naming a model is not a passive preference — with
+just-in-time loading it *evicts* whatever the machine already had resident, which is a rude
+surprise on a shared box.
+
+Vision works on this path too, if the loaded model is one (LM Studio reports `type: vlm`).
+Confirmed with `gemma-4-e4b-it-qat`.
+
+---
+
+## 12. The system prompt, and what you can change
+
+`src/agent_server/packs/hair_compass.py` in the **server** repo:
+
+| Constant | What it governs |
+|---|---|
+| `AGENT_SYSTEM_PROMPT` | How the agent behaves in a turn — tone, tool use, refusal style |
+| `SYSTEM_PROMPT` | The older one-shot analysis path |
+| `SCOPE_POLICY` | Which questions are answered at all (§13) |
+| `SAFETY_POLICY` | What the answer may not say (§14) |
+
+**Changing it is a server deploy, not a client change.** You cannot alter it from the app, and that
+is deliberate: the prompt carries the product's safety posture, so it is not something a shipped
+build can be talked into changing.
+
+If you want a change, say what behaviour you want and it gets made server-side. Running your own
+server (option B) lets you experiment freely first — that is the reason to bother with option B at
+all.
+
+One known issue you will hit on the local path: small local models narrate their reasoning
+("Thinking Process: 1. Analyze the request…") straight into the answer and burn the whole token
+budget doing it. Not a bug in the transport — it needs a "do not think aloud" line in the prompt for
+local models. Harmless in dev, expensive on a paid provider.
+
+---
+
+## 13. How non-hair questions are stopped
+
+Ask the agent about football and it will not answer. That is a **deterministic scope gate**, not the
+model deciding — `SCOPE_POLICY` in the pack, plain patterns, evaluated **before any spend**. No
+model call, no tokens, no money.
+
+What you see from the client is an ordinary successful turn:
+
+```
+event: answer
+data: {"text": "I only cover hair and scalp health, and your own tracking record. …",
+       "served": true, "safety": "allow", "iterations": 0}
+```
+
+**`iterations: 0` is the tell** — no model was called. Render it as a normal assistant message. It
+is not an error and must not be shown as one.
+
+The gate is asymmetric on purpose: a message showing *any* sign of belonging here — a domain word,
+or the user talking about themselves — is allowed even if it also trips an off-topic pattern.
+"I've been coding late, is stress making me shed?" is a real question and the hair half is the part
+that matters.
+
+There is a second, separate layer: the **safety screen** on the way out. It runs on whatever the
+model produced and strips a personal diagnosis, a recommendation to start a prescription, a myth
+asserted as fact, or an efficacy number the model invented. When it fires you get `served: false`
+or a modified `text`, and `safety` says so.
+
+**When `served` is false, show your own deterministic summary** — the app already computes real
+numbers locally. Do not show an error; there is a perfectly good local answer available and an
+error would hide it.
+
+---
+
+## 14. Attachments — what the UI must do
+
+Working end to end today. Photos only; **no PDF** (lab documents are OCR'd on-device so only the
+values travel, which is cheaper and safer than shipping the document abroad).
+
+### The flow
+
+```
+1. check `features` from /v1/session contains "photo_analysis"   → else hide the button
+2. ask for photo consent  → BEFORE opening the picker
+3. PhotosPicker → Data
+4. POST /v1/attachments (multipart) → { attachment_id, media_type, bytes, sha256 }
+5. POST /v1/turn  { …, "attachments": ["att_…"] }
+```
+
+```jsonc
+POST /v1/attachments        // multipart/form-data
+  X-Access-Key: <key>
+  session_token=<token>     // form field
+  file=<binary>             // form field
+
+{ "attachment_id": "att_8rLw…", "media_type": "image/jpeg",
+  "sha256": "7a681e…", "bytes": 7617 }
+```
+
+### Rules that will bite you if you skip them
+
+* **Hide the button when the plan lacks `photo_analysis`.** The free 3-day period does *not*
+  include photos. Letting someone pick a photo and then refusing reads as a bug rather than a
+  paywall. `features` in the session response is there precisely so you can hide it.
+* **Consent prompt first, picker second.** Asking for a photo and *then* asking permission to send
+  it is the wrong order and reads as a bait. Photos need their own grant — `photo-analysis`, which
+  is separate from `agent-analysis` and can be declined on its own.
+* **An attachment is single-use.** The server deletes it in the same statement that reads it. A
+  retried turn needs a fresh upload. Never cache the id and reuse it.
+* **Max 3 per turn, 8 MB each, JPEG or PNG.** Anything else is refused at upload with `413`.
+* HEIC is not accepted yet — convert to JPEG before upload. iOS gives you that from
+  `PhotosPicker` easily.
+
+### Errors you must handle
+
+| Code | Meaning | What to show |
+|---|---|---|
+| 402/403 `not_entitled` | Plan has no photos | The paywall, not an error |
+| 403 `consent_required` | Photo consent not granted | The consent sheet |
+| 413 | Too big, or not a real image | "Photos only, up to 8 MB" |
+
+---
+
+## 15. Affiliate products — how you add and render them
+
+**Not built yet. Specified, and the shape is settled** — the design is in the server repo as
+`docs/CATALOG.md`. This is the commercial surface: brand partnerships shown as a picture and a tap
+that opens an affiliate link.
+
+### How a product gets added
+
+**Not by you, and not in a release.** The server owns the list; an admin UI is being added so a
+brand can be added by filling a form — image, title, link, evidence tier. Devices pick it up on
+their next refresh. **No App Store submission to add or change a partner**, which is the entire
+point of doing it this way.
+
+What you build is the *rendering*, once:
+
+```jsonc
+GET /v1/catalog
+{ "version": 7,
+  "show_evidence_tier": false,
+  "products": [
+    { "id": "…", "brand": "…", "title": "…",
+      "image": "/assets/…",        // served by us, not the brand's CDN
+      "link": "https://…",         // the affiliate network's tracked URL
+      "evidence_tier": "…" }
+  ] }
+```
+
+### Client rules
+
+* **Cache to disk and always render from the cache.** The network is a refresh, never a
+  dependency — the list must work with no signal.
+* Send the version you hold; unchanged returns `304` with no body.
+* Ship a **bundled seed catalogue** so a first launch offline is not an empty screen.
+* Tap → `openURL(link)`, then post an aggregate tap count. **A failed count is dropped, never
+  retried** — the affiliate network attributes the commission through its own link, so our counter
+  is analytics, and analytics must never delay a user's tap.
+* Images come from our server, not the brand's. That is deliberate: brands never see your users'
+  IP addresses, and a brand CDN outage cannot blank the screen.
+* **`show_evidence_tier` is a server flag — obey it.** It is currently off. If it flips on, render
+  the tier badge; do not hardcode either behaviour.
+
+### The disclosure is not optional
+
+The surface must state that these are affiliate links and that we may earn a commission. Required by
+the FTC and the ASA regardless of anything else. One persistent line on the surface — not buried in
+Settings.
+
+---
+
+## 16. Testing without a phone in your hand
+
+Everything below works from a terminal on your Mac. `$K` is the access key, `$B` the base URL.
+
+```bash
+# 1. open a session
+S=$(curl -s -X POST $B/v1/session -H "X-Access-Key: $K" -H 'content-type: application/json' \
+  -d '{"installation_id":"my-mac-test","hints":{"platform":"ios","available_capabilities":[]}}')
+T=$(echo $S | python3 -c 'import sys,json;print(json.load(sys.stdin)["session_token"])')
+echo $S | python3 -m json.tool | head -20        # plan_id, features, offer, upgrade
+
+# 2. grant consent (once per install)
+curl -s -X POST $B/v1/privacy/consent -H "X-Access-Key: $K" -H 'content-type: application/json' \
+  -d "{\"session_token\":\"$T\",\"decision\":{\"purpose\":\"agent-analysis\",
+      \"granted\":true,\"policy_version\":\"1.0\",\"crosses_border\":true}}"
+
+# 3. a turn — watch the SSE stream
+curl -N -X POST $B/v1/turn -H "X-Access-Key: $K" -H 'content-type: application/json' \
+  -d "{\"session_token\":\"$T\",\"user_text\":\"is 80 hairs a day normal?\"}"
+
+# 4. an off-topic question — expect iterations: 0, no model call
+curl -N -X POST $B/v1/turn -H "X-Access-Key: $K" -H 'content-type: application/json' \
+  -d "{\"session_token\":\"$T\",\"user_text\":\"who won the world cup?\"}"
+
+# 5. what the server holds about you
+curl -s -X POST $B/v1/privacy/state -H "X-Access-Key: $K" -H 'content-type: application/json' \
+  -d "{\"session_token\":\"$T\"}" | python3 -m json.tool
+
+# 6. erase it
+curl -s -X POST $B/v1/privacy/forget -H "X-Access-Key: $K" -H 'content-type: application/json' \
+  -d "{\"session_token\":\"$T\"}"
+```
+
+In the Simulator, the launch arguments in §2 get you to a screen fast: `HC_SEED_DEMO HC_TAB care`
+seeds data and opens Plan.
+
+**Ask for a tester grant** if you need a paid plan without a real purchase. Mohammed can add your
+installation id to `TESTER_GRANTS` on the server — named, expiring, and audited, so it is not a
+blanket "everyone is Pro" switch.
+
+---
+
+## 17. Quick map — where does a thing live?
+
+| You want to change… | Where | Needs a release? |
+|---|---|---|
+| Any screen, layout, copy in the app | this repo | yes |
+| Which questions are answered | `SCOPE_POLICY`, server | no — server deploy |
+| What the answer may not say | `SAFETY_POLICY`, server | no — server deploy |
+| Agent tone and behaviour | `AGENT_SYSTEM_PROMPT`, server | no — server deploy |
+| Prices, trial length, what a plan unlocks | plan catalogue, server + App Store Connect | no |
+| Affiliate products | admin UI, server | no |
+| Which model, which provider | server `.env` | no |
+| Whether photos are allowed on a plan | plan `features`, server | no |
+
+The pattern: **the app renders, the server decides.** If you find yourself hardcoding a rule in
+Swift that the server already knows, that is the wrong side — ask for it in the session response
+instead. `features`, `offer`, `tools` and `upgrade` all exist for exactly that reason.
