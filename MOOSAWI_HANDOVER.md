@@ -418,6 +418,19 @@ confirm the server is pointed at a **hosted** API rather than a local one.
 
 ### B. Your own server, your own key *(what "testing with a live API" means)*
 
+**Repository:** `https://github.com/Almoosawi/hair-compass-agent-platform` (private — ask for
+access). Its README is the setup guide; this is the short version.
+
+**Install Docker Desktop first.** It is the only prerequisite — no Python, no Postgres, nothing else
+to set up locally. `https://docker.com/products/docker-desktop`, then start it and check:
+
+```bash
+docker --version && docker compose version
+```
+
+Everything runs in containers: the API on `8100`, Postgres on `127.0.0.1:5433` bound to loopback so
+nothing outside your Mac reaches the database. First build is a few minutes; after that, seconds.
+
 You need the server repository and Docker Desktop. Then one file decides everything:
 
 ```bash
@@ -462,9 +475,12 @@ LLM_MODEL=anthropic/claude-sonnet-5
 
 ```ini
 LLM_PROVIDER=lmstudio
-LLM_BASE_URL=http://127.0.0.1:1234/v1
+LLM_BASE_URL=http://host.docker.internal:1234/v1     # NOT 127.0.0.1
 LLM_MODEL=                          # blank = whatever is already loaded
 ```
+
+`host.docker.internal`, not `127.0.0.1`: inside a container, localhost is the container. This one
+costs everybody an hour exactly once.
 
 Leave `LLM_MODEL` blank on purpose. Naming one is not a passive preference — with just-in-time
 loading it **evicts** whatever the machine already had resident.
