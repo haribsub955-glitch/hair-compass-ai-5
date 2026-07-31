@@ -2,6 +2,36 @@
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
+## ⚠️ Start with HANDOVER_CLIENT.md — this file predates the server
+
+The app gained a **server-side agent** after this document was written, and most of what a change
+now touches lives on the far side of that boundary. [HANDOVER_CLIENT.md](HANDOVER_CLIENT.md) is the
+current entry point and is kept up to date. Everything below still describes the app itself
+correctly; it simply says nothing about the server.
+
+The facts that change decisions:
+
+* **A second repository** (`agent-platform`, not published here) runs an HTTP agent the app talks
+  to. It owns identity, subscriptions, token budgets, consent, the system prompt, the scope gate
+  and the output safety screen. **The app renders; the server decides.** If you find yourself
+  hardcoding a rule in Swift that the server already knows, that is the wrong side — it should
+  arrive in the session response, which already carries `features`, `offer`, `tools` and `upgrade`.
+* **Every request carries an `X-Access-Key` header**, and every endpoint except `/v1/session` also
+  carries a `session_token`. The key is read from `HC_ACCESS_KEY` in the scheme environment and
+  must never be committed.
+* **`Service/Agent/AgentClient.swift` is wired to NO view.** `HairChatSheet` and
+  `DeepAnalysisSheet` still use the older `HairChatService` / `CloudAnalysisService` path, which
+  remains accurate. Connecting the agent to a screen is outstanding work, not a regression.
+* **No Swift under `Service/Agent/` has ever been compiled** — it was written on a machine with no
+  Xcode. Build before trusting any of it.
+* **Attachments (photos) work server-side and are a paid feature.** The 3-day free period excludes
+  them. Check `features` in the session response before showing an attachment button, and ask for
+  photo consent before opening the picker.
+* **An off-topic question returns a SUCCESSFUL turn with `iterations: 0`.** No model was called and
+  nothing was spent. Render it as a normal assistant message, never an error. Likewise
+  `served: false` means the safety screen stripped the answer — show the app's own deterministic
+  summary instead.
+
 ## Overview
 
 Hair Compass AI 5 is a native iOS app (SwiftUI + SwiftData, iOS 26.2 deployment target, Swift 5) for tracking hair/scalp health: daily check-ins, routines, medications/supplements, lab results, procedures, lifestyle triggers, progress photos, and a Home Screen widget. There is no README in the repo root; `docs/` only holds the GitHub Pages marketing/privacy/support site.
