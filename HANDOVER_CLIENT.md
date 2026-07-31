@@ -393,51 +393,99 @@ so, and says whether you can change it.
 
 ---
 
-## 11. Running the agent, and using your own API key
+## 11. Connecting to a model — live APIs, your own key
 
-**The phone never holds a provider API key.** It is server-side and always was — that is the point
-of the whole architecture. A key shipped in an app is a key extracted from the app.
+**The phone never holds a provider API key.** It is server-side and always was: a key shipped in an
+app is a key extracted from the app. So "using your own key" means pointing a *server* at it, and
+there are two ways to get one.
 
-Two ways to work:
+### A. Mohammed's server, already configured
 
-### A. Point at Mohammed's server *(recommended, nothing to set up)*
+Set `baseURL` and `HC_ACCESS_KEY` (§1) and you are done. No provider key, no Docker, no cost to
+you — the server holds a key and meters your turns against a plan.
 
-Set `baseURL` and `HC_ACCESS_KEY` (§1). You need no provider key at all — the server holds one and
-meters your turns against a plan. This is the fastest path and the one that tests the real thing.
+**One caveat that will bite you at the worst moment:** that server can be configured to talk to a
+model running on Mohammed's desktop PC. When his machine is asleep, your turns fail with
+`provider_unavailable` and nothing is wrong with your code. If you are testing remotely, ask him to
+confirm the server is pointed at a **hosted** API rather than a local one.
 
-### B. Run the server yourself, with your own key
+### B. Your own server, your own key *(what "testing with a live API" means)*
 
-Useful when you want to change the system prompt, try another model, or work offline. You need the
-server repository and Docker:
+You need the server repository and Docker Desktop. Then one file decides everything:
 
 ```bash
-cp .env.example .env      # then edit:
-#   LLM_PROVIDER=anthropic
-#   LLM_API_KEY=sk-ant-…              your own key
-#   SECRET_KEY=<32+ random chars>
-#   DATABASE_URL=postgresql+asyncpg://agent:pw@db:5432/agent_platform
-#   ACCESS_KEYS=                       leave empty locally — no front door needed on a laptop
-
+cp .env.example .env
 docker compose up -d
-curl localhost:8100/health
+curl -H "X-Access-Key: " localhost:8100/health     # ACCESS_KEYS empty locally = no front door
 ```
 
-Then point the app at `http://<your-mac-lan-ip>:8100`.
+Point the app at `http://<your-mac-lan-ip>:8100`.
 
-**Free local option — no API key, no cost:** install LM Studio, load any model, and set
+#### Anthropic — what production uses
 
+```ini
+LLM_PROVIDER=anthropic
+LLM_API_KEY=sk-ant-…
+LLM_MODEL=claude-sonnet-5           # or claude-opus-5 for the harder reasoning
 ```
+
+The closest thing to the real deployment, and the one to test against before shipping anything.
+
+#### Any OpenAI-compatible endpoint
+
+One provider setting covers **OpenAI, OpenRouter, Groq, Together, Ollama, LM Studio** and anything
+else speaking that shape. Only the URL and the model name change:
+
+```ini
+LLM_PROVIDER=openai-compat
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=sk-…
+LLM_MODEL=gpt-5
+```
+
+```ini
+# OpenRouter — one key, hundreds of models. Best for comparing them cheaply.
+LLM_PROVIDER=openai-compat
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_API_KEY=sk-or-…
+LLM_MODEL=anthropic/claude-sonnet-5
+```
+
+#### Free and local, when you are iterating on UI rather than answers
+
+```ini
 LLM_PROVIDER=lmstudio
 LLM_BASE_URL=http://127.0.0.1:1234/v1
-LLM_MODEL=                    # blank means "whatever is already loaded"
+LLM_MODEL=                          # blank = whatever is already loaded
 ```
 
-Leave `LLM_MODEL` blank deliberately. Naming a model is not a passive preference — with
-just-in-time loading it *evicts* whatever the machine already had resident, which is a rude
-surprise on a shared box.
+Leave `LLM_MODEL` blank on purpose. Naming one is not a passive preference — with just-in-time
+loading it **evicts** whatever the machine already had resident.
 
-Vision works on this path too, if the loaded model is one (LM Studio reports `type: vlm`).
-Confirmed with `gemma-4-e4b-it-qat`.
+Local models also narrate their reasoning into the answer ("Thinking Process: 1. Analyze the
+request…") and burn the whole token budget doing it. That is a local-model quirk, not a bug in the
+transport, and it does not happen on Anthropic or OpenAI. Do not chase it.
+
+### Attachments need a vision model
+
+Photos only reach a model that can see. Safe choices: `claude-sonnet-5`, `claude-opus-5`, `gpt-5`.
+Locally, LM Studio reports `type: vlm` on models that support it — `gemma-4-e4b-it-qat` works and is
+what the image path was verified against.
+
+Send a photo to a text-only model and you get an error from the provider, not a silent drop.
+
+### It is your money on your key
+
+Two bounds worth knowing before you leave something looping overnight:
+
+* **Images are the expensive part.** A photo can cost several times a text turn. That is exactly why
+  the free tier does not include them (§14).
+* **The server's own budget still applies.** Your plan has a daily and sometimes a lifetime token
+  cap, so you will hit `429 quota_exhausted` before you hit a shocking bill. Ask for a tester grant
+  (§16) if the cap gets in your way — that is what it is for.
+
+Set a spend limit in your provider's dashboard anyway. Everyone says that; the people who mean it
+have all paid for the lesson once.
 
 ---
 
