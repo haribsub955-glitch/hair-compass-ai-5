@@ -39,17 +39,26 @@ public actor AgentClient {
         public var subscriptionToken: String
         /// Current app build, so the server can tell a stale client to update.
         public var appBuild: String
+        /// Pre-shared key for the deployment itself, sent on EVERY request as `X-Access-Key`.
+        ///
+        /// Not authentication of a user — a front door on the whole server while it is reachable
+        /// from the internet for testing. Without it every endpoint returns 401, including
+        /// `/health`. Read from the scheme's run environment so it never lands in the repository;
+        /// ask Mohammed for the value.
+        public var accessKey: String
 
         public init(
             baseURL: URL,
             installationID: String,
             subscriptionToken: String = "",
-            appBuild: String = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
+            appBuild: String = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "",
+            accessKey: String = ProcessInfo.processInfo.environment["HC_ACCESS_KEY"] ?? ""
         ) {
             self.baseURL = baseURL
             self.installationID = installationID
             self.subscriptionToken = subscriptionToken
             self.appBuild = appBuild
+            self.accessKey = accessKey
         }
     }
 
@@ -106,6 +115,14 @@ public actor AgentClient {
         self.session = session
     }
 
+    /// Every request carries the deployment key. One place, so a new endpoint cannot forget it —
+    /// the same reasoning that put the server's own gate in middleware rather than per-route.
+    private func stamp(_ request: inout URLRequest) {
+        if !configuration.accessKey.isEmpty {
+            request.setValue(configuration.accessKey, forHTTPHeaderField: "X-Access-Key")
+        }
+    }
+
     // MARK: - Session
 
     /// Open a session and keep the token. Safe to call repeatedly; only the first does work.
@@ -120,6 +137,7 @@ public actor AgentClient {
         var request = URLRequest(url: configuration.baseURL.appendingPathComponent("v1/session"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        stamp(&request)
         request.timeoutInterval = 30
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "installation_id": configuration.installationID,
@@ -169,6 +187,7 @@ public actor AgentClient {
         var request = URLRequest(url: configuration.baseURL.appendingPathComponent("v1/turn"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        stamp(&request)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 300
         request.httpBody = try JSONSerialization.data(withJSONObject: [
@@ -283,6 +302,7 @@ public actor AgentClient {
         var request = URLRequest(url: configuration.baseURL.appendingPathComponent("v1/turn/result"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        stamp(&request)
         request.timeoutInterval = 30
         // No principal, no run id, no tool name: the server already knows all three from the call
         // id it issued. Anything stated here would be a claim it has to verify.
