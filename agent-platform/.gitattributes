@@ -1,0 +1,27 @@
+# Line endings.
+#
+# This repo is authored on Windows and runs on Linux. Git's autocrlf checked shell scripts out with
+# CRLF, so `#!/usr/bin/env bash` became `#!/usr/bin/env bash\r` on the server and the kernel looked
+# for an interpreter literally named "bash\r". The nightly backup was scheduled, appeared installed,
+# and had never once produced a file.
+#
+# Anything with a shebang, or read by a Linux tool, is forced to LF.
+* text=auto eol=lf
+
+*.sh        text eol=lf
+*.bash      text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.sql       text eol=lf
+
+# Windows-only helpers keep CRLF, since that is what their interpreters expect.
+*.ps1       text eol=crlf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# Never touched.
+*.png       binary
+*.jpg       binary
+*.gz        binary
+*.cer       binary

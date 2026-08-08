@@ -1,0 +1,75 @@
+# Staging/production deployment: the app container ONLY — the database lives on Supabase.
+#
+#   docker compose -f docker-compose.supabase.yml up -d --build
+#
+# The difference from docker-compose.yml (local dev): there is no `db` service. DATABASE_URL points
+# at Supabase's session pooler instead of the compose-network Postgres. Everything else is the same
+# image. Host-agnostic: this runs on the beelink box, a VPS, or any Docker host — Supabase is only
+# the database, so the server still needs one of those to run on.
+#
+# Put the values in a `.env` beside this file (see docs/SUPABASE.md §1 and §4). The `:?` markers are
+# deliberate: a missing critical value stops the container instead of starting an unsafe one.
+
+services:
+  agent:
+    build: .
+    container_name: agent-platform
+    restart: unless-stopped
+    ports:
+      # Loopback by default. Behind a same-host reverse proxy / Cloudflare Tunnel this is what you
+      # want: a direct hit on a publicly-published :8100 would carry a forgeable CLIENT_IP_HEADER
+      # (api.py trusts it when configured), collapsing per-attacker rate-limit isolation into
+      # attacker-chosen buckets. For a direct LAN deployment with no proxy, set AGENT_PUBLISH=0.0.0.0.
+      - "${AGENT_PUBLISH:-127.0.0.1}:8100:8100"
+    environment:
+      # staging or prod. Both are "live": the server enforces the full safety checklist and refuses
+      # to start if it is not met (agent_server/core/config.py :: validate_for_environment).
+      APP_ENV: ${APP_ENV:?set APP_ENV=staging or prod}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      # The Supabase session-pooler string, rewritten to the async driver:
+      #   postgresql+asyncpg://postgres.<ref>:<pw>@aws-<n>-<region>.pooler.supabase.com:5432/postgres
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL to the Supabase session-pooler string}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY (32+ chars) — derives principal ids, signs tokens}
+
+      # Front door. Without it a live server refuses to start: an internet-reachable server with no
+      # access key is the exact state this prevents. `name=<48+ random chars>`; the client sends it
+      # as X-Access-Key.
+      ACCESS_KEYS: ${ACCESS_KEYS:?set ACCESS_KEYS (name=secret) — the client's X-Access-Key}
+
+      # NOTE (READINESS.md blocker): a live env requires this to be TRUE, but device binding only
+      # works once the Swift client generates + registers a device key — which is not compiled yet.
+      # Until it is, the honest options for a single-tester staging box are (a) close the blocker
+      # first, or (b) run behind ACCESS_KEYS with a documented, time-boxed exception. Left to env so
+      # the choice is deliberate, never silent.
+      REQUIRE_DEVICE_BINDING: ${REQUIRE_DEVICE_BINDING:?see the note above — true once the client registers a key}
+
+      # StoreKit receipt verification. Required live.
+      APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID:?required to verify a receipt}
+      APPLE_ROOT_CERT_DIR: /app/apple-roots
+      # Behind a reverse proxy / Cloudflare Tunnel, name the real-client-address header or the rate
+      # limit collapses to one shared bucket. Blank for a direct deployment.
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-}
+
+      # Provider. Not `fake` in a live environment.
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+
+      DAILY_TOKEN_BUDGET_PER_PRINCIPAL: ${DAILY_TOKEN_BUDGET_PER_PRINCIPAL:-200000}
+      MAX_OUTPUT_TOKENS_PER_TURN: ${MAX_OUTPUT_TOKENS_PER_TURN:-2000}
+    volumes:
+      # Apple's root certificates, mounted so a root rotation does not need an image rebuild.
+      - ./apple-roots:/app/apple-roots:ro
+    healthcheck:
+      # /livez, not /health: /health sits behind the access-key gate (it maps the deployment), so an
+      # unauthenticated probe of it 403s and marks a healthy container unhealthy. /livez is the
+      # metadata-free liveness endpoint kept outside the gate for exactly this. A live server that
+      # lost its database never serves /livez — startup fails closed, so the container restarts.
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/livez',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

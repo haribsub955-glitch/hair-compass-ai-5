@@ -1,0 +1,67 @@
+# Deploy to the server:
+#   scp -r <this dir> <user>@<server-host>:~/agent-platform
+#   ssh <server-host> 'cd agent-platform && docker compose up -d --build'
+#
+# Port 8100 is free on that box (8000, 8080, 8081, 8085 and 8190+ are already taken).
+
+services:
+  # Local Postgres for testing. Supabase IS Postgres, so moving there later is a DATABASE_URL
+  # change — provided nothing in the app reaches for PostgREST or the Supabase SDK, and nothing
+  # does.
+  db:
+    image: postgres:17-alpine
+    container_name: agent-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: agent_platform
+    volumes:
+      - agent-db-data:/var/lib/postgresql/data
+      # Nightly dump lands here. NOTE: same disk as the database, so this is a restore point for
+      # an application mistake, NOT a backup — it survives nothing that kills the machine. Off-box
+      # copy is a separate step and still owed.
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d agent_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      # Bound to loopback only — nothing outside the box needs to reach the database directly.
+      - "127.0.0.1:5433:5432"
+
+  agent:
+    build: .
+    container_name: agent-platform
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://agent:${POSTGRES_PASSWORD}@db:5432/agent_platform
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env before deploying}
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      # Blank on purpose: an OpenAI-compatible provider then discovers the loaded model rather
+      # than JIT-loading a named one and evicting whatever the GPU's owner had resident.
+      LLM_MODEL: ${LLM_MODEL:-}
+      # Reaching LM Studio on the Windows box from inside this container: use the LAN IP, not
+      # localhost. 172.17.0.1 only reaches services on the server itself.
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      DAILY_TOKEN_BUDGET_PER_PRINCIPAL: ${DAILY_TOKEN_BUDGET_PER_PRINCIPAL:-200000}
+      MAX_OUTPUT_TOKENS_PER_TURN: ${MAX_OUTPUT_TOKENS_PER_TURN:-2000}
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/health',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  agent-db-data:

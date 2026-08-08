@@ -1,0 +1,8 @@
+*.pyc
+.env
+.env.*
+.serena/
+.venv/
+__pycache__/
+graphify-out/
+Reviews/
