@@ -56,3 +56,35 @@ struct Entitlements {
         }
     }
 }
+
+/// Three days of the whole app, no payment method, on the device's own clock.
+///
+/// Reinstalling resets it, and that is accepted rather than defended: the model runs on-device,
+/// so a farmed taster costs nothing. Building device binding to protect $0 would be effort spent
+/// on nothing.
+struct TasterWindow {
+    static let durationDays = 3
+
+    let firstLaunch: Date
+
+    func isActive(now: Date = .now, calendar: Calendar = .current) -> Bool {
+        guard let end = calendar.date(byAdding: .day, value: Self.durationDays, to: firstLaunch)
+        else { return false }
+        return now < end
+    }
+}
+
+extension Entitlements {
+    /// The one place a tier is decided. `hasPro` covers both a paid subscription and an active
+    /// Apple trial, because `Transaction.currentEntitlements` reports them identically.
+    static func resolve(
+        hasPro: Bool,
+        firstLaunch: Date,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> EntitlementTier {
+        if hasPro { return .pro }
+        if TasterWindow(firstLaunch: firstLaunch).isActive(now: now, calendar: calendar) { return .taster }
+        return .free
+    }
+}
