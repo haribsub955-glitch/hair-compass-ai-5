@@ -22,6 +22,7 @@
 
 ### Task 1: Entitlement policy core
 
+
 The single table that decides what is free. Pure logic, no SwiftUI, no SwiftData — so it tests in milliseconds and every later task consumes it.
 
 **Files:**
@@ -174,6 +175,7 @@ git commit -m "Entitlements: what is free, as one readable table"
 
 ### Task 2: The 3-day taster window
 
+
 **Files:**
 - Modify: `Hair Compass AI 5/Feature/Entitlements.swift`
 - Test: `Hair Compass AI 5Tests/EntitlementsTests.swift`
@@ -289,6 +291,7 @@ git commit -m "Taster: three days of the real product, no card, no abuse defence
 ---
 
 ### Task 3: The history wall
+
 
 Free users may log forever and see only today. Enforced as a pure function over fetched entries so no future surface can bypass it by writing its own view code.
 
@@ -428,17 +431,26 @@ git commit -m "History wall: today only, and a locked count that compounds"
 
 ---
 
-### Task 4: Invert the scope of `sellable`
+### Task 4: Pro sells on every iPhone
 
-Today `ProAvailability.sellable()` decides whether the paywall sells **at all**, so Pro is unsellable on an Apple-Intelligence-ineligible iPhone. It must instead decide whether the two AI rows appear in the feature list.
+Today `ProAvailability.sellable()` decides whether the paywall sells **at all**, so Pro is unsellable on an Apple-Intelligence-ineligible iPhone. This task inverts that scope AND rewrites `ProGate` to consume `ProFeature`, in one commit — split apart, the first half orphans `sellable`'s callers and leaves the app target uncompilable, so they land together.
+
+**This is the commercially load-bearing task in the plan.** Everything else packages a product that, before this change, could not be bought at all on a large share of iPhones.
 
 **Files:**
 - Modify: `Hair Compass AI 5/Feature/ProAvailability.swift:48-70`
-- Modify: `Hair Compass AI 5Tests/SubmissionReadinessTests.swift` (the `sellable` and message assertions)
+- Modify: `Hair Compass AI 5/Feature/ProGate.swift`
+- Modify: `Hair Compass AI 5/Feature/Onboarding/OnboardingPlanStep.swift`
+- Modify: `Hair Compass AI 5/Feature/HairChatSheet.swift:34`, `Hair Compass AI 5/Feature/DeepAnalysisSheet.swift:33`
+- Modify: `Hair Compass AI 5/Feature/Entitlements.swift` (gate copy)
+- Create: `Hair Compass AI 5/Feature/ProGatedModifier.swift`
+- Test: `Hair Compass AI 5Tests/SubmissionReadinessTests.swift`, `Hair Compass AI 5Tests/EntitlementsTests.swift`
 
 **Interfaces:**
-- Consumes: `ProFeature` from Task 1, `OnDeviceAvailability` (existing).
-- Produces: `static func canRun(_ feature: ProFeature, status: OnDeviceAvailability) -> Bool`. `sellable(_:)` is **removed** — its callers change in Task 5.
+- Consumes: `ProFeature` (Task 1), `OnDeviceAvailability` (existing), `PurchaseService` (existing).
+- Produces: `ProAvailability.canRun(_:status:) -> Bool`; `ProFeature.gateTitle/.gateSymbol/.gateDescription`; `extension View { func proGated(_:) -> some View }`. `ProAvailability.sellable(_:)` is **removed**.
+
+**Every commit in this task must build.** Do not commit between the `canRun` change and the `ProGate` rewrite.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -503,29 +515,21 @@ Update the type's doc comment: the sentence saying both purchase surfaces "check
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Same command as Step 2. Expected: PASS. The app target will not compile yet — `ProGate` and `OnboardingPlanStep` still call `sellable`. Task 5 fixes both; if the test command fails to build for that reason, proceed to Task 5 and run Step 4 again at its end.
+Same command as Step 2. Expected: PASS, and the app target compiles — the `ProGate` rewrite in the same task has already replaced every `sellable` caller.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add "Hair Compass AI 5/Feature/ProAvailability.swift" "Hair Compass AI 5Tests/SubmissionReadinessTests.swift"
+git add "Hair Compass AI 5/Feature/" "Hair Compass AI 5Tests/"
 git commit -m "Pro sells on every iPhone; only the two AI features carry the notice"
 ```
 
 ---
 
-### Task 5: Feature-aware `ProGate` and the `.proGated` modifier
 
-**Files:**
-- Modify: `Hair Compass AI 5/Feature/ProGate.swift` (add `feature:`, replace the `sellable` branch at `:83-86`, gate `ProAvailabilityNotice` at `:81`)
-- Modify: `Hair Compass AI 5/Feature/Onboarding/OnboardingPlanStep.swift` (its `sellable` call)
-- Modify: `Hair Compass AI 5/Feature/HairChatSheet.swift:34`, `Hair Compass AI 5/Feature/DeepAnalysisSheet.swift:33`
-- Create: `Hair Compass AI 5/Feature/ProGatedModifier.swift`
+---
 
-**Interfaces:**
-- Consumes: `ProFeature`, `Entitlements`, `ProAvailability.canRun`.
-- Produces: `extension View { func proGated(_ feature: ProFeature, title: String, symbol: String, description: String) -> some View }`.
-
+#### Also in this task: feature-aware `ProGate`
 - [ ] **Step 1: Write the failing test**
 
 Append to `EntitlementsTests.swift`:
@@ -693,7 +697,8 @@ git commit -m "ProGate speaks ProFeature, and the AI notice stops speaking for e
 
 ---
 
-### Task 6: Resolve the tier once, at the root
+### Task 5: Resolve the tier once, at the root
+
 
 **Files:**
 - Modify: `Hair Compass AI 5/App/RootView.swift` (add `@AppStorage` first-launch stamp, inject `Entitlements`)
@@ -821,7 +826,8 @@ git commit -m "Resolve the tier once at the root and hand it down"
 
 ---
 
-### Task 7: The locked-history card
+### Task 6: The locked-history card
+
 
 **Files:**
 - Create: `Hair Compass AI 5/Feature/LockedHistoryCard.swift`
@@ -932,7 +938,8 @@ git commit -m "The counter that grows: locked history on Today"
 
 ---
 
-### Task 8: Gate the Pro surfaces
+### Task 7: Gate the Pro surfaces
+
 
 **Files:**
 - Modify: `Hair Compass AI 5/Feature/TrendsView.swift`, `CompareView.swift`, `JourneyChart.swift`, `PhotosView.swift`, `LabsView.swift`, `ProceduresView.swift`, `CareView.swift`, `ProgressReportSheet.swift`, `BodySignalsDashboard.swift`
@@ -954,9 +961,15 @@ Append to `EntitlementsTests.swift`:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run the test — it is GREEN on arrival, by design**
 
-It passes immediately — this is a regression guard, not a red test. Record that and move on.
+**This is a regression guard, not a red-green cycle, and that is deliberate — do not "fix" it into
+one.** It cannot fail today because nothing gates Export yet. Its job is to fail *later*, the day
+someone adds `case export` to `ProFeature` and silently breaks Guideline 3.1.2(a) compliance for a
+lapsed subscriber trying to retrieve their own data. A guard that can only fail in the future is
+still worth writing when the failure it prevents is a compliance breach.
+
+Run it, confirm green, record that, and move on.
 
 - [ ] **Step 3: Apply the modifier**
 
@@ -995,7 +1008,8 @@ git commit -m "Apply the wall: nine surfaces behind Pro, export deliberately out
 
 ---
 
-### Task 9: Widget must not leak locked history
+### Task 8: Widget must not leak locked history
+
 
 **Files:**
 - Modify: `Hair Compass AI 5/App/RootView.swift` (snapshot construction)
@@ -1078,7 +1092,8 @@ git commit -m "Close the widget leak: the wall reaches the Home Screen too"
 
 ---
 
-### Task 10: Navigation — merge Labs into Plan, promote Shop
+### Task 9: Navigation — merge Labs into Plan, promote Shop
+
 
 **Files:**
 - Modify: `Hair Compass AI 5/App/RootView.swift:36-57` (`AppTab`), `:154-164` (`tabContent`)
@@ -1235,7 +1250,8 @@ git commit -m "Shop takes a tab; Labs joins Plan behind the wall"
 
 ---
 
-### Task 11: Affiliate catalogue and the FTC disclosure
+### Task 10: Affiliate disclosure (catalogue deferred)
+
 
 **Files:**
 - Modify: `Hair Compass AI 5/Resources/AffiliateLinks.json`
@@ -1259,12 +1275,24 @@ Append to `AffiliateStoreTests.swift`:
         #expect(ShopView.affiliateDisclosure.lowercased().contains("commission"))
     }
 
-    /// The bundled catalogue must not ship empty — an empty catalogue hides every buy button,
-    /// which is how the storefront silently earned nothing.
-    @Test func bundledCatalogueIsNotEmpty() {
-        #expect(AffiliateStore().resolvedLinkCount > 0)
+    /// Counts ids that resolve across the whole resolution order. It is legitimately ZERO today —
+    /// there is no Amazon Associates tag yet, so `AffiliateLinks.json` still ships `"links": {}`
+    /// and every buy button stays hidden. Asserting non-empty is deferred with the catalogue
+    /// itself; what is asserted here is that the counter reads the store correctly.
+    @Test func resolvedLinkCountReflectsTheCatalogue() {
+        let store = AffiliateStore(bundledLinks: [:])
+        #expect(store.resolvedLinkCount == 0)
+
+        let stocked = AffiliateStore(bundledLinks: ["minoxidil-topical-5": "https://example.com/a"])
+        #expect(stocked.resolvedLinkCount == 1)
     }
 ```
+
+**Scope note — the catalogue itself is deferred.** Filling `AffiliateLinks.json` and setting
+`RemoteConfig.catalogURLString` both need a real Amazon Associates tag, which does not exist yet.
+This task ships the FTC disclosure and the counter only; the catalogue is listed under "Blocked on
+external input". Do **not** invent placeholder links — a key matching no product resolves to
+nothing and would make the counter lie.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1275,18 +1303,20 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
   -only-testing:"Hair Compass AI 5Tests/AffiliateStoreTests" 2>&1 | tail -20
 ```
 
-Expected: FAIL on both.
+Expected: FAIL — `ShopView` has no `affiliateDisclosure` if Task 9 did not add it, and
+`AffiliateStore` has no `resolvedLinkCount`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-`ShopView.affiliateDisclosure` already exists from Task 10 — no change needed there.
+`ShopView.affiliateDisclosure` was added in Task 9 when `ShopView` was created. Verify it is
+present and rendered; if not, add it there per Task 9's code block.
 
 Add to `AffiliateStore`:
 
 ```swift
     /// How many product ids currently resolve to a link, across every source in the resolution
-    /// order. Zero means every buy button is hidden, which is exactly how the storefront shipped
-    /// earning nothing — so a test asserts this is non-zero.
+    /// order. Zero is the honest current answer — there is no Associates tag yet — and this
+    /// exists so the moment a catalogue lands, a test can prove the buy buttons actually appear.
     var resolvedLinkCount: Int {
         var ids = Set(bundledLinks.keys)
         ids.formUnion(remoteLinks.keys)
@@ -1295,27 +1325,17 @@ Add to `AffiliateStore`:
 ```
 
 Use whatever the existing per-id lookup is named in place of `link(for:)` — check the file; the
-resolution order (debug override → remote cache → bundled → nil) already lives in one method.
+resolution order (debug override → remote cache → bundled → nil) already lives in one method. If
+`AffiliateStore.init` does not already accept `bundledLinks:`, it does — see the existing
+`init(defaults:bundledLinks:)`, which `AffiliateStoreTests` already uses.
 
-Populate `Resources/AffiliateLinks.json`, keyed by the ids in `ScienceCatalog.products`:
+**Leave `AffiliateLinks.json` as `"links": {}` and `RemoteConfig.catalogURLString` as `""`.** Both
+need a real Amazon Associates tag. Placeholder links would resolve to nothing, make
+`resolvedLinkCount` lie, and risk shipping a dead outbound link in a released build.
 
-```json
-{
-  "version": 1,
-  "updatedAt": "2026-08-14",
-  "links": {
-    "minoxidil-topical-5": "https://www.amazon.com/dp/B078GHLZ4V?tag=YOURTAG-20",
-    "ketoconazole-shampoo": "https://www.amazon.com/dp/B00AINMFAC?tag=YOURTAG-20",
-    "derma-roller-1-5mm": "https://www.amazon.com/dp/B07YSN2XSF?tag=YOURTAG-20"
-  }
-}
-```
-
-Read the real ids out of `ScienceCatalog.products` first — a key that matches no product resolves
-to nothing and the button stays hidden. Replace `YOURTAG-20` with the actual Associates tag, and
-set `RemoteConfig.catalogURLString` to the hosted JSON endpoint.
-
-**Region routing is a known gap:** Amazon links are storefront-locked, so a UK tap on a US link earns nothing. Either key links by `Locale.current.region` or accept the loss — record which, in a comment, rather than leaving it undecided.
+**Region routing, recorded rather than decided:** Amazon links are storefront-locked, so a UK tap
+on a US link earns nothing. Add a comment at `RemoteConfig` noting the decision is pending until a
+tag exists — do not build `Locale`-based routing against a catalogue that is empty.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1324,8 +1344,8 @@ Same command as Step 2. Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add "Hair Compass AI 5/Resources/AffiliateLinks.json" "Hair Compass AI 5/Service/AffiliateStore.swift" "Hair Compass AI 5/Feature/ShopView.swift" "Hair Compass AI 5Tests/AffiliateStoreTests.swift"
-git commit -m "Switch the storefront on, and disclose what it earns"
+git add "Hair Compass AI 5/Service/AffiliateStore.swift" "Hair Compass AI 5/Feature/ShopView.swift" "Hair Compass AI 5Tests/AffiliateStoreTests.swift"
+git commit -m "Disclose what the shop earns, and count what it can resolve"
 ```
 
 ---
@@ -1336,4 +1356,8 @@ These cannot be completed from the codebase and are **not** tasks above:
 
 1. **App Store Connect** — create the 7-day → **14-day** introductory offer on both products, and set $6.99/month and $39.99/year. `PurchaseService.trialDescriptor(for:)` already renders whatever is configured; no Swift change is needed.
 2. **Product-ID mismatch with Mohammed** — the app sells `com.harib.haircompass.pro.monthly`; `agent_core/plans.py` joins on `harib.haircompass.pro.monthly`. Raised on PR #1; his side needs the fix.
-3. **Amazon Associates account** — Task 11 Step 3 needs a real tag before the catalogue can be filled.
+3. **Amazon Associates account** — needed before `Resources/AffiliateLinks.json` can be filled and
+   `RemoteConfig.catalogURLString` pointed at a hosted catalogue. Task 10 deliberately ships the
+   disclosure and the counter WITHOUT the links; the catalogue is a follow-on once a tag exists.
+   At that point also decide region routing (`Locale.current.region`) or accept the storefront
+   mismatch knowingly, and add the non-empty assertion the counter was built for.
