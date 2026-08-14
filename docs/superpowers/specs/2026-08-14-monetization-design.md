@@ -126,7 +126,7 @@ The free Today screen carries a locked-history card:
     [ Unlock my history ]
 ```
 
-The count is `CheckInEntry` records excluding today. It grows every day the user stays free,
+The count is `DailyEntry` records excluding today. It grows every day the user stays free,
 so conversion pressure increases with tenure instead of hitting a wall on day one. This is the
 core commercial mechanic of the spec.
 
@@ -185,7 +185,7 @@ enum ProFeature {
 }
 ```
 
-`history` covers every read of a past `CheckInEntry` — which includes the consistency chart and
+`history` covers every read of a past `DailyEntry` — which includes the consistency chart and
 any average in `ConsistencyCard`. The streak *count* is not a `ProFeature` at all; it stays free
 per §4 and is computed without exposing the underlying entries.
 
@@ -220,7 +220,7 @@ contract and must be rewritten to the new one, not deleted.
 
 Free users must not read past entries. Enforcing this only in the view layer would leave the
 data reachable through any future surface, so the gate belongs at the query boundary: the
-free path fetches today's `CheckInEntry` only, and the locked-history card renders a `count`
+free path fetches today's `DailyEntry` only, and the locked-history card renders a `count`
 rather than any record content.
 
 **The widget is a second read path and must respect the same rule.** The app writes a
