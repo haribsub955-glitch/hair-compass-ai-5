@@ -32,3 +32,17 @@ enum HistoryAccess {
         return entries.filter { !calendar.isDate($0.date, inSameDayAs: now) }.count
     }
 }
+
+extension HistoryAccess {
+    /// What the widget snapshot is allowed to contain. Identical to `visible`, named separately
+    /// because the widget is a distinct read path and a future change to one should be a
+    /// deliberate decision about the other.
+    static func snapshotEntries(
+        _ entries: [DailyEntry],
+        entitlements: Entitlements,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> [DailyEntry] {
+        visible(entries, entitlements: entitlements, now: now, calendar: calendar)
+    }
+}

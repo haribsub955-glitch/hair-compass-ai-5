@@ -68,4 +68,20 @@ struct HistoryAccessTests {
         #expect(LockedHistoryCard.headline(lockedCount: 1) == "1 day recorded")
         #expect(LockedHistoryCard.headline(lockedCount: 22) == "22 days recorded")
     }
+
+    /// The App Group snapshot is a second read path. Whatever the free tier may not see in-app,
+    /// it must not see on the Home Screen either — otherwise the wall leaks through a widget.
+    @Test func widgetSnapshotCarriesNoHistoryForFreeUsers() {
+        let fed = HistoryAccess.snapshotEntries(entries(past: 22),
+                                                entitlements: Entitlements(tier: .free),
+                                                now: now)
+        #expect(fed.count == 1)
+    }
+
+    @Test func widgetSnapshotIsCompleteForPro() {
+        let fed = HistoryAccess.snapshotEntries(entries(past: 22),
+                                                entitlements: Entitlements(tier: .pro),
+                                                now: now)
+        #expect(fed.count == 23)
+    }
 }
