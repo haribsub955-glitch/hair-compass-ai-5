@@ -72,7 +72,9 @@ struct TodayView: View {
 
     /// Every routine step due today — clock-timed medication/supplement slots, then periodic
     /// care products scheduled for today (rendered with an empty "" slot). This is the universe
-    /// the routine list renders and the Compass "care" ring counts.
+    /// the routine list renders and the Compass "care" ring counts, before entitlement
+    /// suppression (see `visibleToday`) — `isLogged`/`toggle` still need the unfiltered treatment
+    /// objects to resolve doses regardless of tier.
     private var dailySlots: [(Treatment, String)] {
         activeDaily.flatMap { t in t.slots.map { (t, $0) } } + dueCareProducts.map { ($0, "") }
     }
@@ -80,9 +82,23 @@ struct TodayView: View {
         dailySlots.filter { isLogged($0.0, slot: $0.1) }.count
     }
 
-    /// True when a progress photo exists in the current calendar week — the Lens ring input.
+    /// True when a progress photo exists in the current calendar week — the Lens ring input,
+    /// before entitlement suppression (see `visibleToday`).
     private var hasPhotoThisWeek: Bool {
         photos.contains { calendar.isDate($0.createdAt, equalTo: .now, toGranularity: .weekOfYear) }
+    }
+
+    /// What Today is actually allowed to show — `.treatments` and `.photos` are hard-gated on
+    /// CareView/PhotosView, so a lapsed subscriber's still-stored treatments/photos must not
+    /// surface names or completion detail here either. See `TodayGating` for why suppression
+    /// falls back to the existing "no plan today" state rather than a new locked one.
+    private var visibleToday: TodayGating.Visible {
+        TodayGating.visible(
+            dailySlots: dailySlots,
+            medsDone: medsDone,
+            hasPhotoThisWeek: hasPhotoThisWeek,
+            entitlements: entitlements
+        )
     }
 
     /// Today's effort score behind the Compass Rings — built only from controllable inputs.
@@ -90,9 +106,9 @@ struct TodayView: View {
     private var compassScore: CompassScore {
         CompassScore(
             hasLoggedToday: todayEntry != nil,
-            medsDone: medsDone,
-            medsTotal: dailySlots.count,
-            hasPhotoThisWeek: hasPhotoThisWeek
+            medsDone: visibleToday.medsDone,
+            medsTotal: visibleToday.medsTotal,
+            hasPhotoThisWeek: visibleToday.hasPhotoThisWeek
         )
     }
 
@@ -152,8 +168,8 @@ struct TodayView: View {
                     .staggeredEntrance(index: 2)
                     CompassRingsCard(
                         score: compassScore,
-                        medsDone: medsDone,
-                        medsTotal: dailySlots.count,
+                        medsDone: visibleToday.medsDone,
+                        medsTotal: visibleToday.medsTotal,
                         isDayOneSeed: isDayOneSeed,
                         onLog: { showLog = true }
                     )
@@ -161,10 +177,10 @@ struct TodayView: View {
                     TodayTileGrid(
                         entry: todayEntry,
                         sleepHours: todaySleepHours,
-                        medsDone: medsDone,
-                        medsTotal: dailySlots.count,
+                        medsDone: visibleToday.medsDone,
+                        medsTotal: visibleToday.medsTotal,
                         triggerWeeks: watchTriggerWeeks,
-                        routineSteps: dailySlots,
+                        routineSteps: visibleToday.dailySlots,
                         isSlotLogged: { isLogged($0, slot: $1) },
                         onToggleSlot: { toggle($0, slot: $1, currentlyDone: isLogged($0, slot: $1)) },
                         onLogTap: { showLog = true },
