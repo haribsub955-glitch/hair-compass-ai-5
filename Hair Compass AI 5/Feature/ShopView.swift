@@ -30,6 +30,10 @@ struct ShopView: View {
     /// `.scheduleDoctorVisit` action, and that view carries its own `.proGated(.procedures)`, so
     /// no entitlement check is needed here either.
     @State private var showProcedures = false
+    /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — same
+    /// idiom as `TrendsView`/`CareView`. Task 9 fix-round: Shop is a primary tab now, so it should
+    /// carry the same header behavior every other tab does, not a plain static title.
+    @State private var headerCondense: CGFloat = 0
     @State private var recommendedTreatmentClass: TreatmentClass?
     @State private var showRecommendedLab = false
     @State private var recommendedLabTest: LabTest = .ferritin
@@ -46,8 +50,17 @@ struct ShopView: View {
         ScrollViewReader { proxy in
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
-                ScreenHeader(eyebrow: "Shop", title: "Products & options")
+                ScreenHeader(eyebrow: "Shop", title: "Products & options", condensed: headerCondense)
                     .padding(.top, 8)
+                    // Same header-wash idiom as Trends/Plan: `art-guidance` (a stethoscope/plant
+                    // still life) states the screen's subject before a single card renders.
+                    // Previously lived on `RecommenderView`'s own now-retired header — the section
+                    // moved inline, the wash moved up to the page header it used to duplicate.
+                    .background(alignment: .top) {
+                        BrandWash(art: BrandArt.guidance, height: 150, opacity: 0.5, fade: 0.55)
+                            .padding(.horizontal, -20)
+                            .offset(y: -8)
+                    }
 
                 Text(Self.affiliateDisclosure)
                     .font(Clinical.caption(12))
@@ -55,6 +68,12 @@ struct ShopView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("affiliateDisclosure")
 
+                // Section-shaped, not screen-shaped (Task 9 fix-round) — `RecommenderView` used to
+                // be a full sheet destination with its own `ScrollView`/`ScreenHeader`/
+                // `.clinicalScreen()`. Embedding that as-is nested a vertical scroll inside this
+                // one and could capture the pan before it ever reached the product rows below, on
+                // top of a doubled header/canvas/bleed. It now renders only its option cards, at
+                // the same 20pt inset as everything else on this page.
                 RecommenderView(condition: profile?.condition ?? .unsure, sex: profile?.sex ?? .male) { action in
                     presentRecommendedAction(action)
                 }
@@ -63,9 +82,19 @@ struct ShopView: View {
 
                 Button("In-clinic options") { showInClinicOptions = true }
                     .buttonStyle(ClinicalButtonStyle(filled: false))
+
+                // Closes the tab like every other primary screen (Today, Trends, Plan) — Shop was
+                // the one `ScreenHeader` tab missing this ending.
+                PageCloser(opacity: 0.8)
             }
             .padding(.horizontal, 20)
+            .padding(.top, 8)
             .padding(.bottom, 24)
+        }
+        // Condenses the header's serif title as the page scrolls — same 1:1 offset tracking as
+        // every other primary tab (`CareView`, `TrendsView`, `LabsView`, `PhotosView`).
+        .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, newY in
+            headerCondense = Clinical.headerCondenseFraction(newY)
         }
         .task {
             #if DEBUG
