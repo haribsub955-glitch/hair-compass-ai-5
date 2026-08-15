@@ -388,9 +388,11 @@ import Foundation
 
 /// The free tier's defining restriction: log forever, see only today.
 ///
-/// This lives as a function over already-fetched entries rather than as a `@Query` predicate
-/// because `@Query` predicates are static — a view that wrote its own fetch would silently
-/// bypass a predicate-based wall. Every surface that shows history routes through here.
+/// A function over already-fetched entries rather than a `@Query` predicate, so the rule stays
+/// in one place, reads the same at every call site, and is unit-testable without a
+/// `ModelContext`. It is a CONVENTION, not an access control: a view that fetches `DailyEntry`
+/// directly still bypasses it, and no client-side check could prevent that anyway. Route every
+/// history surface through here.
 enum HistoryAccess {
 
     static func visible(
