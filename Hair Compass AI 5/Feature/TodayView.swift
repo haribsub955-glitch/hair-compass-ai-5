@@ -10,6 +10,7 @@ struct TodayView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(DeepLinkRouter.self) private var deepLinks
+    @Environment(\.entitlements) private var entitlements
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
@@ -22,6 +23,7 @@ struct TodayView: View {
 
     @State private var showLog = false
     @State private var showBackfill = false
+    @State private var showHistoryPaywall = false
     /// Reward handed back by LogSheet.save; held until the log sheet finishes dismissing.
     @State private var pendingReward: CheckInReward?
     /// Drives the celebration sheet — set only from the log sheets' onDismiss (see below).
@@ -140,6 +142,14 @@ struct TodayView: View {
                     // grid's own tile 1 below — a harmless timing overlap, not a functional
                     // dependency), tiles 1…6 (inside the grid, indices owned by TodayTileGrid),
                     // cards continue at 8…11.
+                    //
+                    // The locked-history card sits first, directly beneath the hero (index 2, an
+                    // otherwise-unused slot) — the first thing a free user sees after logging is
+                    // what they can't see yet.
+                    LockedHistoryCard(
+                        lockedCount: HistoryAccess.lockedCount(entries, entitlements: entitlements)
+                    ) { showHistoryPaywall = true }
+                    .staggeredEntrance(index: 2)
                     CompassRingsCard(
                         score: compassScore,
                         medsDone: medsDone,
@@ -241,6 +251,17 @@ struct TodayView: View {
             NavigationStack {
                 LearnView()
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showLearn = false } } }
+            }
+        }
+        .sheet(isPresented: $showHistoryPaywall) {
+            NavigationStack {
+                // Entitled users never linger here: once ProGate sees access, it renders this
+                // clear placeholder, which immediately dismisses the sheet on appear.
+                ProGate(feature: .history) {
+                    Color.clear.onAppear { showHistoryPaywall = false }
+                }
+                .clinicalScreen()
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showHistoryPaywall = false } } }
             }
         }
     }

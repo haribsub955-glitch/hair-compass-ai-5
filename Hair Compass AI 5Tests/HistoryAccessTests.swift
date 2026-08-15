@@ -55,4 +55,17 @@ struct HistoryAccessTests {
                                           entitlements: Entitlements(tier: .free),
                                           now: now) == 0)
     }
+
+    /// The card must not render at zero — a brand-new free user should see an empty Today, not
+    /// "0 days recorded", which reads as a broken feature rather than an offer.
+    @Test func cardVisibilityFollowsTheLockedCount() {
+        #expect(LockedHistoryCard.shouldShow(lockedCount: 0) == false)
+        #expect(LockedHistoryCard.shouldShow(lockedCount: 1))
+        #expect(LockedHistoryCard.shouldShow(lockedCount: 22))
+    }
+
+    @Test func cardCopyIsSingularOnTheFirstLockedDay() {
+        #expect(LockedHistoryCard.headline(lockedCount: 1) == "1 day recorded")
+        #expect(LockedHistoryCard.headline(lockedCount: 22) == "22 days recorded")
+    }
 }
