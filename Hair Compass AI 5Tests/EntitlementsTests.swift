@@ -104,4 +104,11 @@ struct EntitlementsTests {
         let now = Date(timeIntervalSince1970: 1_760_000_000)
         #expect(Entitlements.firstLaunchStamp(stored: stored.timeIntervalSince1970, now: now) == stored)
     }
+
+    /// Export must survive a lapsed subscription — someone who paid, logged, then churned has
+    /// to be able to retrieve their own data (App Store Guideline 3.1.2(a)). It is therefore
+    /// deliberately absent from ProFeature, and this test is what stops someone adding it.
+    @Test func exportIsNotGateable() {
+        #expect(ProFeature.allCases.allSatisfy { $0.gateTitle != "Export" })
+    }
 }

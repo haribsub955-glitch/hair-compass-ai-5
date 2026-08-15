@@ -155,6 +155,7 @@ struct PhotosView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+            .proGated(.photos)
         }
         // Condenses the header's serif title as the page scrolls — direct 1:1 offset tracking.
         .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, newY in

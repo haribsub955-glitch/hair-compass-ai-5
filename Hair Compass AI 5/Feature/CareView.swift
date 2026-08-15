@@ -99,48 +99,68 @@ struct CareView: View {
                 // that fact already lives in Today's ROUTINE annotation and in the unchecked
                 // circles of the list below, so the header now flows straight into the routine
                 // section itself, the page's uncontested focal object.
-                if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
-                if !routine.isEmpty {
-                    routineSection.staggeredEntrance(index: 3)
-                } else {
-                    // `v2-plan-ritual` — dropper bottles, a comb and a notepad — was drawn to
-                    // explain what a routine *is*, so it stands in for the routine section on the
-                    // one visit where there isn't one yet. Same contract as Labs' context plate:
-                    // it teaches while the screen is empty and retires the moment there's data.
-                    planRitualPlate.staggeredEntrance(index: 3)
-                }
-                guidanceCard.staggeredEntrance(index: 4)
-                remindersCard.staggeredEntrance(index: 5)
-                gateExplainer.staggeredEntrance(index: 6)
-                if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
+                // RecommenderView is deliberately free on every tier, so this card stays above
+                // the gate below rather than inside it — moved up from its old position (just
+                // after the routine) to sit with the page's other free content instead of
+                // splitting the gated block in two.
+                guidanceCard.staggeredEntrance(index: 1)
 
-                // The page changes subject here: everything above is what you do today, everything
-                // below is the longer record of what you're on and what you've had done.
-                StrandDivider()
-
-                if treatments.isEmpty {
-                    empty.staggeredEntrance(index: 8)
-                } else {
-                    ForEach(Array(treatments.enumerated()), id: \.element.id) { i, t in
-                        // Capped: everything past here is below the fold at load anyway.
-                        treatmentCard(t).staggeredEntrance(index: min(8 + i, 12))
+                // Everything in here is the user's own tracked record — Pro. `guidanceCard`
+                // above and `inClinicOptionsRow`/`ScienceProductsSection` below are the three
+                // exceptions carved out of this page (RecommenderView, InClinicOptionsView, and
+                // the science catalogue are deliberately free — see the "do not gate" list) and
+                // sit outside `.proGated(.treatments)` so they stay reachable on every tier.
+                VStack(alignment: .leading, spacing: 16) {
+                    if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
+                    if !routine.isEmpty {
+                        routineSection.staggeredEntrance(index: 3)
+                    } else {
+                        // `v2-plan-ritual` — dropper bottles, a comb and a notepad — was drawn to
+                        // explain what a routine *is*, so it stands in for the routine section on the
+                        // one visit where there isn't one yet. Same contract as Labs' context plate:
+                        // it teaches while the screen is empty and retires the moment there's data.
+                        planRitualPlate.staggeredEntrance(index: 3)
                     }
+                    remindersCard.staggeredEntrance(index: 5)
+                    gateExplainer.staggeredEntrance(index: 6)
+                    if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
+
+                    // The page changes subject here: everything above is what you do today, everything
+                    // below is the longer record of what you're on and what you've had done.
+                    StrandDivider()
+
+                    if treatments.isEmpty {
+                        empty.staggeredEntrance(index: 8)
+                    } else {
+                        ForEach(Array(treatments.enumerated()), id: \.element.id) { i, t in
+                            // Capped: everything past here is below the fold at load anyway.
+                            treatmentCard(t).staggeredEntrance(index: min(8 + i, 12))
+                        }
+                    }
+
+                    // Same cap as the last treatment card above — lands in the same beat, no
+                    // renumbering of the fixed indices elsewhere in this stack required. Split
+                    // from the old `proceduresSection`: this is the tracked ledger only — the
+                    // free "Explore in-clinic options" row moved out to `inClinicOptionsRow`.
+                    proceduresLedger.staggeredEntrance(index: 12)
+
+                    // New card, new trailing index — appended past the capped treatment/procedures
+                    // beat rather than renumbering any index above.
+                    progressCheckInSection.staggeredEntrance(index: 13)
+
+                    // Same trailing pattern one index later — a life event (illness, crash diet,
+                    // childbirth, a new medication…) is the only entry point to `TriggerEvent`
+                    // outside onboarding, so every downstream surface that reads dated triggers
+                    // (journey markers, insights, the clinician export) stays usable for the whole
+                    // life of the record, not just its first day.
+                    lifeEventSection.staggeredEntrance(index: 14)
                 }
+                .proGated(.treatments)
 
-                // Same cap as the last treatment card above — lands in the same beat, no
-                // renumbering of the fixed indices elsewhere in this stack required.
-                proceduresSection.staggeredEntrance(index: 12)
-
-                // New card, new trailing index — appended past the capped treatment/procedures
-                // beat rather than renumbering any index above.
-                progressCheckInSection.staggeredEntrance(index: 13)
-
-                // Same trailing pattern one index later — a life event (illness, crash diet,
-                // childbirth, a new medication…) is the only entry point to `TriggerEvent`
-                // outside onboarding, so every downstream surface that reads dated triggers
-                // (journey markers, insights, the clinician export) stays usable for the whole
-                // life of the record, not just its first day.
-                lifeEventSection.staggeredEntrance(index: 14)
+                // The educational, evidence-graded catalogue is free on every tier — kept outside
+                // the gate above, grouped with the science section below instead of sitting inside
+                // the now-Pro procedures ledger.
+                inClinicOptionsRow
 
                 // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
                 // straight to it and must never catch a mid-fade frame.
@@ -914,7 +934,11 @@ struct CareView: View {
     /// hairline-ruled ledger the rest of the page reads as — an eyebrow heading row that opens
     /// `ProceduresView`, then each upcoming appointment as a dated entry row. Same data, same
     /// destination, no card edge.
-    private var proceduresSection: some View {
+    ///
+    /// The user's own booked/completed record, so it's Pro — split from `inClinicOptionsRow`
+    /// (below) for the monetization wall, since that row opens the free, evidence-graded
+    /// catalogue and has to stay reachable on every tier.
+    private var proceduresLedger: some View {
         VStack(alignment: .leading, spacing: 0) {
             Divider().overlay(Clinical.hairline)
             ledgerSectionHeader("Procedures") { showProcedures = true }
@@ -937,25 +961,28 @@ struct CareView: View {
                         .padding(.bottom, 10)
                 }
             }
+        }
+    }
 
-            // The catalogue sits directly under this section's own log, so "what have I booked?"
-            // and "what exists, and is it worth asking about?" are one tap apart but never mixed
-            // into one list. A card rather than a bare `ledgerSectionHeader`, because unlike the
-            // headings around it this is a standalone destination, not a heading over rows.
+    /// The educational, evidence-graded in-clinic catalogue — discovery, not the user's own
+    /// tracked record, so it's deliberately free (see `RecommenderView`/`ScienceProductsView`'s
+    /// own "do not gate" rule) and lives outside `.proGated(.treatments)`.
+    private var inClinicOptionsRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(Clinical.hairline)
             BrandNavRow(
                 symbol: "cross.case",
                 title: "Explore in-clinic options",
                 line: "What clinics offer, evidence-graded. Discuss with your clinician."
             ) { showInClinicOptions = true }
             .padding(.bottom, 13)
-
             Divider().overlay(Clinical.hairline)
         }
     }
 
     // MARK: Life events (dated TE triggers)
 
-    /// A ledger section in the same family as `proceduresSection`: the most recent recorded
+    /// A ledger section in the same family as `proceduresLedger`: the most recent recorded
     /// event (if any) as a dated row, an eyebrow heading that opens the full `LifeEventsSheet`
     /// list — view, edit, or delete any dated event, not just add another one. Kept quiet and
     /// optional — this is a record, never a prompt suggesting something is wrong.
@@ -1021,7 +1048,7 @@ struct CareView: View {
 
     /// The dermatologist's between-visit questions (new regrowth, density/shedding/hairline
     /// trend, overall, scalp red flag), captured monthly. Round-6: dissolved into the same
-    /// ledger section language as `proceduresSection`/`lifeEventSection` — the heading row itself
+    /// ledger section language as `proceduresLedger`/`lifeEventSection` — the heading row itself
     /// opens the new check-in sheet, the "Due" chip rides beside it, and the last-check-in date
     /// plus the explainer sentence continue underneath as plain lines instead of a boxed form.
     private var progressCheckInSection: some View {
