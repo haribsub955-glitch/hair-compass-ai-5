@@ -19,8 +19,10 @@ health. Its guiding stance — the thing that must never be diluted:
 > 24-week clinical-trial window. Where money is involved (affiliate products), the evidence rating
 > is shown and never bent.
 
-Five tabs: **Today · Trends · Plan · Labs · Photos** (the tab enum case is still `care`; its title
-is "Plan"). A Home Screen widget mirrors today's state.
+Five tabs: **Today · Shop · Trends · Plan · Photos** (the tab enum case for Plan is still `care`).
+Labs no longer has its own tab — Task 9 of the monetization plan merged it into Plan (both are Pro,
+both are clinical records); Shop (the affiliate storefront, `ShopView`) took the freed slot and is
+deliberately kept outside the Pro wall. A Home Screen widget mirrors today's state.
 
 ---
 
@@ -50,9 +52,9 @@ Info.plist keys are the exception (they're real project config — see §9).
 | Arg | Effect |
 |---|---|
 | `HC_SEED_DEMO` | Seeds ~120 days of demo data (profile, entries, doses, labs, a trigger, weekly health snapshots) |
-| `HC_TAB <today\|trends\|care\|labs\|photos>` | Opens on that tab |
+| `HC_TAB <today\|shop\|trends\|care\|photos>` | Opens on that tab |
 | `HC_LEARN` | Opens the Learn sheet on launch |
-| `HC_SCROLL_PRODUCTS` | Scrolls Plan to the science-products section |
+| `HC_SCROLL_PRODUCTS` | Scrolls Shop to the science-products section |
 | `HC_COMPARE` / `HC_EXPORT` | Opens the Compare / Export sheet from Trends |
 | `HC_AI_STATUS <available\|notEnabled\|modelNotReady\|deviceNotEligible>` | Forces what `ProAvailability.current` reports, which drives the paywall's Apple Intelligence notice and whether the purchase buttons appear at all. An iOS 26 Simulator on an Apple Intelligence Mac reports `.available`, so without this the unavailable states can only be seen on physically ineligible hardware. |
 
@@ -167,8 +169,9 @@ launch crash (learned the hard way).
 
 - **Today** [Feature/TodayView.swift](Hair%20Compass%20AI%205/Feature/TodayView.swift) — greeting + hero, daily-log card, **AI insight** card (on-device/rule-based, "Deep analysis with photos" → `DeepAnalysisSheet`), today's treatments, a **Learn** flash-card carousel (→ `LearnView`), readout, status. Logging via [Feature/LogSheet.swift](Hair%20Compass%20AI%205/Feature/LogSheet.swift).
 - **Trends** [Feature/TrendsView.swift](Hair%20Compass%20AI%205/Feature/TrendsView.swift) — range picker, **Lifestyle signals** (HealthKit connect/metrics, rapid-weight-loss + traction + trigger notes), shedding/scalp/adherence charts, **Compare** entry (→ `CompareView`), **Export** button (→ `ExportSheet`), "Explicitly not tracked" honesty card.
-- **Plan** [Feature/CareView.swift](Hair%20Compass%20AI%205/Feature/CareView.swift) — **Coach** card + **milestones**, **Today's routine** (grouped, check-off, per-step guidance), **What the evidence supports for you** (→ `RecommenderView`), **Reminders** toggle, 24-week gate, treatment cards, **Science-backed options** (→ `ScienceProductsView` + `ManageLinksSheet`). Add via [Feature/AddTreatmentSheet.swift](Hair%20Compass%20AI%205/Feature/AddTreatmentSheet.swift).
-- **Labs** [Feature/LabsView.swift](Hair%20Compass%20AI%205/Feature/LabsView.swift) — bloodwork with reference-range flags; add via `AddLabSheet`.
+- **Shop** [Feature/ShopView.swift](Hair%20Compass%20AI%205/Feature/ShopView.swift) — the affiliate storefront, deliberately outside the Pro wall: **What the evidence supports for you** (→ `RecommenderView`), **Science-backed options** (→ `ScienceProductsView` + `ManageLinksSheet`), **In-clinic options** (→ `InClinicOptionsView`). Used to live inside Plan; Task 9 (monetization hard wall) split it out since an affiliate link earns nothing from a free user who can't reach it.
+- **Plan** [Feature/CareView.swift](Hair%20Compass%20AI%205/Feature/CareView.swift) — **Coach** card + **milestones**, **Today's routine** (grouped, check-off, per-step guidance), **Reminders** toggle, 24-week gate, treatment cards, ledger rows for Procedures/Progress check-in/Life events/**Labs** (→ `LabsView`, its own `.proGated(.labs)`). Add via [Feature/AddTreatmentSheet.swift](Hair%20Compass%20AI%205/Feature/AddTreatmentSheet.swift). Labs no longer has its own tab — reached from a row here instead (Task 9).
+- **Labs** [Feature/LabsView.swift](Hair%20Compass%20AI%205/Feature/LabsView.swift) — bloodwork with reference-range flags; add via `AddLabSheet`. Opened from a row inside Plan, not its own tab.
 - **Photos** [Feature/PhotosView.swift](Hair%20Compass%20AI%205/Feature/PhotosView.swift) — per-region series, **guided capture** (→ `GuidedCaptureView`: live overlay + ghost of last shot + condition pre-fill), before/after **slider** (→ `PhotoCompareView`).
 - **Baseline/profile** [Feature/BaselineFlow.swift](Hair%20Compass%20AI%205/Feature/BaselineFlow.swift) — one-time setup (condition, sex, family history, hair-care habits) + About/legal footer.
 - **Learn** [Feature/LearnView.swift](Hair%20Compass%20AI%205/Feature/LearnView.swift) — tap-to-flip evidence cards in six categories; myths render a MYTH badge.

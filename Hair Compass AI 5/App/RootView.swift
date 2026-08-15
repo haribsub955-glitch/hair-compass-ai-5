@@ -34,23 +34,28 @@ struct ScenePhaseDecision: Equatable {
 }
 
 enum AppTab: String, CaseIterable, Identifiable {
-    case today, trends, care, labs, photos
+    // Labs no longer has its own tab — it's Pro either way, and it's the same kind of clinical
+    // record as Procedures, so it's reached from a row inside Plan instead (see `CareView`).
+    // Shop takes the freed slot: it's a revenue surface (affiliate links, in-clinic catalogue),
+    // deliberately kept outside the Pro wall, so it needs to be reachable on its own rather than
+    // buried inside the now-gated Plan tab it used to live in.
+    case today, shop, trends, care, photos
     var id: String { rawValue }
     var title: String {
         switch self {
         case .today: return "Today"
+        case .shop: return "Shop"
         case .trends: return "Trends"
         case .care: return "Plan"
-        case .labs: return "Labs"
         case .photos: return "Photos"
         }
     }
     var symbol: String {
         switch self {
         case .today: return "checkmark.circle"
+        case .shop: return "bag"
         case .trends: return "chart.xyaxis.line"
         case .care: return "checklist"
-        case .labs: return "testtube.2"
         case .photos: return "camera"
         }
     }
@@ -173,9 +178,9 @@ struct RootView: View {
         case .today: TodayView(profile: profile,
                                onOpenBaseline: { showProfileEdit = true },
                                onOpenPlan: { tab = .care })
+        case .shop: ShopView()
         case .trends: TrendsView()
         case .care: CareView()
-        case .labs: LabsView()
         case .photos: PhotosView()
         }
     }

@@ -25,7 +25,6 @@ struct CareView: View {
     @Query(sort: \PhotoRecord.createdAt) private var photoRecords: [PhotoRecord]
 
     @State private var showAdd = false
-    @State private var showRecommender = false
     @State private var remindersOn = false
     /// Whether the collapsed "Reminders · Off" footnote is sprung open to its two toggles —
     /// starts collapsed every fresh appearance of the screen, same as the ledger's own
@@ -40,12 +39,14 @@ struct CareView: View {
     /// second treatment's milestone opens THAT treatment's report.
     @State private var reportFocusTreatment: Treatment?
     @State private var showProcedures = false
-    /// The educational catalogue, kept distinct from `showProcedures` (this person's own log).
-    @State private var showInClinicOptions = false
     @State private var showProgressCheckIn = false
     /// Opens `LifeEventsSheet` — the full list of dated `TriggerEvent`s, view/edit/delete —
     /// rather than jumping straight to the add form; mirrors `showProcedures`.
     @State private var showLifeEvents = false
+    /// Labs merged into Plan rather than keeping its own tab (Task 9) — it's Pro either way, and
+    /// it's the same kind of clinical record as Procedures. `LabsView` carries its own
+    /// `.proGated(.labs)`, so this is just the entry point.
+    @State private var showLabs = false
     /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
     /// directly from the ScrollView's own content offset.
     @State private var headerCondense: CGFloat = 0
@@ -54,17 +55,7 @@ struct CareView: View {
     /// `.cascade` delete rules), so this is a confirm-first path with "Mark inactive instead"
     /// offered alongside the destructive action.
     @State private var deleteTreatmentCandidate: Treatment?
-    @State private var recommendedTreatmentClass: TreatmentClass?
-    @State private var showRecommendedLab = false
-    @State private var recommendedLabTest: LabTest = .ferritin
-    @State private var showRecommendedTrigger = false
-    @State private var showRecommendedPhoto = false
     @State private var missedDoseCandidate: MissedDoseCandidate?
-    /// Non-nil when a free-tier tap on a `RecommenderView` action targets a gated destination
-    /// (add-to-plan, patch photo series, add lab result) — presents that feature's paywall
-    /// instead of the write-destination itself, so the deliberately-free Recommender can still
-    /// suggest the action without silently granting the gated write. See `presentRecommendedAction`.
-    @State private var recommendedGate: ProFeature?
 
     /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
     /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
@@ -77,7 +68,6 @@ struct CareView: View {
     private var calendar: Calendar { .current }
 
     var body: some View {
-        ScrollViewReader { proxy in
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenHeader(
@@ -110,17 +100,12 @@ struct CareView: View {
                 // that fact already lives in Today's ROUTINE annotation and in the unchecked
                 // circles of the list below, so the header now flows straight into the routine
                 // section itself, the page's uncontested focal object.
-                // RecommenderView is deliberately free on every tier, so this card stays above
-                // the gate below rather than inside it — moved up from its old position (just
-                // after the routine) to sit with the page's other free content instead of
-                // splitting the gated block in two.
-                guidanceCard.staggeredEntrance(index: 1)
-
-                // Everything in here is the user's own tracked record — Pro. `guidanceCard`
-                // above and `inClinicOptionsRow`/`ScienceProductsSection` below are the three
-                // exceptions carved out of this page (RecommenderView, InClinicOptionsView, and
-                // the science catalogue are deliberately free — see the "do not gate" list) and
-                // sit outside `.proGated(.treatments)` so they stay reachable on every tier.
+                // RecommenderView, InClinicOptionsView and the science catalogue used to sit
+                // here, deliberately free on every tier. Task 9 moved all three into their own
+                // Shop tab (`ShopView`) — an affiliate link earns nothing from a free user who
+                // can't reach it, so keeping them behind this page's Pro wall would cost revenue
+                // rather than protect a feature. Everything left in this page's body is the
+                // user's own tracked record — Pro.
                 VStack(alignment: .leading, spacing: 16) {
                     if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
                     if !routine.isEmpty {
@@ -152,7 +137,7 @@ struct CareView: View {
                     // Same cap as the last treatment card above — lands in the same beat, no
                     // renumbering of the fixed indices elsewhere in this stack required. Split
                     // from the old `proceduresSection`: this is the tracked ledger only — the
-                    // free "Explore in-clinic options" row moved out to `inClinicOptionsRow`.
+                    // free "Explore in-clinic options" row moved to `ShopView` (Task 9).
                     proceduresLedger.staggeredEntrance(index: 12)
 
                     // New card, new trailing index — appended past the capped treatment/procedures
@@ -165,21 +150,18 @@ struct CareView: View {
                     // (journey markers, insights, the clinician export) stays usable for the whole
                     // life of the record, not just its first day.
                     lifeEventSection.staggeredEntrance(index: 14)
+
+                    // New trailing index, appended rather than interleaved with `proceduresLedger`
+                    // above — same "clinical record" family (Task 9: Labs merged into Plan, since
+                    // both are Pro and both are records of what's already happened), but placing
+                    // it here keeps every earlier index's animation order untouched.
+                    labsLedgerRow.staggeredEntrance(index: 15)
                 }
                 .proGated(.treatments)
 
-                // The educational, evidence-graded catalogue is free on every tier — kept outside
-                // the gate above, grouped with the science section below instead of sitting inside
-                // the now-Pro procedures ledger.
-                inClinicOptionsRow
-
-                // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
-                // straight to it and must never catch a mid-fade frame.
-                ScienceProductsSection().id("science")
-
-                // Closes the app's longest scroll. Deliberately after the science section rather
+                // Closes the app's longest scroll. Deliberately after the last ledger row rather
                 // than before it: a garland placed above would read as decoration *for* the
-                // product rows, and this page needs an ending more than it needs another seam.
+                // ledger, and this page needs an ending more than it needs another seam.
                 PageCloser(opacity: 0.8)
             }
             .padding(.horizontal, 20)
@@ -192,10 +174,6 @@ struct CareView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
-        .sheet(item: $recommendedTreatmentClass) { AddTreatmentSheet(initialClass: $0) }
-        .sheet(isPresented: $showRecommendedLab) { AddLabSheet(initialTest: recommendedLabTest) }
-        .sheet(isPresented: $showRecommendedTrigger) { AddTriggerSheet() }
-        .sheet(isPresented: $showRecommendedPhoto) { GuidedCaptureView(defaultRegion: .frontal) }
         .sheet(item: $detailTreatment) { TreatmentDetailSheet(treatment: $0) }
         // Deleting a treatment cascades away every logged dose and side-effect entry
         // (`Models.swift`'s `.cascade` delete rules) — the adherence history the 24-week
@@ -235,8 +213,8 @@ struct CareView: View {
             Text("This records a missed application. It does not change or start any treatment.")
         }
         .sheet(isPresented: $showProcedures) { ProceduresView() }
-        .sheet(isPresented: $showInClinicOptions) { InClinicOptionsView() }
         .sheet(isPresented: $showLifeEvents) { LifeEventsSheet() }
+        .sheet(isPresented: $showLabs) { LabsView() }
         .sheet(isPresented: $showProgressCheckIn) {
             ProgressCheckInSheet(
                 treatmentContext: progressCheckInTreatmentContext,
@@ -246,36 +224,10 @@ struct CareView: View {
         .sheet(isPresented: $showReport) {
             if let report = progressReport { ProgressReportSheet(report: report, photos: photoRecords) }
         }
-        .sheet(isPresented: $showRecommender) {
-            NavigationStack {
-                RecommenderView(condition: profile?.condition ?? .unsure, sex: profile?.sex ?? .male) { action in
-                    showRecommender = false
-                    DispatchQueue.main.async { presentRecommendedAction(action) }
-                }
-                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showRecommender = false } } }
-            }
-        }
-        .sheet(item: $recommendedGate) { feature in
-            NavigationStack {
-                // Entitled users never linger here: once ProGate sees access, it renders this
-                // clear placeholder, which immediately dismisses the sheet on appear — same
-                // idiom as TodayView's history paywall.
-                ProGate(feature: feature) {
-                    Color.clear.onAppear { recommendedGate = nil }
-                }
-                .clinicalScreen()
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { recommendedGate = nil } } }
-            }
-        }
         .task {
             await notifications.refreshAuthorization()
             remindersOn = notifications.isEnabled
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("HC_INCLINIC") { showInClinicOptions = true }
-            if ProcessInfo.processInfo.arguments.contains("HC_SCROLL_PRODUCTS") {
-                try? await Task.sleep(for: .milliseconds(250))
-                withAnimation { proxy.scrollTo("science", anchor: .top) }
-            }
             if ProcessInfo.processInfo.arguments.contains("HC_TREATMENT_DETAIL") {
                 try? await Task.sleep(for: .milliseconds(250))
                 detailTreatment = treatments.first
@@ -362,35 +314,9 @@ struct CareView: View {
             guard eveningCheckInEnabled else { return }
             Task { await replanEveningCheckIn() }
         }
-        }
     }
 
     // MARK: Derived state
-
-    /// `RecommenderView` itself is deliberately free on every tier, but the actions it hands
-    /// back write into features that are not (treatments, photos, labs) — so each of those
-    /// cases checks entitlement first and swaps in that feature's paywall (`recommendedGate`)
-    /// rather than opening the real destination for a free user. `.scheduleDoctorVisit` needs no
-    /// check here: it opens `ProceduresView`, which already carries its own `.proGated(.procedures)`.
-    /// `.recordTrigger` needs none either: `TriggerEvent` logging has no `ProFeature` of its own.
-    private func presentRecommendedAction(_ action: RecommendedAction) {
-        switch action {
-        case .addToPlan(let treatmentClass):
-            guard entitlements.canAccess(.treatments) else { recommendedGate = .treatments; return }
-            recommendedTreatmentClass = treatmentClass
-        case .scheduleDoctorVisit: showProcedures = true
-        case .startPatchPhotoSeries:
-            guard entitlements.canAccess(.photos) else { recommendedGate = .photos; return }
-            showRecommendedPhoto = true
-        case .recordTrigger: showRecommendedTrigger = true
-        case .addLabResult(let test):
-            guard entitlements.canAccess(.labs) else { recommendedGate = .labs; return }
-            recommendedLabTest = test; showRecommendedLab = true
-        case .reviewPregnancyCaution:
-            guard entitlements.canAccess(.treatments) else { recommendedGate = .treatments; return }
-            recommendedTreatmentClass = .spironolactone
-        }
-    }
 
     /// "Delete "Minoxidil"?" — the treatment name, quoted, falling back to its class title for
     /// treatments the user never named.
@@ -623,34 +549,6 @@ struct CareView: View {
         return text
     }
 
-    /// A single hairline-ruled footnote row — decongested from an icon-tile card with its own
-    /// subtitle. "Education, not a prescription" now lives inside the sheet this opens (see
-    /// `TreatmentRecommender.disclaimer` in `RecommenderView`) instead of being said twice.
-    /// Round-9: the leading stethoscope glyph is gone — the last purely decorative icon among
-    /// this tail's three footnote rows — so this row reads exactly like `remindersCard` below it:
-    /// text in ink, chevron in the margin, hairline above, nothing else.
-    private var guidanceCard: some View {
-        Button { showRecommender = true } label: {
-            VStack(spacing: 0) {
-                Divider().overlay(Clinical.hairline)
-                HStack(spacing: 10) {
-                    Text("What the evidence supports for you")
-                        .font(Clinical.body(14, weight: .medium))
-                        .foregroundStyle(Clinical.ink)
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
-                        .font(Clinical.body(11, weight: .semibold))
-                        .foregroundStyle(Clinical.tertiary)
-                }
-                .padding(.vertical, 13)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.clinicalPressable)
-        .accessibilityLabel("What the evidence supports for you")
-        .accessibilityHint("Opens ranked treatment options for your pattern — education, not a prescription")
-    }
-
     /// One calm, non-blocking nudge when a severity-3 side effect was logged in the last 14 days.
     /// A prompt to have a conversation — never advice to stop or change anything.
     private var severeSideEffectBanner: some View {
@@ -862,7 +760,7 @@ struct CareView: View {
 
     /// Round-5: demoted from a boxed `ClinicalCard` with its own icon tile — the page's last
     /// surviving box — to a plain hairline-ruled footnote row in the same family as
-    /// `guidanceCard`/`remindersCard`. Round-7: shortened from a three-line paragraph to the one
+    /// `remindersCard`. Round-7: shortened from a three-line paragraph to the one
     /// sentence that actually matters — the tail was stacking four typographic families across
     /// five rows, and this closing line was the longest of them. Round-9: promoted to the shared
     /// `Colophon` component — the app's one closing-sentence voice — so this line and Labs'
@@ -972,9 +870,9 @@ struct CareView: View {
     /// `ProceduresView`, then each upcoming appointment as a dated entry row. Same data, same
     /// destination, no card edge.
     ///
-    /// The user's own booked/completed record, so it's Pro — split from `inClinicOptionsRow`
-    /// (below) for the monetization wall, since that row opens the free, evidence-graded
-    /// catalogue and has to stay reachable on every tier.
+    /// The user's own booked/completed record, so it's Pro — split from the free, evidence-graded
+    /// in-clinic catalogue, which now lives in `ShopView` (Task 9) and has to stay reachable on
+    /// every tier.
     private var proceduresLedger: some View {
         VStack(alignment: .leading, spacing: 0) {
             Divider().overlay(Clinical.hairline)
@@ -1001,18 +899,27 @@ struct CareView: View {
         }
     }
 
-    /// The educational, evidence-graded in-clinic catalogue — discovery, not the user's own
-    /// tracked record, so it's deliberately free (see `RecommenderView`/`ScienceProductsView`'s
-    /// own "do not gate" rule) and lives outside `.proGated(.treatments)`.
-    private var inClinicOptionsRow: some View {
+    /// The blood work that matters for hair — ferritin, thyroid, vitamin D and the rest. Labs no
+    /// longer has its own tab (Task 9: merged into Plan — it's Pro either way, and it's the same
+    /// kind of clinical record as `proceduresLedger` above). `LabsView` still carries its own
+    /// `.proGated(.labs)`; this row is just the entry point into it.
+    private var labsLedgerRow: some View {
         VStack(alignment: .leading, spacing: 0) {
             Divider().overlay(Clinical.hairline)
-            BrandNavRow(
-                symbol: "cross.case",
-                title: "Explore in-clinic options",
-                line: "What clinics offer, evidence-graded. Discuss with your clinician."
-            ) { showInClinicOptions = true }
-            .padding(.bottom, 13)
+            ledgerSectionHeader("Labs") { showLabs = true }
+            if let latest = labs.max(by: { $0.collectedAt < $1.collectedAt }) {
+                LedgerEntryRow(
+                    date: latest.collectedAt.formatted(.dateTime.month(.abbreviated).day()),
+                    title: latest.test.title,
+                    caption: latest.flag == .normal ? nil : latest.flag.title
+                )
+                .padding(.bottom, 10)
+            } else {
+                Text("Ferritin, thyroid, vitamin D — the blood work that actually matters for hair.")
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 13)
+            }
             Divider().overlay(Clinical.hairline)
         }
     }

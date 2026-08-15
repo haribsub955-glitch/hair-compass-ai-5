@@ -111,4 +111,18 @@ struct EntitlementsTests {
     @Test func exportIsNotGateable() {
         #expect(ProFeature.allCases.allSatisfy { $0.gateTitle != "Export" })
     }
+
+    /// A free user must land on at least one tab that works, and the shop must be one of them —
+    /// it is a revenue surface, not a feature, so it sits outside the wall on purpose.
+    ///
+    /// The brief's original draft wrote the second assertion as
+    /// `AppTab.allCases.contains(.labs) == false` — that no longer compiles once `.labs` is
+    /// actually removed as a case (`.labs` isn't a valid `AppTab` literal any more), so it's
+    /// rewritten here against the raw string instead, which checks the same thing without
+    /// requiring the case to exist in order to type-check.
+    @Test func freeUsersGetTwoWorkingTabs() {
+        #expect(AppTab.allCases.contains(.shop))
+        #expect(AppTab.allCases.map(\.rawValue).contains("labs") == false, "Labs merged into the Plan tab.")
+        #expect(AppTab.allCases.count == 5, "FloatingTabBar is laid out for five items.")
+    }
 }
