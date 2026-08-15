@@ -187,7 +187,11 @@ struct TodayView: View {
                         onToggleSlot: { toggle($0, slot: $1, currentlyDone: isLogged($0, slot: $1)) },
                         onLogTap: { showLog = true },
                         onOpenPlan: onOpenPlan,
-                        onBackfill: { showBackfill = true }
+                        // Backfilling opens the date strip, which reads stored past days back
+                        // into the gauges — a `.history` read, so the row is withheld rather
+                        // than left pointing at a sheet that can only offer today. Logging
+                        // TODAY (every other route into LogSheet) stays free.
+                        onBackfill: entitlements.canAccess(.history) ? { showBackfill = true } : nil
                     )
                     insightCard.staggeredEntrance(index: 9)
                     StrandDivider()
@@ -348,14 +352,18 @@ struct TodayView: View {
 
     @MainActor
     private func buildContext() -> InsightContext {
-        // visibleToday.treatments/.doses, not the raw queries — RuleBasedInsight.paragraph names
-        // any active under-24-week treatment unconditionally, so the raw arrays would leak a
-        // lapsed subscriber's treatment name into the insight text even with the rings/ledger
-        // above already suppressed. See TodayGating's doc comment.
-        InsightContext.build(
-            entries: entries, treatments: visibleToday.treatments, doses: visibleToday.doses,
+        // Every input goes in raw and `TodayGating.insightContext` owns all six entitlement
+        // decisions. That is the whole point: the previous version of this call filtered
+        // treatments/doses here and left entries, labs, HealthKit snapshots, progress check-ins
+        // and side-effect logs raw, so the free Today paragraph read out lab values, HealthKit
+        // weight loss, clinician-review flags and a direction over locked history — directly
+        // beneath the card that says "You haven't seen any of it yet." There is no longer a
+        // per-argument choice to get wrong here, and `TodayGatingTests` asserts the mapping.
+        TodayGating.insightContext(
+            entries: entries, treatments: treatments, doses: doses,
             snapshots: snapshots, triggers: triggers, labs: labs, profile: profile,
-            progressCheckIns: progressCheckIns, sideEffects: sideEffectLogs
+            progressCheckIns: progressCheckIns, sideEffects: sideEffectLogs,
+            entitlements: entitlements
         )
     }
 

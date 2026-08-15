@@ -34,6 +34,22 @@ enum HistoryAccess {
 }
 
 extension HistoryAccess {
+    /// Whether a stored entry for `day` may be read back into a form.
+    ///
+    /// Writing is not reading: logging a day is free forever, and that must stay true or the
+    /// product has nothing left in it. What a free tier may not do is load a PAST day's stored
+    /// shed/scalp/sleep/stress/note values back onto the screen — which is exactly what the log
+    /// sheet's date scrub did, sixty days deep, through a raw `FetchDescriptor` that never asked
+    /// this question. Editing TODAY's own entry stays allowed on every tier.
+    static func canReadBack(
+        day: Date,
+        entitlements: Entitlements,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> Bool {
+        entitlements.canAccess(.history) || calendar.isDate(day, inSameDayAs: now)
+    }
+
     /// What the widget snapshot is allowed to contain. Identical to `visible`, named separately
     /// because the widget is a distinct read path and a future change to one should be a
     /// deliberate decision about the other.

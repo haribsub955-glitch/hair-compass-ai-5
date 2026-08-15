@@ -24,6 +24,13 @@ final class PurchaseService {
 
     private(set) var products: [Product] = []
     private(set) var hasPro = false
+    /// Whether StoreKit has actually answered yet. `hasPro` starts `false` because there is no
+    /// third state to start in — but "no subscription" and "not asked yet" are not the same
+    /// claim, and treating them as one downgrades a paying subscriber for the first moments of
+    /// every cold launch (paywalls over a paid app, and a suppressed widget snapshot written to
+    /// the App Group that outlives the launch if the app is killed first). Callers must read
+    /// this before acting on `hasPro` — see `Entitlements.effectiveHasPro`.
+    private(set) var isEntitlementResolved = false
     private(set) var isLoading = false
     /// Lifecycle of the most recent `purchase(_:)` call — `.idle` once it's been consumed or
     /// before any attempt. Callers reset it themselves (e.g. on the next tap) rather than this
@@ -163,15 +170,19 @@ final class PurchaseService {
     }
 
     private func refreshEntitlement() async {
+        // `isEntitlementResolved` is set on BOTH exits: once StoreKit has enumerated the current
+        // entitlements, "no subscription" is a real answer and may be acted on.
         for await entitlement in Transaction.currentEntitlements {
             if case .verified(let t) = entitlement,
                t.productID == Self.monthlyID || t.productID == Self.yearlyID,
                t.revocationDate == nil {
                 hasPro = true
+                isEntitlementResolved = true
                 return
             }
         }
         hasPro = false
+        isEntitlementResolved = true
     }
 
     var monthly: Product? { products.first { $0.id == Self.monthlyID } }

@@ -58,6 +58,17 @@ enum ProAvailability {
         return status != .deviceNotEligible
     }
 
+    /// Whether a paywall may show its purchase buttons. **Apple Intelligence is not an input.**
+    ///
+    /// This function exists to be the one place that question is asked, and to be asserted: the
+    /// old `sellable(_:)` withdrew the buttons on ineligible hardware, which left an iPhone 14
+    /// with a mostly-locked app and nothing to buy. Ten of the twelve Pro features run on any
+    /// supported iPhone, so the sale is always honest. The only reason to withhold the buttons is
+    /// having no real prices to show — never a device capability, never a feature.
+    static func showsPurchaseButtons(status: OnDeviceAvailability, hasLoadedProducts: Bool) -> Bool {
+        hasLoadedProducts
+    }
+
     /// Paywall-specific wording. `OnDeviceAvailability.message` is written for someone already
     /// inside a feature ("everything else still works"); here the reader is deciding whether to
     /// pay, so each line leads with what it means for the purchase. Crucially, none of these three

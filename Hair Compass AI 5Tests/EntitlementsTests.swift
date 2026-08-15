@@ -112,17 +112,71 @@ struct EntitlementsTests {
         #expect(ProFeature.allCases.allSatisfy { $0.gateTitle != "Export" })
     }
 
-    /// A free user must land on at least one tab that works, and the shop must be one of them —
-    /// it is a revenue surface, not a feature, so it sits outside the wall on purpose.
+    /// A free user must land on tabs that actually work, and the shop must be one of them — it is
+    /// a revenue surface, not a feature, so it sits outside the wall on purpose.
     ///
-    /// The brief's original draft wrote the second assertion as
-    /// `AppTab.allCases.contains(.labs) == false` — that no longer compiles once `.labs` is
-    /// actually removed as a case (`.labs` isn't a valid `AppTab` literal any more), so it's
-    /// rewritten here against the raw string instead, which checks the same thing without
-    /// requiring the case to exist in order to type-check.
+    /// This used to assert only the shape of the enum (five cases, no `labs`), which is true of a
+    /// build where every tab is free and equally true of one where all five are walled. It now
+    /// pins the commercial invariant itself: exactly three of the five tabs are behind a
+    /// `ProFeature` the free tier cannot access, and the other two carry no gate at all.
+    ///
+    /// (The `labs` assertion is written against the raw string deliberately: once `.labs` is
+    /// removed as a case, `AppTab.allCases.contains(.labs)` no longer type-checks.)
     @Test func freeUsersGetTwoWorkingTabs() {
-        #expect(AppTab.allCases.contains(.shop))
+        let free = Entitlements(tier: .free)
+        let taster = Entitlements(tier: .taster)
+        let walledTabs: [AppTab: ProFeature] = [.trends: .trends, .care: .treatments, .photos: .photos]
+
+        for (tab, feature) in walledTabs {
+            #expect(free.canAccess(feature) == false,
+                    "The \(tab.title) tab is \(feature) — it must be walled on the free tier.")
+            #expect(taster.canAccess(feature),
+                    "…and open for the taster, which is deliberately identical to Pro.")
+        }
+
+        let ungated = Set(AppTab.allCases.filter { walledTabs[$0] == nil })
+        #expect(ungated == [.today, .shop],
+                "Today (the free product) and Shop (a revenue surface) are the two ungated tabs.")
         #expect(AppTab.allCases.map(\.rawValue).contains("labs") == false, "Labs merged into the Plan tab.")
         #expect(AppTab.allCases.count == 5, "FloatingTabBar is laid out for five items.")
     }
+
+    /// An unresolved StoreKit answer must never downgrade. `hasPro` starts `false` on every cold
+    /// launch, and treating that as "not subscribed" briefly renders paywalls over a paid app and
+    /// writes a suppressed snapshot into the App Group that outlives the launch if the app is
+    /// killed first.
+    @Test func anUnresolvedEntitlementFallsBackToTheLastKnownAnswer() {
+        // Mid-launch: StoreKit hasn't replied, so last launch's answer stands.
+        #expect(Entitlements.effectiveHasPro(resolved: false, current: false, lastKnown: true))
+        #expect(Entitlements.effectiveHasPro(resolved: false, current: false, lastKnown: false) == false)
+        // Once resolved, the live answer wins in BOTH directions — including a lapse.
+        #expect(Entitlements.effectiveHasPro(resolved: true, current: false, lastKnown: true) == false)
+        #expect(Entitlements.effectiveHasPro(resolved: true, current: true, lastKnown: false))
+    }
+
+    /// A paying subscriber mid-cold-launch resolves to `.pro`, not to the `.free` that four
+    /// paywalls and a downgraded widget snapshot would have been rendered from.
+    @Test func aSubscriberIsNotDowngradedWhileStoreKitIsStillThinking() {
+        let launch = Date(timeIntervalSince1970: 1_760_000_000)
+        let tier = Entitlements.resolve(
+            hasPro: Entitlements.effectiveHasPro(resolved: false, current: false, lastKnown: true),
+            firstLaunch: launch,
+            now: day(90, from: launch)   // taster long expired, so only the entitlement can save them
+        )
+        #expect(tier == .pro)
+    }
+
+    #if DEBUG
+    /// Every fresh install stamps `firstLaunchAt`, so every fresh install is a `.taster` for three
+    /// days — which left the free tier unreachable for QA and for App Review alike. `HC_TIER` is
+    /// the way in, and it is asserted here so the QA hook itself can't rot.
+    @Test func theTierCanBeForcedForQA() {
+        #expect(Entitlements.forcedTier(arguments: ["HC_TIER", "free"]) == .free)
+        #expect(Entitlements.forcedTier(arguments: ["HC_TIER", "taster"]) == .taster)
+        #expect(Entitlements.forcedTier(arguments: ["HC_SEED_DEMO", "HC_TIER", "pro"]) == .pro)
+        #expect(Entitlements.forcedTier(arguments: []) == nil)
+        #expect(Entitlements.forcedTier(arguments: ["HC_TIER"]) == nil, "A trailing flag with no value forces nothing.")
+        #expect(Entitlements.forcedTier(arguments: ["HC_TIER", "premium"]) == nil, "Unknown tiers are ignored, not guessed.")
+    }
+    #endif
 }

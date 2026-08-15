@@ -156,4 +156,39 @@ extension Entitlements {
     static func firstLaunchStamp(stored: TimeInterval, now: Date = .now) -> Date {
         stored > 0 ? Date(timeIntervalSince1970: stored) : now
     }
+
+    /// StoreKit answers asynchronously, so `PurchaseService.hasPro` is `false` for the first
+    /// moments of every cold launch — including a paying subscriber's. Resolving that "not asked
+    /// yet" state as `false` briefly renders paywalls over a paid app and (worse) writes a
+    /// suppressed widget snapshot that survives if the app is killed before the answer lands.
+    ///
+    /// An unresolved answer therefore never downgrades: until StoreKit replies, the last tier it
+    /// actually reported stands. It can only be over-permissive for the few hundred milliseconds
+    /// between launch and `refreshEntitlement()` — and only for someone who genuinely was Pro on
+    /// the previous launch.
+    static func effectiveHasPro(resolved: Bool, current: Bool, lastKnown: Bool) -> Bool {
+        resolved ? current : lastKnown
+    }
 }
+
+#if DEBUG
+extension Entitlements {
+    /// `HC_TIER free | taster | pro` — forces the resolved tier for QA and App Review.
+    ///
+    /// Without it the free tier is unreachable on a device: `RootView` stamps `firstLaunchAt` on
+    /// every fresh install, so every fresh install is a `.taster` for three days, and nobody
+    /// (implementer, reviewer or App Reviewer) could see `LockedHistoryCard`, any `ProGate` or the
+    /// suppressed widget snapshot without waiting out the clock or hand-editing `UserDefaults`.
+    /// Same shape as `HC_AI_STATUS` (see `ProAvailability.forcedStatus`), and compiled out of
+    /// release entirely rather than merely hidden behind an argument a shipping user could pass.
+    static func forcedTier(arguments: [String] = ProcessInfo.processInfo.arguments) -> EntitlementTier? {
+        guard let i = arguments.firstIndex(of: "HC_TIER"), i + 1 < arguments.count else { return nil }
+        switch arguments[i + 1] {
+        case "free": return .free
+        case "taster": return .taster
+        case "pro": return .pro
+        default: return nil
+        }
+    }
+}
+#endif

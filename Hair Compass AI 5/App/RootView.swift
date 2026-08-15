@@ -89,6 +89,9 @@ struct RootView: View {
     // `0` means "never written" — `Entitlements.firstLaunchStamp` treats that as "the taster
     // starts now", not as 1970, so an existing installation never wakes up mid-expired.
     @AppStorage("firstLaunchAt") private var firstLaunchAt: TimeInterval = 0
+    /// The last tier StoreKit actually reported, so an unresolved answer on the next cold launch
+    /// never downgrades a paying subscriber — see `Entitlements.effectiveHasPro`.
+    @AppStorage("lastKnownHasPro") private var lastKnownHasPro = false
     @State private var showTutorial = false
     @State private var deepLinks = DeepLinkRouter()
 
@@ -105,12 +108,32 @@ struct RootView: View {
     /// The one tier resolution for the whole app — every gated surface reads this instead of
     /// re-deriving `purchases.hasPro` and the taster window itself.
     private var entitlements: Entitlements {
-        Entitlements(
+        #if DEBUG
+        // `HC_TIER free|taster|pro` — the only way anyone (QA, App Review, an implementer) can
+        // see the free tier on a device, since a fresh install stamps `firstLaunchAt` below and
+        // is therefore a taster for its first three days.
+        if let forced = Entitlements.forcedTier() { return Entitlements(tier: forced) }
+        #endif
+        return Entitlements(
             tier: Entitlements.resolve(
-                hasPro: purchases.hasPro,
+                hasPro: Entitlements.effectiveHasPro(
+                    resolved: purchases.isEntitlementResolved,
+                    current: purchases.hasPro,
+                    lastKnown: lastKnownHasPro
+                ),
                 firstLaunch: Entitlements.firstLaunchStamp(stored: firstLaunchAt)
             )
         )
+    }
+    /// Whether the tier above is a real answer rather than "StoreKit hasn't replied yet". Nothing
+    /// that PERSISTS a consequence of the tier (the App Group snapshot, cancelling reminders) may
+    /// run before this is true — an unresolved launch that gets killed would otherwise leave a
+    /// downgraded widget or a cancelled schedule behind it.
+    private var entitlementResolved: Bool {
+        #if DEBUG
+        if Entitlements.forcedTier() != nil { return true }
+        #endif
+        return purchases.isEntitlementResolved
     }
     private var launchPresentation: LaunchPresentationState {
         LaunchPresentationState.reduce(.init(
@@ -132,8 +155,10 @@ struct RootView: View {
         // The tier leads the fingerprint so the snapshot is rewritten the moment someone
         // subscribes or their taster expires — without it, the widget could keep showing a
         // stale, over-privileged (or under-privileged) snapshot until some unrelated field
-        // happened to change.
-        return "\(entitlements.tier)-\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)-\(photoWeek)"
+        // happened to change. Resolution leads it in turn: the write below is skipped while the
+        // entitlement is unresolved, and a genuinely free user's tier string doesn't change when
+        // StoreKit finally answers, so without this the skipped write would never be retried.
+        return "\(entitlementResolved)-\(entitlements.tier)-\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)-\(photoWeek)"
     }
 
     // MARK: Evening check-in reminder
@@ -313,12 +338,32 @@ struct RootView: View {
             }
         }
         .task(id: widgetFingerprint) {
+            // Never write a snapshot off an unresolved entitlement: `hasPro` is false for the
+            // first moments of every cold launch, and this write PERSISTS into the App Group —
+            // a subscriber whose app is killed before StoreKit answers would be left with a
+            // downgraded Home Screen until some later launch happened to rewrite it.
+            guard entitlementResolved else { return }
             // The App Group snapshot is a second read path into the same data — it must respect
             // the same wall the app does, so the resolved tier goes in alongside the raw queries.
             WidgetBridge.write(WidgetSnapshotBuilder.build(
                 entries: entries, treatments: treatments, doses: doses, photos: photos,
                 entitlements: entitlements
             ))
+        }
+        // Remember the answer, so the NEXT cold launch has something better than `false` to
+        // stand on while StoreKit is still thinking.
+        .task(id: "\(purchases.isEntitlementResolved)-\(purchases.hasPro)") {
+            guard purchases.isEntitlementResolved else { return }
+            lastKnownHasPro = purchases.hasPro
+        }
+        // A lapsed subscriber's treatment reminders repeat daily, forever ("3 steps: Minoxidil ·
+        // Finasteride · Ketoconazole" on the Lock Screen), and every surface that could re-plan
+        // them lives on the Plan tab behind the wall. RootView is always alive, so this is where
+        // they stop — gated on `entitlementResolved` so a subscriber's own reminders are never
+        // cancelled by a launch that simply hadn't heard back from StoreKit yet.
+        .task(id: "\(entitlementResolved)-\(entitlements.tier)") {
+            guard entitlementResolved, !entitlements.canAccess(.treatments) else { return }
+            await notifications.stopRecordReminders()
         }
         // Keeps the evening check-in's 3-day rolling horizon alive regardless of which tab is on
         // screen — `CareView` (the Plan tab) only exists while it's the selected tab, so without

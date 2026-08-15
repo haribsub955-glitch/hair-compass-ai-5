@@ -56,7 +56,8 @@ Info.plist keys are the exception (they're real project config — see §9).
 | `HC_LEARN` | Opens the Learn sheet on launch |
 | `HC_SCROLL_PRODUCTS` | Scrolls Shop to the science-products section |
 | `HC_COMPARE` / `HC_EXPORT` | Opens the Compare / Export sheet from Trends |
-| `HC_AI_STATUS <available\|notEnabled\|modelNotReady\|deviceNotEligible>` | Forces what `ProAvailability.current` reports, which drives the paywall's Apple Intelligence notice and whether the purchase buttons appear at all. An iOS 26 Simulator on an Apple Intelligence Mac reports `.available`, so without this the unavailable states can only be seen on physically ineligible hardware. |
+| `HC_AI_STATUS <available\|notEnabled\|modelNotReady\|deviceNotEligible>` | Forces what `ProAvailability.current` reports, which drives the paywall's Apple Intelligence notice on the two AI features. It does **not** affect the purchase buttons — those are unconditional (`ProAvailability.showsPurchaseButtons`). An iOS 26 Simulator on an Apple Intelligence Mac reports `.available`, so without this the unavailable states can only be seen on physically ineligible hardware. |
+| `HC_TIER <free\|taster\|pro>` | Forces the resolved entitlement tier (`Entitlements.forcedTier`). A fresh install stamps `firstLaunchAt` and is therefore a **taster for three days**, so this is the only way to see the free tier — `LockedHistoryCard`, the four gated tabs, the suppressed widget snapshot — without waiting out the clock. |
 
 Example: `xcrun simctl launch <SIM> harib.Hair-Compass-AI-5 HC_SEED_DEMO HC_TAB care`
 
@@ -219,7 +220,7 @@ building + launching + screenshotting in the Simulator.
 | Thing | Where | How to set |
 |---|---|---|
 | Claude API key (cloud deep analysis) | UserDefaults `claudeAPIKey`, seeded from env | Set `ANTHROPIC_API_KEY` in the scheme's run env (`AIConfig.seedKeyIfProvided`) |
-| iHerb affiliate links | UserDefaults `affiliate.link.<id>` | In-app **Plan → Science-backed options → Manage links** |
+| iHerb affiliate links | UserDefaults `affiliate.link.<id>` | In-app **Shop → Science-backed options → Manage links** (Task 9 moved this out of Plan, which is now Pro-gated) |
 | Privacy / support URLs | `AppInfo` in [Model/AppInfo.swift](Hair%20Compass%20AI%205/Model/AppInfo.swift) | Fill the two placeholder strings before submission (docs site) |
 | Capabilities already configured | `.entitlements` + `INFOPLIST_KEY_*` | HealthKit entitlement + Health/Camera/Photo usage strings are present |
 
@@ -228,7 +229,8 @@ building + launching + screenshotting in the Simulator.
 ## 10. Open items before App Store submission
 
 Items 3 and 4 of the old list are gone — AI is fully on-device now (no cloud, no key to provision)
-and both AI sheets are gated behind `hasPro`.
+and both AI sheets sit behind `ProGate`, which reads the resolved tier from `Entitlements`
+(free · taster · pro) rather than a `hasPro` boolean. They are 2 of the 12 gated features.
 
 ### In this repo
 
@@ -246,17 +248,25 @@ and both AI sheets are gated behind `hasPro`.
 3. **Subscriptions** — create both products in group `21442176` and get them to *Ready to Submit*:
    localized display name (≤30 chars), description (≤45 chars), price, and an IAP review screenshot.
    `HairCompass.storekit` is a local simulator fixture only; it configures nothing on Apple's side.
-   Keep the ASC descriptions matching the in-app claim — **exactly two features are gated**
-   (`HairChatSheet`, `DeepAnalysisSheet`), so don't list reminders or trends, which ship free.
+   Keep the ASC descriptions matching the in-app claim — **twelve features are gated**, the full
+   `ProFeature.allCases` table in [Feature/Entitlements.swift](Hair%20Compass%20AI%205/Feature/Entitlements.swift):
+   history, trends, compare, journey, photos, labs, procedures, treatments, reports, body signals,
+   Ask Wren and Deep analysis. Trends is `.proGated(.trends)`, so do **not** describe it as free.
+   Only the last two need Apple Intelligence; the other ten run on any supported iPhone, which is
+   why the purchase buttons are unconditional. Free keeps: unlimited daily check-ins, today's own
+   values, the streak count, Shop, Learn, and export.
 4. **Paid Apps agreement + banking/tax** signed, or products never load and the paywall shows
    `StoreUnavailableView` to every reviewer.
 5. **App Privacy questionnaire** → *Data Not Collected*, matching both `PrivacyInfo.xcprivacy`
    files and the fact that the app makes no network requests at all.
 6. **Age rating**, description, keywords, support URL, and screenshots — taken on a real device.
-7. **App Review notes** — say that no account is needed, and that the two Pro features require
-   Apple Intelligence, naming a device that has it. A reviewer on ineligible hardware now sees the
-   honest "Pro wouldn't work on this iPhone" notice instead of purchase buttons (see
-   `Feature/ProAvailability.swift`), and should not read that as a broken paywall.
+7. **App Review notes** — say that no account is needed, and that two of the twelve Pro features
+   (Ask Wren, Deep analysis) require Apple Intelligence, naming a device that has it. A reviewer on
+   ineligible hardware sees **live purchase buttons plus an honest notice** naming those two
+   features — the subscription sells on every iPhone because the other ten run everywhere (see
+   `ProAvailability.canRun` / `.showsPurchaseButtons`). Mention that the free tier is reachable in a
+   DEBUG build with `HC_TIER free` if a reviewer wants to see the wall itself; a fresh install is a
+   three-day taster with everything unlocked.
 
 ### Before the archive
 

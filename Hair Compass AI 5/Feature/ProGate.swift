@@ -49,7 +49,21 @@ struct ProGate<Content: View>: View {
         }
     }
 
+    /// Scrollable: `CompareView`/`ProceduresView` apply `.proGated(_:)` in place of their own
+    /// `ScrollView`, so at large accessibility text sizes this card was tall enough to push its
+    /// own purchase buttons off-screen — a paywall that hides the thing it exists to offer.
     private var locked: some View {
+        ScrollView {
+            lockedBody
+        }
+        // Several surfaces (CareView, TrendsView, LabsView…) apply `.proGated(_:)` INSIDE their
+        // own ScrollView, so this one is nested. `.basedOnSize` keeps it inert whenever the card
+        // already fits — no bounce, no captured pan — and it only becomes a real scroll view at
+        // the accessibility sizes this exists for.
+        .scrollBounceBehavior(.basedOnSize)
+    }
+
+    private var lockedBody: some View {
         VStack(spacing: 18) {
             Spacer(minLength: 20)
 
@@ -76,15 +90,20 @@ struct ProGate<Content: View>: View {
             ClarityContrast(size: .compact, sex: profiles.first?.sex ?? .male)
 
             // The notice only speaks for features that actually need the model, so gating
-            // Trends no longer tells someone their iPhone is the problem.
-            if feature.requiresAppleIntelligence {
+            // Trends no longer tells someone their iPhone is the problem. Asked through
+            // `canRun` — "could this feature ever run on hardware without Apple Intelligence?" —
+            // which is behaviour-identical to reading `requiresAppleIntelligence` directly, and
+            // makes the tested policy function the shipping one rather than a parallel copy.
+            if !ProAvailability.canRun(feature, status: .deviceNotEligible) {
                 ProAvailabilityNotice(status: availability)
             }
 
-            // The purchase buttons are now UNCONDITIONAL. Even where this particular feature
-            // can never run, the subscription still unlocks the other ten, so withdrawing the
-            // sale would be wrong — it is what left ineligible iPhones with nothing to buy.
-            if !purchases.products.isEmpty {
+            // The purchase buttons are UNCONDITIONAL on Apple Intelligence — see
+            // `ProAvailability.showsPurchaseButtons`, which is where that rule is asserted. Even
+            // where this particular feature can never run, the subscription still unlocks the
+            // other ten, so withdrawing the sale would be wrong — it is what left ineligible
+            // iPhones with nothing to buy.
+            if ProAvailability.showsPurchaseButtons(status: availability, hasLoadedProducts: !purchases.products.isEmpty) {
                 purchaseButtons
             } else {
                 StoreUnavailableView(isLoading: purchases.isLoading) {

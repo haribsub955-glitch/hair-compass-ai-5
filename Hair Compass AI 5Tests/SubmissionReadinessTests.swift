@@ -83,6 +83,34 @@ struct ProAvailabilityTests {
         }
     }
 
+    /// The other half of that fix, and the one nothing asserted: `canRun` deciding what RUNS is
+    /// only half the policy — what SELLS must not consult Apple Intelligence at all. Both purchase
+    /// surfaces (`ProGate.locked`, `OnboardingPlanStep.footer`) route their buttons through this
+    /// function, so re-introducing a sellability check would have to fail here or bypass the
+    /// function outright.
+    @Test func purchaseButtonsAreUnconditionalOnAppleIntelligence() {
+        for status: OnDeviceAvailability in [.available, .notEnabled, .modelNotReady, .deviceNotEligible] {
+            #expect(ProAvailability.showsPurchaseButtons(status: status, hasLoadedProducts: true),
+                    "\(status) must still be able to buy Pro — ten of the twelve features run here.")
+        }
+    }
+
+    /// The one honest reason to withhold them: no real prices to show. Never a placeholder price,
+    /// never a device capability.
+    @Test func purchaseButtonsWaitOnlyForRealPrices() {
+        for status: OnDeviceAvailability in [.available, .notEnabled, .modelNotReady, .deviceNotEligible] {
+            #expect(ProAvailability.showsPurchaseButtons(status: status, hasLoadedProducts: false) == false)
+        }
+    }
+
+    /// `ProGate` asks this exact question to decide whether to show `ProAvailabilityNotice`, so
+    /// the shipping path and the asserted path are now the same function.
+    @Test func onlyTheAIFeaturesDiscloseAnAppleIntelligenceRequirement() {
+        for feature in ProFeature.allCases {
+            #expect(ProAvailability.canRun(feature, status: .deviceNotEligible) == !feature.requiresAppleIntelligence)
+        }
+    }
+
     @Test func theTwoAIFeaturesCannotRunOnIneligibleHardware() {
         #expect(ProAvailability.canRun(.askWren, status: .deviceNotEligible) == false)
         #expect(ProAvailability.canRun(.deepAnalysis, status: .deviceNotEligible) == false)

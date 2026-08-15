@@ -69,6 +69,28 @@ struct HistoryAccessTests {
         #expect(LockedHistoryCard.headline(lockedCount: 22) == "22 days recorded")
     }
 
+    // MARK: - Reading a stored day back into a form (LogSheet)
+
+    /// The log sheet's date strip scrubbed 60 days back and loaded each day's stored shed, scalp,
+    /// sleep, stress and note into the live gauges through a raw `FetchDescriptor` — the whole
+    /// wall, readable in sixty taps. Writing is not reading: logging any day stays free, and
+    /// editing TODAY's own entry has to keep working, which is what the second clause protects.
+    @Test func aFreeTierMayReadTodayBackButNoEarlierDay() {
+        let free = Entitlements(tier: .free)
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now)!
+        #expect(HistoryAccess.canReadBack(day: now, entitlements: free, now: now))
+        #expect(HistoryAccess.canReadBack(day: yesterday, entitlements: free, now: now) == false)
+        #expect(HistoryAccess.canReadBack(day: Calendar.current.date(byAdding: .day, value: -59, to: now)!,
+                                          entitlements: free, now: now) == false)
+    }
+
+    @Test func entitledTiersMayReadAnyDayBack() {
+        for tier in [EntitlementTier.pro, .taster] {
+            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now)!
+            #expect(HistoryAccess.canReadBack(day: yesterday, entitlements: Entitlements(tier: tier), now: now))
+        }
+    }
+
     /// The App Group snapshot is a second read path. Whatever the free tier may not see in-app,
     /// it must not see on the Home Screen either — otherwise the wall leaks through a widget.
     @Test func widgetSnapshotCarriesNoHistoryForFreeUsers() {

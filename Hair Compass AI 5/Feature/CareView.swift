@@ -117,7 +117,6 @@ struct CareView: View {
                         // it teaches while the screen is empty and retires the moment there's data.
                         planRitualPlate.staggeredEntrance(index: 3)
                     }
-                    remindersCard.staggeredEntrance(index: 5)
                     gateExplainer.staggeredEntrance(index: 6)
                     if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
 
@@ -158,6 +157,16 @@ struct CareView: View {
                     labsLedgerRow.staggeredEntrance(index: 15)
                 }
                 .proGated(.treatments)
+
+                // Reminders sit OUTSIDE the wall, and deliberately below it: they are the app's
+                // controls, not the user's record, and a schedule you can't switch off is worse
+                // than one you can't configure. A lapsed subscriber's routine reminders are
+                // already cancelled for them (`stopRecordReminders`), but the evening check-in —
+                // free on every tier, since check-ins are — has to stay reachable, and this is
+                // the only surface that owns it. For an entitled tier this moves the row from
+                // mid-page to the page's tail, next to the closing garland, which is where a
+                // settings footnote belongs anyway.
+                remindersCard.staggeredEntrance(index: 16)
 
                 // Closes the app's longest scroll. Deliberately after the last ledger row rather
                 // than before it: a garland placed above would read as decoration *for* the
@@ -257,7 +266,16 @@ struct CareView: View {
         // `removeAllPendingNotificationRequests()`, so it must land before the
         // procedure/progress-check-in/evening calls or it would wipe the reminders they just
         // scheduled.
-        .task(id: "\(treatmentFingerprint)||\(procedureFingerprint)||\(checkIns.first?.date.timeIntervalSince1970 ?? 0)||\(genericNotificationWording)") {
+        .task(id: "\(treatmentFingerprint)||\(procedureFingerprint)||\(checkIns.first?.date.timeIntervalSince1970 ?? 0)||\(genericNotificationWording)||\(entitlements.canAccess(.treatments))") {
+            // This task sits OUTSIDE the gate (it has to — the gate replaces the page body), so
+            // on a lapsed tier it used to re-arm the very treatment-named reminders the tier can
+            // no longer see, and then render a paywall where the off switch used to be. Now
+            // opening Plan is what stops them.
+            guard canScheduleRecordReminders else {
+                await notifications.stopRecordReminders()
+                await replanEveningCheckIn()
+                return
+            }
             await notifications.reschedule(treatments: notifTreatments, refills: notifRefills)
             await notifications.planProcedureReminders(notifProcedures)
             await notifications.planProgressCheckInReminder(lastCheckIn: checkIns.first?.date)
@@ -340,6 +358,11 @@ struct CareView: View {
             : "This also deletes \(parts.joined(separator: " and ")) — it can't be undone."
         return consequence + " Consider \"Mark inactive instead\" to keep the history."
     }
+
+    /// Every reminder except the evening check-in is built from a record this page gates behind
+    /// `.treatments` — routine slots, refills, milestones, procedures, the monthly progress
+    /// check-in. One question, asked once, for all of them.
+    private var canScheduleRecordReminders: Bool { entitlements.canAccess(.treatments) }
 
     private var activeTreatments: [Treatment] { treatments.filter(\.isActive) }
     private var treatmentWeeks: [(name: String, weeks: Int)] {
@@ -659,27 +682,39 @@ struct CareView: View {
     private var remindersDetail: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                Toggle(isOn: $remindersOn) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Routine reminders").font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
-                        Text("Nudge me at my routine times.")
-                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                    }
-                }
-                .tint(Clinical.accent)
-                .onChange(of: remindersOn) { _, on in
-                    Task {
-                        if on {
-                            let granted = await notifications.enable(treatments: notifTreatments, refills: notifRefills)
-                            if !granted { remindersOn = false }
-                        } else {
-                            notifications.disable()
+                if canScheduleRecordReminders {
+                    Toggle(isOn: $remindersOn) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Routine reminders").font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
+                            Text("Nudge me at my routine times.")
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
                     }
-                }
-                if remindersOn && notifTreatments.isEmpty {
-                    Text("Add a daily treatment with times to get routine reminders.")
-                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
+                    .tint(Clinical.accent)
+                    .onChange(of: remindersOn) { _, on in
+                        Task {
+                            if on {
+                                let granted = await notifications.enable(treatments: notifTreatments, refills: notifRefills)
+                                if !granted { remindersOn = false }
+                            } else {
+                                notifications.disable()
+                            }
+                        }
+                    }
+                    if remindersOn && notifTreatments.isEmpty {
+                        Text("Add a daily treatment with times to get routine reminders.")
+                            .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
+                    }
+                } else {
+                    // No dead toggle: routine, refill and milestone reminders name a treatment,
+                    // so on this tier they are already stopped rather than merely switchable.
+                    // Said plainly, once, instead of leaving a control that can only disappoint.
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Routine reminders").font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
+                        Text("These name your treatments, so they're stopped while your plan is locked. Nothing on your Lock Screen mentions them.")
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             .padding(.top, 4)

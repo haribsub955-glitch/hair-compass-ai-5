@@ -324,8 +324,10 @@ struct OnboardingPlanStep: View {
             // The purchase buttons are UNCONDITIONAL: even on hardware that can never run Ask
             // Wren or Deep analysis, the subscription still unlocks the other ten Pro features,
             // so withdrawing the sale here would be the same mistake `ProAvailabilityNotice`
-            // beside the two AI rows above already warned about.
-            if !purchases.products.isEmpty {
+            // beside the two AI rows above already warned about. Routed through
+            // `ProAvailability.showsPurchaseButtons` so both purchase surfaces ask the one
+            // function that `ProAvailabilityTests` pins to "availability is not an input".
+            if ProAvailability.showsPurchaseButtons(status: availability, hasLoadedProducts: !purchases.products.isEmpty) {
                 purchaseButtons
             } else {
                 StoreUnavailableView(isLoading: purchases.isLoading) {

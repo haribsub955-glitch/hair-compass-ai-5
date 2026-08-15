@@ -180,6 +180,126 @@ struct TodayGatingTests {
         #expect(visible.doses.count == 1)
     }
 
+    // MARK: - The whole insight input, per tier (TodayGating.insightContext)
+    //
+    // The regression above could only test the mapping by re-wiring TodayGating.visible into
+    // InsightContext.build by hand, because `TodayView.buildContext()` is `private` and
+    // unreachable even via @testable — which is exactly why a 439-test suite never saw that four
+    // of the six inputs were still raw @Querys. `TodayGating.insightContext` closes that: it
+    // takes the RAW queries and owns every entitlement decision, so this file now asserts what
+    // the insight engine actually receives rather than what a test happened to assemble.
+
+    /// One record with something gated in every corner: labs, HealthKit, a clinician-review
+    /// pattern from progress check-ins and from side-effect logs, an active treatment, and
+    /// twenty days of history with a direction in it.
+    private struct LeakyRecord {
+        let now = Date.now
+        let entries: [DailyEntry]
+        let treatments: [Treatment]
+        let snapshots: [HealthSnapshot]
+        let labs: [LabResult]
+        let progressCheckIns: [ProgressCheckIn]
+        let sideEffects: [SideEffectLog]
+
+        init() {
+            let calendar = Calendar.current
+            let now = Date.now
+            // Twenty consecutive logged days, shedding heavier at the start than at the end, so
+            // `HairAnalytics.direction` has a real (improving) direction to report.
+            entries = (0..<20).map { offset in
+                DailyEntry(
+                    date: calendar.date(byAdding: .day, value: -offset, to: now)!,
+                    shed: offset > 12 ? .heavy : .elevated
+                )
+            }
+            treatments = [Treatment(name: "Minoxidil", treatmentClass: .minoxidil,
+                                    scheduleTimes: "08:00", startDate: now, isActive: true)]
+            // 7% down over the window — the "rapid loss can trigger shedding" sentence.
+            snapshots = [
+                HealthSnapshot(date: calendar.date(byAdding: .day, value: -60, to: now)!,
+                               sleepHours: 7.5, hrvSDNN: 48, bodyMassKg: 86),
+                HealthSnapshot(date: now, sleepHours: 6.0, hrvSDNN: 41, bodyMassKg: 80),
+            ]
+            labs = [LabResult(test: .ferritin, value: 18, collectedAt: calendar.date(byAdding: .day, value: -5, to: now)!)]
+            progressCheckIns = [ProgressCheckIn(date: calendar.date(byAdding: .day, value: -10, to: now)!,
+                                                scalpPain: true, scalpPainNote: "tender crown")]
+            sideEffects = [SideEffectLog(severity: 3, date: calendar.date(byAdding: .day, value: -2, to: now)!)]
+        }
+    }
+
+    @MainActor
+    private func context(for tier: EntitlementTier, record: LeakyRecord) -> InsightContext {
+        TodayGating.insightContext(
+            entries: record.entries, treatments: record.treatments, doses: [],
+            snapshots: record.snapshots, triggers: [], labs: record.labs, profile: nil,
+            progressCheckIns: record.progressCheckIns, sideEffects: record.sideEffects,
+            entitlements: Entitlements(tier: tier), now: record.now
+        )
+    }
+
+    /// The Critical this file's second half exists for: everything gated is withheld at the
+    /// SOURCE — from the deterministic paragraph AND from the facts handed to the on-device
+    /// model — not filtered out of the finished sentence afterwards.
+    @Test @MainActor func freeTierInsightSeesNoGatedRecordAtAll() {
+        let record = LeakyRecord()
+        let free = context(for: .free, record: record)
+
+        #expect(free.labs.isEmpty, "Labs are .labs — 'Ferritin is below the range…' is a locked value.")
+        #expect(free.sleepHours == nil, "HealthKit is .bodySignals.")
+        #expect(free.hrvSDNN == nil)
+        #expect(free.rapidWeightLossPercent == nil, "The weight-loss sentence is derived entirely from HealthKit.")
+        #expect(free.clinicianReviewFlags.isEmpty,
+                "Progress check-ins and side-effect logs are .reports — the flags are the clinician summary it sells.")
+        #expect(free.treatments.isEmpty, "Treatment names are .treatments.")
+        #expect(free.describesTrend == false, "A direction is a statement about locked history.")
+
+        let facts = RuleBasedInsight.facts(free)
+        let paragraph = RuleBasedInsight.paragraph(free)
+        for leak in ["Ferritin", "Minoxidil", "Weight is down", "Scalp pain", "severe side effect", "improving"] {
+            #expect(!facts.contains(leak), "facts() leaked \(leak) to the on-device model")
+            #expect(!paragraph.contains(leak), "paragraph() leaked \(leak) onto the free Today screen")
+        }
+    }
+
+    /// Withholding must not produce a blank or broken paragraph: the free tier keeps today's own
+    /// values, which the spec puts on the free side of the line, said without a trend clause.
+    @Test @MainActor func freeTierInsightStillSpeaksAboutToday() {
+        let paragraph = RuleBasedInsight.paragraph(context(for: .free, record: LeakyRecord()))
+        #expect(paragraph.contains("Shedding is elevated today."))
+        #expect(!paragraph.contains("steady"),
+                "A data-starved direction of 0 must not render as 'steady' — that is still a claim about history.")
+    }
+
+    /// The count and the streak are the two numbers a free user is already shown (the hero's
+    /// streak, `LockedHistoryCard`'s locked-day count), so they survive the filter. A count of 1
+    /// would contradict the hero on the same screen AND route a twenty-day user into the "keep
+    /// logging for a few more days" branch.
+    @Test @MainActor func freeTierKeepsTheCountAndStreakItIsAlreadyShown() {
+        let record = LeakyRecord()
+        let free = context(for: .free, record: record)
+        #expect(free.entryCount == 20)
+        #expect(free.streak == 20)
+    }
+
+    @Test @MainActor func entitledTiersStillGetTheWholeRecord() {
+        let record = LeakyRecord()
+        for tier in [EntitlementTier.pro, .taster] {
+            let full = context(for: tier, record: record)
+            #expect(full.labs.contains { $0.name == "Ferritin" }, "\(tier) paid for labs.")
+            #expect(full.sleepHours != nil, "\(tier) paid for body signals.")
+            #expect(full.rapidWeightLossPercent != nil)
+            #expect(full.clinicianReviewFlags.contains { $0.id == "scalpPain" }, "\(tier) paid for the review flags.")
+            #expect(full.clinicianReviewFlags.contains { $0.id == "severeSideEffect" })
+            #expect(full.treatments.contains { $0.name == "Minoxidil" })
+            #expect(full.describesTrend, "\(tier) can see the history a direction describes.")
+            #expect(full.entryCount == 20)
+
+            let paragraph = RuleBasedInsight.paragraph(full)
+            #expect(paragraph.contains("Minoxidil"))
+            #expect(RuleBasedInsight.facts(full).contains("Ferritin"))
+        }
+    }
+
     // MARK: - No plan at all, regardless of tier
 
     @Test func nothingScheduledStaysEmptyForEveryTier() {
