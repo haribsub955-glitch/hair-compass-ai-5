@@ -89,4 +89,19 @@ struct EntitlementsTests {
             #expect(!feature.gateSymbol.isEmpty, "\(feature) needs an SF Symbol")
         }
     }
+
+    /// A missing stamp must resolve to "first launch is now", not to 1970 — otherwise every
+    /// existing installation wakes up with an already-expired taster.
+    @Test func absentStampMeansTheTasterStartsNow() {
+        let now = Date(timeIntervalSince1970: 1_760_000_000)
+        let stamp = Entitlements.firstLaunchStamp(stored: 0, now: now)
+        #expect(stamp == now)
+        #expect(Entitlements.resolve(hasPro: false, firstLaunch: stamp, now: now) == .taster)
+    }
+
+    @Test func storedStampIsHonoured() {
+        let stored = Date(timeIntervalSince1970: 1_759_000_000)
+        let now = Date(timeIntervalSince1970: 1_760_000_000)
+        #expect(Entitlements.firstLaunchStamp(stored: stored.timeIntervalSince1970, now: now) == stored)
+    }
 }

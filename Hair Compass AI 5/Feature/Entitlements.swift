@@ -143,3 +143,12 @@ extension ProFeature {
         }
     }
 }
+
+extension Entitlements {
+    /// `@AppStorage` cannot store an optional `Date`, so the stamp is a `TimeInterval` with `0`
+    /// meaning "never written". Treating `0` as 1970 would hand every existing installation an
+    /// expired taster on the update that ships this.
+    static func firstLaunchStamp(stored: TimeInterval, now: Date = .now) -> Date {
+        stored > 0 ? Date(timeIntervalSince1970: stored) : now
+    }
+}

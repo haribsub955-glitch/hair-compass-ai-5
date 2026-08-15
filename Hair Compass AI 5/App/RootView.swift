@@ -81,6 +81,9 @@ struct RootView: View {
     @State private var ritualKind: RitualKind?
     @State private var purchases = PurchaseService()
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
+    // `0` means "never written" — `Entitlements.firstLaunchStamp` treats that as "the taster
+    // starts now", not as 1970, so an existing installation never wakes up mid-expired.
+    @AppStorage("firstLaunchAt") private var firstLaunchAt: TimeInterval = 0
     @State private var showTutorial = false
     @State private var deepLinks = DeepLinkRouter()
 
@@ -94,6 +97,16 @@ struct RootView: View {
     @AppStorage("eveningCheckInMinutes") private var eveningCheckInMinutes = 20 * 60 + 30
 
     private var profile: Profile? { profiles.first }
+    /// The one tier resolution for the whole app — every gated surface reads this instead of
+    /// re-deriving `purchases.hasPro` and the taster window itself.
+    private var entitlements: Entitlements {
+        Entitlements(
+            tier: Entitlements.resolve(
+                hasPro: purchases.hasPro,
+                firstLaunch: Entitlements.firstLaunchStamp(stored: firstLaunchAt)
+            )
+        )
+    }
     private var launchPresentation: LaunchPresentationState {
         LaunchPresentationState.reduce(.init(
             // Persistence recovery is selected by HairCompassApp before RootView exists.
@@ -215,6 +228,10 @@ struct RootView: View {
         .environment(affiliates)
         .environment(purchases)
         .environment(deepLinks)
+        .environment(\.entitlements, entitlements)
+        // Written once, on first appearance only — never overwritten, or a reinstall-free
+        // relaunch would keep resetting an existing installation's taster clock.
+        .onAppear { if firstLaunchAt == 0 { firstLaunchAt = Date.now.timeIntervalSince1970 } }
         .task {
             // A force-quit can bypass RitualView.onDisappear. Clear any ActivityKit survivors
             // before launch decides whether to present a fresh ritual.

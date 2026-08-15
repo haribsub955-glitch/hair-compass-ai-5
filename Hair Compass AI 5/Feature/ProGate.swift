@@ -15,6 +15,7 @@ struct ProGate<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     @Environment(PurchaseService.self) private var purchases
+    @Environment(\.entitlements) private var entitlements
     /// Only for picking the matching illustration pair — the gate itself stays profile-agnostic.
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
@@ -30,7 +31,7 @@ struct ProGate<Content: View>: View {
     private var availability: OnDeviceAvailability { ProAvailability.current }
 
     var body: some View {
-        if purchases.hasPro {
+        if entitlements.canAccess(feature) {
             content()
         } else {
             locked
