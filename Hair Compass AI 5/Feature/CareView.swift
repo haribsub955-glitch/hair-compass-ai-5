@@ -11,6 +11,7 @@ struct CareView: View {
     @Environment(DeepLinkRouter.self) private var deepLinks
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openURL) private var openURL
+    @Environment(\.entitlements) private var entitlements
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
     @Query private var missedDoseRecords: [MissedDoseRecord]
@@ -59,6 +60,11 @@ struct CareView: View {
     @State private var showRecommendedTrigger = false
     @State private var showRecommendedPhoto = false
     @State private var missedDoseCandidate: MissedDoseCandidate?
+    /// Non-nil when a free-tier tap on a `RecommenderView` action targets a gated destination
+    /// (add-to-plan, patch photo series, add lab result) — presents that feature's paywall
+    /// instead of the write-destination itself, so the deliberately-free Recommender can still
+    /// suggest the action without silently granting the gated write. See `presentRecommendedAction`.
+    @State private var recommendedGate: ProFeature?
 
     /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
     /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
@@ -77,11 +83,16 @@ struct CareView: View {
                 ScreenHeader(
                     eyebrow: "Ritual",
                     title: "Plan",
-                    trailing: AnyView(
+                    // "Add treatment" writes into the treatment ledger below, which is behind
+                    // `.proGated(.treatments)` — so on a free tier the button itself is withheld
+                    // rather than left live above a lock card a saved treatment would vanish
+                    // into. Every other header action in the app already lives inside its gate
+                    // (`LabsView`, `ProceduresView`); this is the one header that sits above one.
+                    trailing: entitlements.canAccess(.treatments) ? AnyView(
                         HeaderActionButton(systemName: "plus", accessibilityLabel: "Add treatment") {
                             showAdd = true
                         }
-                    ),
+                    ) : nil,
                     condensed: headerCondense
                 ).padding(.top, 8)
                     .staggeredEntrance(index: 0)
@@ -244,6 +255,18 @@ struct CareView: View {
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showRecommender = false } } }
             }
         }
+        .sheet(item: $recommendedGate) { feature in
+            NavigationStack {
+                // Entitled users never linger here: once ProGate sees access, it renders this
+                // clear placeholder, which immediately dismisses the sheet on appear — same
+                // idiom as TodayView's history paywall.
+                ProGate(feature: feature) {
+                    Color.clear.onAppear { recommendedGate = nil }
+                }
+                .clinicalScreen()
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { recommendedGate = nil } } }
+            }
+        }
         .task {
             await notifications.refreshAuthorization()
             remindersOn = notifications.isEnabled
@@ -344,14 +367,28 @@ struct CareView: View {
 
     // MARK: Derived state
 
+    /// `RecommenderView` itself is deliberately free on every tier, but the actions it hands
+    /// back write into features that are not (treatments, photos, labs) — so each of those
+    /// cases checks entitlement first and swaps in that feature's paywall (`recommendedGate`)
+    /// rather than opening the real destination for a free user. `.scheduleDoctorVisit` needs no
+    /// check here: it opens `ProceduresView`, which already carries its own `.proGated(.procedures)`.
+    /// `.recordTrigger` needs none either: `TriggerEvent` logging has no `ProFeature` of its own.
     private func presentRecommendedAction(_ action: RecommendedAction) {
         switch action {
-        case .addToPlan(let treatmentClass): recommendedTreatmentClass = treatmentClass
+        case .addToPlan(let treatmentClass):
+            guard entitlements.canAccess(.treatments) else { recommendedGate = .treatments; return }
+            recommendedTreatmentClass = treatmentClass
         case .scheduleDoctorVisit: showProcedures = true
-        case .startPatchPhotoSeries: showRecommendedPhoto = true
+        case .startPatchPhotoSeries:
+            guard entitlements.canAccess(.photos) else { recommendedGate = .photos; return }
+            showRecommendedPhoto = true
         case .recordTrigger: showRecommendedTrigger = true
-        case .addLabResult(let test): recommendedLabTest = test; showRecommendedLab = true
-        case .reviewPregnancyCaution: recommendedTreatmentClass = .spironolactone
+        case .addLabResult(let test):
+            guard entitlements.canAccess(.labs) else { recommendedGate = .labs; return }
+            recommendedLabTest = test; showRecommendedLab = true
+        case .reviewPregnancyCaution:
+            guard entitlements.canAccess(.treatments) else { recommendedGate = .treatments; return }
+            recommendedTreatmentClass = .spironolactone
         }
     }
 

@@ -12,9 +12,15 @@ struct ScienceProductsSection: View {
     @Environment(AffiliateStore.self) private var affiliates
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var context
+    @Environment(\.entitlements) private var entitlements
     @Query private var treatments: [Treatment]
     /// Non-nil while a prescription-only product waits on the Rx confirmation card.
     @State private var rxConfirmProduct: ScienceProduct? = nil
+    /// True while the `.treatments` paywall is up for a free-tier "Add to plan" tap. This
+    /// catalogue is deliberately free to browse — see the header comment — but the write it
+    /// performs (inserting a tracked `Treatment`) is not, so the tap swaps in the paywall
+    /// instead of the insert.
+    @State private var showTreatmentsGate = false
     #if DEBUG
     @State private var showManage = false
     private var showOwnerTools: Bool { ProcessInfo.processInfo.arguments.contains("HC_LINKS") }
@@ -91,6 +97,18 @@ struct ScienceProductsSection: View {
         #if DEBUG
         .sheet(isPresented: $showManage) { ManageLinksSheet() }
         #endif
+        .sheet(isPresented: $showTreatmentsGate) {
+            NavigationStack {
+                // Entitled users never linger here: once ProGate sees access, it renders this
+                // clear placeholder, which immediately dismisses the sheet on appear — same
+                // idiom as TodayView's history paywall.
+                ProGate(feature: .treatments) {
+                    Color.clear.onAppear { showTreatmentsGate = false }
+                }
+                .clinicalScreen()
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showTreatmentsGate = false } } }
+            }
+        }
     }
 
     private var activeTreatmentNames: [String] {
@@ -108,6 +126,7 @@ struct ScienceProductsSection: View {
     /// products detour through the Rx confirmation card first.
     private func addToPlan(_ product: ScienceProduct) {
         guard !product.isInPlan(activeTreatmentNames: activeTreatmentNames) else { return }
+        guard entitlements.canAccess(.treatments) else { showTreatmentsGate = true; return }
         if rxRequirement(for: product) != nil {
             rxConfirmProduct = product
             return

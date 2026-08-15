@@ -5,10 +5,15 @@ import Foundation
 /// Adding a feature here and applying `.proGated(_:)` at its surface is the whole job — the
 /// policy stays readable in one place, and `EntitlementsTests` fails if the free tier ever
 /// widens by accident.
-enum ProFeature: CaseIterable, Hashable {
+enum ProFeature: CaseIterable, Hashable, Identifiable {
     case history, trends, compare, journey, photos, labs,
          procedures, treatments, reports, bodySignals
     case askWren, deepAnalysis
+
+    /// Lets a feature drive a `.sheet(item:)` directly — used where a single sheet has to
+    /// present whichever feature's paywall a free-tier write-path was aimed at (e.g. the
+    /// Recommender's `.addToPlan`/`.startPatchPhotoSeries`/`.addLabResult` actions).
+    var id: Self { self }
 
     /// The two features that run on Apple Intelligence with no cloud fallback.
     ///
