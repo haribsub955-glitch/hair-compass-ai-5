@@ -10,7 +10,10 @@ import Foundation
 /// `CompassScore`'s existing `care = medsTotal > 0 ? … : nil` branch — rather than inventing a
 /// new locked state that would plaster lock icons over a screen with no paywall to tap through.
 enum TodayGating {
-    /// What Today is entitled to build its routine ledger and Compass rings from.
+    /// What Today is entitled to build its routine ledger, Compass rings, AND its prose (the
+    /// daily-insight paragraph, the status caption) from. Every other reader of treatments/doses
+    /// on Today — not just the ring/ledger — must go through this, or the same leak reopens
+    /// through a different sentence.
     struct Visible {
         /// Today's due routine steps (treatment + slot) — empty for a tier that can't see
         /// `.treatments`, even when treatments are still stored, so no treatment name renders
@@ -20,6 +23,13 @@ enum TodayGating {
         let medsDone: Int
         let medsTotal: Int
         let hasPhotoThisWeek: Bool
+        /// Entitlement-filtered treatments/doses — feed THIS into anything that turns treatments
+        /// into prose (`InsightContext.build`, the status caption's "last entry" timestamp), not
+        /// the raw SwiftData query. `InsightEngine`'s deterministic fallback (`RuleBasedInsight
+        /// .paragraph`) names a treatment unconditionally for any active one under 24 weeks old —
+        /// that guarantee makes it a leak on its own, independent of the rings/ledger fix above.
+        let treatments: [Treatment]
+        let doses: [TreatmentDose]
     }
 
     /// - Parameters:
@@ -27,10 +37,15 @@ enum TodayGating {
     ///   - medsDone: how many of those steps are already logged, unfiltered.
     ///   - hasPhotoThisWeek: whether a progress photo exists in the current calendar week,
     ///     unfiltered.
+    ///   - treatments: every treatment on record, unfiltered — feeds `InsightContext.build`.
+    ///   - doses: every dose on record, unfiltered — feeds `InsightContext.build` and the status
+    ///     caption's freshness readout.
     static func visible(
         dailySlots: [(Treatment, String)],
         medsDone: Int,
         hasPhotoThisWeek: Bool,
+        treatments: [Treatment],
+        doses: [TreatmentDose],
         entitlements: Entitlements
     ) -> Visible {
         let canSeeTreatments = entitlements.canAccess(.treatments)
@@ -42,7 +57,9 @@ enum TodayGating {
             // CompassScore treat Care the same way it treats a plan-less day — see the doc
             // comment above.
             medsTotal: canSeeTreatments ? dailySlots.count : 0,
-            hasPhotoThisWeek: canSeePhotos && hasPhotoThisWeek
+            hasPhotoThisWeek: canSeePhotos && hasPhotoThisWeek,
+            treatments: canSeeTreatments ? treatments : [],
+            doses: canSeeTreatments ? doses : []
         )
     }
 }

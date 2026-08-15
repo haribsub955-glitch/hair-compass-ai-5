@@ -97,6 +97,8 @@ struct TodayView: View {
             dailySlots: dailySlots,
             medsDone: medsDone,
             hasPhotoThisWeek: hasPhotoThisWeek,
+            treatments: treatments,
+            doses: doses,
             entitlements: entitlements
         )
     }
@@ -338,13 +340,20 @@ struct TodayView: View {
         let latest = entries.first.map {
             "\($0.shedRaw)-\($0.flaking)-\($0.erythema)-\($0.itch)-\($0.date.timeIntervalSince1970)"
         } ?? "none"
-        return "\(entries.count)-\(latest)-\(snapshots.count)-\(treatments.count)-\(labs.count)-\(progressCheckIns.count)-\(sideEffectLogs.count)"
+        // The tier leads the fingerprint (same reasoning as RootView.widgetFingerprint) so the
+        // insight is rebuilt — not left showing a stale treatment-bearing paragraph — the moment
+        // entitlements change mid-session, even if no other tracked field did.
+        return "\(entitlements.tier)-\(entries.count)-\(latest)-\(snapshots.count)-\(treatments.count)-\(labs.count)-\(progressCheckIns.count)-\(sideEffectLogs.count)"
     }
 
     @MainActor
     private func buildContext() -> InsightContext {
+        // visibleToday.treatments/.doses, not the raw queries — RuleBasedInsight.paragraph names
+        // any active under-24-week treatment unconditionally, so the raw arrays would leak a
+        // lapsed subscriber's treatment name into the insight text even with the rings/ledger
+        // above already suppressed. See TodayGating's doc comment.
         InsightContext.build(
-            entries: entries, treatments: treatments, doses: doses,
+            entries: entries, treatments: visibleToday.treatments, doses: visibleToday.doses,
             snapshots: snapshots, triggers: triggers, labs: labs, profile: profile,
             progressCheckIns: progressCheckIns, sideEffects: sideEffectLogs
         )
@@ -449,7 +458,10 @@ struct TodayView: View {
     /// its own "System status" card to a single centered caption under the meadow, the way a
     /// book's last page carries one small printer's line instead of another heading.
     private var statusCaption: some View {
-        let lastActivity = [entries.first?.date, doses.map(\.loggedAt).max()].compactMap { $0 }.max()
+        // visibleToday.doses, not the raw query — this only discloses a relative timestamp, not
+        // a name or count, but it's still a read of gated dose data and belongs behind the same
+        // gate as everything else derived from treatments.
+        let lastActivity = [entries.first?.date, visibleToday.doses.map(\.loggedAt).max()].compactMap { $0 }.max()
         return Text(lastActivity.map { "Up to date · last entry \($0.formatted(.relative(presentation: .named)))" }
                     ?? "Ready for your first entry")
             .font(Clinical.caption(11))
