@@ -164,4 +164,26 @@ struct AffiliateStoreTests {
         let store = AffiliateStore(defaults: defaults, bundledLinks: [:])
         #expect(store.url(for: "rosemary") == nil)
     }
+
+    // MARK: - Disclosure and resolved-link count
+
+    /// 16 CFR Part 255 requires a clear, conspicuous disclosure wherever an affiliate link is
+    /// presented. Asserted here so the shop cannot ship without it.
+    @Test func shopCarriesAnAffiliateDisclosure() {
+        #expect(ShopView.affiliateDisclosure.isEmpty == false)
+        #expect(ShopView.affiliateDisclosure.lowercased().contains("commission"))
+    }
+
+    /// Counts ids that resolve across the whole resolution order. It is legitimately ZERO today —
+    /// there is no Amazon Associates tag yet, so `AffiliateLinks.json` still ships `"links": {}`
+    /// and every buy button stays hidden. Asserting non-empty is deferred with the catalogue
+    /// itself; what is asserted here is that the counter reads the store correctly.
+    @Test func resolvedLinkCountReflectsTheCatalogue() {
+        let store = AffiliateStore(defaults: freshDefaults(), bundledLinks: [:])
+        #expect(store.resolvedLinkCount == 0)
+
+        let stocked = AffiliateStore(defaults: freshDefaults(),
+                                     bundledLinks: ["minoxidil-topical-5": "https://example.com/a"])
+        #expect(stocked.resolvedLinkCount == 1)
+    }
 }
