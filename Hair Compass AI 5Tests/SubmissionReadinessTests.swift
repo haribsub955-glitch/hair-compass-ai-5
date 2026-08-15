@@ -103,11 +103,15 @@ struct ProAvailabilityTests {
         #expect(ProAvailability.message(for: .available).isEmpty)
     }
 
-    /// The ineligible-hardware copy has one job: say that paying would buy nothing here, and that
-    /// the rest of the app still works. Losing either half turns an honest notice into a trap.
-    @Test func ineligibleCopyNamesTheRequirementAndTheFreePath() {
+    /// The ineligible-hardware copy's job flipped along with `canRun`'s scope: it must name the
+    /// two features that won't run here, but it must NOT say Pro is worthless on this iPhone —
+    /// that claim sits directly above live purchase buttons for the other ten features, so it
+    /// would be false on the very screen asking for money.
+    @Test func ineligibleCopyNamesTheTwoFeaturesWithoutDismissingTheSubscription() {
         let message = ProAvailability.message(for: .deviceNotEligible)
         #expect(message.contains("Apple Intelligence"))
-        #expect(message.lowercased().contains("free"))
+        #expect(message.contains("Ask Wren"))
+        #expect(message.contains("Deep analysis"))
+        #expect(!message.lowercased().contains("pro wouldn't work"))
     }
 }

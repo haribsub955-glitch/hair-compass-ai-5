@@ -60,21 +60,23 @@ enum ProAvailability {
 
     /// Paywall-specific wording. `OnDeviceAvailability.message` is written for someone already
     /// inside a feature ("everything else still works"); here the reader is deciding whether to
-    /// pay, so each line leads with what it means for the purchase.
+    /// pay, so each line leads with what it means for the purchase. Crucially, none of these three
+    /// says Pro is worthless here — Ask Wren and Deep analysis are 2 of 12 gated features, so even
+    /// `.deviceNotEligible` is a scoped limitation next to live purchase buttons, never a reason
+    /// not to buy.
     static func message(for status: OnDeviceAvailability) -> String {
         switch status {
         case .available:
             return ""
         case .notEnabled:
-            return "Both Pro features need Apple Intelligence, and it's switched off on this iPhone. "
-                + "Turn it on in Settings › Apple Intelligence & Siri and they'll work."
+            return "Ask Wren and Deep analysis need Apple Intelligence, and it's switched off on "
+                + "this iPhone. Turn it on in Settings › Apple Intelligence & Siri and they'll work."
         case .modelNotReady:
-            return "Apple Intelligence is still getting ready on this iPhone. Both Pro features will "
-                + "work as soon as it finishes preparing."
+            return "Apple Intelligence is still getting ready on this iPhone. Ask Wren and Deep "
+                + "analysis will work as soon as it finishes preparing."
         case .deviceNotEligible:
-            return "Pro wouldn't work on this iPhone. Both of its features run on Apple Intelligence, "
-                + "which needs iPhone 15 Pro or newer, and there's no cloud version to fall back on. "
-                + "Everything else in Hair Compass works fully here, free."
+            return "Two Pro features — Ask Wren and Deep analysis — run on Apple Intelligence, "
+                + "which this iPhone can't run. Everything else Pro unlocks works here normally."
         }
     }
 }
