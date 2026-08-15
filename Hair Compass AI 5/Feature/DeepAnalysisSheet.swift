@@ -30,11 +30,7 @@ struct DeepAnalysisSheet: View {
 
     var body: some View {
         NavigationStack {
-            ProGate(
-                feature: "AI record summary",
-                symbol: "sparkles.rectangle.stack",
-                description: "A one-tap written read of your full tracking record — on-device and private, record-keeping, not diagnosis."
-            ) {
+            ProGate(feature: .deepAnalysis) {
                 analysisContent
             }
             .clinicalScreen()

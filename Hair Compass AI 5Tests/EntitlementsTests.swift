@@ -78,4 +78,15 @@ struct EntitlementsTests {
         #expect(Entitlements.resolve(hasPro: true, firstLaunch: launch, now: day(1, from: launch)) == .pro)
         #expect(Entitlements.resolve(hasPro: true, firstLaunch: launch, now: day(90, from: launch)) == .pro)
     }
+
+    /// Copy for every gate lives in one switch so a new feature cannot ship with an empty
+    /// paywall card. Asserted rather than reviewed, because an empty string renders as a
+    /// blank sheet that looks like a bug.
+    @Test func everyFeatureHasGateCopy() {
+        for feature in ProFeature.allCases {
+            #expect(!feature.gateTitle.isEmpty, "\(feature) needs a title")
+            #expect(!feature.gateDescription.isEmpty, "\(feature) needs a description")
+            #expect(!feature.gateSymbol.isEmpty, "\(feature) needs an SF Symbol")
+        }
+    }
 }

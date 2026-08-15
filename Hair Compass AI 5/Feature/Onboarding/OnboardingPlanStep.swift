@@ -309,6 +309,10 @@ struct OnboardingPlanStep: View {
                 line: "\(Companion.name) reads months of your entries at once and surfaces what moved together — the connections you'd need a spreadsheet to spot.",
                 footnote: "A reading of your record, never a diagnosis."
             )
+            // Both cards above are the only two Pro features that need Apple Intelligence, so
+            // the notice sits right beside them rather than above the (now unconditional)
+            // purchase buttons, which sell the other ten features regardless of this iPhone.
+            ProAvailabilityNotice(status: availability)
         }
     }
 
@@ -318,16 +322,11 @@ struct OnboardingPlanStep: View {
         VStack(spacing: 10) {
             wrenClose
 
-            // Directly above the price. `proAdds` has just promised two Apple Intelligence
-            // features; if this iPhone can't run them, that has to be said before the buttons,
-            // not discovered after the charge.
-            ProAvailabilityNotice(status: availability)
-
-            if !ProAvailability.sellable(availability) {
-                // Nothing to sell on hardware that can never run either Pro feature — the free
-                // path below becomes the only forward move, which is the honest outcome here.
-                EmptyView()
-            } else if !purchases.products.isEmpty {
+            // The purchase buttons are UNCONDITIONAL: even on hardware that can never run Ask
+            // Wren or Deep analysis, the subscription still unlocks the other ten Pro features,
+            // so withdrawing the sale here would be the same mistake `ProAvailabilityNotice`
+            // beside the two AI rows above already warned about.
+            if !purchases.products.isEmpty {
                 purchaseButtons
             } else {
                 StoreUnavailableView(isLoading: purchases.isLoading) {
@@ -365,7 +364,7 @@ struct OnboardingPlanStep: View {
             .buttonStyle(.plain)
             .disabled(isBusy)
 
-            PaywallLegal(showsRenewalDisclosure: ProAvailability.sellable(availability))
+            PaywallLegal(showsRenewalDisclosure: true)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)

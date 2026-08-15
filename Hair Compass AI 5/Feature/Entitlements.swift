@@ -88,3 +88,58 @@ extension Entitlements {
         return .free
     }
 }
+
+/// Gate copy for every feature, in one switch so a new case cannot ship with a blank paywall
+/// card — `EntitlementsTests.everyFeatureHasGateCopy` asserts none of the three is ever empty.
+extension ProFeature {
+    var gateTitle: String {
+        switch self {
+        case .history: "Your full record"
+        case .trends: "Trends"
+        case .compare: "Compare"
+        case .journey: "Your journey"
+        case .photos: "Photos"
+        case .labs: "Lab results"
+        case .procedures: "Procedures"
+        case .treatments: "Treatments"
+        case .reports: "Progress reports"
+        case .bodySignals: "Body signals"
+        case .askWren: "Ask Wren"
+        case .deepAnalysis: "Deep analysis"
+        }
+    }
+
+    var gateSymbol: String {
+        switch self {
+        case .history: "clock.arrow.circlepath"
+        case .trends: "chart.xyaxis.line"
+        case .compare: "rectangle.split.2x1"
+        case .journey: "map"
+        case .photos: "camera"
+        case .labs: "testtube.2"
+        case .procedures: "cross.case"
+        case .treatments: "pills"
+        case .reports: "doc.text"
+        case .bodySignals: "heart.text.square"
+        case .askWren: "bubble.left.and.text.bubble.right"
+        case .deepAnalysis: "sparkles"
+        }
+    }
+
+    var gateDescription: String {
+        switch self {
+        case .history: "Every check-in you've recorded, not just today."
+        case .trends: "How shed, scalp and consistency move over weeks."
+        case .compare: "Two dates side by side, on the same scale."
+        case .journey: "Your whole record as one timeline."
+        case .photos: "Capture, revisit and compare your own photos."
+        case .labs: "Record results and see which are flagged."
+        case .procedures: "Keep appointments and outcomes in one place."
+        case .treatments: "Track what you're using and whether you're consistent."
+        case .reports: "A summary you can read or hand to a clinician."
+        case .bodySignals: "Sleep, stress and the rest, next to your hair record."
+        case .askWren: "Ask about your own record, answered on your iPhone."
+        case .deepAnalysis: "A closer read of everything you've logged."
+        }
+    }
+}

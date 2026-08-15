@@ -1,17 +1,19 @@
 import SwiftUI
 
-/// The one hard requirement Pro carries, disclosed *on* the paywall instead of after the charge.
+/// The one hard requirement two of Pro's features carry, disclosed *on* the paywall instead of
+/// after the charge.
 ///
-/// Everything `hasPro` gates — `HairChatSheet` and `DeepAnalysisSheet` — runs on Apple Intelligence
-/// with no cloud fallback. On an iPhone that can't run it, a subscription buys literally nothing,
-/// so both purchase surfaces (`OnboardingPlanStep`, `ProGate`) put `ProAvailabilityNotice` above
-/// their buttons and check `sellable` before offering them at all.
+/// Two of Pro's twelve features — `HairChatSheet` and `DeepAnalysisSheet` — run on Apple
+/// Intelligence with no cloud fallback. On an iPhone that can't run them, the other ten still
+/// work, so the subscription always sells; both purchase surfaces (`OnboardingPlanStep`,
+/// `ProGate`) put `ProAvailabilityNotice` next to the two AI features only, never in front of
+/// the purchase buttons themselves.
 ///
 /// The three unavailable reasons are not equivalent and are deliberately not collapsed into one:
 /// - `.notEnabled` / `.modelNotReady` — the person can fix this themselves (a Settings toggle, or
-///   waiting for a download to finish). Warn, and still sell: refusing the sale to someone who is
-///   one tap away from using it would be its own kind of wrong.
-/// - `.deviceNotEligible` — nothing they do on *this* iPhone will ever make Pro work. Don't sell.
+///   waiting for a download to finish). Warn, and it still runs once fixed.
+/// - `.deviceNotEligible` — nothing they do on *this* iPhone will ever make Ask Wren or Deep
+///   analysis work. The subscription still sells regardless — the other ten features run fine.
 ///
 /// Restore stays available in every case, so someone who already subscribed elsewhere is never
 /// locked out of a purchase they've already made.
@@ -45,9 +47,16 @@ enum ProAvailability {
     }
     #endif
 
-    /// Whether the purchase buttons should be offered at all. False only for permanently
-    /// ineligible hardware — see the type doc for why the transient reasons still sell.
-    static func sellable(_ status: OnDeviceAvailability) -> Bool { status != .deviceNotEligible }
+    /// Whether a given Pro feature can actually run on this device right now.
+    ///
+    /// This replaced `sellable(_:)`, and the change of scope is the point. `sellable` asked "may
+    /// we sell a subscription at all", which tied the entire product to Apple Intelligence and
+    /// left ineligible hardware with nothing to buy. This asks the narrower, correct question:
+    /// the subscription always sells, and only the two on-device-model features are withheld.
+    static func canRun(_ feature: ProFeature, status: OnDeviceAvailability) -> Bool {
+        guard feature.requiresAppleIntelligence else { return true }
+        return status != .deviceNotEligible
+    }
 
     /// Paywall-specific wording. `OnDeviceAvailability.message` is written for someone already
     /// inside a feature ("everything else still works"); here the reader is deciding whether to

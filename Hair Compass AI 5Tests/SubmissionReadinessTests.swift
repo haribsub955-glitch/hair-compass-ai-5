@@ -69,20 +69,31 @@ struct SubmissionReadinessTests {
     }
 }
 
-/// Pro is sold on exactly two features, and both run on Apple Intelligence with no cloud fallback.
-/// The rule that keeps that honest lives in `ProAvailability`.
+/// Pro always sells — on every iPhone. Two of its twelve features run on Apple Intelligence with
+/// no cloud fallback, and the rule that keeps only those two honest lives in `ProAvailability`.
 struct ProAvailabilityTests {
 
-    @Test func permanentlyIneligibleHardwareIsNotSoldPro() {
-        #expect(ProAvailability.sellable(.deviceNotEligible) == false)
+    /// The commercial correctness of the whole paywall. Before this, an ineligible iPhone was
+    /// offered nothing at all — a mostly-locked app with no button to unlock it, which is both a
+    /// Guideline 3.1.2 risk and a dead end for the person holding the phone.
+    @Test func proSellsOnHardwareThatCannotRunAppleIntelligence() {
+        for feature in ProFeature.allCases where !feature.requiresAppleIntelligence {
+            #expect(ProAvailability.canRun(feature, status: .deviceNotEligible),
+                    "\(feature) has no on-device model dependency and must work on any iPhone.")
+        }
     }
 
-    /// A person one Settings toggle away from using Pro should still be able to buy it — refusing
-    /// that sale would be its own kind of wrong.
-    @Test func fixableAndTransientReasonsStillSell() {
-        #expect(ProAvailability.sellable(.notEnabled))
-        #expect(ProAvailability.sellable(.modelNotReady))
-        #expect(ProAvailability.sellable(.available))
+    @Test func theTwoAIFeaturesCannotRunOnIneligibleHardware() {
+        #expect(ProAvailability.canRun(.askWren, status: .deviceNotEligible) == false)
+        #expect(ProAvailability.canRun(.deepAnalysis, status: .deviceNotEligible) == false)
+    }
+
+    /// A switched-off or still-downloading model is something the person can fix themselves, so
+    /// those states stay runnable-once-fixed and the notice tells them how.
+    @Test func fixableStatesStillCountAsRunnable() {
+        for status in [OnDeviceAvailability.available, .notEnabled, .modelNotReady] {
+            #expect(ProAvailability.canRun(.askWren, status: status))
+        }
     }
 
     @Test func everyUnavailableReasonExplainsItselfOnThePaywall() {
