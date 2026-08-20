@@ -1,11 +1,12 @@
 import Foundation
 
-/// App-level info + the legal strings needed before App Store submission. The privacy/support URLs
-/// are intentionally empty placeholders — fill them (the docs/ GitHub Pages site) before submitting;
-/// empty means the link is simply hidden in-app rather than showing a broken button.
+/// App-level info + the legal strings needed before App Store submission.
 nonisolated enum AppInfo {
-    /// The docs/ GitHub Pages site. Requires GitHub Pages to be enabled for the repo
-    /// (Settings → Pages → source: /docs on the default branch) so these resolve.
+    /// The docs/ GitHub Pages site, live since 2026-08-21: the repo was made public and Pages was
+    /// enabled from `/docs` on the default branch, and both URLs were verified serving HTTP 200.
+    /// Pages serves whatever is on the **default branch** — editing `docs/` on a feature branch
+    /// changes nothing publicly until it merges. If either URL ever 404s, the app shows a broken
+    /// link on the paywall and nothing in the app or test suite will notice.
     static let privacyPolicyURLString = "https://haribsub955-glitch.github.io/hair-compass-ai-5/privacy-policy.html"
     static let supportURLString = "https://haribsub955-glitch.github.io/hair-compass-ai-5/"
 

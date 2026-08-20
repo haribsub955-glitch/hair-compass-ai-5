@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- The user-facing name. The Xcode target is still "Hair Compass AI 5", and PRODUCT_NAME
+	     inherits from it, so without this key the Home Screen would read "Hair Compass AI 5".
+	     Set here rather than by renaming the target: the bundle id harib.Hair-Compass-AI-5 must
+	     not change (a new bundle id is a different app on the store, losing the record). -->
+	<key>CFBundleDisplayName</key>
+	<string>Hair Compass AI</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CFBundleURLTypes</key>

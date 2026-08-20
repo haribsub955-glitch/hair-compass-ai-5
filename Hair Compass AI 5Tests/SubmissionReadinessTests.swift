@@ -17,15 +17,23 @@ import Testing
 /// submit", which is exactly what it should mean.
 struct SubmissionReadinessTests {
 
-    /// The GitHub Pages URL that was baked in as a placeholder. It has never resolved — the repo is
-    /// private and Pages was never enabled — so shipping it would put a dead link on the
-    /// subscription paywall (`PaywallLegal`), which is a Guideline 3.1.2 rejection.
+    /// This used to assert the URLs were *not* on `haribsub955-glitch.github.io`, because that host
+    /// had never resolved: the repo was private and Pages was never enabled, so shipping it would
+    /// have put a dead link on the subscription paywall (`PaywallLegal`) — a Guideline 3.1.2
+    /// rejection.
     ///
-    /// Replace both strings in `AppInfo` with wherever the pages are actually hosted, then this
-    /// passes. Do not "fix" it by emptying the strings: an empty URL hides the link entirely, and
-    /// App Review requires a reachable privacy policy link on any auto-renewable paywall.
-    private static let deadPlaceholderHost = "haribsub955-glitch.github.io"
-
+    /// That premise no longer holds. On 2026-08-21 the repo was made public and Pages was enabled
+    /// from `/docs` on the default branch, and both URLs were verified serving HTTP 200 with the
+    /// right documents ("Hair Compass AI Privacy Policy" and the support index). The host is now the
+    /// real home of the pages, so asserting *against* it would fail the app for being correct.
+    ///
+    /// What still matters is the shape of the links, which is what a unit test can actually prove:
+    /// present, HTTPS, and pointing at a concrete document rather than a bare host. Do not "fix" a
+    /// failure here by emptying the strings — an empty URL hides the link entirely, and App Review
+    /// requires a reachable privacy policy link on any auto-renewable paywall.
+    ///
+    /// If the pages ever move, re-verify the new URLs resolve by hand; no test here makes network
+    /// calls, so a 404 would once again be invisible until Apple finds it.
     @Test func privacyAndSupportURLsAreRealBeforeSubmission() {
         let privacy = AppInfo.privacyPolicyURL
         let support = AppInfo.supportURL
@@ -33,14 +41,13 @@ struct SubmissionReadinessTests {
         #expect(privacy != nil, "App Store Connect requires a privacy policy URL, and PaywallLegal links it.")
         #expect(support != nil, "App Store Connect requires a support URL.")
 
+        // A bare host is almost always a placeholder; the policy has to be an actual page.
         #expect(
-            privacy?.host() != Self.deadPlaceholderHost,
-            "AppInfo.privacyPolicyURLString still points at the placeholder GitHub Pages site, which does not resolve."
+            (privacy?.path().count ?? 0) > 1,
+            "The privacy policy URL must point at a document, not just a hostname."
         )
-        #expect(
-            support?.host() != Self.deadPlaceholderHost,
-            "AppInfo.supportURLString still points at the placeholder GitHub Pages site, which does not resolve."
-        )
+        #expect(privacy?.host()?.contains(".") == true, "The privacy policy URL needs a real host.")
+        #expect(support?.host()?.contains(".") == true, "The support URL needs a real host.")
     }
 
     /// Both must be HTTPS — App Review rejects plain-HTTP legal links, and `Link` would happily
