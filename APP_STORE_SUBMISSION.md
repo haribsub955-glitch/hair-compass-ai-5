@@ -82,8 +82,9 @@ Include all of:
   device that has it (iPhone 15 Pro or later, Apple Intelligence switched on). A reviewer on
   ineligible hardware sees **live purchase buttons plus an honest notice** naming those two
   features — that is deliberate, not a bug, because the other ten features run everywhere.
-- The free tier is reachable in a DEBUG build with `HC_TIER free` if they want to see the wall
-  itself.
+- Do **not** mention `HC_TIER free` — the flag is `#if DEBUG` and compiled out of the build App
+  Review runs. A reviewer sees the fresh install's three-day taster with everything unlocked; if
+  the free-tier wall matters to the review, describe it in words or attach a screenshot.
 
 ## 6. Before the archive
 

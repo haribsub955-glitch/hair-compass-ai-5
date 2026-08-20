@@ -235,9 +235,9 @@ struct RootView: View {
         }
         // Reserve real layout space for navigation. The previous overlay obscured the final
         // card on every tab and made users scroll content underneath an active control.
-        // Round-13: the canvas fade that used to live here (behind the tab bar's now-retired
-        // ivory capsule) moved onto `FloatingTabBar` itself — the bar owns its own scrim so the
-        // frame speaks the same ink grammar wherever it's hosted, not just in RootView.
+        // The scrim backs the WHOLE chrome block here, not just the bar: when it was the bar's
+        // own background, the Wren row above it had nothing behind her and mid-scroll content
+        // collided with the tab labels at full opacity on every tab (see `TabBarScrim`).
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 8) {
                 // Wren rides directly above the bar, inside the same inset, so she reserves real
@@ -246,6 +246,7 @@ struct RootView: View {
                 WrenChatButton(tab: tab, profile: profile)
                 FloatingTabBar(selection: $tab)
             }
+            .background { TabBarScrim().padding(.top, -28) }
             // Charts can establish their own compositing layers. Flatten the complete bar
             // above them so no tab item is painted underneath a scrolling chart card.
             .compositingGroup()
@@ -428,6 +429,10 @@ struct RootView: View {
                 })
                 .environment(healthKit)
                 .environment(purchases)
+                // `\.entitlements` too, for the same inheritance reason — its `.free` default
+                // means a missing injection doesn't crash, it silently hard-locks a Pro
+                // subscriber the moment any `.proGated(…)` surface appears inside this cover.
+                .environment(\.entitlements, entitlements)
             }
         }
         // The pure launch reducer makes these cover predicates mutually exclusive. Effect
@@ -451,6 +456,9 @@ struct RootView: View {
                 BaselineFlow(profile: profile)
                     .environment(healthKit)
                     .environment(purchases)
+                    // Same as the onboarding cover: without this, `.proGated(…)` content
+                    // presented from Baseline reads the environment's `.free` default.
+                    .environment(\.entitlements, entitlements)
             }
         }
         .onChange(of: scenePhase) { _, phase in

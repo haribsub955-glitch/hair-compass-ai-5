@@ -20,9 +20,16 @@ struct ShopView: View {
 
     /// Shown above the product list, in body text rather than a footnote — 16 CFR Part 255
     /// wants it clear and conspicuous, and this codebase's honesty rules want it plain.
+    /// "May earn": the shipped catalogue links carry no affiliate tag yet, so a flat "earn"
+    /// would claim a commission that doesn't exist — and "may" stays true after a tag lands.
     static let affiliateDisclosure =
-        "Some links here earn us a commission if you buy. It never changes the price you pay, "
+        "Some links here may earn us a commission if you buy. It never changes the price you pay, "
         + "and it never affects which products appear or how they're ranked."
+
+    /// The one-line variant for screens that show a single outbound product link outside this
+    /// tab (e.g. `LabProposalCard` on Labs), where the full body-text paragraph would outweigh
+    /// the card it sits in.
+    static let linkDisclosureShort = "Link may earn us a commission. It never changes the price you pay."
 
     @State private var showInClinicOptions = false
     /// A separate presentation point from `CareView`'s own `showProcedures` (the person's booked

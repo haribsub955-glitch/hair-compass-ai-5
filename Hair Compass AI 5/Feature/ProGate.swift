@@ -49,18 +49,33 @@ struct ProGate<Content: View>: View {
         }
     }
 
+    /// Tracks the gate ScrollView's own viewport height so `lockedBody` can centre in it. Inside
+    /// a ScrollView the height proposal is nil, so the old `.frame(maxHeight: .infinity)` did
+    /// nothing and the card hugged the top of the full-screen gates (Photos, Compare,
+    /// Procedures) with all the leftover space piled below the legal links. Deliberately NOT a
+    /// `GeometryReader` around the ScrollView: on the nested surfaces (CareView, TrendsView,
+    /// LabsView put `.proGated(_:)` inside their own ScrollView) an unconstrained GeometryReader
+    /// falls back to its 10pt ideal height and would collapse the gate outright. For a nested,
+    /// unconstrained ScrollView `containerSize` is its own content-sized frame, so `minHeight`
+    /// resolves to the height it already has — a no-op exactly where centring must not meddle.
+    @State private var gateViewportHeight: CGFloat = 0
+
     /// Scrollable: `CompareView`/`ProceduresView` apply `.proGated(_:)` in place of their own
     /// `ScrollView`, so at large accessibility text sizes this card was tall enough to push its
     /// own purchase buttons off-screen — a paywall that hides the thing it exists to offer.
     private var locked: some View {
         ScrollView {
             lockedBody
+                .frame(minHeight: gateViewportHeight > 0 ? gateViewportHeight : nil)
         }
         // Several surfaces (CareView, TrendsView, LabsView…) apply `.proGated(_:)` INSIDE their
         // own ScrollView, so this one is nested. `.basedOnSize` keeps it inert whenever the card
         // already fits — no bounce, no captured pan — and it only becomes a real scroll view at
         // the accessibility sizes this exists for.
         .scrollBounceBehavior(.basedOnSize)
+        .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, new in
+            gateViewportHeight = new
+        }
     }
 
     private var lockedBody: some View {
@@ -133,7 +148,9 @@ struct ProGate<Content: View>: View {
             Spacer(minLength: 20)
         }
         .padding(.horizontal, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Width only. `maxHeight: .infinity` was dead code inside the ScrollView (nil height
+        // proposal); vertical filling is the `minHeight:` in `locked`, where the viewport is known.
+        .frame(maxWidth: .infinity)
     }
 
     private var purchaseButtons: some View {

@@ -58,12 +58,16 @@ final class PurchaseService {
     func load() async {
         isLoading = true
         defer { isLoading = false }
+        // Entitlement first: it's a local `Transaction.currentEntitlements` walk, so a genuine
+        // subscriber is recognised before — not after — the App Store round-trip for products.
+        // The old order left `isEntitlementResolved` waiting on the network fetch, which was
+        // only ever over-permissive for the free tier but slow for the paying one.
+        await refreshEntitlement()
         do {
             products = try await Product.products(for: [Self.monthlyID, Self.yearlyID])
         } catch {
             products = []
         }
-        await refreshEntitlement()
     }
 
     /// Clears a stale `.failed`/`.pending` state — call when the user dismisses the message or

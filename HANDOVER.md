@@ -57,7 +57,7 @@ Info.plist keys are the exception (they're real project config — see §9).
 | `HC_SCROLL_PRODUCTS` | Scrolls Shop to the science-products section |
 | `HC_COMPARE` / `HC_EXPORT` | Opens the Compare / Export sheet from Trends |
 | `HC_AI_STATUS <available\|notEnabled\|modelNotReady\|deviceNotEligible>` | Forces what `ProAvailability.current` reports, which drives the paywall's Apple Intelligence notice on the two AI features. It does **not** affect the purchase buttons — those are unconditional (`ProAvailability.showsPurchaseButtons`). An iOS 26 Simulator on an Apple Intelligence Mac reports `.available`, so without this the unavailable states can only be seen on physically ineligible hardware. |
-| `HC_TIER <free\|taster\|pro>` | Forces the resolved entitlement tier (`Entitlements.forcedTier`). A fresh install stamps `firstLaunchAt` and is therefore a **taster for three days**, so this is the only way to see the free tier — `LockedHistoryCard`, the four gated tabs, the suppressed widget snapshot — without waiting out the clock. |
+| `HC_TIER <free\|taster\|pro>` | Forces the resolved entitlement tier (`Entitlements.forcedTier`). A fresh install stamps `firstLaunchAt` and is therefore a **taster for three days**, so this is the only way to see the free tier — `LockedHistoryCard`, the three gated tabs (Trends, Plan, Photos), the suppressed widget snapshot — without waiting out the clock. DEBUG only: the flag is compiled out of release builds, so an App Review build cannot use it — review notes must not offer it (see §10). |
 
 Example: `xcrun simctl launch <SIM> harib.Hair-Compass-AI-5 HC_SEED_DEMO HC_TAB care`
 
@@ -264,9 +264,11 @@ and both AI sheets sit behind `ProGate`, which reads the resolved tier from `Ent
    (Ask Wren, Deep analysis) require Apple Intelligence, naming a device that has it. A reviewer on
    ineligible hardware sees **live purchase buttons plus an honest notice** naming those two
    features — the subscription sells on every iPhone because the other ten run everywhere (see
-   `ProAvailability.canRun` / `.showsPurchaseButtons`). Mention that the free tier is reachable in a
-   DEBUG build with `HC_TIER free` if a reviewer wants to see the wall itself; a fresh install is a
-   three-day taster with everything unlocked.
+   `ProAvailability.canRun` / `.showsPurchaseButtons`). Do **not** offer `HC_TIER free` in the
+   notes: the flag is `#if DEBUG` and compiled out of the build App Review actually runs. What a
+   reviewer really sees is the fresh install's three-day taster with everything unlocked — say
+   that, and describe the wall (`LockedHistoryCard` + the three gated tabs) in words or attach a
+   screenshot if the free tier matters to the review.
 
 ### Before the archive
 

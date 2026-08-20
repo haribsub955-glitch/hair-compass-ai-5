@@ -164,6 +164,23 @@ final class AffiliateStore {
         return payload.links
     }
 
+    /// The buy button's label, derived from the resolved link's own host — so the UI can never
+    /// name a merchant the tap doesn't actually go to. The label used to hardcode "View on
+    /// iHerb" while the catalogue work targeted Amazon; the moment those links landed, every
+    /// button would have named the wrong merchant directly beneath a disclosure promising
+    /// honesty. Unknown merchants get the neutral "View product" rather than a guessed name.
+    nonisolated static func merchantLabel(for url: URL) -> String {
+        guard let host = url.host()?.lowercased() else { return "View product" }
+        let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        if bare == "amazon.com" || bare.hasPrefix("amazon.") || bare.contains(".amazon.") {
+            return "View on Amazon"
+        }
+        if bare == "iherb.com" || bare.hasSuffix(".iherb.com") {
+            return "View on iHerb"
+        }
+        return "View product"
+    }
+
     /// Accept only ordinary HTTPS web URLs with a syntactically usable host and no embedded
     /// credentials. Fragments and paths are fine; an empty/whitespace link is not.
     nonisolated static func validHTTPSURL(_ value: String) -> URL? {

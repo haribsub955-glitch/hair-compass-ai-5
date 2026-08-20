@@ -64,7 +64,14 @@ struct ScienceProductsSection: View {
                         ForEach(group.items) { product in
                             ProductRow(
                                 product: product,
-                                inPlan: product.isInPlan(activeTreatmentNames: activeTreatmentNames),
+                                // Entitlement-guarded: the badge replaces the "Add to plan"
+                                // button, so for a free or lapsed viewer it would both leak
+                                // `.treatments` state through the wall (this tab is free; the
+                                // stored plan is not) and remove the tap that opens the
+                                // paywall. Without access the row always offers the button,
+                                // and the tap below gates before it ever reads the plan.
+                                inPlan: entitlements.canAccess(.treatments)
+                                    && product.isInPlan(activeTreatmentNames: activeTreatmentNames),
                                 onAdd: { addToPlan(product) }
                             )
                             if product.id != group.items.last?.id {
@@ -74,9 +81,9 @@ struct ScienceProductsSection: View {
                     }
                 }
 
-                Text("Affiliate disclosure: if you buy through these links we may earn a commission. It never changes a product's evidence rating.")
-                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
-                    .padding(.top, 4)
+                // No affiliate disclosure here: `ShopView` (this section's only host) states it
+                // once in body text above the whole product list. Two disclosures a screen apart
+                // making slightly different promises read as fine print, not honesty.
             }
         }
         // Same confirmation card as the Add-Treatment form: a prescription-only product's
@@ -125,8 +132,12 @@ struct ScienceProductsSection: View {
     /// The name-match guard makes a second tap a no-op instead of a duplicate; prescription-only
     /// products detour through the Rx confirmation card first.
     private func addToPlan(_ product: ScienceProduct) {
-        guard !product.isInPlan(activeTreatmentNames: activeTreatmentNames) else { return }
+        // Entitlement before the dedupe guard: a lapsed subscriber whose stored plan already
+        // holds this product sees the "Add to plan" button (the badge is entitlement-guarded
+        // above), and their tap must reach the paywall — with the old order it hit the
+        // `isInPlan` no-op first and the button silently did nothing.
         guard entitlements.canAccess(.treatments) else { showTreatmentsGate = true; return }
+        guard !product.isInPlan(activeTreatmentNames: activeTreatmentNames) else { return }
         if rxRequirement(for: product) != nil {
             rxConfirmProduct = product
             return
@@ -186,7 +197,10 @@ private struct ProductRow: View {
                     Button {
                         openURL(url)
                     } label: {
-                        Label("View on iHerb", systemImage: "arrow.up.right.square")
+                        // Named from the link's own host (`merchantLabel`), never hardcoded —
+                        // a hardcoded "View on iHerb" was one catalogue update away from
+                        // naming the wrong merchant under the disclosure above.
+                        Label(AffiliateStore.merchantLabel(for: url), systemImage: "arrow.up.right.square")
                             .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.accent)
                     }
                     .buttonStyle(.plain)

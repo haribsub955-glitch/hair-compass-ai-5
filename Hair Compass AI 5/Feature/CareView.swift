@@ -106,8 +106,15 @@ struct CareView: View {
                 // can't reach it, so keeping them behind this page's Pro wall would cost revenue
                 // rather than protect a feature. Everything left in this page's body is the
                 // user's own tracked record — Pro.
+                // Safety copy stays OUTSIDE the wall. This banner exists because a severity-3
+                // side effect was logged in the last 14 days; a lapsed subscriber is exactly as
+                // capable of having one as a paying one, and "worth discussing with your
+                // prescriber" must never be something a paywall withholds. It reveals nothing
+                // the free tier isn't already shown — the wall's own counter says the record
+                // exists; this says one recent entry in it deserves a clinician's attention.
+                if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
+
                 VStack(alignment: .leading, spacing: 16) {
-                    if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
                     if !routine.isEmpty {
                         routineSection.staggeredEntrance(index: 3)
                     } else {
@@ -157,6 +164,15 @@ struct CareView: View {
                     labsLedgerRow.staggeredEntrance(index: 15)
                 }
                 .proGated(.treatments)
+
+                // The honesty colophon, restated below the lock for anyone the gate turned
+                // away: "judged at 24 weeks" is expectation-setting about hair itself, not a
+                // feature, and it reads strangest of all directly under a purchase button —
+                // buying should not be what it takes to learn that patience is the deal.
+                // Entitled tiers see the same line once, in its usual seat inside the stack.
+                if !entitlements.canAccess(.treatments) {
+                    gateExplainer.staggeredEntrance(index: 7)
+                }
 
                 // Reminders sit OUTSIDE the wall, and deliberately below it: they are the app's
                 // controls, not the user's record, and a schedule you can't switch off is worse

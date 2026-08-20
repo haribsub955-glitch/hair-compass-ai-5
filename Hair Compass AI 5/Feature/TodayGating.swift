@@ -131,7 +131,11 @@ extension TodayGating {
         // see the `entries` note above. Both are strictly less than the locked-day count on
         // `LockedHistoryCard` directly above this paragraph.
         context.entryCount = entries.count
-        context.streak = HairAnalytics.loggingStreak(entryDates: entries.map(\.date))
+        // `now`/`calendar` threaded through like `HistoryAccess.visible` above — the covering
+        // test only passed on the real clock because its fixture's `now` happened to be `.now`.
+        context.streak = HairAnalytics.loggingStreak(
+            entryDates: entries.map(\.date), now: now, calendar: calendar
+        )
         return context
     }
 }
