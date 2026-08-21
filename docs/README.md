@@ -6,7 +6,8 @@ placeholders (`[DATE]`, `[SUPPORT EMAIL]`, `[SUPPORT URL]`) have already been fi
 ## Files
 
 - `index.html` — the support/marketing landing page
-- `privacy-policy.html` — describes the app as fully on-device, collecting nothing
+- `privacy-policy.html` — describes cloud AI as opt-in: DeepSeek reads a limited tracking
+  summary (no name, no photos) only after in-app consent, with everything else on-device
 - `support.html`
 
 ## Hosting
@@ -17,9 +18,10 @@ These must be publicly reachable **before** submission. Two things depend on it:
 - `PaywallLegal` renders Privacy Policy and Terms links directly on the subscription paywall. A
   dead link there is a Guideline 3.1.2 rejection.
 
-The repo is private, so GitHub Pages on `/docs` is not an option without either making the repo
-public or a paid GitHub plan. Host them anywhere that serves HTTPS — a separate public repo with
-Pages enabled, Netlify, or your own domain.
+The repo is public, so GitHub Pages serves `/docs` directly: `docs/CNAME` points the custom
+domain at `haircompass-ai.com`, and both legal pages are already live there over HTTPS. Pages
+publishes from the **default branch** (`rebuild/clinical-minimal`) — edits to any file here take
+effect only once merged, not on push to a feature branch.
 
 ## App Update
 

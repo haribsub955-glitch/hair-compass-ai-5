@@ -2,6 +2,15 @@ import XCTest
 
 final class Hair_Compass_AI_5UITests: XCTestCase {
 
+    /// The timeout for the FIRST element wait after `app.launch()`. Whichever UI test runs first
+    /// pays the cold-start bill — clone-simulator boot, app install, SwiftUI's launch task — while
+    /// the unit-test clone hammers the same host CPU in parallel. `testLaunchRitualIsSkippable`
+    /// flaked at exactly this seam (18.66s run ≈ ~10s cold launch + its full former 8s wait, and
+    /// the same test passed untouched on a warm re-run). A satisfied wait returns immediately, so
+    /// the generous ceiling costs green runs nothing. Later waits stay short: once one element has
+    /// appeared, the app is warm and slowness is a real finding, not launch noise.
+    private static let coldLaunchTimeout: TimeInterval = 30
+
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -15,7 +24,7 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         app.launch()
 
         let primary = app.buttons["onboardIntroPrimary"]
-        XCTAssertTrue(primary.waitForExistence(timeout: 8), "first run should open on the illustrated cover")
+        XCTAssertTrue(primary.waitForExistence(timeout: Self.coldLaunchTimeout), "first run should open on the illustrated cover")
 
         // Walk the cover to its end — "Continue" on each page, "Set up my compass" on the last.
         // Bounded rather than a fixed four taps so adding a page doesn't break the test.
@@ -37,7 +46,7 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         app.launch()
 
         let replay = app.buttons["replayOnboarding"]
-        XCTAssertTrue(replay.waitForExistence(timeout: 8))
+        XCTAssertTrue(replay.waitForExistence(timeout: Self.coldLaunchTimeout))
         replay.tap()
 
         // The walkthrough opens on the illustrated cover's first page.
@@ -61,7 +70,7 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         app.launch()
 
         let skip = app.buttons["ritualSkip"]
-        XCTAssertTrue(skip.waitForExistence(timeout: 8))
+        XCTAssertTrue(skip.waitForExistence(timeout: Self.coldLaunchTimeout))
         skip.tap()
 
         // Skipping reveals the normal app (Today tab bar) underneath.

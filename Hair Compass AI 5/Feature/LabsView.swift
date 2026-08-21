@@ -1,9 +1,15 @@
 import SwiftData
 import SwiftUI
 
+/// Reached from a row inside `CareView`'s Plan tab and presented as its own sheet (Task 9: Labs
+/// lost its own tab). It wraps its own `NavigationStack` with a "Done" dismiss, mirroring
+/// `ProceduresView` and `InClinicOptionsView` — every other sheet-presented full view in the app
+/// follows that pattern, and this one was left as bare tab content (no dismiss chrome at all,
+/// swipe-down only) until the Task 9 fix-round caught it.
 struct LabsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \LabResult.collectedAt, order: .reverse) private var labs: [LabResult]
     @State private var showAdd = false
     @State private var showProposalDetail = false
@@ -59,6 +65,7 @@ struct LabsView: View {
     }
 
     var body: some View {
+        NavigationStack {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenHeader(
@@ -111,12 +118,17 @@ struct LabsView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+            .proGated(.labs)
         }
         // Condenses the header's serif title as the page scrolls — direct 1:1 offset tracking.
         .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, newY in
             headerCondense = Clinical.headerCondenseFraction(newY)
         }
         .clinicalScreen()
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+        }
         .sheet(isPresented: $showAdd) { AddLabSheet() }
         // Persists the honest proposal beyond the one-shot pop-up in AddLabSheet — tapping the
         // banner reopens the same card any time, not just right after logging the value.
@@ -147,6 +159,7 @@ struct LabsView: View {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_ADDLAB") { showAdd = true }
             #endif
+        }
         }
     }
 

@@ -549,7 +549,9 @@ struct HairCompassCheckInWidget: Widget {
         StaticConfiguration(kind: kind, provider: HairCompassProvider()) { entry in
             HairCompassWidgetView(entry: entry)
         }
-        .configurationDisplayName("Compass")
+        // One name in every system surface: the gallery here, Settings/battery via the
+        // extension's CFBundleDisplayName — both say "Check-In".
+        .configurationDisplayName("Check-In")
         .description("Your rings, streak, and a one-tap check-in — on the Home Screen and Lock Screen.")
         .supportedFamilies([
             .systemSmall, .systemMedium,

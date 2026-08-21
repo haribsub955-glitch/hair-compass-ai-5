@@ -23,7 +23,8 @@ enum CompanionMoment: CaseIterable {
     case celebrating   // milestone / streak celebration
 }
 
-/// Wren — the name and personality of the on-device AI. This is the single home of the
+/// Wren — the name and personality of the AI companion (engine varies: cloud once consented,
+/// on-device otherwise). This is the single home of the
 /// companion's voice: a pure mapping, no SwiftUI, no state, fully unit-tested (mirrors how
 /// `HairChatPrompt` centralizes the chat's scope and `HairInsightCalculator` centralizes stats).
 ///
@@ -56,12 +57,12 @@ enum Companion {
         switch tab {
         case .today:
             return "Logged today? I can tell you how this week compares to your last one."
+        case .shop:
+            return "Ask me whether something here actually fits your plan before you add it."
         case .trends:
             return "See a dip or a climb here? Ask me what else moved at the same time."
         case .care:
             return "Ask me whether your routine is actually landing — and where it slips."
-        case .labs:
-            return "Ask me what a result means in the context of everything else you've logged."
         case .photos:
             return "Ask me what's changed since your baseline photo — and what hasn't."
         }
@@ -72,9 +73,9 @@ enum Companion {
     static func chatFocus(for tab: AppTab) -> String {
         switch tab {
         case .today:  return "The person's whole tracked record, opened from the Today screen."
+        case .shop:   return "The evidence-graded products and in-clinic options the person is weighing, opened from the Guide screen."
         case .trends: return "The person's trends over time, opened from the Trends screen."
         case .care:   return "The person's routine and treatment adherence, opened from the Plan screen."
-        case .labs:   return "The person's lab results in the context of their record, opened from the Labs screen."
         case .photos: return "The person's progress photos over time, opened from the Photos screen."
         }
     }

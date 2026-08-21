@@ -12,6 +12,10 @@ struct ProgressReportSheet: View {
     /// argument keep building.
     var photos: [PhotoRecord] = []
     @Environment(\.dismiss) private var dismiss
+    /// Read directly (not just via `ProGate` below) so the toolbar's `ShareLink` can be hidden
+    /// on a locked tier — without this, someone could share the full report text out through the
+    /// toolbar without ever unlocking the report body itself.
+    @Environment(\.entitlements) private var entitlements
 
     var body: some View {
         NavigationStack {
@@ -47,15 +51,21 @@ struct ProgressReportSheet: View {
                 }
                 .padding(20)
             }
+            .proGated(.reports)
             .clinicalScreen()
             .navigationTitle("Progress report")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    ShareLink(item: report.plainText()) {
-                        Image(systemName: "square.and.arrow.up")
+                // This report's own data is already covered by the free general Export (Trends'
+                // header), so hiding the ShareLink here on a locked tier is about not letting the
+                // toolbar hand out the gated content, not about Guideline 3.1.2(a) reachability.
+                if entitlements.canAccess(.reports) {
+                    ToolbarItem(placement: .topBarLeading) {
+                        ShareLink(item: report.plainText()) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .tint(Clinical.accent)
                     }
-                    .tint(Clinical.accent)
                 }
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }

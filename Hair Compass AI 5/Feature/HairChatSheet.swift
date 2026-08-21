@@ -7,8 +7,10 @@ import UIKit
 /// JSON and allows restricted chatting — hair science and the person's own data only (the
 /// restriction lives in `HairChatPrompt.system`). Header copy and starter questions are
 /// parameterized (`eyebrow`/`starterKind`) so each entry point reads naturally. Text
-/// only: photos never enter this feature, and it runs entirely on-device (Apple Intelligence) —
-/// nothing leaves the device. Shows a clear card on hardware without on-device AI.
+/// only: photos never enter this feature. Answers come from the cloud model (DeepSeek) once
+/// consented — `CloudAIConsentCard` is shown here before the first request could ever leave the
+/// device — with Apple Intelligence as the on-device path otherwise; a clear card explains the
+/// state when neither engine can run.
 struct HairChatSheet: View {
     /// `AIContext.jsonString()` snapshot built by the caller when the sheet opens.
     let contextJSON: String
@@ -26,29 +28,39 @@ struct HairChatSheet: View {
     @Environment(\.openURL) private var openURL
     @State private var service = HairChatService()
     @State private var draft = ""
+    /// Bumped when the consent card records a choice — `CloudAIConsent` lives in UserDefaults,
+    /// which SwiftUI cannot observe, so this is what re-evaluates `service.engine`.
+    @State private var consentVersion = 0
     @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            ProGate(
-                feature: "AI hair chat",
-                symbol: "bubble.left.and.text.bubble.right",
-                description: "Ask anything about your tracked data — grounded in your own numbers, never a diagnosis."
-            ) {
+            ProGate(feature: .askWren) {
                 gatedContent
             }
         }
         .clinicalScreen()
+        .onDisappear { service.cancel() }
     }
 
     @ViewBuilder
     private var gatedContent: some View {
-        if service.isAvailable {
+        // Belt-and-braces: the re-render when consent is recorded is driven by the
+        // `consentVersion` @State bump in `onDecided` below, not by reading it here — future
+        // refactors must keep that @State mutation.
+        let _ = consentVersion
+        switch service.engine {
+        case .cloud, .onDevice:
             conversation
             inputBar
-        } else {
-            unavailableNotice
+        case .needsCloudConsent:
+            ScrollView(showsIndicators: false) {
+                CloudAIConsentCard { consentVersion += 1 }
+                    .padding(20)
+            }
+        case .unavailable(let message):
+            unavailableNotice(message)
         }
     }
 
@@ -93,9 +105,7 @@ struct HairChatSheet: View {
                         emptyState
                     }
                     ForEach(service.messages) { bubble($0) }
-                    if let streaming = service.streamingText {
-                        streamingBubble(streaming)
-                    } else if service.isRunning {
+                    if service.isRunning {
                         thinkingRow.id("thinking")
                     }
                     if let error = service.errorMessage {
@@ -111,7 +121,6 @@ struct HairChatSheet: View {
                     value: service.messages.count
                 )
                 .animation(.easeOut(duration: 0.2), value: service.isRunning)
-                .animation(.easeOut(duration: 0.2), value: service.streamingText != nil)
             }
             .onChange(of: service.messages.count) {
                 guard let last = service.messages.last else { return }
@@ -120,10 +129,6 @@ struct HairChatSheet: View {
             .onChange(of: service.isRunning) {
                 guard service.isRunning else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("thinking", anchor: .bottom) }
-            }
-            .onChange(of: service.streamingText) {
-                guard service.streamingText != nil else { return }
-                proxy.scrollTo("streaming", anchor: .bottom)
             }
         }
     }
@@ -156,36 +161,19 @@ struct HairChatSheet: View {
         .id(message.id)
     }
 
-    /// The assistant's reply rendered live as it streams in, replacing the thinking dots the
-    /// moment the first token arrives. Same look as a finished assistant bubble in `bubble(_:)`,
-    /// just re-rendered on every new snapshot instead of once at the end.
-    private func streamingBubble(_ text: String) -> some View {
-        HStack(spacing: 0) {
-            Text(text)
-                .font(Clinical.caption(14))
-                .foregroundStyle(Clinical.ink)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Clinical.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Clinical.hairline, lineWidth: 1)
-                )
-            Spacer(minLength: 44)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .id("streaming")
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(Companion.name) is typing: \(text)")
-    }
-
     private var thinkingRow: some View {
         HStack(spacing: 8) {
             CompanionView(moment: .thinking, variant: .pose, size: 30)
             Text("\(Companion.name) is thinking")
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.tertiary)
+            // The breathing-dots ellipsis: on-device generation takes real seconds and this
+            // row was the app's single most-watched dead moment — static text beside a static
+            // pose. The dots are the sentence's punctuation, not a spinner, so they sit on the
+            // text baseline at text scale. (Under Reduce Motion they hold their resting frame.)
+            ClinicalLottie(name: "wren-thinking")
+                .frame(width: 34, height: 12)
+                .offset(y: 2)
         }
         .transition(.opacity)
         .accessibilityLabel("\(Companion.name) is thinking")
@@ -280,19 +268,19 @@ struct HairChatSheet: View {
         Task { await service.send(trimmed, context: contextJSON, focus: focus) }
     }
 
-    // Shown when on-device chat can't run right now. Chat is on-device only, so there's no cloud
-    // fallback — but the reason matters: someone who's simply switched Apple Intelligence off, or
+    // Shown when neither engine can answer right now — cloud declined (or unconfigured) and no
+    // on-device model. The reason matters: someone who's switched Apple Intelligence off, or
     // whose model is still downloading, gets a next step instead of being told their iPhone can't
     // do this. Honest and reassuring either way: everything else in the app still works.
-    private var unavailableNotice: some View {
+    private func unavailableNotice(_ message: String) -> some View {
         let status = service.availability
         return VStack(spacing: 12) {
             Spacer(minLength: 20)
             CompanionView(moment: .resting, variant: .avatar, size: 56)
-            Text("On-device AI unavailable")
+            Text("AI unavailable")
                 .font(Clinical.headline(18))
                 .foregroundStyle(Clinical.ink)
-            Text(status.message)
+            Text(message)
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)

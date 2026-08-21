@@ -24,6 +24,7 @@ struct LogSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.entitlements) private var entitlements
     @Query(sort: \ProcedureAppointment.date, order: .reverse) private var procedureAppointments: [ProcedureAppointment]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
@@ -77,7 +78,10 @@ struct LogSheet: View {
                 VStack(alignment: .leading, spacing: 22) {
                     CheckInJourneyHeader(onSelect: scrollToChapter)
 
-                    if existing == nil, matchedEntry == nil, let priorEntry {
+                    // One tap loads the most recent PAST entry's values into the live gauges —
+                    // a read of locked history, so it belongs behind `.history` like the date
+                    // scrub below. `priorEntry` is nil without it, so this is belt and braces.
+                    if existing == nil, matchedEntry == nil, canReadHistory, let priorEntry {
                         PrefillYesterdayButton(highlighted: valuesPrefilled) {
                             load(from: priorEntry)
                             valuesPrefilled = true
@@ -86,7 +90,12 @@ struct LogSheet: View {
                     }
 
                     section("Day") {
-                        if existing == nil {
+                        // The 60-day scrub is the wall's own back door: every scrubbed day ran
+                        // `syncForm(to:)` → `fetchEntry(on:)` → `load(from:)`, writing that day's
+                        // stored values into the gauges. Sixty taps read the whole locked record,
+                        // so the strip itself is `.history`. Logging TODAY is untouched — this
+                        // branch falls back to the same fixed date line the edit path shows.
+                        if existing == nil, canReadHistory {
                             DateStripPicker(selection: $logDate, range: backfillRange)
                             if matchedEntry != nil {
                                 Text("This day already has an entry — you're editing it.")
@@ -186,7 +195,12 @@ struct LogSheet: View {
 
                     // Optional, minimal, and fully independent of the DailyEntry save below —
                     // it acts immediately on tap and never gates or is gated by the main Save.
-                    if Calendar.current.isDateInToday(logDate) {
+                    // `.procedures`-gated: this row names a scheduled appointment ("PRP ·
+                    // Scheduled today") and writes a ProcedureAppointment, and both the ledger
+                    // and the list that record belongs to are behind `ProceduresView`'s gate —
+                    // the same "don't let a free tier fill in a form that then vanishes behind a
+                    // lock" rule the Add-treatment button already follows.
+                    if Calendar.current.isDateInToday(logDate), entitlements.canAccess(.procedures) {
                         section("Procedure") { procedureControl }
                     }
 
@@ -205,7 +219,12 @@ struct LogSheet: View {
                     // in the whole export" — this used to be three taps deep (Plan → treatment
                     // row → detail sheet → Log side effect); now it's one, right where today's
                     // context is already in mind.
-                    if let firstActiveDaily {
+                    // `.treatments`-gated: `TreatmentDetailSheet` carries no gate of its own —
+                    // it is reachable only from inside CareView's — so on a free tier this
+                    // shortcut was a two-tap route from the free Today screen to a locked
+                    // treatment's name (its navigation title), schedule, refill and progress
+                    // report. Same reader, different door.
+                    if entitlements.canAccess(.treatments), let firstActiveDaily {
                         Button {
                             sideEffectTreatment = firstActiveDaily
                         } label: {
@@ -255,8 +274,13 @@ struct LogSheet: View {
         treatments.first { $0.isActive && !$0.slots.isEmpty }
     }
 
+    /// Whether this tier may read a stored PAST day back onto the screen. Writing today is free
+    /// forever on every tier — see `HistoryAccess.canReadBack`.
+    private var canReadHistory: Bool { entitlements.canAccess(.history) }
+
     private var priorEntry: DailyEntry? {
-        entries.first { $0.date < Calendar.current.startOfDay(for: logDate) }
+        guard canReadHistory else { return nil }
+        return entries.first { $0.date < Calendar.current.startOfDay(for: logDate) }
     }
 
     // MARK: Day selection
@@ -490,6 +514,11 @@ struct LogSheet: View {
     /// calendar day, fetched with two captured Date constants (SwiftData predicates can't
     /// call Calendar).
     private func fetchEntry(on day: Date) -> DailyEntry? {
+        // The wall's last line inside this sheet: a raw FetchDescriptor bypasses `HistoryAccess`
+        // entirely, so the question it never asked is asked here instead. Today always passes,
+        // which is what keeps editing today's own entry (and the one-row-per-day guard for a
+        // free user's save) working exactly as before.
+        guard HistoryAccess.canReadBack(day: day, entitlements: entitlements) else { return nil }
         let bounds = HairAnalytics.dayBounds(for: day)
         let lower = bounds.lowerBound
         let upper = bounds.upperBound

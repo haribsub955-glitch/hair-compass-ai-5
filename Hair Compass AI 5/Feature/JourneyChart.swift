@@ -71,6 +71,7 @@ struct JourneyChart: View {
                 if let selectedMarker { markerDisclosure(selectedMarker) }
             }
         }
+        .proGated(.journey)
         .sheet(item: $editingTrigger) { AddTriggerSheet(existing: $0) }
     }
 
