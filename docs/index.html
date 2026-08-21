@@ -3,99 +3,172 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hair Compass AI</title>
+  <title>Hair Compass AI — an honest record of slow change</title>
+  <meta name="description" content="Hair Compass AI is a private field journal for hair and scalp health on iPhone: daily check-ins, standardized photos, routines, labs, and triggers — read by on-device AI. Nothing leaves your phone.">
+  <link rel="icon" type="image/png" href="./assets/brand/appicon.png">
+  <link rel="apple-touch-icon" href="./assets/brand/appicon.png">
+  <link rel="stylesheet" href="./assets/site.css">
   <style>
-    :root {
-      --bg: #f4f7f8;
-      --card: rgba(255, 255, 255, 0.92);
-      --text: #1f2a28;
-      --muted: #5d6c68;
-      --accent: #2c6760;
-      --line: #d7e3df;
+    /* Page-specific: the hero and its corner sprig. */
+    .hero {
+      position: relative;
+      padding: 96px 0 10px;
+      text-align: center;
+      overflow: hidden;
     }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(144, 189, 222, 0.35), transparent 30%),
-        radial-gradient(circle at bottom right, rgba(224, 197, 160, 0.30), transparent 28%),
-        var(--bg);
-      color: var(--text);
-      line-height: 1.6;
+    .sprig {
+      position: absolute;
+      top: -30px;
+      right: -48px;
+      width: min(320px, 44vw);
+      opacity: 0.5;
+      pointer-events: none;
     }
-    .wrap {
-      max-width: 860px;
-      margin: 0 auto;
-      padding: 40px 20px 80px;
+    .compass {
+      width: min(220px, 52vw);
+      margin: 0 auto 34px;
+      display: block;
     }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 24px;
-      padding: 28px;
-      backdrop-filter: blur(12px);
-      box-shadow: 0 20px 50px rgba(37, 67, 62, 0.08);
+    .hero .lede {
+      max-width: 560px;
+      margin: 0 auto 26px;
+      font-size: 1.08rem;
     }
-    h1, h2 { line-height: 1.2; margin: 0 0 14px; }
-    h1 { font-size: 2.2rem; letter-spacing: -0.03em; }
-    p, li { color: var(--muted); font-size: 1rem; }
-    .eyebrow {
-      display: inline-block;
-      margin-bottom: 12px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: #e3efec;
-      color: var(--accent);
-      font-weight: 700;
-      font-size: 0.8rem;
-      letter-spacing: 0.04em;
+    .hero-cta {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
+      color: var(--copper);
+      margin: 0;
     }
-    .links {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 14px;
-      margin-top: 24px;
-    }
-    a.card-link {
-      display: block;
-      text-decoration: none;
-      color: inherit;
-      background: white;
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 18px;
-    }
-    a.card-link strong {
-      display: block;
-      margin-bottom: 6px;
-      color: var(--text);
+    .hero-cta .sep { color: var(--hairline); padding: 0 10px; }
+    .hero-cta a { color: var(--tertiary); }
+    .hero-cta a:hover { color: var(--copper); }
+    .centered { text-align: center; }
+    .centered .lede { max-width: 580px; margin-left: auto; margin-right: auto; }
+    .tier-caption {
+      font-size: 0.86rem;
+      color: var(--tertiary);
+      margin-top: 6px;
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <div class="eyebrow">Hair Compass AI</div>
-      <h1>Support Hub</h1>
-      <p>Public pages for Hair Compass AI app support and App Store submission requirements.</p>
 
-      <div class="links">
-        <a class="card-link" href="./balanced-eating.html">
-          <strong>Balanced Eating Guide</strong>
-          See how too little food and regularly unbalanced meals can both affect energy, then build a more balanced plate.
-        </a>
-        <a class="card-link" href="./privacy-policy.html">
-          <strong>Privacy Policy</strong>
-          Review how Hair Compass AI handles photos, Health data, AI features, subscriptions, and affiliate links.
-        </a>
-        <a class="card-link" href="./support.html">
-          <strong>Support</strong>
-          Get product support information for subscriptions, AI features, Health access, and app permissions.
-        </a>
+  <main>
+    <header class="hero">
+      <img class="sprig" src="./assets/brand/sprig.png" alt="" aria-hidden="true">
+      <div class="col">
+        <img class="compass rise" src="./assets/brand/compass.png" alt="A gouache compass rose inside a laurel wreath — the Hair Compass AI emblem">
+        <p class="eyebrow rise rise-1">Hair Compass AI &nbsp;·&nbsp; for iPhone</p>
+        <h1 class="rise rise-2">An honest record<br>of slow change.</h1>
+        <p class="lede rise rise-3">Hair changes over months, not mornings. Hair Compass AI keeps the daily record — scalp, shedding, routine, photos, labs — and reads it back with on-device intelligence. Everything stays on your iPhone.</p>
+        <p class="hero-cta rise rise-4">Arriving on the App&nbsp;Store<span class="sep">|</span><a href="./support.html">Support</a></p>
+      </div>
+
+      <div class="wide">
+        <div class="plates rise rise-4">
+          <figure class="plate">
+            <img src="./assets/brand/screen-today.jpg" alt="The Today screen: a serif 'Minimal' shedding readout, a copper Compass Score ring at 80, and a quiet ledger of scalp, sleep, stress, and routine entries" loading="eager">
+            <figcaption>Today — the daily ledger</figcaption>
+          </figure>
+          <figure class="plate">
+            <img src="./assets/brand/screen-trends.jpg" alt="The Trends screen: a three-month shedding line easing from Elevated toward Minimal, dose tick-marks beneath, and the honest note 'Too early to judge — week 20 of 24'" loading="lazy">
+            <figcaption>Trends — months at a glance</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <img class="seam" src="./assets/brand/strand.png" alt="" aria-hidden="true">
+    </header>
+
+    <section aria-labelledby="ledger-title">
+      <div class="col">
+        <p class="eyebrow">What you keep</p>
+        <h2 id="ledger-title">Six quiet records, about thirty seconds a day.</h2>
+        <p>One check-in, and the day is on file. Each record is small on its own; kept daily, they become the only thing that can actually answer "is this working?"</p>
+
+        <div class="ledger">
+          <div class="ledger-row">
+            <span class="ledger-key">Check-in</span>
+            <span class="ledger-value">Scalp, shedding, oil, stress</span>
+            <p class="ledger-note">Discrete taps, not essays. The scales match what clinicians ask about.</p>
+          </div>
+          <div class="ledger-row">
+            <span class="ledger-key">Photos</span>
+            <span class="ledger-value">Same angle, same light</span>
+            <p class="ledger-note">Standardized capture, so a comparison months apart is a real comparison.</p>
+          </div>
+          <div class="ledger-row">
+            <span class="ledger-key">Routine</span>
+            <span class="ledger-value">What you actually did</span>
+            <p class="ledger-note">Morning and evening steps, checked off as they happen.</p>
+          </div>
+          <div class="ledger-row">
+            <span class="ledger-key">Medications</span>
+            <span class="ledger-value">Doses as taken</span>
+            <p class="ledger-note">Adherence lives next to the trend line it's supposed to move.</p>
+          </div>
+          <div class="ledger-row">
+            <span class="ledger-key">Labs</span>
+            <span class="ledger-value">Ferritin, vitamin D, thyroid&hellip;</span>
+            <p class="ledger-note">Results with reference flags, kept where your history can explain them.</p>
+          </div>
+          <div class="ledger-row">
+            <span class="ledger-key">Triggers</span>
+            <span class="ledger-value">Illness, stress, procedures</span>
+            <p class="ledger-note">The events that echo in your hair eight to twelve weeks later.</p>
+          </div>
+        </div>
+      </div>
+      <img class="seam" src="./assets/brand/strand.png" alt="" aria-hidden="true">
+    </section>
+
+    <section class="centered" aria-labelledby="ai-title">
+      <div class="col">
+        <p class="eyebrow">On-device intelligence</p>
+        <h2 id="ai-title">The analysis never leaves your hand.</h2>
+        <p class="lede">Daily insights, deep analysis, and the hair chat run entirely on your iPhone with Apple&nbsp;Intelligence. No account, no server, no third-party AI — your records are never uploaded, because there is nothing to upload them to.</p>
+
+        <div class="callout" style="text-align:left; max-width:560px; margin-left:auto; margin-right:auto;">
+          <span class="callout-mark" aria-hidden="true">i</span>
+          <p><strong>Private by design.</strong> Check-ins, photos, labs, and Health data are stored only on your device. The <a href="./privacy-policy.html">privacy policy</a> is short because there is little to disclose.</p>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="honesty-title">
+      <div class="col">
+        <p class="eyebrow">The house rule</p>
+        <h2 id="honesty-title">No before-and-after theater.</h2>
+        <p>You will not find retouched scalps or ninety-day promises here, because hair biology does not work that way. The app waits a full treatment cycle — twenty-four weeks for density — before it will call a verdict, and until then it says so, plainly: <em>"Too early to judge."</em></p>
+        <p>Every suggestion inside the app carries its evidence tier, worn openly:</p>
+        <div class="tier-row" role="img" aria-label="Evidence tier badges: strong, moderate, and weak">
+          <span class="tier tier-strong">EVIDENCE · STRONG</span>
+          <span class="tier tier-moderate">EVIDENCE · MODERATE</span>
+          <span class="tier tier-weak">EVIDENCE · WEAK</span>
+        </div>
+        <p class="tier-caption">When the science is thin, the label says so — and the design lets it recede.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="col">
+      <div class="colophon">
+        <p>Hair Compass AI keeps records. It does not diagnose, and it does not replace your clinician.</p>
+        <nav class="foot-links" aria-label="Footer">
+          <a href="./support.html">Support</a>
+          <a href="./privacy-policy.html">Privacy policy</a>
+          <a href="mailto:harib.alazri@gmail.com">Contact</a>
+        </nav>
+        <p class="foot-fine">© 2026 Hair Compass AI</p>
       </div>
     </div>
-  </div>
+    <img class="meadow" src="./assets/brand/meadow.png" alt="" aria-hidden="true">
+  </footer>
+
 </body>
 </html>
