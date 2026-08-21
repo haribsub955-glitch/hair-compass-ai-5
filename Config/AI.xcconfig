@@ -1,0 +1,13 @@
+// Cloud AI (DeepSeek) build-time configuration.
+//
+// This repository is PUBLIC, so the real API key lives in Secrets.local.xcconfig — gitignored,
+// present only on the build machine. The optional include below quietly does nothing when that
+// file is missing: the key resolves empty, `CloudAIConfig.isConfigured` reads false, and the
+// app falls back to on-device AI (Apple Intelligence) exactly as it behaved before the cloud
+// path existed. A fresh clone therefore always builds.
+//
+// The value flows: Secrets.local.xcconfig -> this build setting -> Info.plist (HCDeepSeekAPIKey,
+// via $(HC_DEEPSEEK_API_KEY)) -> CloudAIConfig.current at runtime.
+HC_DEEPSEEK_API_KEY =
+
+#include? "Secrets.local.xcconfig"

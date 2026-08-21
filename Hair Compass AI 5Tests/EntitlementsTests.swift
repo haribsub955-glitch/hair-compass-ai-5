@@ -36,11 +36,12 @@ struct EntitlementsTests {
         }
     }
 
-    /// The split that lets Pro sell on an iPhone 14: exactly two features need
-    /// on-device models, and every other one works on any supported phone.
-    @Test func onlyTheTwoAIFeaturesNeedAppleIntelligence() {
-        let needsAI = ProFeature.allCases.filter(\.requiresAppleIntelligence)
-        #expect(Set(needsAI) == [.askWren, .deepAnalysis])
+    /// The split that shapes every AI disclosure: exactly two features are AI features. With
+    /// the cloud model configured they run on any iPhone; in a no-cloud-key build they need
+    /// Apple Intelligence — either way, every other feature works on any supported phone.
+    @Test func onlyTheTwoAIFeaturesAreAI() {
+        let ai = ProFeature.allCases.filter(\.usesAI)
+        #expect(Set(ai) == [.askWren, .deepAnalysis])
     }
 
     private func day(_ offset: Int, from base: Date) -> Date {

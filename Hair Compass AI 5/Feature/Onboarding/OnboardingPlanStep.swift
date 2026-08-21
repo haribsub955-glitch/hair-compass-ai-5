@@ -301,13 +301,13 @@ struct OnboardingPlanStep: View {
             Eyebrow(text: "What Pro adds")
 
             FlowLayout(spacing: 8) {
-                ForEach(ProFeature.allCases.filter { !$0.requiresAppleIntelligence }, id: \.self) { feature in
+                ForEach(ProFeature.allCases.filter { !$0.usesAI }, id: \.self) { feature in
                     ProFeatureChip(feature: feature)
                 }
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(ProFeature.allCases.filter(\.requiresAppleIntelligence), id: \.self) { feature in
+                ForEach(ProFeature.allCases.filter(\.usesAI), id: \.self) { feature in
                     ProFeatureChip(feature: feature)
                 }
                 ProAvailabilityNotice(status: availability)
@@ -516,29 +516,34 @@ struct OnboardingPlanStep: View {
     }
 }
 
-/// One row in `proAdds`'s checklist — a checkmark for the ten features every iPhone runs, or a
-/// marked row for the two that need Apple Intelligence. Deliberately plain (no card background,
-/// no border, no shadow): twelve of these is already a lot of ink on one screen, and this
-/// codebase's screen-art grammar reserves heavier chrome for the one thing per screen that's
-/// meant to be looked at, not read past. `gateDescription` isn't shown on screen — the row itself
-/// is a title-only chip so the list stays scannable — but it still does its job as the
-/// accessibility label, so VoiceOver hears the same one-line explanation `ProGate` shows visually.
+/// One row in `proAdds`'s checklist — a checkmark for the ten features every iPhone runs, and a
+/// marked row for the two AI features. With the cloud model configured (the shipping build) the
+/// AI rows carry a quiet "AI" tag and no warning — they run on every iPhone; only a build
+/// without the cloud key falls back to the "Needs Apple Intelligence" disclosure. Deliberately
+/// plain (no card background, no border, no shadow): twelve of these is already a lot of ink on
+/// one screen, and this codebase's screen-art grammar reserves heavier chrome for the one thing
+/// per screen that's meant to be looked at, not read past. `gateDescription` isn't shown on
+/// screen — the row itself is a title-only chip so the list stays scannable — but it still does
+/// its job as the accessibility label, so VoiceOver hears the same one-line explanation
+/// `ProGate` shows visually.
 private struct ProFeatureChip: View {
     let feature: ProFeature
 
-    private var isAI: Bool { feature.requiresAppleIntelligence }
+    private var isAI: Bool { feature.usesAI }
+    /// Whether this row must disclose a hardware requirement — only in a no-cloud-key build.
+    private var needsAppleIntelligence: Bool { isAI && !CloudAIConfig.current.isConfigured }
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: isAI ? "exclamationmark.triangle" : "checkmark")
+            Image(systemName: needsAppleIntelligence ? "exclamationmark.triangle" : "checkmark")
                 .font(Clinical.caption(11))
-                .foregroundStyle(isAI ? Clinical.warning : Clinical.accent)
+                .foregroundStyle(needsAppleIntelligence ? Clinical.warning : Clinical.accent)
             Text(feature.gateTitle)
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.ink)
             if isAI {
                 Spacer(minLength: 8)
-                Text("Needs Apple Intelligence")
+                Text(needsAppleIntelligence ? "Needs Apple Intelligence" : "AI")
                     .font(Clinical.caption(11))
                     .foregroundStyle(Clinical.tertiary)
             }
@@ -546,7 +551,7 @@ private struct ProFeatureChip: View {
         .frame(maxWidth: isAI ? .infinity : nil, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            isAI
+            needsAppleIntelligence
                 ? "\(feature.gateTitle). \(feature.gateDescription). Needs Apple Intelligence."
                 : "\(feature.gateTitle). \(feature.gateDescription). Included with Pro."
         )

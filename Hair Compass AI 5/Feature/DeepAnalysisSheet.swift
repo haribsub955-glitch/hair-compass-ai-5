@@ -2,15 +2,21 @@ import SwiftData
 import SwiftUI
 import UIKit
 
-/// Pro "deep analysis": a single, on-device written summary of the full tracking record via Apple
-/// Intelligence (Foundation Models). Everything stays on the device — no network, no key, no
-/// consent. Text only: it reasons over the deterministic `AIContext`, never over photo pixels
-/// (Foundation Models has no image input), so scalp photos are not sent anywhere. Framed as
-/// record-keeping, never diagnosis. Shows a clear card on hardware without on-device AI.
+/// Pro "deep analysis": a single written summary of the full tracking record. Text only: it
+/// reasons over the deterministic `AIContext`, never over photo pixels, so scalp photos are not
+/// sent anywhere. Framed as record-keeping, never diagnosis.
+///
+/// Engine order (see `AIEngine`): the cloud model (DeepSeek) writes the summary once consented —
+/// `CloudAIConsentCard` is shown here before the first request could ever leave the device —
+/// with Apple Intelligence as the on-device path otherwise; a clear card explains the state when
+/// neither engine can run.
 struct DeepAnalysisSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
-    @State private var service = OnDeviceAnalysisService()
+    @State private var service = HairAnalysisService()
+    /// Bumped when the consent card records a choice — `CloudAIConsent` lives in UserDefaults,
+    /// which SwiftUI cannot observe, so this is what re-evaluates `service.engine`.
+    @State private var consentVersion = 0
     @State private var showChat = false
     @State private var chatDetent: PresentationDetent = .large
     @State private var chatContext = ""
@@ -59,21 +65,25 @@ struct DeepAnalysisSheet: View {
                 BrandWash(art: BrandArt.analysis, height: 138, opacity: 0.55, fade: 0.5)
                     .padding(.horizontal, -20)
                     .padding(.top, -8)
+                let _ = consentVersion
                 ClinicalCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        Eyebrow(text: "Record summary · on-device")
-                        Text("Writes a plain-language summary of your recent readings, treatments and labs using Apple Intelligence. It runs entirely on your iPhone — nothing leaves the device — and it's record-keeping, not diagnosis.")
+                        Eyebrow(text: engineEyebrow)
+                        Text(engineDescription)
                             .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
                     }
                 }
 
-                if !service.isAvailable {
+                switch service.engine {
+                case .needsCloudConsent:
+                    CloudAIConsentCard { consentVersion += 1 }
+                case .unavailable(let message):
                     let status = service.availability
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: "sparkles").font(Clinical.caption(14)).foregroundStyle(Clinical.warning)
-                                Text(status.message)
+                                Text(message)
                                     .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                             }
                             if status.showsSettingsButton {
@@ -86,6 +96,8 @@ struct DeepAnalysisSheet: View {
                             }
                         }
                     }
+                case .cloud, .onDevice:
+                    EmptyView()
                 }
 
                 // Streams into view as the on-device model writes it: while running, this shows
@@ -146,6 +158,28 @@ struct DeepAnalysisSheet: View {
         }
     }
 
+    // MARK: Engine copy — the description must say where the summary is written, honestly, for
+    // whichever engine would actually run right now.
+
+    private var engineEyebrow: String {
+        switch service.engine {
+        case .cloud: "Record summary · cloud AI"
+        case .onDevice: "Record summary · on-device"
+        case .needsCloudConsent, .unavailable: "Record summary"
+        }
+    }
+
+    private var engineDescription: String {
+        switch service.engine {
+        case .cloud:
+            "Writes a plain-language summary of your recent readings, treatments and labs using a secure cloud model (DeepSeek). It reads the tracking summary this app builds — never your name, contact details or photos — and it's record-keeping, not diagnosis."
+        case .onDevice:
+            "Writes a plain-language summary of your recent readings, treatments and labs using Apple Intelligence. It runs entirely on your iPhone — nothing leaves the device — and it's record-keeping, not diagnosis."
+        case .needsCloudConsent, .unavailable:
+            "Writes a plain-language summary of your recent readings, treatments and labs. Record-keeping, not diagnosis."
+        }
+    }
+
     // MARK: Chat follow-up
 
     /// Same chip language as Compare's "Ask Wren about this": opens the restricted hair-science
@@ -166,7 +200,7 @@ struct DeepAnalysisSheet: View {
     /// One line telling the chat what's on screen — the same full record the summary was
     /// written from, not a single chart.
     private var chatFocus: String {
-        "User just created an on-device summary of their full tracking record and is asking a follow-up question about it."
+        "User just created a written summary of their full tracking record and is asking a follow-up question about it."
     }
 
     /// Snapshot the canonical AIContext at open time — the chat consumes the same versioned

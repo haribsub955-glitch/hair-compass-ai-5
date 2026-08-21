@@ -97,10 +97,14 @@ enum HairChatPrompt {
     }
 }
 
-/// The hair-science chat behind the Compare screen's "Ask AI" chip: an on-device conversation
-/// (Apple Intelligence) over the canonical `AIContext` JSON. Text only — no photos, ever — and
-/// nothing leaves the device: no key, no proxy, no consent. Unavailable (with a clear message)
-/// on hardware without Apple Intelligence; there is no cloud fallback.
+/// The hair-science chat behind the Compare screen's "Ask AI" chip, over the canonical
+/// `AIContext` JSON. Text only — no photos, ever.
+///
+/// Engine order (see `AIEngine`): the cloud model (DeepSeek) leads whenever it is configured
+/// and the person has consented — it answers on every iPhone, not just Apple-Intelligence
+/// hardware. The on-device model is the no-consent path and the offline fallback. Every reply,
+/// from either engine, passes the same deterministic `AIOutputValidator` gate before the UI
+/// shows it.
 @MainActor
 @Observable
 final class HairChatService {
@@ -119,10 +123,15 @@ final class HairChatService {
     /// Apple Intelligence can be enabled/disabled or finish downloading while the app is open.
     var availability: OnDeviceAvailability { OnDeviceAvailability.current }
 
-    /// True when chat can run on this device — Apple Intelligence is available. There is no cloud
-    /// fallback, so this is false on hardware without on-device AI, and the UI shows a clear card
-    /// (see `availability` for exactly which of the three reasons applies).
-    var isAvailable: Bool { availability.isAvailable }
+    /// Which engine a message would use right now — cloud, on-device, a pending consent
+    /// question, or nothing. Read fresh each access: consent can be granted or revoked, and
+    /// Apple Intelligence toggled, while the sheet is open.
+    var engine: AIEngine { AIEngine.current }
+
+    /// True when a message can actually be answered right now (cloud or on-device). False while
+    /// the consent question is still open and when neither engine exists — the UI shows the
+    /// consent card or a clear notice instead of the input bar.
+    var isAvailable: Bool { engine.canRun }
 
     struct ChatError: Error { let message: String }
 
@@ -151,18 +160,40 @@ final class HairChatService {
     private func request(context: String, focus: String) async throws -> String {
         let system = HairChatPrompt.system(contextJSON: context, focus: focus)
         let turns = HairChatPrompt.cappedHistory(messages).map {
-            (role: $0.role.rawValue, text: $0.text)
+            CloudAI.Turn(role: $0.role.rawValue, text: $0.text)
         }
 
-        // On-device only — Apple Intelligence answers with NOTHING leaving the device, so it needs
-        // no consent, no key, and no proxy. There is no cloud fallback: hardware without on-device
-        // AI gets a clear, reason-specific message instead (the UI also gates on `isAvailable` up
-        // front, via `availability`).
-        let status = availability
+        switch engine {
+        case .cloud:
+            do {
+                let reply = try await CloudAI.reply(system: system, turns: turns, maxTokens: 500)
+                // Validated against the exact JSON string the model saw — same rule as the
+                // on-device path, one publication gate for both engines.
+                return AIOutputValidator.safeText(reply, suppliedFacts: context)
+            } catch let error as CloudAI.ServiceError {
+                // A failed cloud turn falls back to the on-device model when this hardware has
+                // one; otherwise the honest transport error surfaces as this turn's reply.
+                guard OnDeviceAvailability.current.isAvailable else {
+                    throw ChatError(message: error.message)
+                }
+                return try await onDeviceReply(system: system, turns: turns, context: context)
+            }
+        case .onDevice:
+            return try await onDeviceReply(system: system, turns: turns, context: context)
+        case .needsCloudConsent:
+            // The sheet gates the input bar behind the consent card, so a send in this state is
+            // a logic error — answer it with the honest next step rather than trapping.
+            throw ChatError(message: "Choose whether to use cloud AI first.")
+        case .unavailable(let message):
+            throw ChatError(message: message)
+        }
+    }
+
+    private func onDeviceReply(system: String, turns: [CloudAI.Turn], context: String) async throws -> String {
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *), status.isAvailable {
+        if #available(iOS 26.0, *), OnDeviceAvailability.current.isAvailable {
             if let reply = await OnDeviceChat.reply(
-                system: system, turns: turns,
+                system: system, turns: turns.map { (role: $0.role, text: $0.text) },
                 // Generated prose is not shown before the deterministic post-generation gate.
                 onPartial: { _ in }
             ), !reply.isEmpty {
@@ -171,8 +202,7 @@ final class HairChatService {
             throw ChatError(message: "Couldn't get a reply. Please try again.")
         }
         #endif
-
-        throw ChatError(message: status.message)
+        throw ChatError(message: OnDeviceAvailability.current.message)
     }
 }
 

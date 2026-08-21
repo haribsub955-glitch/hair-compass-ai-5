@@ -15,13 +15,15 @@ enum ProFeature: CaseIterable, Hashable, Identifiable {
     /// Recommender's `.addToPlan`/`.startPatchPhotoSeries`/`.addLabResult` actions).
     var id: Self { self }
 
-    /// The two features that run on Apple Intelligence with no cloud fallback.
+    /// The two AI features. With the cloud model configured (`CloudAIConfig`) they run on every
+    /// iPhone; in a build without it they need Apple Intelligence hardware — `ProAvailability`
+    /// folds that build-time fact into what the paywalls disclose.
     ///
     /// This is a property of the FEATURE, not of the subscription — which is the distinction
     /// that lets a subscription sell on hardware that can't run these two. Before this existed,
     /// `ProAvailability.sellable` withdrew the purchase buttons entirely and the app could not
     /// be sold on an iPhone 14 at all.
-    var requiresAppleIntelligence: Bool {
+    var usesAI: Bool {
         switch self {
         case .askWren, .deepAnalysis: true
         default: false
@@ -143,7 +145,7 @@ extension ProFeature {
         case .treatments: "Track what you're using and whether you're consistent."
         case .reports: "A summary you can read or hand to a clinician."
         case .bodySignals: "Sleep, stress and the rest, next to your hair record."
-        case .askWren: "Ask about your own record, answered on your iPhone."
+        case .askWren: "Ask about your own record, in plain language."
         case .deepAnalysis: "A closer read of everything you've logged."
         }
     }

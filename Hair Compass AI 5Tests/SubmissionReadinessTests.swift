@@ -76,17 +76,32 @@ struct SubmissionReadinessTests {
     }
 }
 
-/// Pro always sells — on every iPhone. Two of its twelve features run on Apple Intelligence with
-/// no cloud fallback, and the rule that keeps only those two honest lives in `ProAvailability`.
+/// Pro always sells — on every iPhone. The two AI features run in the cloud when the build
+/// carries the DeepSeek key and on Apple Intelligence otherwise, and the rule that keeps the
+/// paywall honest about both configurations lives in `ProAvailability`. Every assertion here
+/// passes `cloudConfigured:` explicitly, because the test host may or may not embed a real key —
+/// the contract must hold for both builds, not for whichever one this machine happens to be.
 struct ProAvailabilityTests {
 
     /// The commercial correctness of the whole paywall. Before this, an ineligible iPhone was
     /// offered nothing at all — a mostly-locked app with no button to unlock it, which is both a
     /// Guideline 3.1.2 risk and a dead end for the person holding the phone.
     @Test func proSellsOnHardwareThatCannotRunAppleIntelligence() {
-        for feature in ProFeature.allCases where !feature.requiresAppleIntelligence {
-            #expect(ProAvailability.canRun(feature, status: .deviceNotEligible),
-                    "\(feature) has no on-device model dependency and must work on any iPhone.")
+        for feature in ProFeature.allCases where !feature.usesAI {
+            #expect(ProAvailability.canRun(feature, status: .deviceNotEligible, cloudConfigured: false),
+                    "\(feature) has no AI dependency and must work on any iPhone, even with no cloud key.")
+        }
+    }
+
+    /// The point of the cloud engine: with it configured, EVERY feature — the two AI ones
+    /// included — runs on every iPhone, and no paywall carries a hardware warning.
+    @Test func cloudConfiguredMakesEveryFeatureRunEverywhere() {
+        for feature in ProFeature.allCases {
+            for status: OnDeviceAvailability in [.available, .notEnabled, .modelNotReady, .deviceNotEligible] {
+                #expect(ProAvailability.canRun(feature, status: status, cloudConfigured: true))
+                #expect(ProAvailability.message(for: status, cloudConfigured: true).isEmpty,
+                        "With cloud AI configured there is nothing to disclose on the paywall.")
+            }
         }
     }
 
@@ -111,31 +126,32 @@ struct ProAvailabilityTests {
     }
 
     /// `ProGate` asks this exact question to decide whether to show `ProAvailabilityNotice`, so
-    /// the shipping path and the asserted path are now the same function.
-    @Test func onlyTheAIFeaturesDiscloseAnAppleIntelligenceRequirement() {
+    /// the shipping path and the asserted path are the same function. In a no-cloud-key build
+    /// the old on-device contract still holds.
+    @Test func withoutCloudOnlyTheAIFeaturesDiscloseAnAppleIntelligenceRequirement() {
         for feature in ProFeature.allCases {
-            #expect(ProAvailability.canRun(feature, status: .deviceNotEligible) == !feature.requiresAppleIntelligence)
+            #expect(ProAvailability.canRun(feature, status: .deviceNotEligible, cloudConfigured: false) == !feature.usesAI)
         }
     }
 
-    @Test func theTwoAIFeaturesCannotRunOnIneligibleHardware() {
-        #expect(ProAvailability.canRun(.askWren, status: .deviceNotEligible) == false)
-        #expect(ProAvailability.canRun(.deepAnalysis, status: .deviceNotEligible) == false)
+    @Test func withoutCloudTheTwoAIFeaturesCannotRunOnIneligibleHardware() {
+        #expect(ProAvailability.canRun(.askWren, status: .deviceNotEligible, cloudConfigured: false) == false)
+        #expect(ProAvailability.canRun(.deepAnalysis, status: .deviceNotEligible, cloudConfigured: false) == false)
     }
 
     /// A switched-off or still-downloading model is something the person can fix themselves, so
     /// those states stay runnable-once-fixed and the notice tells them how.
     @Test func fixableStatesStillCountAsRunnable() {
         for status in [OnDeviceAvailability.available, .notEnabled, .modelNotReady] {
-            #expect(ProAvailability.canRun(.askWren, status: status))
+            #expect(ProAvailability.canRun(.askWren, status: status, cloudConfigured: false))
         }
     }
 
-    @Test func everyUnavailableReasonExplainsItselfOnThePaywall() {
+    @Test func withoutCloudEveryUnavailableReasonExplainsItselfOnThePaywall() {
         for status: OnDeviceAvailability in [.notEnabled, .modelNotReady, .deviceNotEligible] {
-            #expect(!ProAvailability.message(for: status).isEmpty)
+            #expect(!ProAvailability.message(for: status, cloudConfigured: false).isEmpty)
         }
-        #expect(ProAvailability.message(for: .available).isEmpty)
+        #expect(ProAvailability.message(for: .available, cloudConfigured: false).isEmpty)
     }
 
     /// The ineligible-hardware copy's job flipped along with `canRun`'s scope: it must name the
@@ -143,7 +159,7 @@ struct ProAvailabilityTests {
     /// that claim sits directly above live purchase buttons for the other ten features, so it
     /// would be false on the very screen asking for money.
     @Test func ineligibleCopyNamesTheTwoFeaturesWithoutDismissingTheSubscription() {
-        let message = ProAvailability.message(for: .deviceNotEligible)
+        let message = ProAvailability.message(for: .deviceNotEligible, cloudConfigured: false)
         #expect(message.contains("Apple Intelligence"))
         #expect(message.contains("Ask Wren"))
         #expect(message.contains("Deep analysis"))

@@ -104,11 +104,11 @@ struct ProGate<Content: View>: View {
             // inside a sheet alongside the feature's own chrome.
             ClarityContrast(size: .compact, sex: profiles.first?.sex ?? .male)
 
-            // The notice only speaks for features that actually need the model, so gating
-            // Trends no longer tells someone their iPhone is the problem. Asked through
-            // `canRun` — "could this feature ever run on hardware without Apple Intelligence?" —
-            // which is behaviour-identical to reading `requiresAppleIntelligence` directly, and
-            // makes the tested policy function the shipping one rather than a parallel copy.
+            // The notice only speaks for features that actually need the on-device model, so
+            // gating Trends never tells someone their iPhone is the problem — and with the
+            // cloud model configured `canRun` is true for everything, so no gate warns at all.
+            // Asked through `canRun` rather than `usesAI` directly so the tested policy
+            // function is the shipping one, not a parallel copy.
             if !ProAvailability.canRun(feature, status: .deviceNotEligible) {
                 ProAvailabilityNotice(status: availability)
             }

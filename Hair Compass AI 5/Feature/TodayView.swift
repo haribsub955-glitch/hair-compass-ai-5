@@ -400,8 +400,8 @@ struct TodayView: View {
             Spacer(minLength: 8)
             HStack(spacing: 14) {
                 Button {
-                    // On-device and private — no consent gate needed. The sheet itself handles
-                    // the Pro gate and the Apple-Intelligence availability check.
+                    // The sheet itself handles the Pro gate, the cloud-AI consent card, and the
+                    // engine availability check — nothing is sent before consent.
                     openChat()
                 } label: {
                     HStack(spacing: 4) {

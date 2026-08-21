@@ -126,6 +126,8 @@ struct BaselineFlow: View {
 
                     privacySection
 
+                    CloudAISettingsSection()
+
                     ResearchConsentSection(consent: researchConsent, payload: researchPayload)
 
                     if purchases.hasPro {
