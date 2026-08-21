@@ -240,6 +240,9 @@ struct AddTreatmentSheet: View {
                 GuidedCaptureView(defaultRegion: .frontal)
             }
         }
+        // Stops an in-flight, billed cloud call the moment the sheet is dismissed — the same
+        // guard `DeepAnalysisSheet`/`HairChatSheet` apply to their own `HairAnalysisService`.
+        .onDisappear { analysisService.cancel() }
     }
 
     private var refillRange: ClosedRange<Date> {
@@ -480,7 +483,9 @@ struct AddTreatmentSheet: View {
         switch analysisService.engine {
         case .cloud:
             "The label photo is read on your iPhone. The recognized text is summarized by a secure cloud model (DeepSeek) — the photo itself never leaves this device. Record-keeping, not medical advice."
-        case .onDevice, .needsCloudConsent, .unavailable:
+        case .needsCloudConsent:
+            "The label is read on your iPhone. Choose above whether summaries may also use cloud AI. Record-keeping, not medical advice."
+        case .onDevice, .unavailable:
             "Reads the label on your device to identify what it is — private, nothing leaves your iPhone. Record-keeping, not medical advice."
         }
     }

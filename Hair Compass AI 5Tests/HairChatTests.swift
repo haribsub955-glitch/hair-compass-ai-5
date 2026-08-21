@@ -77,6 +77,29 @@ struct HairChatTests {
         #expect(!starters.contains("Is this change meaningful, or just noise?"))
     }
 
+    // MARK: Validation facts — deliberately not the full `system` prompt
+
+    /// `system` carries instruction boilerplate (the "2–6 sentences" length rule, the
+    /// schema-version note) alongside the real record — validating a reply against all of
+    /// `system` let it admit a number that only ever appeared in the app's own instructions.
+    /// `validationFacts` must admit numbers from the focus line, the context JSON, and every
+    /// turn actually sent, while rejecting one that lives only in the instruction prose.
+    @Test func validationFactsExcludeInstructionBoilerplateButIncludeFocusContextAndTurns() {
+        let turns = [CloudAI.Turn(role: "user", text: "isn't week 30 outside my record?")]
+        let facts = HairChatPrompt.validationFacts(contextJSON: contextJSON, focus: focus, turns: turns)
+
+        // Admissible: the focus line, the context JSON, and the turn's own text.
+        #expect(AIOutputValidator.isSafe("Week 30 isn't in your record yet.", suppliedFacts: facts))
+        #expect(AIOutputValidator.isSafe("There are 12 entries logged.", suppliedFacts: facts))
+
+        // Not admissible: a number that only appears in `system`'s instruction prose, never in
+        // focus, context, or a turn.
+        let system = HairChatPrompt.system(contextJSON: contextJSON, focus: focus)
+        #expect(system.contains("2–6 sentences"))
+        #expect(!facts.contains("2–6 sentences"))
+        #expect(!AIOutputValidator.isSafe("Keep this to 2 to 6 sentences.", suppliedFacts: facts))
+    }
+
     // MARK: History capping
 
     private func makeAlternatingHistory(count: Int) -> [ChatMessage] {

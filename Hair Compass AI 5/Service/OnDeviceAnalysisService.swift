@@ -94,6 +94,10 @@ final class HairAnalysisService {
     /// rather than just abandoning the awaiting call site.
     func cancel() {
         currentTask?.cancel()
+        // Nothing is still in flight for this handle once cancel() has been asked for it —
+        // nil it out so a later `cancel()` (or a stray read) can't act on a stale, already-
+        // dead task.
+        currentTask = nil
     }
 
     struct AnalysisError: Error { let message: String }
@@ -121,14 +125,19 @@ final class HairAnalysisService {
     /// own photo *metadata* is already inside the context.
     func analyze(context: AIContext) async {
         // A double-tap on the run button (or the sheet re-appearing mid-request) must not fire
-        // a second billed cloud call on top of the first.
+        // a second billed cloud call on top of the first. The guard and the flag it guards
+        // have to happen together, synchronously, right here — setting `isRunning` from
+        // inside the enqueued Task body left a window where two rapid calls could both pass
+        // the guard before either body had actually run (reproduced: two billed calls).
         guard !isRunning else { return }
+        isRunning = true
+        result = nil
+        errorMessage = nil
         let task = Task { [weak self] in
             guard let self else { return }
-            self.isRunning = true
-            self.result = nil
-            self.errorMessage = nil
-            defer { self.isRunning = false }
+            // Also clears `currentTask`: a stale handle left behind after this Task finishes
+            // could otherwise be cancelled or read by a later, unrelated run.
+            defer { self.isRunning = false; self.currentTask = nil }
             do {
                 self.result = try await self.generate(
                     instructions: Self.analysisInstructions,
@@ -136,6 +145,9 @@ final class HairAnalysisService {
                     validationContext: context,
                     maxTokens: 700
                 )
+            } catch is CancellationError {
+                // The sheet is gone — nothing to show, and no fallback: cancellation means
+                // the person no longer wants an answer, not that the call failed.
             } catch let e as AnalysisError {
                 self.errorMessage = e.message
             } catch {
@@ -149,13 +161,16 @@ final class HairAnalysisService {
     /// Summarize a product from the text read off its ingredient label (on-device OCR — see
     /// `TextScanner`). Returns a short summary, or nil on error. Record-keeping, not medical advice.
     func analyzeIngredients(labelText: String) async -> String? {
+        // Same synchronous guard-then-flag ordering as `analyze` above, and for the same
+        // reason: `isRunning` must be set before this function returns control to the caller,
+        // not from inside the Task it hands off to.
         guard !isRunning else { return nil }
+        isRunning = true
+        errorMessage = nil
         let task = Task { [weak self] () -> String? in
             guard let self else { return nil }
+            defer { self.isRunning = false; self.currentTask = nil }
             let trimmed = labelText.trimmingCharacters(in: .whitespacesAndNewlines)
-            self.isRunning = true
-            self.errorMessage = nil
-            defer { self.isRunning = false }
             guard !trimmed.isEmpty else {
                 self.errorMessage = "No label text was read from this photo. Try a clearer photo of the ingredients."
                 return nil
@@ -171,6 +186,8 @@ final class HairAnalysisService {
                     instructions: Self.ingredientInstructions, prompt: trimmed,
                     validationFacts: trimmed, maxTokens: 300
                 )
+            } catch is CancellationError {
+                return nil
             } catch let e as AnalysisError {
                 self.errorMessage = e.message
                 return nil
@@ -319,9 +336,25 @@ enum AIOutputValidator {
             var numbers = Set<String>()
             func collect(_ value: Any) {
                 if let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() {
-                    numbers.insert(canonical(number.doubleValue))
+                    let signed = canonical(number.doubleValue)
+                    numbers.insert(signed)
+                    // A structured field can be legitimately negative (`shedDirection` /
+                    // `scalpDirection` read negative for an improving trend) while an honest
+                    // reply states the same fact by magnitude ("declined by 0.5") rather than
+                    // echoing the sign. The reply-side extraction below never captures a
+                    // leading "-" — a blanket `-?\d+` would also eat into "2026-08-05" and mint
+                    // fake negative dates — so the unsigned counterpart has to be supplied from
+                    // here instead. Sign semantics are otherwise out of this gate's scope
+                    // entirely: it only checks that the generated *magnitude* was actually
+                    // present somewhere in the record.
+                    if signed.hasPrefix("-") { numbers.insert(canonical(abs(number.doubleValue))) }
                 } else if let string = value as? String {
-                    string.matches(of: /\b\d+(?:\.\d+)?\b/).forEach {
+                    // No `\b`: label/JSON text glues digits straight onto units or suffixes
+                    // ("Biotin 10000mcg"), and `\b` can never match between two `\w`
+                    // characters, so it would silently fail to extract those numbers at all.
+                    // The reply-side extraction below keeps `\b` — a reply's numbers appear in
+                    // prose, where the conservative boundary is the right call.
+                    string.matches(of: /\d+(?:\.\d+)?/).forEach {
                         if let number = Double($0.output) { numbers.insert(canonical(number)) }
                     }
                 } else if let array = value as? [Any] { array.forEach(collect) }
@@ -338,11 +371,17 @@ enum AIOutputValidator {
         }
 
         // `fileprivate`, not `private`: `isSafe(_:suppliedFacts:allTreatmentsOutcomeReady:)`
-        // below needs the exact same canonical form when it builds a `Facts` by hand instead
-        // of through `.context(_:)`, so the two never drift into two different notions of
-        // "the same number".
+        // and `isSafe(_:facts:)` below both need the exact same canonical form when they build
+        // or canonicalize numbers by hand instead of through `.context(_:)`, so no two call
+        // sites ever drift into two different notions of "the same number".
         fileprivate static func canonical(_ value: Double) -> String {
-            value.rounded() == value ? String(Int(value)) : String(value)
+            // `Int(value)` traps once `value` exceeds Int64's range (~±9.2e18) — reachable
+            // from 19-20+ digit batch/lot codes in OCR'd label text, and symmetrically from a
+            // reply that echoes one back. Guard the magnitude and fall back to the Double's
+            // own string form instead; every call site shares this one function, so the crash
+            // can't reappear somewhere the guard was forgotten, and both sides always agree on
+            // what a given huge number's canonical string looks like.
+            value.rounded() == value && value.magnitude < 9e18 ? String(Int(value)) : String(value)
         }
     }
 
@@ -365,10 +404,17 @@ enum AIOutputValidator {
         // raw matched string too. Without the canonical form, a date component like "08" or
         // "05" in a JSON fact string could never match a reply's canonicalized "8", so an
         // honest reply ("shedding rose in month 8") would fail against a fact set that plainly
-        // contains that same date. Keeping the raw string alongside it is a pure superset — it
-        // can only let more honest text through, never let invented numbers slip past.
+        // contains that same date. Keeping the raw string is a pure superset for ordinary
+        // numbers — but it stops being a no-op once a number is too large for `canonical` to
+        // round-trip losslessly: the fallback there is a lossy re-stringification of an
+        // imprecise Double, so a reply that echoes a huge lot/batch code's exact digits
+        // verbatim can only be recognized by matching that literal string. `isSafe(_:facts:)`
+        // below checks both forms for exactly this reason.
+        //
+        // No `\b` either: see the matching comment on `Facts.context`'s string branch — a
+        // label like "Biotin 10000mcg" glues its number straight onto the unit.
         var numbers = Set<String>()
-        for match in suppliedFacts.matches(of: /\b\d+(?:\.\d+)?\b/) {
+        for match in suppliedFacts.matches(of: /\d+(?:\.\d+)?/) {
             let raw = String(match.output)
             numbers.insert(raw)
             if let value = Double(raw) { numbers.insert(Facts.canonical(value)) }
@@ -436,8 +482,17 @@ enum AIOutputValidator {
         // policy are allowed; every other generated number must occur in the supplied facts.
         let numbers = value.matches(of: /\b\d+(?:\.\d+)?\b/).map { String($0.output) }
         for number in numbers where number != "24" {
-            let canonical = Double(number).map { $0.rounded() == $0 ? String(Int($0)) : String($0) } ?? number
-            if !facts.numericValues.contains(canonical) { return false }
+            // A closure literal here, not a bare `Facts.canonical` function reference: the
+            // latter converts the MainActor-isolated method into a plain function value with
+            // no isolation of its own, which the compiler flags even though this call site
+            // runs on the same actor. The closure inherits this context's isolation instead.
+            let canonical = Double(number).map { Facts.canonical($0) } ?? number
+            // Check the literal digits too, not just the canonical form — see the comment on
+            // `suppliedFacts`'s raw-string retention above for why this stops being redundant
+            // once a number is too large to round-trip through a Double exactly.
+            if !facts.numericValues.contains(canonical) && !facts.numericValues.contains(number) {
+                return false
+            }
         }
 
         // High-impact clinical facts must be present in the supplied record before generated

@@ -194,6 +194,18 @@ nonisolated enum CloudAIBudget {
     static let dayDefaultsKey = "cloudAIBudgetDay"
     static let countDefaultsKey = "cloudAIBudgetCount"
 
+    /// The day key is computed in UTC, never `.current` — a timezone change (travel, or
+    /// someone manually changing it) must not shift the boundary and mint a fresh 100 out of
+    /// thin air. The instant a day rolls over is the same everywhere; only the human-readable
+    /// label depends on a calendar, and pinning that calendar removes it as a variable. Same
+    /// choice `PrivacyTests` already makes for its own assertions — this makes it the
+    /// production default too, not just the test's.
+    static let utcCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }()
+
     /// "yyyy-MM-dd" in the given calendar — pure component math (no formatter state), so the
     /// day boundary lands exactly at local midnight.
     static func dayString(_ date: Date, calendar: Calendar) -> String {
@@ -201,12 +213,25 @@ nonisolated enum CloudAIBudget {
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
+    /// Serializes the read-modify-write below: two concurrent replies both reading count==99
+    /// before either writes back would otherwise both pass and both store 100, silently
+    /// doubling the effective daily ceiling. A plain lock, not an actor hop — `consume` is
+    /// called from this `nonisolated` enum's async, off-main-actor code, and an actor hop here
+    /// would undercut the whole reason `CloudAI` is `nonisolated` in the first place (see its
+    /// doc comment below). Locked with plain `lock()`/`unlock()` rather than the closure-based
+    /// `withLock`: that closure is `@Sendable`, and capturing the non-`Sendable` `UserDefaults`
+    /// parameter in it would be a warning about a hazard that doesn't exist here — the lock
+    /// body runs synchronously in place, never handed to another thread.
+    private static let lock = OSAllocatedUnfairLock()
+
     /// Records one cloud request against today's count and reports whether it was allowed.
     /// There's no midnight timer — the rollover to a fresh count of zero happens lazily, the
     /// first time a call sees a day string that no longer matches what's stored. `now`/
     /// `defaults` are explicit so `CloudAITests` can pin a fixed clock and a throwaway suite.
     @discardableResult
-    static func consume(now: Date = Date(), defaults: UserDefaults = .standard, calendar: Calendar = .current) -> Bool {
+    static func consume(now: Date = Date(), defaults: UserDefaults = .standard, calendar: Calendar = utcCalendar) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
         let today = dayString(now, calendar: calendar)
         let count = defaults.string(forKey: dayDefaultsKey) == today ? defaults.integer(forKey: countDefaultsKey) : 0
         guard count < dailyLimit else { return false }
@@ -277,12 +302,16 @@ nonisolated enum CloudAI {
         config: CloudAIConfig = .current,
         session: URLSession = defaultSession,
         now: Date = Date(),
-        calendar: Calendar = .current,
+        calendar: Calendar = CloudAIBudget.utcCalendar,
         budgetDefaults: UserDefaults = .standard
     ) async throws -> String {
         guard config.isConfigured, let url = config.chatCompletionsURL else {
             throw ServiceError(message: serviceDownMessage, isNetwork: false)
         }
+        // A task cancelled before this point (the sheet dismissed while the call was still
+        // queued behind another one) must not spend a slot from the shared daily ceiling on a
+        // call nobody is waiting for anymore — checked before `consume`, not after.
+        try Task.checkCancellation()
         // Client-side abuse containment, not billing enforcement — see `CloudAIBudget`. Checked
         // before building the request so a tripped budget never touches the network at all.
         guard CloudAIBudget.consume(now: now, defaults: budgetDefaults, calendar: calendar) else {
@@ -307,6 +336,16 @@ nonisolated enum CloudAI {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
+            // A cancelled `Task` (the sheet dismissed mid-request) tears down the underlying
+            // URLSession task too — see the `CancellableTask` doc comment — and that surfaces
+            // here as `URLError.cancelled`, not Swift's own `CancellationError`. Re-map it so
+            // the caller can tell "the person walked away" from "the network genuinely
+            // failed": the former must stay silent and skip the on-device fallback (see both
+            // services' `catch` blocks), the latter should still fall back and still explain
+            // itself with `offlineMessage`.
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+                throw CancellationError()
+            }
             logger.error("Cloud AI transport failure: \((error as NSError).code, privacy: .public)")
             throw ServiceError(message: offlineMessage, isNetwork: true)
         }

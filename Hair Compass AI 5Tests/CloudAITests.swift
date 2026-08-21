@@ -150,3 +150,64 @@ struct CloudAIRequestTests {
         #expect(body.messages.last?.content == "a\n\nb\n\nc")
     }
 }
+
+// MARK: - Cancellation
+
+/// Fails every request immediately with `URLError.cancelled` — simulates a URLSession task
+/// torn down mid-flight by Swift Concurrency cancellation (see the `CancellableTask` doc
+/// comment in CloudAI.swift) without making any real network call.
+private final class CancelledURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
+    }
+    override func stopLoading() {}
+}
+
+/// `CloudAI.reply` used to consume a budget slot before any cancellation-aware suspension
+/// point, and mapped a cancelled transport call to the offline `ServiceError` — which could
+/// then trigger a pointless on-device fallback in the services for a request nobody is
+/// waiting for anymore. Two distinct fixes, two distinct tests: a task already cancelled
+/// before `reply` runs must never touch the budget at all, and a transport failure that's
+/// actually a cancellation must surface as `CancellationError`, not `ServiceError`.
+struct CloudAICancellationTests {
+    private let config = CloudAIConfig(
+        baseURLString: "https://api.deepseek.com/v1", model: "deepseek-chat", apiKey: "sk-test")
+
+    private func makeDefaults() -> (UserDefaults, cleanup: () -> Void) {
+        let suite = "cloudai-cancel-tests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        return (defaults, { defaults.removePersistentDomain(forName: suite) })
+    }
+
+    @Test func replyNeverTouchesTheBudgetWhenTheTaskIsAlreadyCancelled() async throws {
+        let (defaults, cleanup) = makeDefaults()
+        defer { cleanup() }
+
+        let task = Task {
+            try await CloudAI.reply(system: "s", turns: [], config: config, budgetDefaults: defaults)
+        }
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        // A task cancelled before `reply` ever ran must not have spent a slot from the shared
+        // daily ceiling on a call nobody is waiting for anymore.
+        #expect(defaults.integer(forKey: CloudAIBudget.countDefaultsKey) == 0)
+    }
+
+    @Test func replyMapsATransportCancellationToCancellationErrorNotServiceError() async throws {
+        let (defaults, cleanup) = makeDefaults()
+        defer { cleanup() }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CancelledURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await CloudAI.reply(system: "s", turns: [], config: config, session: session, budgetDefaults: defaults)
+        }
+        // Cancellation here happens mid-flight, after the budget slot was already spent —
+        // the one case the pre-flight `Task.checkCancellation()` above can't (and shouldn't
+        // try to) avoid.
+        #expect(defaults.integer(forKey: CloudAIBudget.countDefaultsKey) == 1)
+    }
+}
