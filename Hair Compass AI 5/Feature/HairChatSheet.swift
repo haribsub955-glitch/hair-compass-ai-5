@@ -7,8 +7,10 @@ import UIKit
 /// JSON and allows restricted chatting — hair science and the person's own data only (the
 /// restriction lives in `HairChatPrompt.system`). Header copy and starter questions are
 /// parameterized (`eyebrow`/`starterKind`) so each entry point reads naturally. Text
-/// only: photos never enter this feature, and it runs entirely on-device (Apple Intelligence) —
-/// nothing leaves the device. Shows a clear card on hardware without on-device AI.
+/// only: photos never enter this feature. Answers come from the cloud model (DeepSeek) once
+/// consented — `CloudAIConsentCard` is shown here before the first request could ever leave the
+/// device — with Apple Intelligence as the on-device path otherwise; a clear card explains the
+/// state when neither engine can run.
 struct HairChatSheet: View {
     /// `AIContext.jsonString()` snapshot built by the caller when the sheet opens.
     let contextJSON: String
@@ -36,6 +38,19 @@ struct HairChatSheet: View {
     /// session-level memories so an aside here can't surface in an unrelated chat later.
     @State private var agentSessionID = UUID().uuidString
     #endif
+    /// Bumped when the consent card records a choice — `CloudAIConsent` lives in UserDefaults,
+    /// which SwiftUI cannot observe, so this is what re-evaluates `service.engine`.
+    @State private var consentVersion = 0
+
+    /// What `gatedContent` renders for. In DEBUG with `HC_AGENT`, the agent server answers and
+    /// neither engine's availability applies — the sheet must reach the input bar or the agent
+    /// is never called (mirrors `HairChatService.isAvailable`).
+    private var renderedEngine: AIEngine {
+        #if DEBUG
+        if AgentBridge.isEnabled { return .onDevice }
+        #endif
+        return service.engine
+    }
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -79,15 +94,23 @@ struct HairChatSheet: View {
 
     @ViewBuilder
     private var gatedContent: some View {
-        // Read the refresh token BEFORE branching: with the available branch rendered, nothing
-        // else here reads it, so an available → unavailable flip would bump a token no rendered
-        // view depends on and this body would never re-evaluate (codex review, 2026-09-02).
+        // Read both refresh tokens BEFORE branching: with the available branch rendered, nothing
+        // else here reads them, so an available → unavailable flip (or a consent choice) would
+        // bump a token no rendered view depends on and this body would never re-evaluate
+        // (codex review, 2026-09-02).
         let _ = availabilityRefresh
-        if service.isAvailable {
+        let _ = consentVersion
+        switch renderedEngine {
+        case .cloud, .onDevice:
             conversation
             inputBar
-        } else {
-            unavailableNotice
+        case .needsCloudConsent:
+            ScrollView(showsIndicators: false) {
+                CloudAIConsentCard { consentVersion += 1 }
+                    .padding(20)
+            }
+        case .unavailable(let message):
+            unavailableNotice(message)
         }
     }
 
@@ -439,20 +462,18 @@ struct HairChatSheet: View {
         #endif
     }
 
-    // Shown when on-device chat can't run right now. Chat is on-device only, so there's no cloud
-    // fallback — but the reason matters: someone who's simply switched Apple Intelligence off, or
+    // Shown when neither engine can answer right now — cloud declined (or unconfigured) and no
+    // on-device model. The reason matters: someone who's switched Apple Intelligence off, or
     // whose model is still downloading, gets a next step instead of being told their iPhone can't
     // do this. Honest and reassuring either way: everything else in the app still works.
-    private var unavailableNotice: some View {
-        // Dependency on availabilityRefresh is registered by `gatedContent` before branching.
-        let status = service.availability
-        return VStack(spacing: 12) {
+    private func unavailableNotice(_ message: String) -> some View {
+        VStack(spacing: 12) {
             Spacer(minLength: 20)
             CompanionView(moment: .resting, variant: .avatar, size: 56)
-            Text("On-device AI unavailable")
+            Text("AI unavailable")
                 .font(Clinical.headline(18))
                 .foregroundStyle(Clinical.ink)
-            Text(status.message)
+            Text(message)
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)

@@ -9,14 +9,30 @@
 	<array/>
 
 	<!--
-	  The app collects NO data off-device. All AI runs on-device (Apple Intelligence / Vision),
-	  every record and photo stays in on-device storage, and there is no server or analytics
-	  upload. So no data types are declared here.
-	  NOTE: this must match the "App Privacy" answers in App Store Connect — set "Data Not
-	  Collected" there to reconcile before submitting.
+	  Records and photos stay in on-device storage and there is no analytics upload. The one
+	  off-device flow is the OPT-IN cloud AI (DeepSeek): with consent, requests send a limited
+	  tracking summary (check-in values, dates, treatment names, lab values, logged notes and
+	  health-derived values the user tracks) to generate the answer. No identifiers travel with
+	  it (no name/contact/account — the app has no accounts), so it is declared as Health
+	  data, App Functionality, not linked to identity, not used for tracking.
+	  NOTE: this must match the "App Privacy" answers in App Store Connect — declare
+	  Health & Fitness → App Functionality → Not linked to you, No tracking, before submitting.
 	-->
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeHealth</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+	</array>
 
 	<!--
 	  Required-reason API declarations — this is the part App Review scans the binary against.

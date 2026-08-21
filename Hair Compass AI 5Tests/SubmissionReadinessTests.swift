@@ -70,8 +70,11 @@ struct SubmissionReadinessTests {
 }
 
 /// Since 1.1, Pro carries device-independent value (check-ins, trends, labs, photos) alongside
-/// the two Apple Intelligence features, so it is sold on every device; `ProAvailability`'s job
-/// narrowed to disclosing the AI hardware bound honestly on the paywall.
+/// the two AI features, so it is sold on every device; `ProAvailability`'s job narrowed to
+/// disclosing the AI hardware bound honestly on the paywall — and, with the cloud engine, to
+/// disclosing nothing at all in a build that carries the DeepSeek key, where Ask Wren and Deep
+/// analysis run on every iPhone. Every assertion passes `cloudConfigured:` explicitly, because
+/// the test host may or may not embed a real key — the contract must hold for both builds.
 struct ProAvailabilityTests {
 
     /// Pro now delivers real value on every iPhone, so no hardware status withdraws the sale.
@@ -83,17 +86,32 @@ struct ProAvailabilityTests {
         #expect(ProAvailability.sellable(.available))
     }
 
-    @Test func everyUnavailableReasonExplainsItselfOnThePaywall() {
-        for status: OnDeviceAvailability in [.notEnabled, .modelNotReady, .deviceNotEligible] {
-            #expect(!ProAvailability.message(for: status).isEmpty)
+    /// The point of the cloud engine: with it configured, both AI features run on every iPhone,
+    /// so no paywall carries a hardware warning in any status.
+    @Test func cloudConfiguredDisclosesNothingOnThePaywall() {
+        for status: OnDeviceAvailability in [.available, .notEnabled, .modelNotReady, .deviceNotEligible] {
+            #expect(ProAvailability.message(for: status, cloudConfigured: true).isEmpty,
+                    "With cloud AI configured there is nothing to disclose on the paywall.")
         }
-        #expect(ProAvailability.message(for: .available).isEmpty)
+    }
+
+    /// The fixable states must name the path the person can take, not just the problem.
+    @Test func withoutCloudFixableStatesNameTheSettingsPath() {
+        #expect(ProAvailability.message(for: .notEnabled, cloudConfigured: false).contains("Settings"))
+    }
+
+    @Test func withoutCloudEveryUnavailableReasonExplainsItselfOnThePaywall() {
+        for status: OnDeviceAvailability in [.notEnabled, .modelNotReady, .deviceNotEligible] {
+            #expect(!ProAvailability.message(for: status, cloudConfigured: false).isEmpty)
+        }
+        #expect(ProAvailability.message(for: .available, cloudConfigured: false).isEmpty)
     }
 
     /// The ineligible-hardware copy has one job now: name the AI hardware requirement, and say
     /// that the rest of Pro still works on this iPhone. Losing either half misleads a buyer.
+    /// Asserted for the no-cloud build explicitly — with the key present the copy is empty.
     @Test func ineligibleCopyNamesTheRequirementAndWhatStillWorks() {
-        let message = ProAvailability.message(for: .deviceNotEligible)
+        let message = ProAvailability.message(for: .deviceNotEligible, cloudConfigured: false)
         #expect(message.contains("Apple Intelligence"))
         #expect(message.contains("iPhone 15"))
         #expect(message.lowercased().contains("everything else in pro works"))

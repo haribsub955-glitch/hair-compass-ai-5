@@ -4,6 +4,8 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>HCDeepSeekAPIKey</key>
+	<string>$(HC_DEEPSEEK_API_KEY)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

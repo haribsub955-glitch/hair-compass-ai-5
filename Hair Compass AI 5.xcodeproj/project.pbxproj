@@ -44,6 +44,7 @@
 
 /* Begin PBXFileReference section */
 		910B35D330267ACC00A92EA2 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
+		7C10AECF60000000000000AA /* AI.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = AI.xcconfig; path = Config/AI.xcconfig; sourceTree = "<group>"; };
 		9117FFE02F73F3BA0081475D /* Hair Compass AI 5.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Hair Compass AI 5.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9117FFF12F73F3BC0081475D /* Hair Compass AI 5Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Hair Compass AI 5Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9117FFFB2F73F3BC0081475D /* Hair Compass AI 5UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Hair Compass AI 5UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -132,6 +133,7 @@
 			isa = PBXGroup;
 			children = (
 				910B35D330267ACC00A92EA2 /* Products.storekit */,
+				7C10AECF60000000000000AA /* AI.xcconfig */,
 				9117FFE22F73F3BA0081475D /* Hair Compass AI 5 */,
 				A10000032F73F3BC0081475D /* Hair Compass CheckIn Widget */,
 				9117FFF42F73F3BC0081475D /* Hair Compass AI 5Tests */,
@@ -444,6 +446,7 @@
 		};
 		911700072F73F3BC0081475D /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7C10AECF60000000000000AA /* AI.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -508,6 +511,7 @@
 		};
 		911700082F73F3BC0081475D /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7C10AECF60000000000000AA /* AI.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;

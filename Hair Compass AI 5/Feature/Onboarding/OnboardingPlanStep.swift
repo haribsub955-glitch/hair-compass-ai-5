@@ -321,11 +321,18 @@ struct OnboardingPlanStep: View {
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            // Each AI card's footnote states that feature's real limit, and the limit depends on
+            // the build: with the cloud model configured (the shipping build) answers come from
+            // the cloud after consent, on any iPhone; without it, on Apple Intelligence only.
+            let cloudAI = CloudAIConfig.current.isConfigured
             ProFeatureCard(
                 art: CompanionArt.listening,
                 title: "Ask \(Companion.name) anything",
-                line: "Your record, in plain language. \"Is my shedding actually improving?\" — answered from your own entries, on-device.",
-                footnote: "Runs on Apple Intelligence. Nothing leaves your phone."
+                line: "Your record, in plain language. \"Is my shedding actually improving?\" — answered from your own entries"
+                    + (cloudAI ? "." : ", on-device."),
+                footnote: cloudAI
+                    ? "Answered by a cloud model, only after you say yes. Your entries are sent without your name or photos."
+                    : "Runs on Apple Intelligence. Nothing leaves your phone."
             )
             ProFeatureCard(
                 art: "pro-analysis",

@@ -8,7 +8,7 @@ import FoundationModels
 
 /// A precise breakdown of *why* on-device AI is (or isn't) usable right now, replacing the single
 /// `isAvailable` boolean everywhere the UI needs to explain an unavailable state. Shared by
-/// `OnDeviceAnalysisService`, `HairChatService`, and `InsightEngine`'s on-device path — all three
+/// `HairAnalysisService`, `HairChatService`, and `InsightEngine`'s on-device path — all three
 /// read the same `SystemLanguageModel.default.availability` and previously collapsed every
 /// `UnavailableReason` to the same "your hardware can't do this" copy, which is simply false for a
 /// Pro subscriber on eligible hardware who hasn't flipped Apple Intelligence on yet, or whose model
@@ -66,17 +66,17 @@ enum OnDeviceAvailability: Equatable {
     }
 }
 
-/// On-device "deep analysis" and ingredient identification via Apple's **FoundationModels**
-/// (Apple Intelligence). Everything stays on the device — no network, no API key, no off-device
-/// consent. Text only: the model reasons over the app's deterministic tracking record (and the
-/// on-device OCR of an ingredient label), never over image pixels — Foundation Models has no
-/// image input, so scalp *photos* are not interpreted. Record-keeping, never diagnosis.
+/// "Deep analysis" and ingredient identification. Text only: the model reasons over the app's
+/// deterministic tracking record (and the on-device OCR of an ingredient label), never over
+/// image pixels — photos are never sent anywhere. Record-keeping, never diagnosis.
 ///
-/// Mirrors `OnDeviceChat` / `OnDeviceInsight`: availability-gated, and it returns a clear,
-/// user-facing message on unsupported hardware rather than reaching for a cloud fallback.
+/// Engine order (see `AIEngine`): the cloud model (DeepSeek) leads whenever it is configured
+/// and the person has consented — it runs on every iPhone. Apple's on-device FoundationModels
+/// is the no-consent path and the offline fallback. Both engines' output passes the same
+/// deterministic `AIOutputValidator` gate before the UI shows it.
 @MainActor
 @Observable
-final class OnDeviceAnalysisService {
+final class HairAnalysisService {
     private(set) var isRunning = false
     private(set) var result: String?
     private(set) var errorMessage: String?
@@ -93,10 +93,15 @@ final class OnDeviceAnalysisService {
     /// since Apple Intelligence can be enabled/disabled or finish downloading while the app is open.
     var availability: OnDeviceAvailability { OnDeviceAvailability.current }
 
-    /// True when the on-device model is usable on this device (Apple Intelligence available).
-    /// The whole feature is unavailable — with a clear, reason-specific message — when this is
-    /// false; see `availability` for which of the three reasons applies.
-    var isAvailable: Bool { availability.isAvailable }
+    /// Which engine an analysis would use right now — cloud, on-device, a pending consent
+    /// question, or nothing. Read fresh each access: consent and Apple Intelligence can both
+    /// change while a sheet is open.
+    var engine: AIEngine { AIEngine.current }
+
+    /// True when an analysis can actually run right now (cloud or on-device). False while the
+    /// consent question is still open and when neither engine exists — the UI shows the consent
+    /// card or a clear notice instead of the run button.
+    var isAvailable: Bool { engine.canRun }
 
     /// The one-line reason shown when `isAvailable` is false and no more specific status is on
     /// hand. Prefer `availability.message` where a live `OnDeviceAvailability` is available.
@@ -111,16 +116,12 @@ final class OnDeviceAnalysisService {
         streamingText = nil
         errorMessage = nil
         defer { isRunning = false; streamingText = nil }
-        let status = availability
-        guard status.isAvailable else {
-            errorMessage = status.message
-            return
-        }
         do {
             result = try await generate(
                 instructions: Self.analysisInstructions,
                 prompt: Self.analysisPrompt(context: context),
                 validationContext: context,
+                maxTokens: 700,
                 // Do not expose unvalidated partial prose. The final deterministic gate below
                 // is the sole publication boundary.
                 onPartial: { _ in }
@@ -139,42 +140,86 @@ final class OnDeviceAnalysisService {
         isRunning = true
         errorMessage = nil
         defer { isRunning = false }
-        let status = availability
-        guard status.isAvailable else {
-            errorMessage = status.message
-            return nil
-        }
         guard !trimmed.isEmpty else {
             errorMessage = "No label text was read from this photo. Try a clearer photo of the ingredients."
             return nil
         }
         do {
-            return try await generate(instructions: Self.ingredientInstructions, prompt: trimmed)
+            return try await generate(instructions: Self.ingredientInstructions, prompt: trimmed, maxTokens: 300)
+        } catch let e as AnalysisError {
+            errorMessage = e.message
+            return nil
         } catch {
             errorMessage = "Couldn't summarize this label. Please try again."
             return nil
         }
     }
 
-    // MARK: - On-device generation
+    // MARK: - Generation (engine order lives here)
 
     private func generate(
         instructions: String,
         prompt: String,
         validationContext: AIContext? = nil,
+        maxTokens: Int = 600,
         onPartial: @MainActor (String) -> Void = { _ in }
     ) async throws -> String {
+        switch engine {
+        case .cloud:
+            do {
+                let reply = try await CloudAI.reply(
+                    system: instructions,
+                    turns: [CloudAI.Turn(role: "user", text: prompt)],
+                    maxTokens: maxTokens
+                )
+                return validated(reply, context: validationContext)
+            } catch let error as CloudAI.ServiceError {
+                // A failed cloud call falls back to the on-device model when this hardware has
+                // one; otherwise the honest transport error is the result.
+                guard OnDeviceAvailability.current.isAvailable else {
+                    throw AnalysisError(message: error.message)
+                }
+                return try await onDeviceGenerate(
+                    instructions: instructions, prompt: prompt,
+                    validationContext: validationContext, onPartial: onPartial
+                )
+            }
+        case .onDevice:
+            return try await onDeviceGenerate(
+                instructions: instructions, prompt: prompt,
+                validationContext: validationContext, onPartial: onPartial
+            )
+        case .needsCloudConsent:
+            // The sheets gate their run buttons behind the consent card, so reaching this is a
+            // logic error — answer with the honest next step rather than trapping.
+            throw AnalysisError(message: "Choose whether to use cloud AI first.")
+        case .unavailable(let message):
+            throw AnalysisError(message: message)
+        }
+    }
+
+    private func onDeviceGenerate(
+        instructions: String,
+        prompt: String,
+        validationContext: AIContext?,
+        onPartial: @MainActor (String) -> Void
+    ) async throws -> String {
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), OnDeviceAvailability.current.isAvailable {
             guard let text = await OnDeviceAnalysis.generate(instructions: instructions, prompt: prompt, onPartial: onPartial),
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw AnalysisError(message: "The analysis came back empty. Please try again.")
             }
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return validationContext.map { AIOutputValidator.safeText(trimmed, context: $0) } ?? trimmed
+            return validated(text.trimmingCharacters(in: .whitespacesAndNewlines), context: validationContext)
         }
         #endif
-        throw AnalysisError(message: Self.unavailableMessage)
+        throw AnalysisError(message: OnDeviceAvailability.current.message)
+    }
+
+    /// The one publication gate both engines share — deterministic, and always against the same
+    /// context object whose JSON the model was shown.
+    private func validated(_ text: String, context: AIContext?) -> String {
+        context.map { AIOutputValidator.safeText(text, context: $0) } ?? text
     }
 
     // MARK: - Prompts
