@@ -72,7 +72,7 @@ enum Companion {
     static func chatFocus(for tab: AppTab) -> String {
         switch tab {
         case .today:  return "The person's whole tracked record, opened from the Today screen."
-        case .shop:   return "The products and in-clinic options the person is browsing, opened from the Shop screen."
+        case .shop:   return "The evidence-graded products and in-clinic options the person is weighing, opened from the Guide screen."
         case .trends: return "The person's trends over time, opened from the Trends screen."
         case .care:   return "The person's routine and treatment adherence, opened from the Plan screen."
         case .photos: return "The person's progress photos over time, opened from the Photos screen."

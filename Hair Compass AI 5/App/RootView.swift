@@ -36,15 +36,18 @@ struct ScenePhaseDecision: Equatable {
 enum AppTab: String, CaseIterable, Identifiable {
     // Labs no longer has its own tab — it's Pro either way, and it's the same kind of clinical
     // record as Procedures, so it's reached from a row inside Plan instead (see `CareView`).
-    // Shop takes the freed slot: it's a revenue surface (affiliate links, in-clinic catalogue),
-    // deliberately kept outside the Pro wall, so it needs to be reachable on its own rather than
-    // buried inside the now-gated Plan tab it used to live in.
+    // Guide takes the freed slot. The case is still `shop` — it is where the affiliate links
+    // live and the rawValue anchors HC_TAB scripts and old notes — but the tab presents as
+    // GUIDANCE, not a storefront: the owner's ruling (2026-08-21) is that this surface exists to
+    // help someone decide what's worth buying and which procedure is worth considering, and a
+    // shopping-bag label would promise a checkout that doesn't exist. Deliberately kept outside
+    // the Pro wall either way.
     case today, shop, trends, care, photos
     var id: String { rawValue }
     var title: String {
         switch self {
         case .today: return "Today"
-        case .shop: return "Shop"
+        case .shop: return "Guide"
         case .trends: return "Trends"
         case .care: return "Plan"
         case .photos: return "Photos"
@@ -53,7 +56,9 @@ enum AppTab: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .today: return "checkmark.circle"
-        case .shop: return "bag"
+        // A wayfinding mark, not a bag — the tab advises, it doesn't sell. (Pairs with the
+        // compass identity better too.)
+        case .shop: return "signpost.right"
         case .trends: return "chart.xyaxis.line"
         case .care: return "checklist"
         case .photos: return "camera"

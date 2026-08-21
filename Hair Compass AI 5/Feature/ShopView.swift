@@ -1,12 +1,16 @@
 import SwiftData
 import SwiftUI
 
-/// The storefront, deliberately outside the wall.
+/// The Guide tab: what's worth buying, and which procedures are worth considering —
+/// deliberately outside the wall.
 ///
-/// This is a revenue surface, not a feature: an affiliate link earns nothing from someone who
-/// cannot reach it, so gating this would cost money rather than make it. It used to live inside
-/// `CareView` — which this release puts behind Pro — so it moved here rather than being locked
-/// away from exactly the free users it exists to serve.
+/// Reframed from a storefront by owner ruling (2026-08-21): this surface exists to help someone
+/// DECIDE — the personalized recommender first, the in-clinic catalogue beside it, the
+/// evidence-graded product list under both. It is still the app's revenue surface (the product
+/// links are affiliate-ready, which is why it stays free on every tier — a link earns nothing
+/// from someone who cannot reach it), but the framing is advice with a disclosure, never a
+/// checkout. It used to live inside `CareView` — which this release puts behind Pro — so it
+/// moved here rather than being locked away from exactly the free users it exists to serve.
 ///
 /// `RecommenderView` is free to browse for the same reason, but the actions it hands back
 /// (`RecommendedAction`) write into features that are not — add-to-plan, a patch photo series, a
@@ -57,7 +61,7 @@ struct ShopView: View {
         ScrollViewReader { proxy in
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
-                ScreenHeader(eyebrow: "Shop", title: "Products & options", condensed: headerCondense)
+                ScreenHeader(eyebrow: "Evidence", title: "Guide", condensed: headerCondense)
                     .padding(.top, 8)
                     // Same header-wash idiom as Trends/Plan: `art-guidance` (a stethoscope/plant
                     // still life) states the screen's subject before a single card renders.
@@ -75,6 +79,15 @@ struct ShopView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("affiliateDisclosure")
 
+                // The procedures half of this page's job, in the FIRST screenful. It used to be
+                // one bordered button below the entire 16-product catalogue — roughly ten screens
+                // of scrolling down — which meant, in practice, that nobody ever saw it. "Which
+                // procedure should I go with" is half of what this tab exists to answer, so it
+                // leads the page: one compact banner card, then the personalized recommendations
+                // own everything below. (InClinicOptionsView itself is education-only and carries
+                // no links, so leading with it under the disclosure sells nothing.)
+                inClinicCard
+
                 // Section-shaped, not screen-shaped (Task 9 fix-round) — `RecommenderView` used to
                 // be a full sheet destination with its own `ScrollView`/`ScreenHeader`/
                 // `.clinicalScreen()`. Embedding that as-is nested a vertical scroll inside this
@@ -87,10 +100,7 @@ struct ShopView: View {
 
                 ScienceProductsSection().id("science")
 
-                Button("In-clinic options") { showInClinicOptions = true }
-                    .buttonStyle(ClinicalButtonStyle(filled: false))
-
-                // Closes the tab like every other primary screen (Today, Trends, Plan) — Shop was
+                // Closes the tab like every other primary screen (Today, Trends, Plan) — this was
                 // the one `ScreenHeader` tab missing this ending.
                 PageCloser(opacity: 0.8)
             }
@@ -132,6 +142,37 @@ struct ShopView: View {
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { recommendedGate = nil } } }
             }
         }
+    }
+
+    /// The entry into `InClinicOptionsView` — the read-before-you-book procedures catalogue
+    /// (PRP, transplant, microneedling…), each graded on the app's shared evidence scale. Same
+    /// banner-image card family as `ScienceProductsSection` so the page's two halves — products
+    /// below, procedures here — read as siblings. The whole card is one button.
+    private var inClinicCard: some View {
+        Button { showInClinicOptions = true } label: {
+            ClinicalCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Image("procedure-consultation")
+                        .resizable().aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity).frame(height: 96)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    HStack(spacing: 8) {
+                        Eyebrow(text: "In-clinic options")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(Clinical.caption(12))
+                            .foregroundStyle(Clinical.accent)
+                    }
+                    Text("What clinics offer for hair loss — PRP, transplants, microneedling and more — each graded by how strong the evidence actually is, with the caution worth raising first.")
+                        .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("In-clinic options")
+        .accessibilityHint("Opens the procedures catalogue")
     }
 
     /// `RecommenderView` itself is deliberately free on every tier, but the actions it hands

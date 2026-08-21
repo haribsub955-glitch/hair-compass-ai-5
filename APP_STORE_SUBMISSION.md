@@ -70,7 +70,8 @@ misrepresents what someone on an iPhone 14 is buying.
 
 Trends is `.proGated(.trends)` — do **not** describe it as free.
 
-Free tier keeps: unlimited daily check-ins, today's own values, the streak count, Shop, Learn, and
+Free tier keeps: unlimited daily check-ins, today's own values, the streak count, the Guide tab
+(products + in-clinic options), Learn, and
 export. Every fresh install is a **three-day taster** with everything unlocked.
 
 ## 5. App Review notes — write these, they prevent a rejection

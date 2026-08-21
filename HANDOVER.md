@@ -19,9 +19,12 @@ health. Its guiding stance — the thing that must never be diluted:
 > 24-week clinical-trial window. Where money is involved (affiliate products), the evidence rating
 > is shown and never bent.
 
-Five tabs: **Today · Shop · Trends · Plan · Photos** (the tab enum case for Plan is still `care`).
+Five tabs: **Today · Guide · Trends · Plan · Photos** (the tab enum case for Plan is still `care`,
+and Guide's is still `shop` — it is the affiliate-link surface, but it presents as guidance, not a
+storefront, by owner ruling 2026-08-21).
 Labs no longer has its own tab — Task 9 of the monetization plan merged it into Plan (both are Pro,
-both are clinical records); Shop (the affiliate storefront, `ShopView`) took the freed slot and is
+both are clinical records); Guide (`ShopView` — the decide-what's-worth-it surface, still where
+the affiliate links live) took the freed slot and is
 deliberately kept outside the Pro wall. A Home Screen widget mirrors today's state.
 
 ---
@@ -54,7 +57,7 @@ Info.plist keys are the exception (they're real project config — see §9).
 | `HC_SEED_DEMO` | Seeds ~120 days of demo data (profile, entries, doses, labs, a trigger, weekly health snapshots) |
 | `HC_TAB <today\|shop\|trends\|care\|photos>` | Opens on that tab |
 | `HC_LEARN` | Opens the Learn sheet on launch |
-| `HC_SCROLL_PRODUCTS` | Scrolls Shop to the science-products section |
+| `HC_SCROLL_PRODUCTS` | Scrolls Guide to the science-products section |
 | `HC_COMPARE` / `HC_EXPORT` | Opens the Compare / Export sheet from Trends |
 | `HC_AI_STATUS <available\|notEnabled\|modelNotReady\|deviceNotEligible>` | Forces what `ProAvailability.current` reports, which drives the paywall's Apple Intelligence notice on the two AI features. It does **not** affect the purchase buttons — those are unconditional (`ProAvailability.showsPurchaseButtons`). An iOS 26 Simulator on an Apple Intelligence Mac reports `.available`, so without this the unavailable states can only be seen on physically ineligible hardware. |
 | `HC_TIER <free\|taster\|pro>` | Forces the resolved entitlement tier (`Entitlements.forcedTier`). A fresh install stamps `firstLaunchAt` and is therefore a **taster for three days**, so this is the only way to see the free tier — `LockedHistoryCard`, the three gated tabs (Trends, Plan, Photos), the suppressed widget snapshot — without waiting out the clock. DEBUG only: the flag is compiled out of release builds, so an App Review build cannot use it — review notes must not offer it (see §10). |
@@ -170,7 +173,7 @@ launch crash (learned the hard way).
 
 - **Today** [Feature/TodayView.swift](Hair%20Compass%20AI%205/Feature/TodayView.swift) — greeting + hero, daily-log card, **AI insight** card (on-device/rule-based, "Deep analysis with photos" → `DeepAnalysisSheet`), today's treatments, a **Learn** flash-card carousel (→ `LearnView`), readout, status. Logging via [Feature/LogSheet.swift](Hair%20Compass%20AI%205/Feature/LogSheet.swift).
 - **Trends** [Feature/TrendsView.swift](Hair%20Compass%20AI%205/Feature/TrendsView.swift) — range picker, **Lifestyle signals** (HealthKit connect/metrics, rapid-weight-loss + traction + trigger notes), shedding/scalp/adherence charts, **Compare** entry (→ `CompareView`), **Export** button (→ `ExportSheet`), "Explicitly not tracked" honesty card.
-- **Shop** [Feature/ShopView.swift](Hair%20Compass%20AI%205/Feature/ShopView.swift) — the affiliate storefront, deliberately outside the Pro wall: **What the evidence supports for you** (→ `RecommenderView`), **Science-backed options** (→ `ScienceProductsView` + `ManageLinksSheet`), **In-clinic options** (→ `InClinicOptionsView`). Used to live inside Plan; Task 9 (monetization hard wall) split it out since an affiliate link earns nothing from a free user who can't reach it.
+- **Guide** [Feature/ShopView.swift](Hair%20Compass%20AI%205/Feature/ShopView.swift) — helps decide what's worth buying and which procedure to consider; still the affiliate-link surface, deliberately outside the Pro wall: **What the evidence supports for you** (→ `RecommenderView`), **In-clinic options** (→ `InClinicOptionsView`, a full card in the first screenful — it was a lone button below the whole catalogue, where nobody saw it), **Science-backed options** (→ `ScienceProductsView` + `ManageLinksSheet`). Used to live inside Plan; Task 9 (monetization hard wall) split it out since an affiliate link earns nothing from a free user who can't reach it.
 - **Plan** [Feature/CareView.swift](Hair%20Compass%20AI%205/Feature/CareView.swift) — **Coach** card + **milestones**, **Today's routine** (grouped, check-off, per-step guidance), **Reminders** toggle, 24-week gate, treatment cards, ledger rows for Procedures/Progress check-in/Life events/**Labs** (→ `LabsView`, its own `.proGated(.labs)`). Add via [Feature/AddTreatmentSheet.swift](Hair%20Compass%20AI%205/Feature/AddTreatmentSheet.swift). Labs no longer has its own tab — reached from a row here instead (Task 9).
 - **Labs** [Feature/LabsView.swift](Hair%20Compass%20AI%205/Feature/LabsView.swift) — bloodwork with reference-range flags; add via `AddLabSheet`. Opened from a row inside Plan, not its own tab.
 - **Photos** [Feature/PhotosView.swift](Hair%20Compass%20AI%205/Feature/PhotosView.swift) — per-region series, **guided capture** (→ `GuidedCaptureView`: live overlay + ghost of last shot + condition pre-fill), before/after **slider** (→ `PhotoCompareView`).
@@ -220,7 +223,7 @@ building + launching + screenshotting in the Simulator.
 | Thing | Where | How to set |
 |---|---|---|
 | Claude API key (cloud deep analysis) | UserDefaults `claudeAPIKey`, seeded from env | Set `ANTHROPIC_API_KEY` in the scheme's run env (`AIConfig.seedKeyIfProvided`) |
-| iHerb affiliate links | UserDefaults `affiliate.link.<id>` | In-app **Shop → Science-backed options → Manage links** (Task 9 moved this out of Plan, which is now Pro-gated) |
+| Affiliate links | UserDefaults `affiliate.link.<id>` | In-app **Guide → Science-backed options → Manage links** (Task 9 moved this out of Plan, which is now Pro-gated) |
 | Privacy / support URLs | `AppInfo` in [Model/AppInfo.swift](Hair%20Compass%20AI%205/Model/AppInfo.swift) | Fill the two placeholder strings before submission (docs site) |
 | Capabilities already configured | `.entitlements` + `INFOPLIST_KEY_*` | HealthKit entitlement + Health/Camera/Photo usage strings are present |
 
@@ -254,7 +257,7 @@ and both AI sheets sit behind `ProGate`, which reads the resolved tier from `Ent
    Ask Wren and Deep analysis. Trends is `.proGated(.trends)`, so do **not** describe it as free.
    Only the last two need Apple Intelligence; the other ten run on any supported iPhone, which is
    why the purchase buttons are unconditional. Free keeps: unlimited daily check-ins, today's own
-   values, the streak count, Shop, Learn, and export.
+   values, the streak count, the Guide tab, Learn, and export.
 4. **Paid Apps agreement + banking/tax** signed, or products never load and the paywall shows
    `StoreUnavailableView` to every reviewer.
 5. **App Privacy questionnaire** → *Data Not Collected*, matching both `PrivacyInfo.xcprivacy`

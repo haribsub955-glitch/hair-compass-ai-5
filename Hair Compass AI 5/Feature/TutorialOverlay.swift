@@ -26,10 +26,11 @@ struct TutorialOverlay: View {
         .init(tab: .today, title: "Today",
               line: "Log your day in seconds — shedding, scalp, and treatments live here."),
         // Task 9: Labs' old page here is gone — Labs merged into Plan rather than keeping its own
-        // tab. Shop takes the freed slot instead: a revenue surface (affiliate links, in-clinic
-        // catalogue) deliberately kept free on every tier, so it's worth a stop on the tour.
-        .init(tab: .shop, title: "Shop",
-              line: "Evidence-graded products and in-clinic options — free to browse, on every tier."),
+        // tab. Guide takes the freed slot: the decide-what's-worth-it surface (recommendations,
+        // evidence-graded products, the in-clinic catalogue), deliberately free on every tier, so
+        // it's worth a stop on the tour.
+        .init(tab: .shop, title: "Guide",
+              line: "What's worth buying and which procedures are worth considering — graded by evidence, free on every tier."),
         .init(tab: .trends, title: "Trends",
               line: "Every log builds these charts. Apple Health fills in sleep and recovery automatically."),
         .init(tab: .care, title: "Plan",
