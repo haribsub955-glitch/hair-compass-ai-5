@@ -416,11 +416,19 @@ struct AddTreatmentSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
                 }
 
+                // Belt-and-braces: the re-render when consent is recorded is driven by the
+                // `consentVersion` @State bump in `onDecided` below, not by reading it here —
+                // future refactors must keep that @State mutation.
                 let _ = consentVersion
                 if ingredientImage != nil, case .needsCloudConsent = analysisService.engine {
                     // The label photo is read by on-device OCR either way; only the written
                     // summary would use the cloud, so the question is asked exactly here.
                     CloudAIConsentCard { consentVersion += 1 }
+                } else if ingredientImage != nil, case .unavailable(let message) = analysisService.engine {
+                    // Cloud AI declined and this iPhone can't run on-device AI either — say so
+                    // instead of the button, summary and error rows all silently vanishing.
+                    Text(message)
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 } else if ingredientImage != nil, analysisService.isAvailable {
                     Button(action: analyzeIngredientsTapped) {
                         Label(analysisService.isRunning ? "Analyzing…" : "Analyze with AI", systemImage: "sparkles")

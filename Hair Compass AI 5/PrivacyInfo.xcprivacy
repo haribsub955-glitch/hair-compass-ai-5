@@ -32,6 +32,20 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
+		<!-- The AIContext payload's one free-text field (progress check-in notes, ≤240 chars)
+		     is user content that travels with a consented cloud AI request. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
 	</array>
 
 	<!--
@@ -45,7 +59,10 @@
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
+				<!-- 1C8F.1: App Group defaults shared with the widget. CA92.1: the app's own
+				     plain UserDefaults (consent flag, notification bookkeeping, streak UI state). -->
 				<string>1C8F.1</string>
+				<string>CA92.1</string>
 			</array>
 		</dict>
 		<dict>

@@ -22,15 +22,15 @@
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
 	<string>Hair Compass can add a booked procedure (like a PRP session) to your calendar so you get a reminder — it only adds events and never reads your calendar.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Hair Compass uses the camera for scalp and hair photos kept as records and comparisons. Only text on ingredient labels is summarized, fully on-device.</string>
+	<string>Hair Compass uses the camera for scalp and hair photos kept as records and comparisons. Labels are read on your iPhone; summaries may use opt-in cloud AI.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. It does not diagnose hair or scalp conditions.</string>
+	<string>Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. If you turn on cloud AI, these values can be part of the tracking summary sent to write your answers. It does not diagnose hair or scalp conditions.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Hair Compass never writes to Apple Health. This permission is declared only because the HealthKit capability requires it; your Health data is read-only to this app and is never modified.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Hair Compass uses your photo library for scalp and hair photos kept as records and comparisons. Only text on ingredient labels is summarized, fully on-device.</string>
+	<string>Hair Compass uses your photo library for scalp and hair photos kept as records and comparisons. Labels are read on your iPhone; summaries may use opt-in cloud AI.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 </dict>

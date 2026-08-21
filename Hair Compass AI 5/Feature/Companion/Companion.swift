@@ -23,7 +23,8 @@ enum CompanionMoment: CaseIterable {
     case celebrating   // milestone / streak celebration
 }
 
-/// Wren — the name and personality of the on-device AI. This is the single home of the
+/// Wren — the name and personality of the AI companion (engine varies: cloud once consented,
+/// on-device otherwise). This is the single home of the
 /// companion's voice: a pure mapping, no SwiftUI, no state, fully unit-tested (mirrors how
 /// `HairChatPrompt` centralizes the chat's scope and `HairInsightCalculator` centralizes stats).
 ///

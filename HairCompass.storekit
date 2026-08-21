@@ -80,7 +80,7 @@
           },
           "localizations" : [
             {
-              "description" : "On-device AI chat and record analysis.",
+              "description" : "AI chat, deep analysis and your full record.",
               "displayName" : "Pro Monthly",
               "locale" : "en_US"
             }
@@ -101,7 +101,7 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "On-device AI chat and record analysis.",
+              "description" : "AI chat, deep analysis and your full record.",
               "displayName" : "Pro Yearly",
               "locale" : "en_US"
             }

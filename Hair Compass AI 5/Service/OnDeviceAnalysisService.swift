@@ -1,7 +1,9 @@
 import Foundation
 import CoreFoundation
 
-// App Store Connect product descriptions must be updated to match the in-app record-summary wording.
+// App Store Connect product descriptions must NOT claim the AI is on-device-only: DeepSeek
+// cloud inference is the primary engine whenever it's configured and consented to (see
+// `AIEngine`), and on-device Apple Intelligence is the no-consent path and offline fallback.
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -80,12 +82,19 @@ final class HairAnalysisService {
     private(set) var isRunning = false
     private(set) var result: String?
     private(set) var errorMessage: String?
-    /// The written summary as it streams in token-by-token, cumulative from an empty string.
-    /// Nil until the first token arrives, and cleared back to nil once the finished text lands
-    /// in `result` — the UI shows this growing inside the Summary card instead of a blind wait.
-    private(set) var streamingText: String?
+    /// The currently in-flight generation, if any — held so `cancel()` can stop it (and the
+    /// billed cloud request underneath it) when a sheet is dismissed mid-run.
+    private var currentTask: (any CancellableTask)?
 
     init() {}
+
+    /// Cancels the in-flight analysis, if any. Cooperative: `URLSession.data(for:)` observes
+    /// Swift Concurrency cancellation and tears down the underlying network task when its
+    /// enclosing `Task` is cancelled, so this actually stops a billed cloud call in flight
+    /// rather than just abandoning the awaiting call site.
+    func cancel() {
+        currentTask?.cancel()
+    }
 
     struct AnalysisError: Error { let message: String }
 
@@ -111,58 +120,80 @@ final class HairAnalysisService {
     /// Text only — no photos are read (there is no on-device path for image input); the record's
     /// own photo *metadata* is already inside the context.
     func analyze(context: AIContext) async {
-        isRunning = true
-        result = nil
-        streamingText = nil
-        errorMessage = nil
-        defer { isRunning = false; streamingText = nil }
-        do {
-            result = try await generate(
-                instructions: Self.analysisInstructions,
-                prompt: Self.analysisPrompt(context: context),
-                validationContext: context,
-                maxTokens: 700,
-                // Do not expose unvalidated partial prose. The final deterministic gate below
-                // is the sole publication boundary.
-                onPartial: { _ in }
-            )
-        } catch let e as AnalysisError {
-            errorMessage = e.message
-        } catch {
-            errorMessage = "The analysis couldn't be completed. Please try again."
+        // A double-tap on the run button (or the sheet re-appearing mid-request) must not fire
+        // a second billed cloud call on top of the first.
+        guard !isRunning else { return }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            self.isRunning = true
+            self.result = nil
+            self.errorMessage = nil
+            defer { self.isRunning = false }
+            do {
+                self.result = try await self.generate(
+                    instructions: Self.analysisInstructions,
+                    prompt: Self.analysisPrompt(context: context),
+                    validationContext: context,
+                    maxTokens: 700
+                )
+            } catch let e as AnalysisError {
+                self.errorMessage = e.message
+            } catch {
+                self.errorMessage = "The analysis couldn't be completed. Please try again."
+            }
         }
+        currentTask = task
+        await task.value
     }
 
     /// Summarize a product from the text read off its ingredient label (on-device OCR — see
     /// `TextScanner`). Returns a short summary, or nil on error. Record-keeping, not medical advice.
     func analyzeIngredients(labelText: String) async -> String? {
-        let trimmed = labelText.trimmingCharacters(in: .whitespacesAndNewlines)
-        isRunning = true
-        errorMessage = nil
-        defer { isRunning = false }
-        guard !trimmed.isEmpty else {
-            errorMessage = "No label text was read from this photo. Try a clearer photo of the ingredients."
-            return nil
+        guard !isRunning else { return nil }
+        let task = Task { [weak self] () -> String? in
+            guard let self else { return nil }
+            let trimmed = labelText.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.isRunning = true
+            self.errorMessage = nil
+            defer { self.isRunning = false }
+            guard !trimmed.isEmpty else {
+                self.errorMessage = "No label text was read from this photo. Try a clearer photo of the ingredients."
+                return nil
+            }
+            do {
+                // The label text IS the fact set here — there's no AIContext for a product
+                // summary, so the OCR'd text is what grounds the validator against invented
+                // dosages/claims (see fix for the bypass this used to have: `generate` was
+                // called with no validation source at all, and `validated(_:context:)` returns
+                // unvalidated text when there's no context — cloud output rendered verbatim on
+                // exactly the surface that invites dosage language).
+                return try await self.generate(
+                    instructions: Self.ingredientInstructions, prompt: trimmed,
+                    validationFacts: trimmed, maxTokens: 300
+                )
+            } catch let e as AnalysisError {
+                self.errorMessage = e.message
+                return nil
+            } catch {
+                self.errorMessage = "Couldn't summarize this label. Please try again."
+                return nil
+            }
         }
-        do {
-            return try await generate(instructions: Self.ingredientInstructions, prompt: trimmed, maxTokens: 300)
-        } catch let e as AnalysisError {
-            errorMessage = e.message
-            return nil
-        } catch {
-            errorMessage = "Couldn't summarize this label. Please try again."
-            return nil
-        }
+        currentTask = task
+        return await task.value
     }
 
     // MARK: - Generation (engine order lives here)
 
+    /// `validationContext` is the deep-analysis path's fact source; `validationFacts` is the
+    /// ingredient path's (the raw OCR'd label text). Exactly one is non-nil per caller today,
+    /// but nothing here assumes that — `validated` below just checks whichever it's handed.
     private func generate(
         instructions: String,
         prompt: String,
         validationContext: AIContext? = nil,
-        maxTokens: Int = 600,
-        onPartial: @MainActor (String) -> Void = { _ in }
+        validationFacts: String? = nil,
+        maxTokens: Int = 600
     ) async throws -> String {
         switch engine {
         case .cloud:
@@ -172,22 +203,32 @@ final class HairAnalysisService {
                     turns: [CloudAI.Turn(role: "user", text: prompt)],
                     maxTokens: maxTokens
                 )
-                return validated(reply, context: validationContext)
-            } catch let error as CloudAI.ServiceError {
+                return validated(reply, context: validationContext, suppliedFacts: validationFacts)
+            } catch let cloudError as CloudAI.ServiceError {
                 // A failed cloud call falls back to the on-device model when this hardware has
                 // one; otherwise the honest transport error is the result.
                 guard OnDeviceAvailability.current.isAvailable else {
-                    throw AnalysisError(message: error.message)
+                    throw AnalysisError(message: cloudError.message)
                 }
-                return try await onDeviceGenerate(
-                    instructions: instructions, prompt: prompt,
-                    validationContext: validationContext, onPartial: onPartial
-                )
+                do {
+                    return try await onDeviceGenerate(
+                        instructions: instructions, prompt: prompt,
+                        validationContext: validationContext, validationFacts: validationFacts
+                    )
+                } catch {
+                    // Both engines failed. When the cloud call failed for a network reason,
+                    // that message ("check your connection") is the actionable diagnosis —
+                    // don't let the on-device fallback's generic failure mask why cloud didn't
+                    // answer either. When cloud failed for a non-network reason, the on-device
+                    // error is at least as informative, so let it through unchanged.
+                    if cloudError.isNetwork { throw AnalysisError(message: cloudError.message) }
+                    throw error
+                }
             }
         case .onDevice:
             return try await onDeviceGenerate(
                 instructions: instructions, prompt: prompt,
-                validationContext: validationContext, onPartial: onPartial
+                validationContext: validationContext, validationFacts: validationFacts
             )
         case .needsCloudConsent:
             // The sheets gate their run buttons behind the consent card, so reaching this is a
@@ -202,24 +243,31 @@ final class HairAnalysisService {
         instructions: String,
         prompt: String,
         validationContext: AIContext?,
-        onPartial: @MainActor (String) -> Void
+        validationFacts: String?
     ) async throws -> String {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *), OnDeviceAvailability.current.isAvailable {
-            guard let text = await OnDeviceAnalysis.generate(instructions: instructions, prompt: prompt, onPartial: onPartial),
+            // No `onPartial` passed: nothing reads partial prose (the deterministic gate below
+            // is the sole publication boundary), so there's nothing to feed it — the function
+            // keeps its own no-op default for callers that ever do want progress.
+            guard let text = await OnDeviceAnalysis.generate(instructions: instructions, prompt: prompt),
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw AnalysisError(message: "The analysis came back empty. Please try again.")
             }
-            return validated(text.trimmingCharacters(in: .whitespacesAndNewlines), context: validationContext)
+            return validated(text.trimmingCharacters(in: .whitespacesAndNewlines), context: validationContext, suppliedFacts: validationFacts)
         }
         #endif
         throw AnalysisError(message: OnDeviceAvailability.current.message)
     }
 
-    /// The one publication gate both engines share — deterministic, and always against the same
-    /// context object whose JSON the model was shown.
-    private func validated(_ text: String, context: AIContext?) -> String {
-        context.map { AIOutputValidator.safeText(text, context: $0) } ?? text
+    /// The one publication gate both engines share — deterministic, gated against whichever
+    /// fact source the caller has: the full `AIContext` for deep analysis, or the raw label
+    /// text for ingredient summaries. Every `generate()` caller in this file supplies one or
+    /// the other; text reaches the UI unvalidated only if a future caller passes neither.
+    private func validated(_ text: String, context: AIContext?, suppliedFacts: String? = nil) -> String {
+        if let context { return AIOutputValidator.safeText(text, context: context) }
+        if let suppliedFacts { return AIOutputValidator.safeText(text, suppliedFacts: suppliedFacts) }
+        return text
     }
 
     // MARK: - Prompts
@@ -250,7 +298,13 @@ final class HairAnalysisService {
 }
 
 /// Deterministic safety boundary after generation. Model instructions are defense-in-depth; this
-/// validator is the authoritative final gate before generated prose reaches UI or export paths.
+/// validator is the final gate on the two risks it's built for — clinical-safety overreach
+/// (diagnosis, dosing language, waving off a red-flag symptom) and ungrounded output (numbers or
+/// high-impact facts the supplied record never stated). Scope, honestly: it is not a general
+/// content-safety or prompt-injection filter — injected instructions and phishing-style text are
+/// out of scope. That's a deliberate line, not an oversight: everywhere this validator's output
+/// lands renders as inert plain `Text` (no links, no markup, nothing executable), so there is
+/// nothing downstream for injected text to actually do.
 enum AIOutputValidator {
     static let replacement = "I couldn't safely summarize that output. Keep using the tracked record for documentation, and discuss medical decisions or concerning symptoms with a qualified clinician. This is record-keeping, not diagnosis."
 
@@ -283,7 +337,11 @@ enum AIOutputValidator {
             )
         }
 
-        private static func canonical(_ value: Double) -> String {
+        // `fileprivate`, not `private`: `isSafe(_:suppliedFacts:allTreatmentsOutcomeReady:)`
+        // below needs the exact same canonical form when it builds a `Facts` by hand instead
+        // of through `.context(_:)`, so the two never drift into two different notions of
+        // "the same number".
+        fileprivate static func canonical(_ value: Double) -> String {
             value.rounded() == value ? String(Int(value)) : String(value)
         }
     }
@@ -302,7 +360,19 @@ enum AIOutputValidator {
     }
 
     static func isSafe(_ text: String, suppliedFacts: String, allTreatmentsOutcomeReady: Bool? = nil) -> Bool {
-        let numbers = Set(suppliedFacts.matches(of: /\b\d+(?:\.\d+)?\b/).map { String($0.output) })
+        // Canonicalize each supplied number the same way `Facts.context` canonicalizes the
+        // reply-side numbers below (Double → trimmed integer-or-decimal string) — AND keep the
+        // raw matched string too. Without the canonical form, a date component like "08" or
+        // "05" in a JSON fact string could never match a reply's canonicalized "8", so an
+        // honest reply ("shedding rose in month 8") would fail against a fact set that plainly
+        // contains that same date. Keeping the raw string alongside it is a pure superset — it
+        // can only let more honest text through, never let invented numbers slip past.
+        var numbers = Set<String>()
+        for match in suppliedFacts.matches(of: /\b\d+(?:\.\d+)?\b/) {
+            let raw = String(match.output)
+            numbers.insert(raw)
+            if let value = Double(raw) { numbers.insert(Facts.canonical(value)) }
+        }
         let readiness = allTreatmentsOutcomeReady
             ?? (suppliedFacts.lowercased().contains("\"outcomeready\":false") ? false : nil)
         return isSafe(text, facts: Facts(numericValues: numbers,
@@ -392,10 +462,13 @@ enum OnDeviceAnalysis {
         return false
     }
 
-    /// Generate over `prompt` with the given `instructions`, streaming as it writes. `onPartial`
-    /// fires on the main actor with the cumulative text so far after every new snapshot, so the
-    /// UI can show the summary as it's written instead of a blind wait. Returns nil when the
-    /// model is unavailable or the request fails, so the caller can surface a clear message.
+    /// Generate over `prompt` with the given `instructions`. The underlying session always
+    /// streams internally (`streamResponse`), and `onPartial`, if a caller supplies one, fires
+    /// on the main actor with the cumulative text after every new snapshot — but nothing in the
+    /// app does today: generated prose is never shown before `AIOutputValidator` passes the
+    /// finished text, so every caller here keeps the no-op default and reads only the return
+    /// value. Returns nil when the model is unavailable or the request fails, so the caller can
+    /// surface a clear message.
     static func generate(
         instructions: String,
         prompt: String,

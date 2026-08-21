@@ -80,6 +80,8 @@ struct HairChatSheet: View {
                 if now != last { last = now; availabilityRefresh += 1 }
             }
         }
+        // Dismissing mid-reply cancels the in-flight turn — and the billed cloud request under it.
+        .onDisappear { service.cancel() }
         #if DEBUG
         // `HC_CHAT_ASK <question>` submits one question on open, so a chat turn — the agent's
         // whole tool-calling round trip included — can be exercised from `simctl launch` without

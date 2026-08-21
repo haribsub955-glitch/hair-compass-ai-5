@@ -385,7 +385,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Hair Compass AI 5/Info.plist";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. It does not diagnose hair or scalp conditions.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. If you turn on cloud AI, these values can be part of the tracking summary sent to write your answers. It does not diagnose hair or scalp conditions.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -421,7 +421,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Hair Compass AI 5/Info.plist";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. It does not diagnose hair or scalp conditions.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. If you turn on cloud AI, these values can be part of the tracking summary sent to write your answers. It does not diagnose hair or scalp conditions.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -661,7 +661,7 @@
 				DEVELOPMENT_TEAM = 2LZ89Q26N8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Hair Compass CheckIn Widget/Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -690,7 +690,7 @@
 				DEVELOPMENT_TEAM = 2LZ89Q26N8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Hair Compass CheckIn Widget/Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

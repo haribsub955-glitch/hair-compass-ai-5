@@ -15,7 +15,8 @@ nonisolated enum AppInfo {
     static var termsOfUseURL: URL? { URL(string: termsOfUseURLString) }
 
     /// Where the in-app "Send feedback" button addresses its email. Change this to your support
-    /// inbox. The app has no backend, so feedback is delivered straight to this address.
+    /// inbox. Feedback itself has no backend — it's delivered straight to this address — though
+    /// AI answers elsewhere in the app may use the opt-in cloud model.
     static let feedbackEmail = "harib.alazri@gmail.com"
 
     static var privacyPolicyURL: URL? {

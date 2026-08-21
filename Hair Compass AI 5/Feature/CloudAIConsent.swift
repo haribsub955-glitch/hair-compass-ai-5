@@ -86,6 +86,9 @@ struct CloudAISettingsSection: View {
                 .tint(Clinical.accent)
                 .accessibilityIdentifier("cloudAIToggle")
                 .onChange(of: granted) {
+                    // Flipping this toggle either way deliberately collapses "undecided" into an
+                    // explicit answer — there is no third, unasked state once Baseline has been
+                    // opened, by design (mirrors what `CloudAIConsentCard`'s buttons record).
                     CloudAIConsent.record(granted)
                 }
 
@@ -104,5 +107,10 @@ struct CloudAISettingsSection: View {
             .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
         }
+        // Re-sync the local mirror every time Baseline appears: the `@State` above only
+        // snapshots once at init, and would otherwise go stale if consent were recorded
+        // elsewhere (e.g. `CloudAIConsentCard`, reached from chat/deep-analysis/ingredients)
+        // while this screen stayed alive underneath.
+        .onAppear { granted = CloudAIConsent.isDecided() && CloudAIConsent.isGranted() }
     }
 }

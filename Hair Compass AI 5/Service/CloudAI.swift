@@ -12,7 +12,11 @@ import os
 /// (`HCDeepSeekAPIKey`) → `current`. A build without the secrets file resolves an empty key,
 /// `isConfigured` reads false, and every AI feature falls back to the on-device model exactly
 /// as it behaved before the cloud path existed.
-struct CloudAIConfig: Equatable, Sendable {
+///
+/// `nonisolated`: pure value resolution over Bundle/ProcessInfo, with no actor affinity — and
+/// it needs to be callable as a default-parameter value from the now-`nonisolated` `CloudAI`
+/// client without forcing a MainActor hop just to read a URL string.
+nonisolated struct CloudAIConfig: Equatable, Sendable {
     var baseURLString: String
     var model: String
     var apiKey: String
@@ -174,6 +178,54 @@ enum AIEngine: Equatable {
         + "Everything else in Hair Compass works fully on this device."
 }
 
+// MARK: - Client-side daily budget
+
+/// A deterministic guard against one runaway or abusive client draining the shared DeepSeek
+/// balance sitting behind the key embedded in this binary. This is NOT billing enforcement —
+/// DeepSeek's own account controls are that — it only makes sure a single misbehaving install
+/// (a retry loop, a tampered build hammering the endpoint) can't run up unlimited cloud
+/// inference on one shared account while the taster is unlimited-by-design for everyone else.
+/// The limit is deliberately generous: ordinary use (a handful of chat turns and deep analyses
+/// a day) sits far under it, so a real person should never see the refusal message it produces.
+/// When it does trip, the caller's existing on-device fallback is what makes the refusal
+/// harmless rather than a dead end — on-device inference is free and unmetered.
+nonisolated enum CloudAIBudget {
+    static let dailyLimit = 100
+    static let dayDefaultsKey = "cloudAIBudgetDay"
+    static let countDefaultsKey = "cloudAIBudgetCount"
+
+    /// "yyyy-MM-dd" in the given calendar — pure component math (no formatter state), so the
+    /// day boundary lands exactly at local midnight.
+    static func dayString(_ date: Date, calendar: Calendar) -> String {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+    }
+
+    /// Records one cloud request against today's count and reports whether it was allowed.
+    /// There's no midnight timer — the rollover to a fresh count of zero happens lazily, the
+    /// first time a call sees a day string that no longer matches what's stored. `now`/
+    /// `defaults` are explicit so `CloudAITests` can pin a fixed clock and a throwaway suite.
+    @discardableResult
+    static func consume(now: Date = Date(), defaults: UserDefaults = .standard, calendar: Calendar = .current) -> Bool {
+        let today = dayString(now, calendar: calendar)
+        let count = defaults.string(forKey: dayDefaultsKey) == today ? defaults.integer(forKey: countDefaultsKey) : 0
+        guard count < dailyLimit else { return false }
+        defaults.set(today, forKey: dayDefaultsKey)
+        defaults.set(count + 1, forKey: countDefaultsKey)
+        return true
+    }
+}
+
+// MARK: - Cancellation
+
+/// Type-erases `Task<Success, Never>` so a service can hold "whatever generation task is
+/// currently running" in one stored property regardless of what it returns, and cancel it
+/// generically from a `cancel()` method. `HairAnalysisService` and `HairChatService` both use
+/// this so a dismissed sheet can stop an in-flight — and billed — cloud call instead of letting
+/// it run to completion unobserved.
+protocol CancellableTask: Sendable { func cancel() }
+extension Task: CancellableTask where Failure == Never {}
+
 // MARK: - Client
 
 /// The DeepSeek client: one non-streaming `/chat/completions` call per request.
@@ -181,15 +233,23 @@ enum AIEngine: Equatable {
 /// Deliberately non-streaming — generated prose is never shown before `AIOutputValidator`
 /// passes it (the on-device paths already discard partials for the same reason), so a stream
 /// would buy latency-to-first-token the UI is not allowed to display anyway.
-enum CloudAI {
+///
+/// `nonisolated`: the app default-isolates new declarations to `@MainActor`, but this client's
+/// networking and JSON (de)serialization have no business running on the main thread — marking
+/// the enum `nonisolated` keeps every static member here off the main actor. `Turn` and
+/// `ServiceError` are `Sendable`, so the `await CloudAI.reply(...)` call sites in the
+/// (`@MainActor`) services still cross the actor boundary safely.
+nonisolated enum CloudAI {
     struct Turn: Equatable, Sendable {
         var role: String   // "user" | "assistant"
         var text: String
     }
 
     /// A user-facing failure. `isNetwork` distinguishes "you're offline" (worth an on-device
-    /// fallback) from "the service answered badly" (retrying locally won't help the caller
-    /// decide anything — but the fallback is still tried; the flag exists for messaging).
+    /// fallback, and worth surfacing over a generic on-device failure message if that fallback
+    /// then also fails — "check your connection" is the actionable diagnosis) from "the service
+    /// answered badly" (retrying locally won't help the caller decide anything, but the
+    /// fallback is still tried).
     struct ServiceError: Error, Equatable {
         let message: String
         let isNetwork: Bool
@@ -200,6 +260,13 @@ enum CloudAI {
     static let offlineMessage = "Couldn't reach the AI service. Check your connection and try again."
     static let serviceDownMessage = "The AI service is temporarily unavailable. Please try again in a moment."
     static let emptyReplyMessage = "The answer came back empty. Please try again."
+    static let budgetExceededMessage = "Today's AI limit is reached — it resets tomorrow. On-device answers still work where supported."
+
+    /// Ephemeral on purpose: health-derived JSON payloads (shedding levels, lab values, dates)
+    /// shouldn't linger in the shared on-disk `URLCache` or pick up cookies from other requests
+    /// this app makes, and there is nothing here worth caching across launches anyway. Tests
+    /// inject a different session via the `session:` parameter.
+    private static let defaultSession = URLSession(configuration: .ephemeral)
 
     /// One completed turn. `system` grounds the model; `turns` is the capped conversation,
     /// oldest → newest, ending on the user's message.
@@ -208,17 +275,32 @@ enum CloudAI {
         turns: [Turn],
         maxTokens: Int = 600,
         config: CloudAIConfig = .current,
-        session: URLSession = .shared
+        session: URLSession = defaultSession,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        budgetDefaults: UserDefaults = .standard
     ) async throws -> String {
         guard config.isConfigured, let url = config.chatCompletionsURL else {
             throw ServiceError(message: serviceDownMessage, isNetwork: false)
+        }
+        // Client-side abuse containment, not billing enforcement — see `CloudAIBudget`. Checked
+        // before building the request so a tripped budget never touches the network at all.
+        guard CloudAIBudget.consume(now: now, defaults: budgetDefaults, calendar: calendar) else {
+            throw ServiceError(message: budgetExceededMessage, isNetwork: false)
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 60
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try? JSONEncoder().encode(requestBody(system: system, turns: turns, config: config, maxTokens: maxTokens))
+        do {
+            request.httpBody = try JSONEncoder().encode(requestBody(system: system, turns: turns, config: config, maxTokens: maxTokens))
+        } catch {
+            // `try?` here would silently POST with a nil body — a request DeepSeek would then
+            // (correctly) reject, but with an error message that blames the service instead of
+            // the payload. Fail closed with the same message a misconfigured client gets.
+            throw ServiceError(message: serviceDownMessage, isNetwork: false)
+        }
 
         let data: Data
         let response: URLResponse
@@ -268,12 +350,32 @@ enum CloudAI {
         }
         return ChatRequestPayload(
             model: config.model,
-            messages: messages,
+            messages: foldConsecutiveSameRole(messages),
             // Low-variance factual prose: the validator rejects invention, so don't invite it.
             temperature: 0.5,
             maxTokens: maxTokens,
             stream: false
         )
+    }
+
+    /// Folds consecutive messages that share a role into one, joining their text with a blank
+    /// line and preserving order. Exists because `deepseek-reasoner` — a supported
+    /// `HC_AI_MODEL` override, not just the default `deepseek-chat` — 400s on a conversation
+    /// that repeats a role two turns running. That shape happens for real: when a turn fails,
+    /// `HairChatService` leaves the unanswered user message in history, so the next `send`
+    /// appends a second user turn right after it and the payload would read
+    /// `[system, ..., user, user]`. Folding keeps every request role-alternating without
+    /// dropping any of the text that was going to be sent.
+    static func foldConsecutiveSameRole(_ messages: [ChatMessagePayload]) -> [ChatMessagePayload] {
+        var folded: [ChatMessagePayload] = []
+        for message in messages {
+            if let last = folded.last, last.role == message.role {
+                folded[folded.count - 1] = ChatMessagePayload(role: last.role, content: last.content + "\n\n" + message.content)
+            } else {
+                folded.append(message)
+            }
+        }
+        return folded
     }
 
     struct ChatResponsePayload: Decodable {
