@@ -18,8 +18,8 @@ the monetization hard-wall work is merged, and the test suite is green.
 | App Group | `group.harib.Hair-Compass-AI-5` |
 | Subscription group | `21442176` |
 | Product IDs | `com.harib.haircompass.pro.monthly`, `com.harib.haircompass.pro.yearly` |
-| Privacy policy URL | https://haribsub955-glitch.github.io/hair-compass-ai-5/privacy-policy.html |
-| Support URL | https://haribsub955-glitch.github.io/hair-compass-ai-5/ |
+| Privacy policy URL | https://haircompass-ai.com/privacy-policy.html |
+| Support URL | https://haircompass-ai.com/support.html |
 | Support email | harib.alazri@gmail.com |
 
 ## 1. Paid Apps agreement + banking and tax — do this first

@@ -2,13 +2,14 @@ import Foundation
 
 /// App-level info + the legal strings needed before App Store submission.
 nonisolated enum AppInfo {
-    /// The docs/ GitHub Pages site, live since 2026-08-21: the repo was made public and Pages was
-    /// enabled from `/docs` on the default branch, and both URLs were verified serving HTTP 200.
-    /// Pages serves whatever is on the **default branch** — editing `docs/` on a feature branch
-    /// changes nothing publicly until it merges. If either URL ever 404s, the app shows a broken
-    /// link on the paywall and nothing in the app or test suite will notice.
-    static let privacyPolicyURLString = "https://haribsub955-glitch.github.io/hair-compass-ai-5/privacy-policy.html"
-    static let supportURLString = "https://haribsub955-glitch.github.io/hair-compass-ai-5/"
+    /// The docs/ GitHub Pages site on its custom domain, live since 2026-08-21: haircompass-ai.com
+    /// (Namecheap) fronts the same Pages deployment, with HTTPS enforced and the old
+    /// haribsub955-glitch.github.io URLs 301-redirecting here. Pages serves whatever is on the
+    /// **default branch** — editing `docs/` on a feature branch changes nothing publicly until it
+    /// merges. If either URL ever 404s, the app shows a broken link on the paywall and nothing in
+    /// the app or test suite will notice.
+    static let privacyPolicyURLString = "https://haircompass-ai.com/privacy-policy.html"
+    static let supportURLString = "https://haircompass-ai.com/support.html"
 
     /// Apple's standard end-user licence (EULA) — used on the subscription paywall when you don't
     /// host a custom one. Swap for your own Terms URL if you write one.
