@@ -12,7 +12,7 @@ the monetization hard-wall work is merged, and the test suite is green.
 |---|---|
 | App name (store + Home Screen) | **Hair Compass AI** |
 | Bundle ID (app) | `harib.Hair-Compass-AI-5` |
-| Bundle ID (widget) | `harib.Hair-Compass-AI-5.HairCompassCheckInWidget` |
+| Bundle ID (widget) | `harib.Hair-Compass-AI-5.CheckInWidget` |
 | Team ID | `2LZ89Q26N8` |
 | Version / build | `1.0` / `1` |
 | App Group | `group.harib.Hair-Compass-AI-5` |
