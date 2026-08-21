@@ -32,6 +32,16 @@ struct CheckInCelebration: View {
                 )
                 .frame(width: 72, height: 72)
                 .accessibilityHidden(true)
+                // The opening beat: nine petals lift out from behind Wren and fade, once,
+                // then the ambient LeafFallBackdrop drift is all that remains. A staged
+                // entrance is the one thing the hash-seeded Canvas flecks can't do — they
+                // have no beginning. Still a breeze, never a confetti cannon: brand-token
+                // petals, sub-second, gone. One-shots vanish under Reduce Motion (see
+                // ClinicalLottie), same rule that holds the backdrop's flecks static.
+                .background {
+                    ClinicalLottie(name: "celebration-burst", mode: .once)
+                        .frame(width: 220, height: 220)
+                }
 
                 if reward.leveledUp {
                     levelUpHeadline

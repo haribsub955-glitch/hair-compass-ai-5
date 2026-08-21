@@ -31,7 +31,11 @@ deliberately kept outside the Pro wall. A Home Screen widget mirrors today's sta
 
 ## 2. Build, run, test
 
-Xcode project (no SPM/CocoaPods — Apple frameworks only). Scheme **`Hair Compass AI 5`**. Paths
+Xcode project with exactly one SPM dependency — `lottie-ios`, for the offline animations in
+`Resources/Animations/` (owner-directed exception, 2026-08-21; catalogue + rules in
+[docs/ANIMATIONS.md](docs/ANIMATIONS.md), all playback through `Design/ClinicalLottie.swift`).
+Everything else is Apple frameworks; don't add more dependencies casually. First build after a
+clean clone needs the network once to resolve the package. Scheme **`Hair Compass AI 5`**. Paths
 contain spaces — always quote.
 
 ```bash

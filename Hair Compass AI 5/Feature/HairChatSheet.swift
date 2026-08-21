@@ -182,6 +182,13 @@ struct HairChatSheet: View {
             Text("\(Companion.name) is thinking")
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.tertiary)
+            // The breathing-dots ellipsis: on-device generation takes real seconds and this
+            // row was the app's single most-watched dead moment — static text beside a static
+            // pose. The dots are the sentence's punctuation, not a spinner, so they sit on the
+            // text baseline at text scale. (Under Reduce Motion they hold their resting frame.)
+            ClinicalLottie(name: "wren-thinking")
+                .frame(width: 34, height: 12)
+                .offset(y: 2)
         }
         .transition(.opacity)
         .accessibilityLabel("\(Companion.name) is thinking")

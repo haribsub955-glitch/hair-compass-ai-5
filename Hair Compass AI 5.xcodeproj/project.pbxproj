@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		A10000092F73F3BC0081475D /* Hair Compass CheckIn Widget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000012F73F3BC0081475D /* Hair Compass CheckIn Widget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CAFE10771E00000000000001 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = CAFE10771E00000000000003 /* Lottie */; };
+		CAFE10771E00000000000004 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = CAFE10771E00000000000005 /* Lottie */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -99,6 +101,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CAFE10771E00000000000001 /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -106,6 +109,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CAFE10771E00000000000004 /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -169,6 +173,7 @@
 			);
 			name = "Hair Compass AI 5";
 			packageProductDependencies = (
+				CAFE10771E00000000000003 /* Lottie */,
 			);
 			productName = "Hair Compass AI 5";
 			productReference = 9117FFE02F73F3BA0081475D /* Hair Compass AI 5.app */;
@@ -192,6 +197,7 @@
 			);
 			name = "Hair Compass AI 5Tests";
 			packageProductDependencies = (
+				CAFE10771E00000000000005 /* Lottie */,
 			);
 			productName = "Hair Compass AI 5Tests";
 			productReference = 9117FFF12F73F3BC0081475D /* Hair Compass AI 5Tests.xctest */;
@@ -277,6 +283,9 @@
 			);
 			mainGroup = 9117FFD72F73F3BA0081475D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CAFE10771E00000000000002 /* XCRemoteSwiftPackageReference "lottie-spm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9117FFE12F73F3BA0081475D /* Products */;
 			projectDirPath = "";
@@ -750,6 +759,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CAFE10771E00000000000002 /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-spm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CAFE10771E00000000000003 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CAFE10771E00000000000002 /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
+		};
+		CAFE10771E00000000000005 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CAFE10771E00000000000002 /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9117FFD82F73F3BA0081475D /* Project object */;
 }

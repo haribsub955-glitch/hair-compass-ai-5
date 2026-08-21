@@ -125,7 +125,13 @@ struct DeepAnalysisSheet: View {
                 } label: {
                     if service.isRunning {
                         HStack(spacing: 8) {
-                            ProgressView().tint(Clinical.surface)
+                            // A compass needle seeking its bearing — the app's own metaphor for
+                            // "working out what the record says" — in place of the stock UIKit
+                            // spinner, which was the only off-palette element on this sheet.
+                            // Tinted to the button's text color; the JSON's authored copper
+                            // would vanish against the filled copper button.
+                            ClinicalLottie(name: "compass-analyzing", tint: Clinical.surface)
+                                .frame(width: 20, height: 20)
                             Text("Analyzing…")
                         }
                     } else {

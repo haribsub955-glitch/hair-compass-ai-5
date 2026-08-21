@@ -8,7 +8,7 @@ Hair Compass AI 5 is a native iOS app (SwiftUI + SwiftData, iOS 26.2 deployment 
 
 ## Build, Run, Test
 
-This is an Xcode project (no Swift Package Manager, no CocoaPods/SPM dependencies — Apple frameworks only). Use the workspace-less `.xcodeproj` with scheme **`Hair Compass AI 5`**.
+This is an Xcode project with exactly **one** SPM dependency: `lottie-ios` (offline Lottie JSON playback for the animations in `Resources/Animations/` — owner-directed exception, 2026-08-21, see `docs/ANIMATIONS.md`; all playback goes through `Design/ClinicalLottie.swift`). Everything else is Apple frameworks — do not add further dependencies casually. Use the workspace-less `.xcodeproj` with scheme **`Hair Compass AI 5`**.
 
 ```bash
 # Build for simulator
