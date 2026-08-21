@@ -91,6 +91,20 @@ enum HairChatPrompt {
         return recent
     }
 
+    /// The fact set a reply is actually checked against — deliberately NOT the full `system`
+    /// prompt. `system` also carries instruction boilerplate (the "2–6 sentences" length rule,
+    /// the schema-version note) that reads as a plausible "fact" to `AIOutputValidator`'s
+    /// numeric/term checks but isn't one — validating against it let a reply admit a number
+    /// that only ever appeared in the app's own instructions. Built from exactly what grounds
+    /// an honest answer instead: the on-screen focus line (can legitimately contain tokens
+    /// like "3M"/"2wk"), the context JSON, and every turn actually sent — the last of those so
+    /// an assistant reply that echoes a number the *person* just typed ("week 30 isn't in your
+    /// record") isn't falsely rejected as invented just because it lives only in the
+    /// conversation, not the record.
+    static func validationFacts(contextJSON: String, focus: String, turns: [CloudAI.Turn]) -> String {
+        ([focus, contextJSON] + turns.map(\.text)).joined(separator: "\n")
+    }
+
     /// Map a finished response to the assistant text to append: a refusal becomes the gentle
     /// redirect line; anything else passes through unchanged.
     static func assistantReply(stopReason: String?, text: String) -> String {
@@ -124,6 +138,10 @@ final class HairChatService {
     /// just abandoning the awaiting call site.
     func cancel() {
         currentTask?.cancel()
+        // Nothing is still in flight for this handle once cancel() has been asked for it —
+        // nil it out so a later `cancel()` (or a stray read) can't act on a stale, already-
+        // dead task.
+        currentTask = nil
     }
 
     /// The specific reason on-device chat is (or isn't) usable right now — see
@@ -148,17 +166,25 @@ final class HairChatService {
     func send(_ text: String, context: String, focus: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // `!isRunning` also guards against a double-tap firing a second billed cloud call
-        // while the first turn is still in flight.
+        // while the first turn is still in flight — and the guard and the flag it guards have
+        // to happen together, synchronously, right here: setting `isRunning` from inside the
+        // enqueued Task body left a window where two rapid taps could both pass the guard
+        // before either body had actually run (reproduced: two billed calls).
         guard !trimmed.isEmpty, !isRunning else { return }
+        isRunning = true
+        errorMessage = nil
         messages.append(ChatMessage(role: .user, text: trimmed))
         let task = Task { [weak self] in
             guard let self else { return }
-            self.isRunning = true
-            self.errorMessage = nil
-            defer { self.isRunning = false }
+            // Also clears `currentTask`: a stale handle left behind after this Task finishes
+            // could otherwise be cancelled or read by a later, unrelated turn.
+            defer { self.isRunning = false; self.currentTask = nil }
             do {
                 let reply = try await self.request(context: context, focus: focus)
                 self.messages.append(ChatMessage(role: .assistant, text: reply))
+            } catch is CancellationError {
+                // The sheet is gone — nothing to show, and no fallback: cancellation means
+                // the person no longer wants an answer, not that the turn failed.
             } catch let e as ChatError {
                 self.errorMessage = e.message
             } catch {
@@ -176,18 +202,16 @@ final class HairChatService {
         let turns = HairChatPrompt.cappedHistory(messages).map {
             CloudAI.Turn(role: $0.role.rawValue, text: $0.text)
         }
+        // Deliberately not the full `system` string — see `HairChatPrompt.validationFacts`'s
+        // doc comment for why the instruction boilerplate in `system` doesn't belong in the
+        // fact set, and why every turn actually sent (not just the record) has to be in it.
+        let facts = HairChatPrompt.validationFacts(contextJSON: context, focus: focus, turns: turns)
 
         switch engine {
         case .cloud:
             do {
                 let reply = try await CloudAI.reply(system: system, turns: turns, maxTokens: 500)
-                // Validated against the full `system` string — not just the raw `context`
-                // JSON — because that's the exact text the model actually saw: the JSON plus
-                // the focus line (which can legitimately contain tokens like "3M"/"2wk") and
-                // the header prose. Validating against a subset of what the model read used to
-                // reject grounded facts as "invented" whenever a reply echoed something that
-                // lived only in the focus line or headers, not the bare JSON.
-                return AIOutputValidator.safeText(reply, suppliedFacts: system)
+                return AIOutputValidator.safeText(reply, suppliedFacts: facts)
             } catch let cloudError as CloudAI.ServiceError {
                 // A failed cloud turn falls back to the on-device model when this hardware has
                 // one; otherwise the honest transport error surfaces as this turn's reply.
@@ -195,7 +219,7 @@ final class HairChatService {
                     throw ChatError(message: cloudError.message)
                 }
                 do {
-                    return try await onDeviceReply(system: system, turns: turns)
+                    return try await onDeviceReply(system: system, turns: turns, facts: facts)
                 } catch {
                     // Both engines failed. A network-caused cloud failure ("check your
                     // connection") is more actionable than the on-device fallback's generic
@@ -205,7 +229,7 @@ final class HairChatService {
                 }
             }
         case .onDevice:
-            return try await onDeviceReply(system: system, turns: turns)
+            return try await onDeviceReply(system: system, turns: turns, facts: facts)
         case .needsCloudConsent:
             // The sheet gates the input bar behind the consent card, so a send in this state is
             // a logic error — answer it with the honest next step rather than trapping.
@@ -215,7 +239,7 @@ final class HairChatService {
         }
     }
 
-    private func onDeviceReply(system: String, turns: [CloudAI.Turn]) async throws -> String {
+    private func onDeviceReply(system: String, turns: [CloudAI.Turn], facts: String) async throws -> String {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *), OnDeviceAvailability.current.isAvailable {
             // No `onPartial` passed: nothing reads partial prose (the deterministic
@@ -224,8 +248,8 @@ final class HairChatService {
             // ever do want progress.
             if let reply = await OnDeviceChat.reply(system: system, turns: turns.map { (role: $0.role, text: $0.text) }),
                !reply.isEmpty {
-                // Same full-`system` validation as the cloud path just above.
-                return AIOutputValidator.safeText(reply, suppliedFacts: system)
+                // Same `facts` validation as the cloud path just above.
+                return AIOutputValidator.safeText(reply, suppliedFacts: facts)
             }
             throw ChatError(message: "Couldn't get a reply. Please try again.")
         }

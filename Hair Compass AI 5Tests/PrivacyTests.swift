@@ -196,6 +196,23 @@ struct PrivacyTests {
         #expect(defaults.integer(forKey: CloudAIBudget.countDefaultsKey) == CloudAIBudget.dailyLimit)
     }
 
+    /// The day key's *production default* is pinned to UTC, not `.current` — a timezone
+    /// change (travel, or someone manually changing it) must never shift the day boundary and
+    /// mint a fresh 100 out of thin air. This is the same UTC calendar `utcCalendar()` above
+    /// builds by hand for the rest of this section's tests; asserting it here pins that the
+    /// production default is that exact choice, not a coincidentally-matching one.
+    @Test func cloudAIBudgetDayKeyCalendarIsPinnedToUTC() {
+        // Zero offset, not string identity: Foundation reports `TimeZone(identifier: "UTC")`'s
+        // own `.identifier` back as the "GMT" alias on this platform, so the offset is the
+        // stable thing to assert — it's the offset, not the label, that fixes the day boundary.
+        #expect(CloudAIBudget.utcCalendar.timeZone.secondsFromGMT() == 0)
+        // A moment that reads as two different calendar days in UTC vs. a negative-offset
+        // timezone — the day string must follow UTC either way, regardless of what `.current`
+        // would say on a device set to that other timezone.
+        let almostMidnightUTC = utcCalendar().date(from: DateComponents(year: 2026, month: 8, day: 21, hour: 23, minute: 30))!
+        #expect(CloudAIBudget.dayString(almostMidnightUTC, calendar: CloudAIBudget.utcCalendar) == "2026-08-21")
+    }
+
     /// No midnight timer drives the reset — the rollover to zero happens lazily, the first
     /// time `consume` sees a day string that no longer matches what's stored.
     @Test func cloudAIBudgetResetsOnANewLocalDay() {

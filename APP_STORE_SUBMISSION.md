@@ -3,9 +3,11 @@
 Everything in this file is **App Store Connect and Xcode work that must be done by a human signed
 into the developer account**. Nothing in the repo can verify any of it.
 
-Repo-side state as of 2026-08-22: privacy policy + support URLs are live and verified (see below),
-the monetization hard-wall work is merged, the AI runs through DeepSeek's cloud API (opt-in
-consent, on-device fallback), and the test suite is green.
+Repo-side state as of 2026-08-22: the privacy policy + support URLs resolve (see below), but the
+**live content at those URLs still predates the cloud-AI change** — it will not match the shipping
+binary until this branch merges to `rebuild/clinical-minimal` (§0b covers the merge and the
+re-verify step). The monetization hard-wall work is merged, the AI runs through DeepSeek's cloud
+API (opt-in consent, on-device fallback), and the test suite is green.
 
 ## 0. DeepSeek account — do this before the first archive
 
@@ -100,7 +102,7 @@ Create both products in group `21442176` and get each to *Ready to Submit*: loca
 (≤30 chars), description (**≤45 chars**), price, and an IAP review screenshot.
 
 `HairCompass.storekit` is a **local simulator fixture only** — it configures nothing on Apple's
-side. Its description reads "On-device AI chat and record analysis."
+side. Its description reads "AI chat, deep analysis and your full record."
 
 **Do not reuse that string in App Store Connect.** It names only the two AI
 features, but **twelve** features are gated (`ProFeature.allCases`):
@@ -129,9 +131,11 @@ Include all of:
   host is unreachable, devices with Apple Intelligence quietly fall back to on-device answers;
   devices without it show an honest "temporarily unavailable" message — not a bug.
 - **Subscription setup must mirror the intent of `HairCompass.storekit`:** the fixture gives the
-  monthly product a 3-day free trial and the yearly a first-year intro price. Configure the same
-  offers in App Store Connect (or update the fixture) — the paywall reads real eligibility and
-  will advertise whatever offer actually exists.
+  monthly product a 3-day free trial and gives the yearly product **no** introductory offer
+  (`introductoryOffer: null`). Configure the same in App Store Connect — monthly with a 3-day free
+  trial, yearly with nothing — or update the fixture first if the team decides yearly should carry
+  an intro offer too; the paywall reads real eligibility and will advertise whatever offer actually
+  exists, so the two must stay in sync.
 - **The two AI features (Ask Wren, Deep analysis) ask for cloud-AI consent on first use.** A
   reviewer will see the consent card; accepting routes answers through the cloud model on any
   iPhone. Declining falls back to Apple Intelligence where the device supports it, and the other

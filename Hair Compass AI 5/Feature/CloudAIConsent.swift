@@ -27,7 +27,7 @@ struct CloudAIConsentCard: View {
                     .font(Clinical.headline(18))
                     .foregroundStyle(Clinical.ink)
 
-                Text("Wren's answers can be written by a secure cloud model (DeepSeek). Each question sends the tracking summary this app builds — numbers, dates and notes you've logged. Your name, contact details and photos are never included, and the summary is used only to write the answer.")
+                Text("Wren's answers can be written by a secure cloud model (DeepSeek). Each question sends the tracking summary this app builds — numbers, dates and notes you've logged — and, for the ingredient reader, the text read off a product label. Your name, contact details and photos are never included, and what's sent is used only to write the answer.")
                     .font(Clinical.caption(13))
                     .foregroundStyle(Clinical.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -92,7 +92,7 @@ struct CloudAISettingsSection: View {
                     CloudAIConsent.record(granted)
                 }
 
-                Text("When on, Ask Wren, Deep analysis and the ingredient reader are answered by a secure cloud model (DeepSeek). Each request sends your tracking summary — numbers, dates and notes — never your name, contact details or photos. When off, they run on-device where this iPhone supports it.")
+                Text("When on, Ask Wren, Deep analysis and the ingredient reader are answered by a secure cloud model (DeepSeek). Each request sends your tracking summary — numbers, dates and notes — and, for the ingredient reader, the text read off a product label. Never your name, contact details or photos. When off, they run on-device where this iPhone supports it.")
                     .font(Clinical.caption(12))
                     .foregroundStyle(Clinical.secondary)
                     .fixedSize(horizontal: false, vertical: true)
