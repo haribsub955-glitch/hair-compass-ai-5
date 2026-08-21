@@ -41,10 +41,14 @@ struct HairChatSheet: View {
             }
         }
         .clinicalScreen()
+        .onDisappear { service.cancel() }
     }
 
     @ViewBuilder
     private var gatedContent: some View {
+        // Belt-and-braces: the re-render when consent is recorded is driven by the
+        // `consentVersion` @State bump in `onDecided` below, not by reading it here — future
+        // refactors must keep that @State mutation.
         let _ = consentVersion
         switch service.engine {
         case .cloud, .onDevice:
@@ -101,9 +105,7 @@ struct HairChatSheet: View {
                         emptyState
                     }
                     ForEach(service.messages) { bubble($0) }
-                    if let streaming = service.streamingText {
-                        streamingBubble(streaming)
-                    } else if service.isRunning {
+                    if service.isRunning {
                         thinkingRow.id("thinking")
                     }
                     if let error = service.errorMessage {
@@ -119,7 +121,6 @@ struct HairChatSheet: View {
                     value: service.messages.count
                 )
                 .animation(.easeOut(duration: 0.2), value: service.isRunning)
-                .animation(.easeOut(duration: 0.2), value: service.streamingText != nil)
             }
             .onChange(of: service.messages.count) {
                 guard let last = service.messages.last else { return }
@@ -128,10 +129,6 @@ struct HairChatSheet: View {
             .onChange(of: service.isRunning) {
                 guard service.isRunning else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("thinking", anchor: .bottom) }
-            }
-            .onChange(of: service.streamingText) {
-                guard service.streamingText != nil else { return }
-                proxy.scrollTo("streaming", anchor: .bottom)
             }
         }
     }
@@ -162,30 +159,6 @@ struct HairChatSheet: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(isUser ? "You" : Companion.name): \(message.text)")
         .id(message.id)
-    }
-
-    /// The assistant's reply rendered live as it streams in, replacing the thinking dots the
-    /// moment the first token arrives. Same look as a finished assistant bubble in `bubble(_:)`,
-    /// just re-rendered on every new snapshot instead of once at the end.
-    private func streamingBubble(_ text: String) -> some View {
-        HStack(spacing: 0) {
-            Text(text)
-                .font(Clinical.caption(14))
-                .foregroundStyle(Clinical.ink)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Clinical.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Clinical.hairline, lineWidth: 1)
-                )
-            Spacer(minLength: 44)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .id("streaming")
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(Companion.name) is typing: \(text)")
     }
 
     private var thinkingRow: some View {

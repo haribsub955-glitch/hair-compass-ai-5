@@ -83,7 +83,8 @@ enum HairChatPrompt {
     }
 
     /// The payload history: the last `limit` turns, then trimmed so the first message is a
-    /// user turn (the Messages API requires conversations to open with the user).
+    /// user turn — every chat/completions-style API this app talks to (DeepSeek included)
+    /// requires a conversation to open with the user, not just Anthropic's Messages API.
     static func cappedHistory(_ messages: [ChatMessage], limit: Int = historyLimit) -> [ChatMessage] {
         var recent = Array(messages.suffix(limit))
         while let first = recent.first, first.role != .user { recent.removeFirst() }
@@ -111,12 +112,19 @@ final class HairChatService {
     private(set) var messages: [ChatMessage] = []
     private(set) var isRunning = false
     private(set) var errorMessage: String?
-    /// The assistant's reply as it streams in token-by-token, cumulative from an empty string.
-    /// Nil until the first token of a turn arrives, and cleared back to nil once the finished
-    /// reply lands in `messages` — the UI shows this in place of the thinking dots.
-    private(set) var streamingText: String?
+    /// The currently in-flight turn, if any — held so `cancel()` can stop it (and the billed
+    /// cloud request underneath it) when the chat sheet is dismissed mid-reply.
+    private var currentTask: (any CancellableTask)?
 
     init() {}
+
+    /// Cancels the in-flight turn, if any. Cooperative: `URLSession.data(for:)` observes Swift
+    /// Concurrency cancellation and tears down the underlying network task when its enclosing
+    /// `Task` is cancelled, so this actually stops a billed cloud call in flight rather than
+    /// just abandoning the awaiting call site.
+    func cancel() {
+        currentTask?.cancel()
+    }
 
     /// The specific reason on-device chat is (or isn't) usable right now — see
     /// `OnDeviceAvailability` in OnDeviceAnalysisService.swift. Read fresh each access, since
@@ -139,20 +147,26 @@ final class HairChatService {
     /// `AIContext.jsonString()` snapshot; `focus` is one line describing what's on screen.
     func send(_ text: String, context: String, focus: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // `!isRunning` also guards against a double-tap firing a second billed cloud call
+        // while the first turn is still in flight.
         guard !trimmed.isEmpty, !isRunning else { return }
         messages.append(ChatMessage(role: .user, text: trimmed))
-        isRunning = true
-        errorMessage = nil
-        streamingText = nil
-        defer { isRunning = false; streamingText = nil }
-        do {
-            let reply = try await request(context: context, focus: focus)
-            messages.append(ChatMessage(role: .assistant, text: reply))
-        } catch let e as ChatError {
-            errorMessage = e.message
-        } catch {
-            errorMessage = "Couldn't generate a reply on this device. Try again."
+        let task = Task { [weak self] in
+            guard let self else { return }
+            self.isRunning = true
+            self.errorMessage = nil
+            defer { self.isRunning = false }
+            do {
+                let reply = try await self.request(context: context, focus: focus)
+                self.messages.append(ChatMessage(role: .assistant, text: reply))
+            } catch let e as ChatError {
+                self.errorMessage = e.message
+            } catch {
+                self.errorMessage = "Couldn't generate a reply. Try again."
+            }
         }
+        currentTask = task
+        await task.value
     }
 
     // MARK: - Request
@@ -167,19 +181,31 @@ final class HairChatService {
         case .cloud:
             do {
                 let reply = try await CloudAI.reply(system: system, turns: turns, maxTokens: 500)
-                // Validated against the exact JSON string the model saw — same rule as the
-                // on-device path, one publication gate for both engines.
-                return AIOutputValidator.safeText(reply, suppliedFacts: context)
-            } catch let error as CloudAI.ServiceError {
+                // Validated against the full `system` string — not just the raw `context`
+                // JSON — because that's the exact text the model actually saw: the JSON plus
+                // the focus line (which can legitimately contain tokens like "3M"/"2wk") and
+                // the header prose. Validating against a subset of what the model read used to
+                // reject grounded facts as "invented" whenever a reply echoed something that
+                // lived only in the focus line or headers, not the bare JSON.
+                return AIOutputValidator.safeText(reply, suppliedFacts: system)
+            } catch let cloudError as CloudAI.ServiceError {
                 // A failed cloud turn falls back to the on-device model when this hardware has
                 // one; otherwise the honest transport error surfaces as this turn's reply.
                 guard OnDeviceAvailability.current.isAvailable else {
-                    throw ChatError(message: error.message)
+                    throw ChatError(message: cloudError.message)
                 }
-                return try await onDeviceReply(system: system, turns: turns, context: context)
+                do {
+                    return try await onDeviceReply(system: system, turns: turns)
+                } catch {
+                    // Both engines failed. A network-caused cloud failure ("check your
+                    // connection") is more actionable than the on-device fallback's generic
+                    // "couldn't get a reply" — don't let the latter mask the real cause.
+                    if cloudError.isNetwork { throw ChatError(message: cloudError.message) }
+                    throw error
+                }
             }
         case .onDevice:
-            return try await onDeviceReply(system: system, turns: turns, context: context)
+            return try await onDeviceReply(system: system, turns: turns)
         case .needsCloudConsent:
             // The sheet gates the input bar behind the consent card, so a send in this state is
             // a logic error — answer it with the honest next step rather than trapping.
@@ -189,15 +215,17 @@ final class HairChatService {
         }
     }
 
-    private func onDeviceReply(system: String, turns: [CloudAI.Turn], context: String) async throws -> String {
+    private func onDeviceReply(system: String, turns: [CloudAI.Turn]) async throws -> String {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *), OnDeviceAvailability.current.isAvailable {
-            if let reply = await OnDeviceChat.reply(
-                system: system, turns: turns.map { (role: $0.role, text: $0.text) },
-                // Generated prose is not shown before the deterministic post-generation gate.
-                onPartial: { _ in }
-            ), !reply.isEmpty {
-                return AIOutputValidator.safeText(reply, suppliedFacts: context)
+            // No `onPartial` passed: nothing reads partial prose (the deterministic
+            // post-generation gate below is the sole publication boundary), so there's nothing
+            // to feed it — `OnDeviceChat.reply` keeps its own no-op default for callers that
+            // ever do want progress.
+            if let reply = await OnDeviceChat.reply(system: system, turns: turns.map { (role: $0.role, text: $0.text) }),
+               !reply.isEmpty {
+                // Same full-`system` validation as the cloud path just above.
+                return AIOutputValidator.safeText(reply, suppliedFacts: system)
             }
             throw ChatError(message: "Couldn't get a reply. Please try again.")
         }
@@ -217,10 +245,12 @@ enum OnDeviceChat {
         return false
     }
 
-    /// Answer the latest turn on-device, streaming as it generates. `system` is the
-    /// grounding/instructions; `turns` is the capped conversation (oldest→newest, ending on the
-    /// user's message). `onPartial` fires on the main actor with the cumulative text so far after
-    /// every new snapshot, so the UI can show the reply as it's written instead of a blind wait.
+    /// Answer the latest turn on-device. `system` is the grounding/instructions; `turns` is the
+    /// capped conversation (oldest→newest, ending on the user's message). The underlying
+    /// session always streams internally, and `onPartial`, if a caller supplies one, fires on
+    /// the main actor with the cumulative text after every new snapshot — but nothing in the
+    /// app does today: generated prose is never shown before the deterministic post-generation
+    /// gate, so `HairChatService` keeps the no-op default and reads only the return value.
     /// Returns nil when the model is unavailable or the request fails, so the caller can surface
     /// a clear message.
     static func reply(

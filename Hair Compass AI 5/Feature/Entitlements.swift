@@ -34,8 +34,10 @@ enum ProFeature: CaseIterable, Hashable, Identifiable {
 /// What someone is entitled to right now.
 ///
 /// `taster` is deliberately identical to `pro`: three days of the real product, no payment
-/// method, no turn caps. On-device inference means a farmed taster costs nothing to honour, so
-/// there is no abuse defence to build and no reason to make it feel like a demo.
+/// method, no turn caps. Cloud inference now costs real money on a shared key, but that cost is
+/// contained at the `CloudAI` client (a per-device daily budget) and at the account (an overall
+/// spend cap) — not by degrading what a farmed taster gets. The taster stays the real product on
+/// purpose; abuse is bounded elsewhere.
 /// `Equatable` for the tier assertions in `EntitlementsTests`; `CustomStringConvertible` because
 /// `RootView.widgetFingerprint` interpolates it (Task 9) and the default enum description would
 /// change the fingerprint format if a case were ever renamed.
@@ -66,9 +68,9 @@ struct Entitlements {
 
 /// Three days of the whole app, no payment method, on the device's own clock.
 ///
-/// Reinstalling resets it, and that is accepted rather than defended: the model runs on-device,
-/// so a farmed taster costs nothing. Building device binding to protect $0 would be effort spent
-/// on nothing.
+/// Reinstalling resets it, and that is accepted rather than defended: the cloud cost a farmed
+/// taster could run up is already bounded by `CloudAIBudget`'s per-device daily cap and the
+/// DeepSeek account's spend cap, so device binding would defend a bill that can't grow.
 struct TasterWindow {
     static let durationDays = 3
 

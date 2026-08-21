@@ -108,7 +108,11 @@ struct ProGate<Content: View>: View {
             // gating Trends never tells someone their iPhone is the problem — and with the
             // cloud model configured `canRun` is true for everything, so no gate warns at all.
             // Asked through `canRun` rather than `usesAI` directly so the tested policy
-            // function is the shipping one, not a parallel copy.
+            // function is the shipping one, not a parallel copy. `.deviceNotEligible` here is
+            // deliberately hardcoded, not the live `availability` — this is a worst-case probe
+            // ("could this feature ever be device-limited at all?"), independent of whatever
+            // this particular iPhone's status actually is; the live status still drives what
+            // `ProAvailabilityNotice` renders when this check passes.
             if !ProAvailability.canRun(feature, status: .deviceNotEligible) {
                 ProAvailabilityNotice(status: availability)
             }

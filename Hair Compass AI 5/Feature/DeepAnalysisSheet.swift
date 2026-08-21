@@ -52,6 +52,7 @@ struct DeepAnalysisSheet: View {
             )
             .presentationDetents([.medium, .large], selection: $chatDetent)
         }
+        .onDisappear { service.cancel() }
     }
 
     private var analysisContent: some View {
@@ -65,6 +66,9 @@ struct DeepAnalysisSheet: View {
                 BrandWash(art: BrandArt.analysis, height: 138, opacity: 0.55, fade: 0.5)
                     .padding(.horizontal, -20)
                     .padding(.top, -8)
+                // Belt-and-braces: the re-render when consent is recorded is driven by the
+                // `consentVersion` @State bump in `onDecided` below, not by reading it here —
+                // future refactors must keep that @State mutation.
                 let _ = consentVersion
                 ClinicalCard {
                     VStack(alignment: .leading, spacing: 10) {
@@ -100,21 +104,16 @@ struct DeepAnalysisSheet: View {
                     EmptyView()
                 }
 
-                // Streams into view as the on-device model writes it: while running, this shows
-                // the growing `streamingText` snapshot; once finished, `result` takes over (the
-                // two never disagree — `result` is just the last snapshot, trimmed).
-                if let text = service.result ?? service.streamingText, !text.isEmpty {
+                if let text = service.result, !text.isEmpty {
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 8) {
-                            Eyebrow(text: service.result == nil ? "Writing…" : "Summary")
+                            Eyebrow(text: "Summary")
                             Text(text).font(Clinical.caption(15)).foregroundStyle(Clinical.ink)
                             Text("For record-keeping, not diagnosis.")
                                 .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                         }
                     }
-                    if service.result != nil {
-                        followUpChip
-                    }
+                    followUpChip
                 }
 
                 if let error = service.errorMessage {

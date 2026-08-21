@@ -3,8 +3,28 @@
 Everything in this file is **App Store Connect and Xcode work that must be done by a human signed
 into the developer account**. Nothing in the repo can verify any of it.
 
-Repo-side state as of 2026-08-21: privacy policy + support URLs are live and verified (see below),
-the monetization hard-wall work is merged, and the test suite is green.
+Repo-side state as of 2026-08-22: privacy policy + support URLs are live and verified (see below),
+the monetization hard-wall work is merged, the AI runs through DeepSeek's cloud API (opt-in
+consent, on-device fallback), and the test suite is green.
+
+## 0. DeepSeek account — do this before the first archive
+
+The DeepSeek API key is compiled into the app (`Config/Secrets.local.xcconfig` on this Mac —
+never in the repo). A shipped binary's Info.plist is readable by anyone, so treat the key as
+extractable and manage it at the account, not the client:
+
+- **Set a spend cap / usage alert** on the DeepSeek platform dashboard (platform.deepseek.com)
+  and keep only a bounded balance on the account. The app has a client-side budget of 100 cloud
+  requests per device per day, but that bounds accidents, not adversaries.
+- **Rotate the key on a schedule** (each app update is a natural moment): issue a new key, put
+  it in `Config/Secrets.local.xcconfig`, archive, and revoke the old one once the previous build
+  is no longer the live version. Rotating instantly kills every extracted copy.
+- **Watch the balance**: DeepSeek answers HTTP 402 when credit runs out, which the app shows as
+  "temporarily unavailable" and quietly falls back to on-device — users on non-Apple-Intelligence
+  iPhones lose AI entirely with no alarm on your side. A weekly balance check is the alarm.
+- Longer term, the honest fix is a tiny proxy that holds the key server-side
+  (`CloudAIConfig.defaultBaseURLString` is the one line that changes); the client already
+  enforces HTTPS and treats the endpoint as configuration.
 
 ## Facts you will be asked for
 
@@ -21,6 +41,20 @@ the monetization hard-wall work is merged, and the test suite is green.
 | Privacy policy URL | https://haircompass-ai.com/privacy-policy.html |
 | Support URL | https://haircompass-ai.com/support.html |
 | Support email | harib.alazri@gmail.com |
+
+## 0b. Merge the docs to `rebuild/clinical-minimal` BEFORE anything in App Store Connect
+
+GitHub Pages serves `docs/` from the **default branch**. Until this branch merges, the live
+privacy policy and support page still claim all AI runs on-device and nothing is ever sent to a
+third party — which directly contradicts the shipping binary and is a Guideline 5.1.1/5.1.2
+rejection waiting to happen (the in-app consent card links a reviewer straight to that page).
+
+The merge will CONFLICT in `docs/index.html`, `docs/privacy-policy.html`, `docs/support.html`
+(both branches rebuilt the site independently). Resolve by keeping THIS branch's versions (they
+carry the cloud-AI truth in the same visual shell), and verify `docs/CNAME` — which exists only
+on `rebuild/clinical-minimal` — survives the merge, or the custom domain and both legal URLs go
+dark. After merging: re-fetch https://haircompass-ai.com/privacy-policy.html and confirm the
+DeepSeek paragraph is live before entering the URL anywhere in App Store Connect.
 
 ## 1. Paid Apps agreement + banking and tax — do this first
 
@@ -46,10 +80,16 @@ New app → iOS → name, primary language, bundle ID, SKU. Then:
 - **App Privacy → declare Health & Fitness data.** The opt-in cloud AI (DeepSeek) sends a limited
   tracking summary — check-in values, dates, treatment names, lab values, logged notes,
   health-derived values — to generate answers, so "Data Not Collected" is no longer true. Declare:
-  **Health & Fitness → Health → App Functionality → Not linked to the user's identity → No
-  tracking.** This matches the app target's `PrivacyInfo.xcprivacy` (the widget's still declares
-  nothing, correctly — it makes no network requests). Nothing else is collected: no analytics, no
-  identifiers, no accounts.
+  **Health & Fitness → Health** and **User Content → Other User Content** (the free-text
+  check-in notes), each: App Functionality → Not linked to the user's identity → No tracking.
+  This matches the app target's `PrivacyInfo.xcprivacy` (the widget's manifest declares no
+  collected data — correct, it makes no network requests). Nothing else is collected: no
+  analytics, no identifiers, no accounts.
+- **Guideline 5.1.3 (HealthKit), write this into the review notes:** health-derived values the
+  user chose to track (sleep, HRV, weight trend) are part of the tracking summary sent to the AI
+  provider **only** to write the user's own record summary/answers — a health-management purpose —
+  only after explicit in-app consent, never for ads, marketing, or any other use, and never
+  linked to an identity (the app has no accounts).
 - **Age rating.** Answer the medical/treatment questions honestly; the app is a documentation and
   education tool, not a medical device (`AppInfo.medicalDisclaimer` is the in-app wording).
 - Description, keywords, support URL, screenshots **taken on a real device**.
@@ -85,6 +125,13 @@ Include all of:
 - **No account is needed.** There is no sign-in and no backend of ours. The app's only network
   use is the opt-in cloud AI: Ask Wren, Deep analysis and ingredient summaries call DeepSeek's
   API with a limited tracking summary (no name, no photos) after in-app consent.
+- **The review device needs network access to `api.deepseek.com`** for the AI features. If that
+  host is unreachable, devices with Apple Intelligence quietly fall back to on-device answers;
+  devices without it show an honest "temporarily unavailable" message — not a bug.
+- **Subscription setup must mirror the intent of `HairCompass.storekit`:** the fixture gives the
+  monthly product a 3-day free trial and the yearly a first-year intro price. Configure the same
+  offers in App Store Connect (or update the fixture) — the paywall reads real eligibility and
+  will advertise whatever offer actually exists.
 - **The two AI features (Ask Wren, Deep analysis) ask for cloud-AI consent on first use.** A
   reviewer will see the consent card; accepting routes answers through the cloud model on any
   iPhone. Declining falls back to Apple Intelligence where the device supports it, and the other

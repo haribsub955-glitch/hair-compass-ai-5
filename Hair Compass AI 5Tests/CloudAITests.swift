@@ -112,4 +112,41 @@ struct CloudAIRequestTests {
         #expect(CloudAI.replyText(from: Data("not json".utf8)) == nil)
         #expect(CloudAI.replyText(from: Data(#"{"error":{"message":"x"}}"#.utf8)) == nil)
     }
+
+    /// `deepseek-reasoner` (a supported `HC_AI_MODEL` override, not just the default
+    /// `deepseek-chat`) 400s on a conversation that repeats a role two turns running. That
+    /// shape happens for real: `HairChatService` leaves an unanswered user message in history
+    /// after a failed turn, so the next `send` appends a second user turn right behind it —
+    /// pin that `requestBody` folds the pair into one message instead of shipping
+    /// `[system, ..., user, user]`.
+    @Test func requestBodyFoldsConsecutiveSameRoleMessagesAfterAFailedTurn() {
+        let body = CloudAI.requestBody(
+            system: "s",
+            turns: [
+                CloudAI.Turn(role: "user", text: "first question"),
+                CloudAI.Turn(role: "user", text: "second question, sent after the first turn failed"),
+            ],
+            config: config,
+            maxTokens: 100
+        )
+        #expect(body.messages.map(\.role) == ["system", "user"])
+        #expect(body.messages.last?.content == "first question\n\nsecond question, sent after the first turn failed")
+    }
+
+    /// A run of three-plus same-role messages folds into one, not a fold-then-refold artifact,
+    /// and the join order is preserved.
+    @Test func requestBodyFoldsLongerRunsOfTheSameRoleInOrder() {
+        let body = CloudAI.requestBody(
+            system: "s",
+            turns: [
+                CloudAI.Turn(role: "user", text: "a"),
+                CloudAI.Turn(role: "user", text: "b"),
+                CloudAI.Turn(role: "user", text: "c"),
+            ],
+            config: config,
+            maxTokens: 100
+        )
+        #expect(body.messages.map(\.role) == ["system", "user"])
+        #expect(body.messages.last?.content == "a\n\nb\n\nc")
+    }
 }
