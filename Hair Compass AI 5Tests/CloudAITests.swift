@@ -181,12 +181,26 @@ struct CloudAICancellationTests {
         return (defaults, { defaults.removePersistentDomain(forName: suite) })
     }
 
+    /// `@MainActor`, deliberately: the test target does not default-isolate to `@MainActor`, so
+    /// without it `Task { ... }` and `task.cancel()` race on unspecified executors — if the
+    /// child task's body reaches `CloudAI.reply` before `cancel()` lands, `Task.checkCancellation()`
+    /// hasn't fired yet and the call falls through to a real `session.data(for:)` against
+    /// `defaultSession`, i.e. a live POST to api.deepseek.com, which is exactly what this file's
+    /// header promises never happens. Pinning both the test and the (inherited) child task to
+    /// `@MainActor` makes the ordering deterministic: `task.cancel()` runs synchronously right
+    /// after `Task` is created, before the MainActor ever yields to let the child's body start.
+    /// A stub session on top is defense in depth — even if that ordering guarantee were ever
+    /// undermined, no code path here can reach the network.
+    @MainActor
     @Test func replyNeverTouchesTheBudgetWhenTheTaskIsAlreadyCancelled() async throws {
         let (defaults, cleanup) = makeDefaults()
         defer { cleanup() }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CancelledURLProtocol.self]
+        let session = URLSession(configuration: configuration)
 
         let task = Task {
-            try await CloudAI.reply(system: "s", turns: [], config: config, budgetDefaults: defaults)
+            try await CloudAI.reply(system: "s", turns: [], config: config, session: session, budgetDefaults: defaults)
         }
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }

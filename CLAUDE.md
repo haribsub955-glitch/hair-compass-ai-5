@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Overview
 
 Hair Compass AI (bundle id `harib.Hair-Compass-AI-5`, display name "Hair Compass AI") is a native
-iOS app (SwiftUI + SwiftData, iOS 26.2 deployment target) for documenting hair/scalp health:
+iOS app (SwiftUI + SwiftData, iOS 26.0 deployment target for app + widget) for documenting
+hair/scalp health:
 daily check-ins, treatments, labs, triggers, procedures, standardized photos, body signals, and a
 Home Screen widget. Framing is load-bearing everywhere: **record-keeping and education, never
 diagnosis**. `docs/` is the public GitHub Pages site (live at https://haircompass-ai.com — Pages

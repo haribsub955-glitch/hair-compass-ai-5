@@ -230,6 +230,11 @@ final class HairAnalysisService {
                 guard OnDeviceAvailability.current.isAvailable else {
                     throw AnalysisError(message: cloudError.message)
                 }
+                // A cancellation landing in the gap between the cloud call failing and the
+                // fallback starting (the sheet dismissed right as the cloud request errored
+                // out) must not kick off a second, on-device generation nobody is waiting for
+                // anymore.
+                try Task.checkCancellation()
                 do {
                     return try await onDeviceGenerate(
                         instructions: instructions, prompt: prompt,
@@ -272,6 +277,12 @@ final class HairAnalysisService {
             // keeps its own no-op default for callers that ever do want progress.
             guard let text = await OnDeviceAnalysis.generate(instructions: instructions, prompt: prompt),
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                // A cancelled generation (the sheet dismissed mid-run) surfaces here as the
+                // same nil/empty result as a genuine on-device failure — check cancellation
+                // first so a walked-away person gets silence (the `catch is CancellationError`
+                // in `analyze`/`analyzeIngredients` above), not an error card for a request
+                // they didn't actually ask to fail.
+                if Task.isCancelled { throw CancellationError() }
                 throw AnalysisError(message: "The analysis came back empty. Please try again.")
             }
             return validated(text.trimmingCharacters(in: .whitespacesAndNewlines), context: validationContext, suppliedFacts: validationFacts)
@@ -467,7 +478,15 @@ enum AIOutputValidator {
 
         // Reject invented numeric measurements. Calendar dates and the app's fixed 24-week
         // policy are allowed; every other generated number must occur in the supplied facts.
-        let numbers = value.matches(of: /\b\d+(?:\.\d+)?\b/).map { String($0.output) }
+        //
+        // No `\b` here either — a reply can glue an invented number straight onto a unit
+        // ("contains 5000mcg of biotin"), and `\b\d+\b` can never match between two `\w`
+        // characters, so a unit-glued invented dose used to contribute NO number to this check
+        // at all and sailed through ungated on exactly the surface that invites dosage
+        // language. The facts side (`Facts.context`'s string branch and the `suppliedFacts`
+        // path above) is already boundary-less for the same reason, so a legitimately-quoted,
+        // unit-glued dose from the label/context still matches and still passes.
+        let numbers = value.matches(of: /\d+(?:\.\d+)?/).map { String($0.output) }
         for number in numbers where number != "24" {
             // A closure literal here, not a bare `Facts.canonical` function reference: the
             // latter converts the MainActor-isolated method into a plain function value with

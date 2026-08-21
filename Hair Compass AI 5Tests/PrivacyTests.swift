@@ -201,16 +201,28 @@ struct PrivacyTests {
     /// mint a fresh 100 out of thin air. This is the same UTC calendar `utcCalendar()` above
     /// builds by hand for the rest of this section's tests; asserting it here pins that the
     /// production default is that exact choice, not a coincidentally-matching one.
+    /// Not just that `CloudAIBudget.utcCalendar` itself reads as UTC — every earlier test in
+    /// this section passes `calendar: utcCalendar()` explicitly to `consume`, so they'd all stay
+    /// green even if the production *default* silently reverted to `.current`; the explicit
+    /// argument would paper right over that regression. This test omits the `calendar:` argument
+    /// entirely, exercising the actual default, and checks the stored day string against what
+    /// UTC says `now` was — not against a UTC/non-UTC day-boundary trick, which isn't reliably
+    /// controllable across whatever timezone the host running this suite happens to be in.
     @Test func cloudAIBudgetDayKeyCalendarIsPinnedToUTC() {
+        let (defaults, cleanup) = makeDefaults()
+        defer { cleanup() }
         // Zero offset, not string identity: Foundation reports `TimeZone(identifier: "UTC")`'s
         // own `.identifier` back as the "GMT" alias on this platform, so the offset is the
         // stable thing to assert — it's the offset, not the label, that fixes the day boundary.
         #expect(CloudAIBudget.utcCalendar.timeZone.secondsFromGMT() == 0)
-        // A moment that reads as two different calendar days in UTC vs. a negative-offset
-        // timezone — the day string must follow UTC either way, regardless of what `.current`
-        // would say on a device set to that other timezone.
-        let almostMidnightUTC = utcCalendar().date(from: DateComponents(year: 2026, month: 8, day: 21, hour: 23, minute: 30))!
-        #expect(CloudAIBudget.dayString(almostMidnightUTC, calendar: CloudAIBudget.utcCalendar) == "2026-08-21")
+
+        let now = Date()
+        #expect(CloudAIBudget.consume(now: now, defaults: defaults))
+        // This pins the production default, not this file's own `utcCalendar()` helper: if
+        // `consume`'s default calendar ever reverted to `.current`, this would fail on any host
+        // whose local timezone reads `now` as a different calendar day than UTC does.
+        #expect(defaults.string(forKey: CloudAIBudget.dayDefaultsKey)
+                == CloudAIBudget.dayString(now, calendar: CloudAIBudget.utcCalendar))
     }
 
     /// No midnight timer drives the reset — the rollover to zero happens lazily, the first

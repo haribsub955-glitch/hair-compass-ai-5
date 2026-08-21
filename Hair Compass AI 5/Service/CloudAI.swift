@@ -305,15 +305,18 @@ nonisolated enum CloudAI {
         calendar: Calendar = CloudAIBudget.utcCalendar,
         budgetDefaults: UserDefaults = .standard
     ) async throws -> String {
+        // A task cancelled before this point (the sheet dismissed while the call was still
+        // queued behind another one) must surface as cancellation no matter what — checked
+        // above every other guard, including `isConfigured`, so a cancelled task on an
+        // unconfigured build still throws `CancellationError`, not `ServiceError`.
+        try Task.checkCancellation()
         guard config.isConfigured, let url = config.chatCompletionsURL else {
             throw ServiceError(message: serviceDownMessage, isNetwork: false)
         }
-        // A task cancelled before this point (the sheet dismissed while the call was still
-        // queued behind another one) must not spend a slot from the shared daily ceiling on a
-        // call nobody is waiting for anymore — checked before `consume`, not after.
-        try Task.checkCancellation()
         // Client-side abuse containment, not billing enforcement — see `CloudAIBudget`. Checked
-        // before building the request so a tripped budget never touches the network at all.
+        // before building the request so a tripped budget never touches the network at all, and
+        // after the cancellation check above so a cancelled call never spends a slot from the
+        // shared daily ceiling either.
         guard CloudAIBudget.consume(now: now, defaults: budgetDefaults, calendar: calendar) else {
             throw ServiceError(message: budgetExceededMessage, isNetwork: false)
         }
@@ -342,7 +345,10 @@ nonisolated enum CloudAI {
             // the caller can tell "the person walked away" from "the network genuinely
             // failed": the former must stay silent and skip the on-device fallback (see both
             // services' `catch` blocks), the latter should still fall back and still explain
-            // itself with `offlineMessage`.
+            // itself with `offlineMessage`. One honest caveat: a system-initiated -999 (the app
+            // suspended mid-request, say) maps to the same silent path even though nobody
+            // actually walked away — an accepted trade-off, since misclassifying a real
+            // cancellation as a visible error would be worse.
             if Task.isCancelled || (error as? URLError)?.code == .cancelled {
                 throw CancellationError()
             }
