@@ -344,6 +344,10 @@ final class HairChatService {
                 guard OnDeviceAvailability.current.isAvailable else {
                     throw ChatError(message: cloudError.message)
                 }
+                // A cancellation landing in the gap between the cloud call failing and the
+                // fallback starting (the sheet dismissed right as the cloud turn errored out)
+                // must not kick off a second, on-device turn nobody is waiting for anymore.
+                try Task.checkCancellation()
                 do {
                     return try await onDeviceReply(system: system, turns: turns, facts: facts)
                 } catch {
@@ -377,6 +381,11 @@ final class HairChatService {
                 // Same `facts` validation as the cloud path just above.
                 return AIOutputValidator.safeText(reply, suppliedFacts: facts)
             }
+            // A cancelled generation (the sheet dismissed mid-run) surfaces here as the same
+            // nil/empty result as a genuine on-device failure — check cancellation first so a
+            // walked-away person gets silence (the `catch is CancellationError` in `send`
+            // above), not an error card for a turn they didn't actually ask to fail.
+            if Task.isCancelled { throw CancellationError() }
             throw ChatError(message: "Couldn't get a reply. Please try again.")
         }
         #endif

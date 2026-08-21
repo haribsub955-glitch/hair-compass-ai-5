@@ -130,6 +130,28 @@ struct AIOutputValidatorRegressionTests {
         #expect(AIOutputValidator.safeText(invented, suppliedFacts: label) == AIOutputValidator.replacement)
     }
 
+    // MARK: - Fix 6: reply-side unit-glued numbers must be grounded too
+
+    /// The exact bypass: `\b\d+\b` on the reply side cannot match a digit run glued straight
+    /// onto a unit ("5000mcg") — `\b` never matches between two `\w` characters — so a reply
+    /// stating an invented dose that way used to contribute NO number to the groundedness check
+    /// at all and sailed straight through. The label here never states 5000mcg of anything, so
+    /// the reply must be rejected now that the boundary is gone.
+    @Test func replyRejectsAUnitGluedInventedDoseTheLabelNeverStated() {
+        let label = "Biotin & Collagen Hair Serum. Active ingredients: Biotin 5mg, Hydrolyzed Collagen."
+        let reply = "This serum contains 5000mcg of biotin."
+        #expect(AIOutputValidator.safeText(reply, suppliedFacts: label) == AIOutputValidator.replacement)
+    }
+
+    /// Not a loosening: when the label DOES state the exact unit-glued amount, the same reply
+    /// text must still pass — the facts side has been boundary-less all along, so a legitimately
+    /// quoted, unit-glued dose from the label matches and passes.
+    @Test func replyAdmitsAUnitGluedDoseTheLabelActuallyStates() {
+        let label = "Biotin & Collagen Hair Serum. Active ingredients: Biotin 5000mcg, Hydrolyzed Collagen."
+        let reply = "This serum contains 5000mcg of biotin."
+        #expect(AIOutputValidator.safeText(reply, suppliedFacts: label) == reply)
+    }
+
     // MARK: - Negative structured facts (shedDirection/scalpDirection can read negative)
 
     /// A minimal `AIContext` with everything but `dailySeries.shedDirection` empty — enough to
