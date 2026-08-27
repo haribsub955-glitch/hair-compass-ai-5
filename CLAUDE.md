@@ -74,7 +74,7 @@ payload: no name, no photos, stable `.sortedKeys` encoding.
 
 ### Monetization
 
-`Service/PurchaseService.swift` (StoreKit 2; products `com.harib.haircompass.pro.monthly` /
+`Service/PurchaseService.swift` (StoreKit 2; products `com.harib.haircompass.pro.monthly2` /
 `.yearly`, group `21442176`) + `Feature/Entitlements.swift` (`ProFeature` — the policy table),
 `ProGate`, `TodayGating`, `HistoryAccess`. Free tier = check-in only (log forever, see only
 today); 3-day local taster; everything else Pro. `ProAvailability` owns what the paywalls

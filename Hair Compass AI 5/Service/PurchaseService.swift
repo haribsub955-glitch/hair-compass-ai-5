@@ -19,8 +19,8 @@ enum PurchaseFlowState: Equatable {
 @MainActor
 @Observable
 final class PurchaseService {
-    static let monthlyID = "com.harib.haircompass.pro.monthly"
-    static let yearlyID  = "com.harib.haircompass.pro.yearly"
+    static let monthlyID = "com.harib.haircompass.pro.monthly2"
+    static let yearlyID  = "com.harib.haircompass.pro.yearly2"
 
     private(set) var products: [Product] = []
     private(set) var hasPro = false

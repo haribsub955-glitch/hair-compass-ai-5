@@ -39,7 +39,7 @@ extractable and manage it at the account, not the client:
 | Version / build | `1.0` / `1` |
 | App Group | `group.harib.Hair-Compass-AI-5` |
 | Subscription group | `21442176` |
-| Product IDs | `com.harib.haircompass.pro.monthly`, `com.harib.haircompass.pro.yearly` |
+| Product IDs | `com.harib.haircompass.pro.monthly2`, `com.harib.haircompass.pro.yearly2` (v1 IDs are burned — subscription product IDs can never be reused once created, even after deletion) |
 | Privacy policy URL | https://haircompass-ai.com/privacy-policy.html |
 | Support URL | https://haircompass-ai.com/support.html |
 | Support email | harib.alazri@gmail.com |
