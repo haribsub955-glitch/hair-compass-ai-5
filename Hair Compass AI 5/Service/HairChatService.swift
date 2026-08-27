@@ -54,14 +54,16 @@ enum HairChatPrompt {
 
     /// Which entry point opened the chat — shapes which starter questions read naturally.
     /// `chartComparison`: opened over a specific two-signal chart (Compare). `fullRecord`:
-    /// opened over the whole tracking record with no single chart on screen (Today, deep
-    /// analysis follow-up).
-    enum StarterKind { case chartComparison, fullRecord }
+    /// opened over the whole tracking record with no single chart on screen (Today's Ask-Wren
+    /// button, deep analysis follow-up). `screen(tab)`: opened from the floating Wren button on
+    /// a specific screen — the starters ask about what that screen shows.
+    enum StarterKind { case chartComparison, fullRecord, screen(AppTab) }
 
     /// Three tappable starter questions for the empty chat, shaped by where the chat was
     /// opened from. For a chart comparison, the last one is keyed off the focus line when it
-    /// mentions the lag control; for the full record, the starters stay general instead of
-    /// presupposing a two-signal relationship that isn't on screen.
+    /// mentions the lag scan; for the full record, the starters stay general instead of
+    /// presupposing a two-signal relationship that isn't on screen; per-screen starters live
+    /// with the rest of the companion's voice in `Companion.starters(for:)`.
     static func starters(focus: String, kind: StarterKind = .chartComparison) -> [String] {
         switch kind {
         case .chartComparison:
@@ -79,6 +81,8 @@ enum HairChatPrompt {
                 "What should I keep an eye on?",
                 "What usually drives shedding changes?",
             ]
+        case .screen(let tab):
+            return Companion.starters(for: tab)
         }
     }
 

@@ -77,6 +77,28 @@ struct HairChatTests {
         #expect(!starters.contains("Is this change meaningful, or just noise?"))
     }
 
+    // MARK: Starter chips — per-screen entry points (the floating Wren button)
+
+    @Test func everyScreenGetsThreeDistinctNonEmptyStarters() {
+        for tab in AppTab.allCases {
+            let starters = HairChatPrompt.starters(focus: "", kind: .screen(tab))
+            #expect(starters.count == 3, "\(tab.rawValue) must offer exactly three starters")
+            #expect(starters.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+            #expect(Set(starters).count == 3, "\(tab.rawValue) starters must be distinct")
+        }
+    }
+
+    @Test func screenStartersAreActuallyTailoredPerScreen() {
+        // The point of the per-screen kind: opening Wren on Trends must not propose the same
+        // questions as opening her on Photos. Every tab's set differs from every other's.
+        let sets = AppTab.allCases.map { Set(HairChatPrompt.starters(focus: "", kind: .screen($0))) }
+        for i in sets.indices {
+            for j in sets.indices where j > i {
+                #expect(sets[i] != sets[j], "Two screens share an identical starter set")
+            }
+        }
+    }
+
     // MARK: Validation facts — deliberately not the full `system` prompt
 
     /// `system` carries instruction boilerplate (the "2–6 sentences" length rule, the

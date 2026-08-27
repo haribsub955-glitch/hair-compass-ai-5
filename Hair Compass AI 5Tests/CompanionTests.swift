@@ -51,4 +51,18 @@ struct CompanionTests {
             }
         }
     }
+
+    @Test func screenStartersNeverSoundDiagnostic() {
+        // The per-screen chat starters are companion voice too — same non-diagnostic rule as
+        // every other line she says.
+        let banned = ["diagnos", "cure", "you have", "condition", "prescrib"]
+        for tab in AppTab.allCases {
+            for starter in Companion.starters(for: tab) {
+                let lowered = starter.lowercased()
+                for word in banned {
+                    #expect(!lowered.contains(word), "Starter must not sound diagnostic: \(starter)")
+                }
+            }
+        }
+    }
 }

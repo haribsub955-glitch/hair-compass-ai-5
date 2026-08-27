@@ -131,20 +131,28 @@ struct JourneyChart: View {
                             .foregroundStyle(Clinical.accent.opacity(rawDotStyle.opacity))
                     }
                 }
-                // 7-day centered rolling mean — the trend the eye should follow.
+                // 7-day centered rolling mean — the trend the eye should follow. Per-segment
+                // series identity breaks the line (and its fill) at any gap wider than a week:
+                // a continuous stroke across a month nobody logged would fabricate a trend.
                 ForEach(data.shedPoints) { p in
-                    AreaMark(x: .value("Date", p.date), y: .value("Shed", p.smoothed))
-                        .interpolationMethod(.monotone)
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Clinical.accent.opacity(0.14), .clear],
-                                startPoint: .top, endPoint: .bottom
-                            )
+                    AreaMark(
+                        x: .value("Date", p.date), y: .value("Shed", p.smoothed),
+                        series: .value("Run", "area-\(p.segment)")
+                    )
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Clinical.accent.opacity(0.14), .clear],
+                            startPoint: .top, endPoint: .bottom
                         )
-                    LineMark(x: .value("Date", p.date), y: .value("Shed", p.smoothed))
-                        .interpolationMethod(.monotone)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5))
-                        .foregroundStyle(Clinical.accent)
+                    )
+                    LineMark(
+                        x: .value("Date", p.date), y: .value("Shed", p.smoothed),
+                        series: .value("Run", "line-\(p.segment)")
+                    )
+                    .interpolationMethod(.monotone)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
+                    .foregroundStyle(Clinical.accent)
                 }
                 // Dashed verticals anchor each dated event to the trend — lightened to 0.35
                 // opacity (round-7) now that the marker itself is a tick rather than a heavy dot.
@@ -512,6 +520,9 @@ private struct JourneyData {
         let date: Date
         let raw: Double
         let smoothed: Double
+        /// Which gap-free run this point belongs to — the chart draws each run as its own
+        /// line/area so no trend is ever painted across a logging gap wider than a week.
+        let segment: Int
         var id: Date { date }
     }
 
@@ -587,15 +598,24 @@ private struct JourneyData {
     ) {
         let calendar = Calendar.current
 
-        // Shed trend: raw daily 0–3 values plus the shared 7-day centered rolling mean.
+        // Shed trend: raw daily 0–3 values plus the 7-day centered rolling mean — computed per
+        // gap-free run, so the mean near a logging gap never quietly averages values from the
+        // other side of it, and the chart can break the line where nothing was recorded.
         let window = entries
             .filter { $0.date >= start && $0.date <= end }
             .sorted { $0.date < $1.date }
         let raw = window.map { Double($0.shed.rawValue) }
-        let smoothed = ChartMath.rollingMean(raw, window: 7)
-        shedPoints = window.indices.map {
-            ShedPoint(date: window[$0].date, raw: raw[$0], smoothed: smoothed[$0])
+        var points: [ShedPoint] = []
+        let segments = ChartMath.gapSegments(dates: window.map(\.date), calendar: calendar)
+        for (segmentIndex, segment) in segments.enumerated() {
+            let smoothed = ChartMath.rollingMean(Array(raw[segment]), window: 7)
+            for (j, i) in segment.enumerated() {
+                points.append(ShedPoint(
+                    date: window[i].date, raw: raw[i], smoothed: smoothed[j], segment: segmentIndex
+                ))
+            }
         }
+        shedPoints = points
 
         // Event markers: procedures, daily-med starts, and TE triggers inside the window.
         var built: [Marker] = []

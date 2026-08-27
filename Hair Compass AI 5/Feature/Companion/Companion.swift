@@ -80,6 +80,45 @@ enum Companion {
         }
     }
 
+    /// The starter questions the chat proposes when it was opened over a specific screen (the
+    /// floating chat button) — each one asks something the chat can genuinely answer from the
+    /// person's own record, phrased for what that screen shows. Lives here because starters are
+    /// companion voice: the same non-diagnostic rules as every other line she says.
+    static func starters(for tab: AppTab) -> [String] {
+        switch tab {
+        case .today:
+            return [
+                "How does this week compare to my last one?",
+                "What's worth logging that I keep skipping?",
+                "What usually drives shedding changes?",
+            ]
+        case .shop:
+            return [
+                "Which product types actually have evidence behind them?",
+                "Does anything here fit the plan I'm already on?",
+                "What's not worth my money right now?",
+            ]
+        case .trends:
+            return [
+                "What stands out in my trends right now?",
+                "Is my recent change meaningful, or just noise?",
+                "What else moved when my shedding did?",
+            ]
+        case .care:
+            return [
+                "Where does my routine slip the most?",
+                "Is it too early to judge my current treatment?",
+                "What should I mention at my next appointment?",
+            ]
+        case .photos:
+            return [
+                "What's changed since my baseline photos?",
+                "How often should I retake progress photos?",
+                "Why do photos catch what daily logging misses?",
+            ]
+        }
+    }
+
     /// Wren's line for a moment, or `nil` for ambient moments that should stay silent.
     static func line(for moment: CompanionMoment) -> String? {
         switch moment {
