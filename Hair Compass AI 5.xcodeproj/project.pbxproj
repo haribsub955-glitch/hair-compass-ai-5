@@ -396,6 +396,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Hair Compass uses the camera for scalp and hair photos kept as records and comparisons. Labels are read on your iPhone; summaries may use opt-in cloud AI.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. If you turn on cloud AI, these values can be part of the tracking summary sent to write your answers. It does not diagnose hair or scalp conditions.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Hair Compass never writes to Health. It only reads the categories you approve; this notice exists because the system requires it for any app that links HealthKit.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Hair Compass uses your photo library for scalp and hair photos kept as records and comparisons. Labels are read on your iPhone; summaries may use opt-in cloud AI.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -441,6 +442,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Hair Compass uses the camera for scalp and hair photos kept as records and comparisons. Labels are read on your iPhone; summaries may use opt-in cloud AI.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. If you turn on cloud AI, these values can be part of the tracking summary sent to write your answers. It does not diagnose hair or scalp conditions.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Hair Compass never writes to Health. It only reads the categories you approve; this notice exists because the system requires it for any app that links HealthKit.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Hair Compass uses your photo library for scalp and hair photos kept as records and comparisons. Labels are read on your iPhone; summaries may use opt-in cloud AI.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
