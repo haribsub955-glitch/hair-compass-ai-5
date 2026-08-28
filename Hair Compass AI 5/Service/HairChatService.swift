@@ -5,16 +5,19 @@ import SwiftData
 import FoundationModels
 #endif
 
-#if DEBUG
 /// What the agent path needs that the on-device path doesn't: a live `ModelContext` (its tools
 /// read the record straight from SwiftData) and the conversation's identity (so session-scoped
 /// memories stay inside the conversation that wrote them).
+///
+/// Deliberately NOT `#if DEBUG` even though only the DEBUG-only agent path reads it: it appears
+/// in `send`'s signature, so Release must still be able to compile the type. The privacy promise
+/// is carried by `AgentBridge` (fully DEBUG-gated) — in Release this struct is accepted and
+/// ignored, and no agent code exists to receive it.
 @MainActor
 struct AgentChatContext {
     let modelContext: ModelContext
     let sessionID: String
 }
-#endif
 
 /// One turn of the hair-science chat. Text only — photos never enter this feature.
 struct ChatMessage: Identifiable, Equatable {
