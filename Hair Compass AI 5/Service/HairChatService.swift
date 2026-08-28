@@ -1,6 +1,19 @@
 import Foundation
+import OSLog
+import SwiftData
 #if canImport(FoundationModels)
 import FoundationModels
+#endif
+
+#if DEBUG
+/// What the agent path needs that the on-device path doesn't: a live `ModelContext` (its tools
+/// read the record straight from SwiftData) and the conversation's identity (so session-scoped
+/// memories stay inside the conversation that wrote them).
+@MainActor
+struct AgentChatContext {
+    let modelContext: ModelContext
+    let sessionID: String
+}
 #endif
 
 /// One turn of the hair-science chat. Text only — photos never enter this feature.
@@ -9,11 +22,20 @@ struct ChatMessage: Identifiable, Equatable {
     let id: UUID
     let role: Role
     let text: String
+    /// What this answer was read from, in the person's own vocabulary — "your recent entries",
+    /// "the evidence library". Empty for the on-device path, which is handed one prebuilt
+    /// context rather than choosing what to look at.
+    ///
+    /// This is the app's central claim made checkable. "Grounded in your own numbers, never a
+    /// diagnosis" is on the paywall; an answer that shows which numbers it actually opened is
+    /// the difference between saying that and demonstrating it.
+    let sources: [String]
 
-    init(id: UUID = UUID(), role: Role, text: String) {
+    init(id: UUID = UUID(), role: Role, text: String, sources: [String] = []) {
         self.id = id
         self.role = role
         self.text = text
+        self.sources = sources
     }
 }
 
@@ -111,6 +133,15 @@ final class HairChatService {
     /// Nil until the first token of a turn arrives, and cleared back to nil once the finished
     /// reply lands in `messages` — the UI shows this in place of the thinking dots.
     private(set) var streamingText: String?
+    /// What the agent is *doing*, as opposed to what it is saying — "Reading your record…" while
+    /// a tool wave runs on the device. Kept separate from `streamingText` because they are
+    /// different kinds of thing: streaming text is Wren's answer arriving, this is machinery.
+    /// Rendering activity in a message bubble reads as Wren having said it, which is a lie.
+    private(set) var activityNote: String?
+    /// Carries the just-finished turn's sources from `request` to the message it belongs to.
+    /// `request` returns only text, and widening its return type to thread this through would
+    /// complicate the on-device path, which has no sources to report.
+    private var lastSources: [String] = []
 
     init() {}
 
@@ -122,23 +153,57 @@ final class HairChatService {
     /// True when chat can run on this device — Apple Intelligence is available. There is no cloud
     /// fallback, so this is false on hardware without on-device AI, and the UI shows a clear card
     /// (see `availability` for exactly which of the three reasons applies).
-    var isAvailable: Bool { availability.isAvailable }
+    var isAvailable: Bool {
+        #if DEBUG
+        // The agent runs on a server, so Apple Intelligence availability says nothing about
+        // whether chat can work. Without this the sheet shows its "needs Apple Intelligence"
+        // card and never reaches the agent at all.
+        if AgentBridge.isEnabled { return true }
+        #endif
+        return availability.isAvailable
+    }
 
     struct ChatError: Error { let message: String }
 
+    #if DEBUG
+    /// One honest line per agent failure — never a transport detail or a server message.
+    static func message(for error: AgentClient.AgentError) -> String {
+        switch error {
+        case .transport:
+            return "Couldn't reach the agent server. Is it running on port 8100?"
+        case .unauthenticated:
+            return "The agent session expired. Close and reopen this chat."
+        case .upgradeRequired:
+            return "This build is too old for that agent server."
+        case .badResponse(let status):
+            return "The agent server returned \(status)."
+        }
+    }
+    #endif
+
     /// Append the user's message and ask the model for the next turn. `context` is the
     /// `AIContext.jsonString()` snapshot; `focus` is one line describing what's on screen.
-    func send(_ text: String, context: String, focus: String) async {
+    ///
+    /// `agentContext` opts this turn into the agent platform (DEBUG + `HC_AGENT` only — see
+    /// `AgentBridge`). The agent doesn't take the prebuilt `AIContext`: it asks the device for
+    /// what it needs through tools, so the record is read on demand rather than sent wholesale.
+    func send(
+        _ text: String,
+        context: String,
+        focus: String,
+        agentContext: AgentChatContext? = nil
+    ) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isRunning else { return }
         messages.append(ChatMessage(role: .user, text: trimmed))
         isRunning = true
         errorMessage = nil
         streamingText = nil
-        defer { isRunning = false; streamingText = nil }
+        defer { isRunning = false; streamingText = nil; activityNote = nil }
         do {
-            let reply = try await request(context: context, focus: focus)
-            messages.append(ChatMessage(role: .assistant, text: reply))
+            let reply = try await request(context: context, focus: focus, agentContext: agentContext)
+            messages.append(ChatMessage(role: .assistant, text: reply, sources: lastSources))
+            lastSources = []
         } catch let e as ChatError {
             errorMessage = e.message
         } catch {
@@ -148,7 +213,55 @@ final class HairChatService {
 
     // MARK: - Request
 
-    private func request(context: String, focus: String) async throws -> String {
+    private func request(
+        context: String,
+        focus: String,
+        agentContext: AgentChatContext? = nil
+    ) async throws -> String {
+        #if DEBUG
+        // Ahead of everything else: when the agent is driving, the on-device model is not
+        // involved at all — this is a different system, not a fallback for the same one.
+        if AgentBridge.isEnabled, let agentContext {
+            let question = messages.last(where: { $0.role == .user })?.text ?? ""
+            do {
+                let turn = try await AgentBridge.run(
+                    userText: question,
+                    context: agentContext.modelContext,
+                    sessionID: agentContext.sessionID,
+                    onProgress: { [weak self] line in self?.activityNote = line }
+                )
+                // `served: false` arrives as nil and is explicitly not an error — the safety
+                // layer stripped it or the loop stopped on something it couldn't verify.
+                guard let reply = turn.answer, !reply.isEmpty else {
+                    throw ChatError(message: "The agent didn't return an answer for that one. Try rephrasing.")
+                }
+                // Same deterministic gate the on-device path passes through — a remote model is
+                // not more trusted than a local one; if anything it is less. Validated against
+                // the tool payloads *as well as* the context: the agent's numbers come from the
+                // tools, and a gate that can't see them rejects correct answers.
+                lastSources = turn.toolsUsed.compactMap(AgentBridge.sourceLabel(for:))
+                let facts = context + " " + turn.facts
+                #if DEBUG
+                if !AIOutputValidator.isSafe(reply, suppliedFacts: facts) {
+                    // Name the ungrounded numbers directly. "The gate said no" is not a
+                    // diagnosis; "the answer says 9 and the facts never do" is one.
+                    let canonical: (String) -> String = { raw in
+                        Double(raw).map { $0.rounded() == $0 ? String(Int($0)) : String($0) } ?? raw
+                    }
+                    let inFacts = Set(facts.matches(of: /\b\d+(?:\.\d+)?\b/).map { canonical(String($0.output)) })
+                    let ungrounded = reply.matches(of: /\b\d+(?:\.\d+)?\b/)
+                        .map { canonical(String($0.output)) }
+                        .filter { $0 != "24" && !inFacts.contains($0) }
+                    Logger(subsystem: "harib.Hair-Compass-AI-5", category: "agent")
+                        .error("GATE_REJECTED ungrounded=\(Set(ungrounded).sorted(), privacy: .public) answer=\(reply, privacy: .public)")
+                }
+                #endif
+                return AIOutputValidator.safeText(reply, suppliedFacts: facts)
+            } catch let error as AgentClient.AgentError {
+                throw ChatError(message: Self.message(for: error))
+            }
+        }
+        #endif
         let system = HairChatPrompt.system(contextJSON: context, focus: focus)
         let turns = HairChatPrompt.cappedHistory(messages).map {
             (role: $0.role.rawValue, text: $0.text)

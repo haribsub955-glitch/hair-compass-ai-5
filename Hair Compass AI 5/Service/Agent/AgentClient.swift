@@ -312,7 +312,10 @@ public actor AgentClient {
             "result": [
                 "call_id": callID,
                 "status": status,
-                "payload": status == "succeeded" ? payload : NSNull(),
+                // Both arms cast to `Any`: a dictionary and `NSNull` have no common type, so the
+                // ternary needs the erasure spelled out. `NSNull` is what `JSONSerialization`
+                // writes as a literal `null`, which is the shape the server expects on failure.
+                "payload": status == "succeeded" ? payload as Any : NSNull() as Any,
                 "error": error,
             ],
         ]

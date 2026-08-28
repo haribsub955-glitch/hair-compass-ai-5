@@ -22,7 +22,7 @@ struct BackupServiceTests {
             Profile.self, DailyEntry.self, Treatment.self, TreatmentDose.self, MissedDoseRecord.self,
             SideEffectLog.self, LabResult.self, PhotoRecord.self,
             HealthSnapshot.self, TriggerEvent.self,
-            ProcedureAppointment.self, ProgressCheckIn.self
+            ProcedureAppointment.self, ProgressCheckIn.self, AgentMemory.self
         ])
         return try ModelContainer(
             for: schema,
@@ -488,6 +488,73 @@ struct BackupServiceTests {
         #expect(BackupService.isDefaultProfile(Profile()))                       // untouched
         #expect(!BackupService.isDefaultProfile(Profile(name: "Harib")))         // named
         #expect(!BackupService.isDefaultProfile(Profile(hasOnboarded: true)))    // onboarded
+    }
+
+    /// `AgentMemory` joined the SwiftData schema with the agent work but never joined the
+    /// backup, so restoring silently dropped everything the agent had learned about the person.
+    @Test func agentMemoriesRoundTripThroughMakeEnvelopeAndRestore() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let context = ModelContext(try makeContainer())
+        let remembered = AgentMemory(
+            scope: .global, sessionID: "conversation-1",
+            text: "prefers evening applications", kind: .preference, createdAt: now
+        )
+
+        let envelope = BackupService.makeEnvelope(
+            profile: nil, entries: [], treatments: [], doses: [], sideEffects: [], labs: [],
+            photos: [], snapshots: [], triggers: [], procedures: [], progressCheckIns: [],
+            agentMemories: [remembered], createdAt: now, photoData: { _ in nil }
+        )
+        _ = try BackupService.restore(envelope, into: context, photoWriter: { _ in nil })
+
+        let restored = try context.fetch(FetchDescriptor<AgentMemory>())
+        #expect(restored.count == 1)
+        #expect(restored.first?.text == "prefers evening applications")
+        #expect(restored.first?.scope == .global)
+        #expect(restored.first?.kind == .preference)
+        #expect(restored.first?.sessionID == "conversation-1")
+    }
+
+    /// A memory the user asked to forget is kept as a tombstone rather than deleted. If the
+    /// tombstone doesn't survive the archive, restoring a backup resurrects something the
+    /// person explicitly asked the agent to forget — the one outcome this must never produce.
+    @Test func aForgottenMemoryIsStillForgottenAfterRestore() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let context = ModelContext(try makeContainer())
+        let forgotten = AgentMemory(scope: .global, sessionID: "s", text: "an old aside", createdAt: now)
+        forgotten.forgottenAt = now
+
+        let envelope = BackupService.makeEnvelope(
+            profile: nil, entries: [], treatments: [], doses: [], sideEffects: [], labs: [],
+            photos: [], snapshots: [], triggers: [], procedures: [], progressCheckIns: [],
+            agentMemories: [forgotten], createdAt: now, photoData: { _ in nil }
+        )
+        _ = try BackupService.restore(envelope, into: context, photoWriter: { _ in nil })
+
+        let restored = try context.fetch(FetchDescriptor<AgentMemory>())
+        #expect(restored.first?.isForgotten == true)
+        #expect(AgentMemoryStore.recall([restored.first!], scope: nil, sessionID: "s",
+                                        query: "aside", limit: 5).isEmpty)
+    }
+
+    /// Restore is a merge-safe upsert everywhere else; memories must not be the exception, or
+    /// restoring the same file twice doubles everything the agent knows.
+    @Test func restoringTheSameAgentMemoriesTwiceInsertsNothingNew() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let context = ModelContext(try makeContainer())
+        let memory = AgentMemory(scope: .session, sessionID: "s1", text: "sleeps badly", createdAt: now)
+        let envelope = BackupService.makeEnvelope(
+            profile: nil, entries: [], treatments: [], doses: [], sideEffects: [], labs: [],
+            photos: [], snapshots: [], triggers: [], procedures: [], progressCheckIns: [],
+            agentMemories: [memory], createdAt: now, photoData: { _ in nil }
+        )
+
+        _ = try BackupService.restore(envelope, into: context, photoWriter: { _ in nil })
+        let second = try BackupService.restore(envelope, into: context, photoWriter: { _ in nil })
+
+        #expect(try context.fetch(FetchDescriptor<AgentMemory>()).count == 1)
+        #expect(second.inserted == 0)
+        #expect(second.skipped == 1)
     }
 
     @Test func manifestCoversEveryModelAndTreatmentRelationships() {

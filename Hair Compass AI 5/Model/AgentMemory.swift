@@ -130,16 +130,17 @@ enum AgentMemoryStore {
             )
         }
 
-        return Array(
-            visible
-                .map { ($0, score($0, terms: terms)) }
-                .filter { $0.1 > 0 }
-                .sorted { lhs, rhs in
-                    lhs.1 == rhs.1 ? lhs.0.createdAt > rhs.0.createdAt : lhs.1 > rhs.1
-                }
-                .prefix(limit)
-                .map(\.0)
-        )
+        // Split into named, explicitly typed steps: as one chained expression over anonymous
+        // tuples this defeated the type-checker outright ("unable to type-check in reasonable
+        // time"). Same ranking — score descending, newest first at equal score.
+        let scored: [(memory: AgentMemory, score: Int)] = visible.compactMap { memory in
+            let value = score(memory, terms: terms)
+            return value > 0 ? (memory: memory, score: value) : nil
+        }
+        let ranked = scored.sorted { lhs, rhs in
+            lhs.score == rhs.score ? lhs.memory.createdAt > rhs.memory.createdAt : lhs.score > rhs.score
+        }
+        return ranked.prefix(limit).map(\.memory)
     }
 
     /// Overlap, weighted by kind. Facts and preferences outrank passing notes at equal overlap,

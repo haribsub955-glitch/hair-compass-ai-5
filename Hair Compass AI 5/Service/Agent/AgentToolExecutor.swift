@@ -35,7 +35,9 @@ struct AgentToolExecutor: AgentClient.ToolExecutor {
     /// offer anyway, so naming something extra gains nothing and guarantees a timeout when the
     /// server dispatches it.
     var implementedTools: [String] {
-        var tools = ["recall_memory", "read_recent_entries", "read_lab_results", "log_entry"]
+        var tools = ["recall_memory", "read_recent_entries", "read_lab_results", "log_entry",
+                     "read_hair_science", "read_treatments", "read_procedures", "read_triggers",
+                     "read_progress_checkins", "read_photo_history", "read_profile"]
         if healthAvailable { tools.append("read_health_signals") }
         return tools
     }
@@ -47,10 +49,20 @@ struct AgentToolExecutor: AgentClient.ToolExecutor {
 
     func run(tool: String, arguments: [String: Any]) async throws -> [String: Any] {
         switch tool {
-        case "recall_memory":       return try recallMemory(arguments)
-        case "read_recent_entries": return try readRecentEntries(arguments)
-        case "read_lab_results":    return try readLabResults(arguments)
-        case "read_health_signals": return try readHealthSignals(arguments)
+        // `await` on synchronous calls: `ToolExecutor.run` is a nonisolated protocol requirement,
+        // so this body runs off the main actor even though the type is `@MainActor`. Each hop
+        // below is what gets these reads back onto the actor that owns the `ModelContext`.
+        case "recall_memory":       return try await recallMemory(arguments)
+        case "read_recent_entries": return try await readRecentEntries(arguments)
+        case "read_lab_results":    return try await readLabResults(arguments)
+        case "read_health_signals": return try await readHealthSignals(arguments)
+        case "read_hair_science":   return await readHairScience(arguments)
+        case "read_treatments":     return try await readTreatments(arguments)
+        case "read_procedures":     return try await readProcedures(arguments)
+        case "read_triggers":       return try await readTriggers(arguments)
+        case "read_progress_checkins": return try await readProgressCheckIns(arguments)
+        case "read_photo_history":  return try await readPhotoHistory(arguments)
+        case "read_profile":        return try await readProfile(arguments)
         case "log_entry":           return try await logEntry(arguments)
         default:
             // Unreachable while `implementedTools` and this switch agree. Reaching it means they
@@ -125,6 +137,261 @@ struct AgentToolExecutor: AgentClient.ToolExecutor {
         return facts
     }
 
+    /// The person's plan: what they are actually taking or applying, and how it is going.
+    ///
+    /// The single most-asked thing about a hair record — "is minoxidil in my plan", "how long
+    /// have I been on this", "am I keeping up with it" — and until this existed the agent had no
+    /// way to answer any of it and would say it couldn't verify.
+    ///
+    /// Every derived number comes from `HairAnalytics`, never from the model. `outcome_ready` is
+    /// the 24-week judging gate the whole app is built around: the agent must not call a
+    /// treatment working or not working before it, and it can only respect that rule if it is
+    /// told which side of the line each treatment sits on.
+    private func readTreatments(_ arguments: [String: Any]) throws -> [String: Any] {
+        let includeStopped = (arguments["include_stopped"] as? Bool) ?? true
+        let all = try context.fetch(FetchDescriptor<Treatment>(
+            sortBy: [SortDescriptor(\Treatment.startDate, order: .reverse)]
+        ))
+        let treatments = includeStopped ? all : all.filter(\.isActive)
+
+        return [
+            "count": treatments.count,
+            "treatments": treatments.map { t -> [String: Any] in
+                let weeks = HairAnalytics.weeksElapsed(since: t.startDate)
+                let doseDates = t.doses.map(\.loggedAt)
+                var row: [String: Any] = [
+                    "name": t.name.isEmpty ? t.treatmentClass.title : t.name,
+                    "class": t.treatmentClass.title,
+                    "dose": t.dose,
+                    "active": t.isActive,
+                    "started": iso(t.startDate),
+                    "weeks_elapsed": weeks,
+                    // The 24-week gate, stated rather than implied.
+                    "outcome_ready": HairAnalytics.outcomeReady(weeksElapsed: weeks),
+                    "times_per_day": t.slots.count,
+                    "doses_logged": t.doses.count,
+                    "side_effects_logged": t.sideEffects.count,
+                    "missed_doses_logged": t.missedDoses.count,
+                ]
+                if !t.scheduleTimes.isEmpty {
+                    row["schedule"] = t.scheduleTimes
+                    // Both clock forms, deliberately. A model handed "21:00" will write "9pm" —
+                    // that is a correct, helpful rendering, but "9" then appears in prose while
+                    // only "21" appears in the facts, and `AIOutputValidator` rejects the whole
+                    // answer as containing an invented number. Publishing both readings keeps
+                    // the gate strict about genuinely invented figures without punishing the
+                    // model for converting a clock properly.
+                    row["schedule_12h"] = Self.twelveHour(t.scheduleTimes)
+                }
+                if let adherence = HairAnalytics.adherence(doseDates: doseDates, expectedPerDay: t.slots.count) {
+                    row["adherence_percent"] = Int((adherence * 100).rounded())
+                }
+                if let end = t.endDate { row["stopped"] = iso(end) }
+                if let refill = t.refillBy { row["refill_by"] = iso(refill) }
+                if !t.aiIngredientSummary.isEmpty { row["ingredient_summary"] = t.aiIngredientSummary }
+                return row
+            },
+        ]
+    }
+
+    /// In-clinic work: PRP, transplants, laser and the rest, booked or done.
+    private func readProcedures(_ arguments: [String: Any]) throws -> [String: Any] {
+        let limit = min((arguments["limit"] as? Int) ?? 20, 50)
+        var descriptor = FetchDescriptor<ProcedureAppointment>(
+            sortBy: [SortDescriptor(\ProcedureAppointment.date, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        let procedures = try context.fetch(descriptor)
+
+        return [
+            "count": procedures.count,
+            "procedures": procedures.map { p -> [String: Any] in
+                var row: [String: Any] = [
+                    "type": p.type.title,
+                    "date": iso(p.date),
+                    "completed": p.isCompleted,
+                ]
+                if !p.location.isEmpty { row["location"] = p.location }
+                if !p.note.isEmpty { row["note"] = p.note }
+                if !p.agendaMainConcern.isEmpty { row["main_concern"] = p.agendaMainConcern }
+                return row
+            },
+        ]
+    }
+
+    /// Life events the person marked as possible triggers. Shedding lags a trigger by 2–3
+    /// months, so `weeks_ago` is the number that makes one worth mentioning at all.
+    private func readTriggers(_ arguments: [String: Any]) throws -> [String: Any] {
+        let limit = min((arguments["limit"] as? Int) ?? 10, 30)
+        var descriptor = FetchDescriptor<TriggerEvent>(
+            sortBy: [SortDescriptor(\TriggerEvent.date, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        let triggers = try context.fetch(descriptor)
+
+        return [
+            "count": triggers.count,
+            "triggers": triggers.map { t -> [String: Any] in
+                var row: [String: Any] = [
+                    "type": t.type.title,
+                    "date": iso(t.date),
+                    "weeks_ago": t.weeksElapsed(),
+                ]
+                if !t.note.isEmpty { row["note"] = t.note }
+                return row
+            },
+        ]
+    }
+
+    /// The periodic self-assessment — the person's own read on regrowth, density and hairline.
+    ///
+    /// `scalp_pain` travels with every row it appears in. Persistent scalp pain is one of the
+    /// few genuine red flags in this app (it can mean scarring alopecia, which is irreversible
+    /// once missed), so it must reach the agent rather than being averaged away.
+    private func readProgressCheckIns(_ arguments: [String: Any]) throws -> [String: Any] {
+        let limit = min((arguments["limit"] as? Int) ?? 6, 20)
+        var descriptor = FetchDescriptor<ProgressCheckIn>(
+            sortBy: [SortDescriptor(\ProgressCheckIn.date, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        let checkIns = try context.fetch(descriptor)
+
+        return [
+            "count": checkIns.count,
+            "check_ins": checkIns.map { c -> [String: Any] in
+                var row: [String: Any] = [
+                    "date": iso(c.date),
+                    "regrowth": c.regrowth.title,
+                    // Each answer is phrased for the question it answers — "More scalp shows"
+                    // rather than a bare "worse" — so the agent quotes the person's own wording
+                    // back instead of re-inventing a direction word.
+                    "density": c.density.label(for: .density),
+                    "shedding": c.shedding.label(for: .shedding),
+                    "hairline": c.hairline.label(for: .hairline),
+                    "overall": c.overall.label(for: .overall),
+                    "scalp_pain": c.scalpPain,
+                ]
+                if c.scalpPain && !c.scalpPainNote.isEmpty { row["scalp_pain_note"] = c.scalpPainNote }
+                if !c.note.isEmpty { row["note"] = c.note }
+                return row
+            },
+        ]
+    }
+
+    /// Photo *metadata* only — how many, which regions, over what span.
+    ///
+    /// Deliberately never the images. Foundation Models has no image input and this agent has no
+    /// attachment transport (handover §6), so sending pixels would be impossible as well as
+    /// wrong. What the agent can usefully say is whether a comparison is even possible yet.
+    private func readPhotoHistory(_ arguments: [String: Any]) throws -> [String: Any] {
+        let photos = try context.fetch(FetchDescriptor<PhotoRecord>(
+            sortBy: [SortDescriptor(\PhotoRecord.createdAt)]
+        ))
+        var byRegion: [String: Int] = [:]
+        for photo in photos { byRegion[photo.region.title, default: 0] += 1 }
+
+        var facts: [String: Any] = [
+            "count": photos.count,
+            "by_region": byRegion,
+            "images_are_never_sent": true,
+        ]
+        if let first = photos.first, let last = photos.last {
+            facts["first"] = iso(first.createdAt)
+            facts["latest"] = iso(last.createdAt)
+            facts["span_weeks"] = HairAnalytics.weeksElapsed(since: first.createdAt)
+        }
+        return facts
+    }
+
+    /// Who this person is, as far as the agent is allowed to know.
+    ///
+    /// Routed through `AgentProfile`, which is the existing projection that strips the name and
+    /// the exact birth date and passes only a derived age. That boundary is the reason this
+    /// doesn't just read `Profile` directly.
+    private func readProfile(_ arguments: [String: Any]) throws -> [String: Any] {
+        let profile = try context.fetch(FetchDescriptor<Profile>(
+            sortBy: [SortDescriptor(\Profile.createdAt)]
+        )).first
+        let projected = AgentProfile.from(profile, now: now())
+
+        var facts: [String: Any] = [:]
+        if let age = projected.age { facts["age"] = age }
+        if let condition = projected.condition { facts["condition"] = condition }
+        if let history = projected.familyHistory { facts["family_history"] = history }
+        if let stage = projected.baselineStage, !stage.isEmpty { facts["baseline_stage"] = stage }
+        if let sex = projected.sex { facts["sex"] = sex }
+        // Pregnancy gates real advice in this app (finasteride is contraindicated), so it has to
+        // reach the agent rather than being something it guesses around.
+        if let pregnancy = projected.pregnancyStatus { facts["pregnancy_status"] = pregnancy }
+        facts["wears_tight_styles"] = projected.wearsTightStyles
+        facts["uses_heat"] = projected.usesHeat
+        facts["uses_chemical_treatments"] = projected.usesChemicalTreatments
+        facts["identifiers_are_never_sent"] = true
+        return facts
+    }
+
+    /// The app's own hair-science library — what lets the agent answer a general question
+    /// ("how fast does hair grow?") instead of only questions about this person's record.
+    ///
+    /// It reads `LearnLibrary`, the same evidence-tiered, myth-flagged content the Learn screen
+    /// shows, rather than letting the model answer from its own training. Two reasons, and the
+    /// second is the load-bearing one:
+    ///
+    /// 1. **Consistency.** The app already took positions — water intake and dietary caffeine are
+    ///    named as myths, blanket biotin is rejected. An agent contradicting the Learn screen in
+    ///    the same app is worse than an agent that cannot answer.
+    /// 2. **The output gate.** `AIOutputValidator` rejects any number in generated prose that is
+    ///    absent from the facts the model was given. General hair science is full of numbers —
+    ///    "1 cm a month", "50-100 hairs a day", "2-6 years" — so without this tool a correct
+    ///    general answer is silently replaced by the "couldn't safely summarize" text. Returning
+    ///    the library's own wording puts those figures into the fact set, where the gate can see
+    ///    them. The model is still never free to invent one.
+    ///
+    /// Scored the same way `AgentMemoryStore.recall` scores memories: term overlap, so a short
+    /// query still finds the card a person actually meant.
+    private func readHairScience(_ arguments: [String: Any]) async -> [String: Any] {
+        let query = (arguments["query"] as? String) ?? ""
+        let limit = min((arguments["limit"] as? Int) ?? 4, 8)
+        let requested = (arguments["category"] as? String)
+            .flatMap(LearnCategory.init(rawValue:))
+
+        let pool = requested.map(LearnLibrary.cards(in:)) ?? LearnLibrary.cards
+        let terms = Set(
+            query.lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count > 2 }
+        )
+
+        let ranked: [FlashCard]
+        if terms.isEmpty {
+            ranked = Array(pool.prefix(limit))
+        } else {
+            ranked = pool
+                .map { card -> (FlashCard, Int) in
+                    let text = (card.question + " " + card.answer).lowercased()
+                    return (card, terms.filter { text.contains($0) }.count)
+                }
+                .filter { $0.1 > 0 }
+                .sorted { $0.1 > $1.1 }
+                .prefix(limit)
+                .map(\.0)
+        }
+
+        return [
+            "query": query,
+            "cards": ranked.map { card in
+                [
+                    "question": card.question,
+                    "answer": card.answer,
+                    "category": card.category.rawValue,
+                    // Myths read as a verdict, not an evidence tier — the library's own rule, and
+                    // the difference between "weak evidence" and "this is a myth" matters.
+                    "verdict": card.isMyth ? "MYTH" : card.tier.title,
+                ]
+            },
+        ]
+    }
+
     private func readLabResults(_ arguments: [String: Any]) throws -> [String: Any] {
         let limit = min((arguments["limit"] as? Int) ?? 20, 50)
         var descriptor = FetchDescriptor<LabResult>(
@@ -137,8 +404,19 @@ struct AgentToolExecutor: AgentClient.ToolExecutor {
             "results": results.map { result -> [String: Any] in
                 var row: [String: Any] = [
                     "test": result.test.rawValue,
+                    "name": result.test.title,
+                    "unit": result.test.unit,
                     "value": result.value,
                     "collected": iso(result.collectedAt),
+                    // The app's own clinical note for this test, and it does two jobs.
+                    //
+                    // It frames the result the way the rest of the app frames it, so chat and the
+                    // Labs screen cannot drift apart. And it supplies the vocabulary the model
+                    // will legitimately reach for: asked about TSH, any competent answer says
+                    // "thyroid", but "thyroid" is one of `AIOutputValidator`'s grounded terms and
+                    // a fact set containing only the string "TSH" gets that answer thrown away.
+                    // The note says "Thyroid function", so the gate and the model finally agree.
+                    "note": result.test.note,
                 ]
                 // The flag comes from HairAnalytics against the test's own reference range — or
                 // the user's recorded range when they entered one, which is the more honest
@@ -222,12 +500,37 @@ struct AgentToolExecutor: AgentClient.ToolExecutor {
 
     /// `ShedLevel` is Int-backed, but the wire carries the band's NAME — an integer on the wire
     /// would silently break the day someone reorders the cases.
+    /// "08:00,21:00" → "8am, 9pm". Locale-independent on purpose: this is grounding material for
+    /// a model, not display text, and it has to match what the model will write.
+    nonisolated static func twelveHour(_ times: String) -> String {
+        times.split(separator: ",").compactMap { slot -> String? in
+            let parts = slot.trimmingCharacters(in: .whitespaces).split(separator: ":")
+            guard let hour = Int(parts.first ?? "") else { return nil }
+            let minute = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
+            let suffix = hour < 12 ? "am" : "pm"
+            let display = hour % 12 == 0 ? 12 : hour % 12
+            return minute == 0 ? "\(display)\(suffix)" : "\(display):\(String(format: "%02d", minute))\(suffix)"
+        }
+        .joined(separator: ", ")
+    }
+
     static func shedLevel(named name: String) -> ShedLevel? {
         ShedLevel.allCases.first { String(describing: $0).lowercased() == name.lowercased() }
     }
 
+    /// Rounded to one decimal, and that rounding is load-bearing in two ways.
+    ///
+    /// It is honest: a mean of 13 sleep readings is not known to sixteen significant figures, and
+    /// `7.400000000000000355` claims a precision the data does not have.
+    ///
+    /// It also keeps generated prose publishable. `AIOutputValidator` rejects any number in an
+    /// answer that does not appear in the facts the model was given; a model handed
+    /// `7.400000000000000355` will sensibly write "7.4", the two do not match, and a correct
+    /// answer gets replaced by the "couldn't safely summarize" text. Emitting the number the way
+    /// it should be quoted is what makes the gate agree with reality.
     private func mean(_ values: [Double]) -> Double? {
-        values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
+        guard !values.isEmpty else { return nil }
+        return ((values.reduce(0, +) / Double(values.count)) * 10).rounded() / 10
     }
 
     private func iso(_ date: Date) -> String { ISO8601DateFormatter().string(from: date) }

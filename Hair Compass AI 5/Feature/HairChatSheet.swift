@@ -26,6 +26,12 @@ struct HairChatSheet: View {
     @Environment(\.openURL) private var openURL
     @State private var service = HairChatService()
     @State private var draft = ""
+    #if DEBUG
+    @Environment(\.modelContext) private var modelContext
+    /// One conversation, one id, for the life of this sheet — what scopes the agent's
+    /// session-level memories so an aside here can't surface in an unrelated chat later.
+    @State private var agentSessionID = UUID().uuidString
+    #endif
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -40,6 +46,16 @@ struct HairChatSheet: View {
             }
         }
         .clinicalScreen()
+        #if DEBUG
+        // `HC_CHAT_ASK <question>` submits one question on open, so a chat turn — the agent's
+        // whole tool-calling round trip included — can be exercised from `simctl launch` without
+        // a hand on the keyboard. Same argument shape as `HC_TAB <tab>`.
+        .task {
+            let args = ProcessInfo.processInfo.arguments
+            guard let i = args.firstIndex(of: "HC_CHAT_ASK"), i + 1 < args.count else { return }
+            submit(args[i + 1])
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -95,6 +111,8 @@ struct HairChatSheet: View {
                     ForEach(service.messages) { bubble($0) }
                     if let streaming = service.streamingText {
                         streamingBubble(streaming)
+                    } else if let activity = service.activityNote {
+                        activityRow(activity)
                     } else if service.isRunning {
                         thinkingRow.id("thinking")
                     }
@@ -112,6 +130,7 @@ struct HairChatSheet: View {
                 )
                 .animation(.easeOut(duration: 0.2), value: service.isRunning)
                 .animation(.easeOut(duration: 0.2), value: service.streamingText != nil)
+                .animation(.easeOut(duration: 0.2), value: service.activityNote)
             }
             .onChange(of: service.messages.count) {
                 guard let last = service.messages.last else { return }
@@ -128,56 +147,168 @@ struct HairChatSheet: View {
         }
     }
 
+    /// Two speakers, two shapes — and the asymmetry is the point.
+    ///
+    /// A question is an utterance: discrete, yours, so it keeps its copper pill. An answer is the
+    /// app talking about your own record, so it is set as prose on the canvas with no card around
+    /// it, the way every other considered surface in this app reads (`CareView`'s ledger rows,
+    /// the retired tab-bar capsule). Boxing Wren's replies made the chat look like a widget
+    /// bolted onto the app instead of part of it.
     private func bubble(_ message: ChatMessage) -> some View {
-        let isUser = message.role == .user
-        return HStack(spacing: 0) {
-            if isUser { Spacer(minLength: 44) }
+        message.role == .user ? AnyView(userBubble(message)) : AnyView(wrenReply(message))
+    }
+
+    private func userBubble(_ message: ChatMessage) -> some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 44)
             Text(message.text)
                 .font(Clinical.caption(14))
-                .foregroundStyle(isUser ? Clinical.surface : Clinical.ink)
+                .foregroundStyle(Clinical.surface)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(isUser ? Clinical.accent : Clinical.surface)
+                .background(Clinical.accent)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(isUser ? Color.clear : Clinical.hairline, lineWidth: 1)
-                )
-            if !isUser { Spacer(minLength: 44) }
         }
-        .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
-        .transition(
-            reduceMotion
-                ? .opacity
-                : .asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity)
-        )
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.top, 6)
+        .transition(entrance)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(isUser ? "You" : Companion.name): \(message.text)")
+        .accessibilityLabel("You: \(message.text)")
         .id(message.id)
+    }
+
+    private func wrenReply(_ message: ChatMessage) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // A hairline and the name instead of a bubble outline: it marks who is speaking
+            // without drawing a container, and matches the eyebrow rhythm used app-wide.
+            HStack(spacing: 7) {
+                CompanionView(moment: .listening, variant: .avatar, size: 20)
+                Text(Companion.name.uppercased())
+                    .font(Clinical.eyebrow(10))
+                    .foregroundStyle(Clinical.tertiary)
+                Rectangle()
+                    .fill(Clinical.hairline)
+                    .frame(height: 1)
+            }
+            Text(Self.formatted(message.text))
+                .font(Clinical.body(15))
+                .foregroundStyle(Clinical.ink)
+                .lineSpacing(4)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if !message.sources.isEmpty {
+                sourceLine(message.sources)
+            }
+        }
+        .padding(.trailing, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+        .transition(entrance)
+        .contextMenu {
+            // Worth having in a health app: an answer is often the thing you want to paste into
+            // a note or hand to a clinician.
+            Button {
+                UIPasteboard.general.string = message.text
+            } label: {
+                Label("Copy answer", systemImage: "doc.on.doc")
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(Companion.name): \(message.text)")
+        .id(message.id)
+    }
+
+    /// What the answer above was actually read from.
+    ///
+    /// The paywall promises answers "grounded in your own numbers, never a diagnosis". This is
+    /// that claim made checkable rather than asserted: the agent chooses which parts of the
+    /// record to open, and naming them lets someone see that an answer about their labs really
+    /// did read their labs — and, just as usefully, that a general answer read only the evidence
+    /// library and nothing personal at all.
+    ///
+    /// Kept deliberately quiet: tertiary, small, below the answer. It is provenance, not a
+    /// headline, and a loud version would compete with the words that matter.
+    private func sourceLine(_ sources: [String]) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "leaf")
+                .font(Clinical.caption(10))
+                .foregroundStyle(Clinical.sage)
+            Text("Read \(ListFormatter.localizedString(byJoining: sources))")
+                .font(Clinical.caption(11))
+                .foregroundStyle(Clinical.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Read \(ListFormatter.localizedString(byJoining: sources))")
+    }
+
+    private var entrance: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity)
+    }
+
+    /// Renders the model's markdown instead of printing it. Without this an answer arrives as
+    /// literal `**Growth rate:**` and reads as broken — the one flaw everybody notices first.
+    /// `inlineOnlyPreservingWhitespace` keeps the line breaks that carry the answer's structure;
+    /// full block parsing would collapse them into a paragraph. Leading list dashes become real
+    /// bullets, since the model writes them and stripping them would lose the grouping.
+    static func formatted(_ text: String) -> AttributedString {
+        let bulleted = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") else { return String(line) }
+                return "•  " + trimmed.dropFirst(2)
+            }
+            .joined(separator: "\n")
+        let parsed = try? AttributedString(
+            markdown: bulleted,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )
+        return parsed ?? AttributedString(text)
     }
 
     /// The assistant's reply rendered live as it streams in, replacing the thinking dots the
     /// moment the first token arrives. Same look as a finished assistant bubble in `bubble(_:)`,
     /// just re-rendered on every new snapshot instead of once at the end.
     private func streamingBubble(_ text: String) -> some View {
-        HStack(spacing: 0) {
-            Text(text)
-                .font(Clinical.caption(14))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                CompanionView(moment: .listening, variant: .avatar, size: 20)
+                Text(Companion.name.uppercased())
+                    .font(Clinical.eyebrow(10))
+                    .foregroundStyle(Clinical.tertiary)
+                Rectangle().fill(Clinical.hairline).frame(height: 1)
+            }
+            Text(Self.formatted(text))
+                .font(Clinical.body(15))
                 .foregroundStyle(Clinical.ink)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Clinical.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Clinical.hairline, lineWidth: 1)
-                )
-            Spacer(minLength: 44)
+                .lineSpacing(4)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.trailing, 16)
+        .padding(.top, 10)
         .id("streaming")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(Companion.name) is typing: \(text)")
+    }
+
+    /// What Wren is doing, not saying. Kept deliberately quiet and un-bubbled so it never reads
+    /// as an answer: the agent's tool waves can take a while, and a silent screen looks broken.
+    private func activityRow(_ note: String) -> some View {
+        HStack(spacing: 8) {
+            CompanionView(moment: .thinking, variant: .pose, size: 26)
+            Text(note)
+                .font(Clinical.caption(12))
+                .foregroundStyle(Clinical.tertiary)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 8)
+        .transition(.opacity)
+        .id("thinking")
+        .accessibilityLabel(note)
     }
 
     private var thinkingRow: some View {
@@ -277,7 +408,12 @@ struct HairChatSheet: View {
         guard !trimmed.isEmpty, !service.isRunning else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         draft = ""
+        #if DEBUG
+        let agentContext = AgentChatContext(modelContext: modelContext, sessionID: agentSessionID)
+        Task { await service.send(trimmed, context: contextJSON, focus: focus, agentContext: agentContext) }
+        #else
         Task { await service.send(trimmed, context: contextJSON, focus: focus) }
+        #endif
     }
 
     // Shown when on-device chat can't run right now. Chat is on-device only, so there's no cloud

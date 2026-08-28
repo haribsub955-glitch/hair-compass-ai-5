@@ -21,7 +21,10 @@ struct AgentProfileTests {
             sex: .male,
             ageBand: ageBand,
             condition: .androgenetic,
-            familyHistory: .paternal,
+            // `.paternal` was written against an enum that doesn't exist; `FamilyHistory` is
+            // none/oneParent/bothParents/extended. No test asserts on this value — it's fixture
+            // only — and one affected parent is the faithful reading of the original intent.
+            familyHistory: .oneParent,
             baselineStage: "Norwood 3",
             wearsTightStyles: true,
             birthDate: birthDate

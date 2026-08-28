@@ -358,6 +358,7 @@ private struct BackupRestoreSection: View {
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
     @Query(sort: \TriggerEvent.date) private var triggers: [TriggerEvent]
     @Query(sort: \ProcedureAppointment.date) private var procedureAppointments: [ProcedureAppointment]
+    @Query(sort: \AgentMemory.createdAt) private var agentMemories: [AgentMemory]
     @Query(sort: \ProgressCheckIn.date) private var progressCheckIns: [ProgressCheckIn]
 
     @State private var backupURL: URL?
@@ -480,7 +481,7 @@ private struct BackupRestoreSection: View {
                 doses: doses, sideEffects: sideEffects,
                 labs: labs, photos: photos, snapshots: snapshots, triggers: triggers,
                 procedures: procedureAppointments, progressCheckIns: progressCheckIns,
-                missedDoses: missedDoses
+                missedDoses: missedDoses, agentMemories: agentMemories
             )
             sensitiveWarningAcknowledged = false
         } catch {

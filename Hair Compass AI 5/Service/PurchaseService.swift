@@ -35,7 +35,22 @@ final class PurchaseService {
     private(set) var isRestoring = false
     private var updatesTask: Task<Void, Never>?
 
+    #if DEBUG
+    /// `HC_PRO` forces the Pro entitlement on, so the AI features (`HairChatSheet`,
+    /// `DeepAnalysisSheet`) can be exercised without a StoreKit configuration or a purchase.
+    ///
+    /// Same shape and rationale as `ProAvailability.forcedStatus`: DEBUG-only and opt-in per
+    /// launch, so release builds are unchanged and omitting the flag still shows the real
+    /// paywall — the gate stays QA-able instead of being deleted.
+    static var forcedPro: Bool { ProcessInfo.processInfo.arguments.contains("HC_PRO") }
+    #endif
+
     init() {
+        #if DEBUG
+        // Set before any async work, so the very first render is already unlocked rather than
+        // showing the paywall for a frame until `load()`'s entitlement refresh lands.
+        hasPro = Self.forcedPro
+        #endif
         updatesTask = Task { [weak self] in
             for await update in Transaction.updates {
                 if case .verified(let t) = update { await t.finish() }
@@ -163,6 +178,12 @@ final class PurchaseService {
     }
 
     private func refreshEntitlement() async {
+        #if DEBUG
+        // The override has to survive every refresh, not just launch: `load()` and each
+        // `Transaction.updates` event call through here and would otherwise clear it back to
+        // false the moment StoreKit reports no entitlement.
+        if Self.forcedPro { hasPro = true; return }
+        #endif
         for await entitlement in Transaction.currentEntitlements {
             if case .verified(let t) = entitlement,
                t.productID == Self.monthlyID || t.productID == Self.yearlyID,
