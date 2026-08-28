@@ -45,7 +45,7 @@ Note: the project name contains spaces — always quote paths/arguments. Pick a 
 - **AnalyticsService.swift** — local-only analytics; logs via `os.Logger` and stores event counts/properties in `UserDefaults`. No third-party analytics SDK.
 
 ### Monetization & gating
-`Commerce/PurchaseManager.swift` (`@MainActor ObservableObject`) wraps StoreKit 2: product IDs `com.harib.haircompass.pro.monthly` / `.yearly`, subscription group `21442176`. `hasPremiumAccess` is the entitlement flag premium features check. Injected as an `@EnvironmentObject` from the app root.
+`Service/PurchaseService.swift` (`@MainActor @Observable`) wraps StoreKit 2: product IDs `com.harib.haircompass.pro.monthly2` / `.yearly2` (the "2" suffix is required — the un-suffixed IDs were burned by an old create-and-delete in App Store Connect), ASC subscription group "Premium". `hasPro` is the entitlement flag premium features check, injected via `@Environment(PurchaseService.self)`.
 
 ### Widget data sharing
 The app writes a `HairCompassWidgetSnapshot` (Codable) into the shared App Group **`group.harib.Hair-Compass-AI-5`** under key `dashboardSnapshot`, then calls `WidgetCenter.shared.reloadTimelines(ofKind: "HairCompassCheckInWidget")`. The widget target ([HairCompassCheckInWidget.swift](Hair%20Compass%20CheckIn%20Widget/HairCompassCheckInWidget.swift)) reads the same App Group. The snapshot struct is duplicated on both sides — keep them in sync when changing fields.

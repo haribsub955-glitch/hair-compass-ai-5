@@ -19,8 +19,11 @@ enum PurchaseFlowState: Equatable {
 @MainActor
 @Observable
 final class PurchaseService {
-    static let monthlyID = "com.harib.haircompass.pro.monthly"
-    static let yearlyID  = "com.harib.haircompass.pro.yearly"
+    // The "2" suffix is load-bearing: the un-suffixed IDs were created and deleted in App Store
+    // Connect long ago, and Apple never allows a product ID to be reused after deletion. These
+    // match the live ASC products in the "Premium" subscription group.
+    static let monthlyID = "com.harib.haircompass.pro.monthly2"
+    static let yearlyID  = "com.harib.haircompass.pro.yearly2"
 
     private(set) var products: [Product] = []
     private(set) var hasPro = false
