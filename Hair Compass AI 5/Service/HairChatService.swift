@@ -54,14 +54,16 @@ enum HairChatPrompt {
 
     /// Which entry point opened the chat — shapes which starter questions read naturally.
     /// `chartComparison`: opened over a specific two-signal chart (Compare). `fullRecord`:
-    /// opened over the whole tracking record with no single chart on screen (Today, deep
-    /// analysis follow-up).
-    enum StarterKind { case chartComparison, fullRecord }
+    /// opened over the whole tracking record with no single chart on screen (Today's Ask-Wren
+    /// button, deep analysis follow-up). `screen(tab)`: opened from the floating Wren button on
+    /// a specific screen — the starters ask about what that screen shows.
+    enum StarterKind { case chartComparison, fullRecord, screen(AppTab) }
 
     /// Three tappable starter questions for the empty chat, shaped by where the chat was
     /// opened from. For a chart comparison, the last one is keyed off the focus line when it
-    /// mentions the lag control; for the full record, the starters stay general instead of
-    /// presupposing a two-signal relationship that isn't on screen.
+    /// mentions the lag scan; for the full record, the starters stay general instead of
+    /// presupposing a two-signal relationship that isn't on screen; per-screen starters live
+    /// with the rest of the companion's voice in `Companion.starters(for:)`.
     static func starters(focus: String, kind: StarterKind = .chartComparison) -> [String] {
         switch kind {
         case .chartComparison:
@@ -79,15 +81,32 @@ enum HairChatPrompt {
                 "What should I keep an eye on?",
                 "What usually drives shedding changes?",
             ]
+        case .screen(let tab):
+            return Companion.starters(for: tab)
         }
     }
 
     /// The payload history: the last `limit` turns, then trimmed so the first message is a
-    /// user turn (the Messages API requires conversations to open with the user).
+    /// user turn — every chat/completions-style API this app talks to (DeepSeek included)
+    /// requires a conversation to open with the user, not just Anthropic's Messages API.
     static func cappedHistory(_ messages: [ChatMessage], limit: Int = historyLimit) -> [ChatMessage] {
         var recent = Array(messages.suffix(limit))
         while let first = recent.first, first.role != .user { recent.removeFirst() }
         return recent
+    }
+
+    /// The fact set a reply is actually checked against — deliberately NOT the full `system`
+    /// prompt. `system` also carries instruction boilerplate (the "2–6 sentences" length rule,
+    /// the schema-version note) that reads as a plausible "fact" to `AIOutputValidator`'s
+    /// numeric/term checks but isn't one — validating against it let a reply admit a number
+    /// that only ever appeared in the app's own instructions. Built from exactly what grounds
+    /// an honest answer instead: the on-screen focus line (can legitimately contain tokens
+    /// like "3M"/"2wk"), the context JSON, and every turn actually sent — the last of those so
+    /// an assistant reply that echoes a number the *person* just typed ("week 30 isn't in your
+    /// record") isn't falsely rejected as invented just because it lives only in the
+    /// conversation, not the record.
+    static func validationFacts(contextJSON: String, focus: String, turns: [CloudAI.Turn]) -> String {
+        ([focus, contextJSON] + turns.map(\.text)).joined(separator: "\n")
     }
 
     /// Map a finished response to the assistant text to append: a refusal becomes the gentle
@@ -97,32 +116,52 @@ enum HairChatPrompt {
     }
 }
 
-/// The hair-science chat behind the Compare screen's "Ask AI" chip: an on-device conversation
-/// (Apple Intelligence) over the canonical `AIContext` JSON. Text only — no photos, ever — and
-/// nothing leaves the device: no key, no proxy, no consent. Unavailable (with a clear message)
-/// on hardware without Apple Intelligence; there is no cloud fallback.
+/// The hair-science chat behind the Compare screen's "Ask AI" chip, over the canonical
+/// `AIContext` JSON. Text only — no photos, ever.
+///
+/// Engine order (see `AIEngine`): the cloud model (DeepSeek) leads whenever it is configured
+/// and the person has consented — it answers on every iPhone, not just Apple-Intelligence
+/// hardware. The on-device model is the no-consent path and the offline fallback. Every reply,
+/// from either engine, passes the same deterministic `AIOutputValidator` gate before the UI
+/// shows it.
 @MainActor
 @Observable
 final class HairChatService {
     private(set) var messages: [ChatMessage] = []
     private(set) var isRunning = false
     private(set) var errorMessage: String?
-    /// The assistant's reply as it streams in token-by-token, cumulative from an empty string.
-    /// Nil until the first token of a turn arrives, and cleared back to nil once the finished
-    /// reply lands in `messages` — the UI shows this in place of the thinking dots.
-    private(set) var streamingText: String?
+    /// The currently in-flight turn, if any — held so `cancel()` can stop it (and the billed
+    /// cloud request underneath it) when the chat sheet is dismissed mid-reply.
+    private var currentTask: (any CancellableTask)?
 
     init() {}
+
+    /// Cancels the in-flight turn, if any. Cooperative: `URLSession.data(for:)` observes Swift
+    /// Concurrency cancellation and tears down the underlying network task when its enclosing
+    /// `Task` is cancelled, so this actually stops a billed cloud call in flight rather than
+    /// just abandoning the awaiting call site.
+    func cancel() {
+        currentTask?.cancel()
+        // Nothing is still in flight for this handle once cancel() has been asked for it —
+        // nil it out so a later `cancel()` (or a stray read) can't act on a stale, already-
+        // dead task.
+        currentTask = nil
+    }
 
     /// The specific reason on-device chat is (or isn't) usable right now — see
     /// `OnDeviceAvailability` in OnDeviceAnalysisService.swift. Read fresh each access, since
     /// Apple Intelligence can be enabled/disabled or finish downloading while the app is open.
     var availability: OnDeviceAvailability { OnDeviceAvailability.current }
 
-    /// True when chat can run on this device — Apple Intelligence is available. There is no cloud
-    /// fallback, so this is false on hardware without on-device AI, and the UI shows a clear card
-    /// (see `availability` for exactly which of the three reasons applies).
-    var isAvailable: Bool { availability.isAvailable }
+    /// Which engine a message would use right now — cloud, on-device, a pending consent
+    /// question, or nothing. Read fresh each access: consent can be granted or revoked, and
+    /// Apple Intelligence toggled, while the sheet is open.
+    var engine: AIEngine { AIEngine.current }
+
+    /// True when a message can actually be answered right now (cloud or on-device). False while
+    /// the consent question is still open and when neither engine exists — the UI shows the
+    /// consent card or a clear notice instead of the input bar.
+    var isAvailable: Bool { engine.canRun }
 
     struct ChatError: Error { let message: String }
 
@@ -130,20 +169,34 @@ final class HairChatService {
     /// `AIContext.jsonString()` snapshot; `focus` is one line describing what's on screen.
     func send(_ text: String, context: String, focus: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // `!isRunning` also guards against a double-tap firing a second billed cloud call
+        // while the first turn is still in flight — and the guard and the flag it guards have
+        // to happen together, synchronously, right here: setting `isRunning` from inside the
+        // enqueued Task body left a window where two rapid taps could both pass the guard
+        // before either body had actually run (reproduced: two billed calls).
         guard !trimmed.isEmpty, !isRunning else { return }
-        messages.append(ChatMessage(role: .user, text: trimmed))
         isRunning = true
         errorMessage = nil
-        streamingText = nil
-        defer { isRunning = false; streamingText = nil }
-        do {
-            let reply = try await request(context: context, focus: focus)
-            messages.append(ChatMessage(role: .assistant, text: reply))
-        } catch let e as ChatError {
-            errorMessage = e.message
-        } catch {
-            errorMessage = "Couldn't generate a reply on this device. Try again."
+        messages.append(ChatMessage(role: .user, text: trimmed))
+        let task = Task { [weak self] in
+            guard let self else { return }
+            // Also clears `currentTask`: a stale handle left behind after this Task finishes
+            // could otherwise be cancelled or read by a later, unrelated turn.
+            defer { self.isRunning = false; self.currentTask = nil }
+            do {
+                let reply = try await self.request(context: context, focus: focus)
+                self.messages.append(ChatMessage(role: .assistant, text: reply))
+            } catch is CancellationError {
+                // The sheet is gone — nothing to show, and no fallback: cancellation means
+                // the person no longer wants an answer, not that the turn failed.
+            } catch let e as ChatError {
+                self.errorMessage = e.message
+            } catch {
+                self.errorMessage = "Couldn't generate a reply. Try again."
+            }
         }
+        currentTask = task
+        await task.value
     }
 
     // MARK: - Request
@@ -151,28 +204,70 @@ final class HairChatService {
     private func request(context: String, focus: String) async throws -> String {
         let system = HairChatPrompt.system(contextJSON: context, focus: focus)
         let turns = HairChatPrompt.cappedHistory(messages).map {
-            (role: $0.role.rawValue, text: $0.text)
+            CloudAI.Turn(role: $0.role.rawValue, text: $0.text)
         }
+        // Deliberately not the full `system` string — see `HairChatPrompt.validationFacts`'s
+        // doc comment for why the instruction boilerplate in `system` doesn't belong in the
+        // fact set, and why every turn actually sent (not just the record) has to be in it.
+        let facts = HairChatPrompt.validationFacts(contextJSON: context, focus: focus, turns: turns)
 
-        // On-device only — Apple Intelligence answers with NOTHING leaving the device, so it needs
-        // no consent, no key, and no proxy. There is no cloud fallback: hardware without on-device
-        // AI gets a clear, reason-specific message instead (the UI also gates on `isAvailable` up
-        // front, via `availability`).
-        let status = availability
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *), status.isAvailable {
-            if let reply = await OnDeviceChat.reply(
-                system: system, turns: turns,
-                // Generated prose is not shown before the deterministic post-generation gate.
-                onPartial: { _ in }
-            ), !reply.isEmpty {
-                return AIOutputValidator.safeText(reply, suppliedFacts: context)
+        switch engine {
+        case .cloud:
+            do {
+                let reply = try await CloudAI.reply(system: system, turns: turns, maxTokens: 500)
+                return AIOutputValidator.safeText(reply, suppliedFacts: facts)
+            } catch let cloudError as CloudAI.ServiceError {
+                // A failed cloud turn falls back to the on-device model when this hardware has
+                // one; otherwise the honest transport error surfaces as this turn's reply.
+                guard OnDeviceAvailability.current.isAvailable else {
+                    throw ChatError(message: cloudError.message)
+                }
+                // A cancellation landing in the gap between the cloud call failing and the
+                // fallback starting (the sheet dismissed right as the cloud turn errored out)
+                // must not kick off a second, on-device turn nobody is waiting for anymore.
+                try Task.checkCancellation()
+                do {
+                    return try await onDeviceReply(system: system, turns: turns, facts: facts)
+                } catch {
+                    // Both engines failed. A network-caused cloud failure ("check your
+                    // connection") is more actionable than the on-device fallback's generic
+                    // "couldn't get a reply" — don't let the latter mask the real cause.
+                    if cloudError.isNetwork { throw ChatError(message: cloudError.message) }
+                    throw error
+                }
             }
+        case .onDevice:
+            return try await onDeviceReply(system: system, turns: turns, facts: facts)
+        case .needsCloudConsent:
+            // The sheet gates the input bar behind the consent card, so a send in this state is
+            // a logic error — answer it with the honest next step rather than trapping.
+            throw ChatError(message: "Choose whether to use cloud AI first.")
+        case .unavailable(let message):
+            throw ChatError(message: message)
+        }
+    }
+
+    private func onDeviceReply(system: String, turns: [CloudAI.Turn], facts: String) async throws -> String {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *), OnDeviceAvailability.current.isAvailable {
+            // No `onPartial` passed: nothing reads partial prose (the deterministic
+            // post-generation gate below is the sole publication boundary), so there's nothing
+            // to feed it — `OnDeviceChat.reply` keeps its own no-op default for callers that
+            // ever do want progress.
+            if let reply = await OnDeviceChat.reply(system: system, turns: turns.map { (role: $0.role, text: $0.text) }),
+               !reply.isEmpty {
+                // Same `facts` validation as the cloud path just above.
+                return AIOutputValidator.safeText(reply, suppliedFacts: facts)
+            }
+            // A cancelled generation (the sheet dismissed mid-run) surfaces here as the same
+            // nil/empty result as a genuine on-device failure — check cancellation first so a
+            // walked-away person gets silence (the `catch is CancellationError` in `send`
+            // above), not an error card for a turn they didn't actually ask to fail.
+            if Task.isCancelled { throw CancellationError() }
             throw ChatError(message: "Couldn't get a reply. Please try again.")
         }
         #endif
-
-        throw ChatError(message: status.message)
+        throw ChatError(message: OnDeviceAvailability.current.message)
     }
 }
 
@@ -187,10 +282,12 @@ enum OnDeviceChat {
         return false
     }
 
-    /// Answer the latest turn on-device, streaming as it generates. `system` is the
-    /// grounding/instructions; `turns` is the capped conversation (oldest→newest, ending on the
-    /// user's message). `onPartial` fires on the main actor with the cumulative text so far after
-    /// every new snapshot, so the UI can show the reply as it's written instead of a blind wait.
+    /// Answer the latest turn on-device. `system` is the grounding/instructions; `turns` is the
+    /// capped conversation (oldest→newest, ending on the user's message). The underlying
+    /// session always streams internally, and `onPartial`, if a caller supplies one, fires on
+    /// the main actor with the cumulative text after every new snapshot — but nothing in the
+    /// app does today: generated prose is never shown before the deterministic post-generation
+    /// gate, so `HairChatService` keeps the no-op default and reads only the return value.
     /// Returns nil when the model is unavailable or the request fails, so the caller can surface
     /// a clear message.
     static func reply(

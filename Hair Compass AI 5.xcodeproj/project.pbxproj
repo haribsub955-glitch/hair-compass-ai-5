@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		A10000092F73F3BC0081475D /* Hair Compass CheckIn Widget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000012F73F3BC0081475D /* Hair Compass CheckIn Widget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CAFE10771E00000000000001 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = CAFE10771E00000000000003 /* Lottie */; };
+		CAFE10771E00000000000004 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = CAFE10771E00000000000005 /* Lottie */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +44,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		7C10AECF60000000000000AA /* AI.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = AI.xcconfig; path = Config/AI.xcconfig; sourceTree = "<group>"; };
+		7C10AECF60000000000000AB /* HairCompass.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = HairCompass.storekit; sourceTree = "<group>"; };
 		9117FFE02F73F3BA0081475D /* Hair Compass AI 5.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Hair Compass AI 5.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9117FFF12F73F3BC0081475D /* Hair Compass AI 5Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Hair Compass AI 5Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9117FFFB2F73F3BC0081475D /* Hair Compass AI 5UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Hair Compass AI 5UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -99,6 +103,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CAFE10771E00000000000001 /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -106,6 +111,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CAFE10771E00000000000004 /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -129,6 +135,8 @@
 		9117FFD72F73F3BA0081475D = {
 			isa = PBXGroup;
 			children = (
+				7C10AECF60000000000000AA /* AI.xcconfig */,
+				7C10AECF60000000000000AB /* HairCompass.storekit */,
 				9117FFE22F73F3BA0081475D /* Hair Compass AI 5 */,
 				A10000032F73F3BC0081475D /* Hair Compass CheckIn Widget */,
 				9117FFF42F73F3BC0081475D /* Hair Compass AI 5Tests */,
@@ -169,6 +177,7 @@
 			);
 			name = "Hair Compass AI 5";
 			packageProductDependencies = (
+				CAFE10771E00000000000003 /* Lottie */,
 			);
 			productName = "Hair Compass AI 5";
 			productReference = 9117FFE02F73F3BA0081475D /* Hair Compass AI 5.app */;
@@ -192,6 +201,7 @@
 			);
 			name = "Hair Compass AI 5Tests";
 			packageProductDependencies = (
+				CAFE10771E00000000000005 /* Lottie */,
 			);
 			productName = "Hair Compass AI 5Tests";
 			productReference = 9117FFF12F73F3BC0081475D /* Hair Compass AI 5Tests.xctest */;
@@ -277,6 +287,9 @@
 			);
 			mainGroup = 9117FFD72F73F3BA0081475D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CAFE10771E00000000000002 /* XCRemoteSwiftPackageReference "lottie-spm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9117FFE12F73F3BA0081475D /* Products */;
 			projectDirPath = "";
@@ -373,18 +386,28 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Hair Compass AI 5/Hair_Compass_AI_5.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 2LZ89Q26N8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Hair Compass AI 5/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Hair Compass AI";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Hair Compass can add a booked procedure (like a PRP session) to your calendar so you get a reminder — it only adds events and never reads your calendar.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Hair Compass uses the camera for scalp and hair photos kept as records and comparisons. Labels are read on your iPhone; summaries may use opt-in cloud AI.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. It does not diagnose hair or scalp conditions.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. If you turn on cloud AI, these values can be part of the tracking summary sent to write your answers. It does not diagnose hair or scalp conditions.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Hair Compass never writes to Health. It only reads the categories you approve; this notice exists because the system requires it for any app that links HealthKit.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Hair Compass uses your photo library for scalp and hair photos kept as records and comparisons. Labels are read on your iPhone; summaries may use opt-in cloud AI.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -409,18 +432,28 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Hair Compass AI 5/Hair_Compass_AI_5.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 2LZ89Q26N8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Hair Compass AI 5/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Hair Compass AI";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Hair Compass can add a booked procedure (like a PRP session) to your calendar so you get a reminder — it only adds events and never reads your calendar.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Hair Compass uses the camera for scalp and hair photos kept as records and comparisons. Labels are read on your iPhone; summaries may use opt-in cloud AI.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. It does not diagnose hair or scalp conditions.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. If you turn on cloud AI, these values can be part of the tracking summary sent to write your answers. It does not diagnose hair or scalp conditions.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Hair Compass never writes to Health. It only reads the categories you approve; this notice exists because the system requires it for any app that links HealthKit.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Hair Compass uses your photo library for scalp and hair photos kept as records and comparisons. Labels are read on your iPhone; summaries may use opt-in cloud AI.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -440,6 +473,7 @@
 		};
 		911700072F73F3BC0081475D /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7C10AECF60000000000000AA /* AI.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -491,7 +525,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -504,6 +538,7 @@
 		};
 		911700082F73F3BC0081475D /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7C10AECF60000000000000AA /* AI.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -549,7 +584,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -564,10 +599,10 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 2LZ89Q26N8;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "harib.Hair-Compass-AI-5Tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -586,10 +621,10 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 2LZ89Q26N8;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "harib.Hair-Compass-AI-5Tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -607,7 +642,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 2LZ89Q26N8;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
@@ -627,7 +662,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 2LZ89Q26N8;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
@@ -649,11 +684,11 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = "Hair Compass CheckIn Widget/Hair_Compass_CheckIn_Widget.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 2LZ89Q26N8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Hair Compass CheckIn Widget/Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -678,11 +713,11 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = "Hair Compass CheckIn Widget/Hair_Compass_CheckIn_Widget.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 2LZ89Q26N8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Hair Compass CheckIn Widget/Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -750,6 +785,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CAFE10771E00000000000002 /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-spm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CAFE10771E00000000000003 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CAFE10771E00000000000002 /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
+		};
+		CAFE10771E00000000000005 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CAFE10771E00000000000002 /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9117FFD82F73F3BA0081475D /* Project object */;
 }

@@ -10,6 +10,7 @@ struct TodayView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(DeepLinkRouter.self) private var deepLinks
+    @Environment(\.entitlements) private var entitlements
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
@@ -22,6 +23,7 @@ struct TodayView: View {
 
     @State private var showLog = false
     @State private var showBackfill = false
+    @State private var showHistoryPaywall = false
     /// Reward handed back by LogSheet.save; held until the log sheet finishes dismissing.
     @State private var pendingReward: CheckInReward?
     /// Drives the celebration sheet — set only from the log sheets' onDismiss (see below).
@@ -70,7 +72,9 @@ struct TodayView: View {
 
     /// Every routine step due today — clock-timed medication/supplement slots, then periodic
     /// care products scheduled for today (rendered with an empty "" slot). This is the universe
-    /// the routine list renders and the Compass "care" ring counts.
+    /// the routine list renders and the Compass "care" ring counts, before entitlement
+    /// suppression (see `visibleToday`) — `isLogged`/`toggle` still need the unfiltered treatment
+    /// objects to resolve doses regardless of tier.
     private var dailySlots: [(Treatment, String)] {
         activeDaily.flatMap { t in t.slots.map { (t, $0) } } + dueCareProducts.map { ($0, "") }
     }
@@ -78,9 +82,25 @@ struct TodayView: View {
         dailySlots.filter { isLogged($0.0, slot: $0.1) }.count
     }
 
-    /// True when a progress photo exists in the current calendar week — the Lens ring input.
+    /// True when a progress photo exists in the current calendar week — the Lens ring input,
+    /// before entitlement suppression (see `visibleToday`).
     private var hasPhotoThisWeek: Bool {
         photos.contains { calendar.isDate($0.createdAt, equalTo: .now, toGranularity: .weekOfYear) }
+    }
+
+    /// What Today is actually allowed to show — `.treatments` and `.photos` are hard-gated on
+    /// CareView/PhotosView, so a lapsed subscriber's still-stored treatments/photos must not
+    /// surface names or completion detail here either. See `TodayGating` for why suppression
+    /// falls back to the existing "no plan today" state rather than a new locked one.
+    private var visibleToday: TodayGating.Visible {
+        TodayGating.visible(
+            dailySlots: dailySlots,
+            medsDone: medsDone,
+            hasPhotoThisWeek: hasPhotoThisWeek,
+            treatments: treatments,
+            doses: doses,
+            entitlements: entitlements
+        )
     }
 
     /// Today's effort score behind the Compass Rings — built only from controllable inputs.
@@ -88,9 +108,9 @@ struct TodayView: View {
     private var compassScore: CompassScore {
         CompassScore(
             hasLoggedToday: todayEntry != nil,
-            medsDone: medsDone,
-            medsTotal: dailySlots.count,
-            hasPhotoThisWeek: hasPhotoThisWeek
+            medsDone: visibleToday.medsDone,
+            medsTotal: visibleToday.medsTotal,
+            hasPhotoThisWeek: visibleToday.hasPhotoThisWeek
         )
     }
 
@@ -140,10 +160,18 @@ struct TodayView: View {
                     // grid's own tile 1 below — a harmless timing overlap, not a functional
                     // dependency), tiles 1…6 (inside the grid, indices owned by TodayTileGrid),
                     // cards continue at 8…11.
+                    //
+                    // The locked-history card sits first, directly beneath the hero (index 2, an
+                    // otherwise-unused slot) — the first thing a free user sees after logging is
+                    // what they can't see yet.
+                    LockedHistoryCard(
+                        lockedCount: HistoryAccess.lockedCount(entries, entitlements: entitlements)
+                    ) { showHistoryPaywall = true }
+                    .staggeredEntrance(index: 2)
                     CompassRingsCard(
                         score: compassScore,
-                        medsDone: medsDone,
-                        medsTotal: dailySlots.count,
+                        medsDone: visibleToday.medsDone,
+                        medsTotal: visibleToday.medsTotal,
                         isDayOneSeed: isDayOneSeed,
                         onLog: { showLog = true }
                     )
@@ -151,15 +179,19 @@ struct TodayView: View {
                     TodayTileGrid(
                         entry: todayEntry,
                         sleepHours: todaySleepHours,
-                        medsDone: medsDone,
-                        medsTotal: dailySlots.count,
+                        medsDone: visibleToday.medsDone,
+                        medsTotal: visibleToday.medsTotal,
                         triggerWeeks: watchTriggerWeeks,
-                        routineSteps: dailySlots,
+                        routineSteps: visibleToday.dailySlots,
                         isSlotLogged: { isLogged($0, slot: $1) },
                         onToggleSlot: { toggle($0, slot: $1, currentlyDone: isLogged($0, slot: $1)) },
                         onLogTap: { showLog = true },
                         onOpenPlan: onOpenPlan,
-                        onBackfill: { showBackfill = true }
+                        // Backfilling opens the date strip, which reads stored past days back
+                        // into the gauges — a `.history` read, so the row is withheld rather
+                        // than left pointing at a sheet that can only offer today. Logging
+                        // TODAY (every other route into LogSheet) stays free.
+                        onBackfill: entitlements.canAccess(.history) ? { showBackfill = true } : nil
                     )
                     insightCard.staggeredEntrance(index: 9)
                     StrandDivider()
@@ -243,6 +275,17 @@ struct TodayView: View {
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showLearn = false } } }
             }
         }
+        .sheet(isPresented: $showHistoryPaywall) {
+            NavigationStack {
+                // Entitled users never linger here: once ProGate sees access, it renders this
+                // clear placeholder, which immediately dismisses the sheet on appear.
+                ProGate(feature: .history) {
+                    Color.clear.onAppear { showHistoryPaywall = false }
+                }
+                .clinicalScreen()
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showHistoryPaywall = false } } }
+            }
+        }
     }
 
     /// Promotes a saved reward to the presented celebration once the log sheet has fully
@@ -301,15 +344,26 @@ struct TodayView: View {
         let latest = entries.first.map {
             "\($0.shedRaw)-\($0.flaking)-\($0.erythema)-\($0.itch)-\($0.date.timeIntervalSince1970)"
         } ?? "none"
-        return "\(entries.count)-\(latest)-\(snapshots.count)-\(treatments.count)-\(labs.count)-\(progressCheckIns.count)-\(sideEffectLogs.count)"
+        // The tier leads the fingerprint (same reasoning as RootView.widgetFingerprint) so the
+        // insight is rebuilt — not left showing a stale treatment-bearing paragraph — the moment
+        // entitlements change mid-session, even if no other tracked field did.
+        return "\(entitlements.tier)-\(entries.count)-\(latest)-\(snapshots.count)-\(treatments.count)-\(labs.count)-\(progressCheckIns.count)-\(sideEffectLogs.count)"
     }
 
     @MainActor
     private func buildContext() -> InsightContext {
-        InsightContext.build(
+        // Every input goes in raw and `TodayGating.insightContext` owns all six entitlement
+        // decisions. That is the whole point: the previous version of this call filtered
+        // treatments/doses here and left entries, labs, HealthKit snapshots, progress check-ins
+        // and side-effect logs raw, so the free Today paragraph read out lab values, HealthKit
+        // weight loss, clinician-review flags and a direction over locked history — directly
+        // beneath the card that says "You haven't seen any of it yet." There is no longer a
+        // per-argument choice to get wrong here, and `TodayGatingTests` asserts the mapping.
+        TodayGating.insightContext(
             entries: entries, treatments: treatments, doses: doses,
             snapshots: snapshots, triggers: triggers, labs: labs, profile: profile,
-            progressCheckIns: progressCheckIns, sideEffects: sideEffectLogs
+            progressCheckIns: progressCheckIns, sideEffects: sideEffectLogs,
+            entitlements: entitlements
         )
     }
 
@@ -346,8 +400,8 @@ struct TodayView: View {
             Spacer(minLength: 8)
             HStack(spacing: 14) {
                 Button {
-                    // On-device and private — no consent gate needed. The sheet itself handles
-                    // the Pro gate and the Apple-Intelligence availability check.
+                    // The sheet itself handles the Pro gate, the cloud-AI consent card, and the
+                    // engine availability check — nothing is sent before consent.
                     openChat()
                 } label: {
                     HStack(spacing: 4) {
@@ -412,7 +466,10 @@ struct TodayView: View {
     /// its own "System status" card to a single centered caption under the meadow, the way a
     /// book's last page carries one small printer's line instead of another heading.
     private var statusCaption: some View {
-        let lastActivity = [entries.first?.date, doses.map(\.loggedAt).max()].compactMap { $0 }.max()
+        // visibleToday.doses, not the raw query — this only discloses a relative timestamp, not
+        // a name or count, but it's still a read of gated dose data and belongs behind the same
+        // gate as everything else derived from treatments.
+        let lastActivity = [entries.first?.date, visibleToday.doses.map(\.loggedAt).max()].compactMap { $0 }.max()
         return Text(lastActivity.map { "Up to date · last entry \($0.formatted(.relative(presentation: .named)))" }
                     ?? "Ready for your first entry")
             .font(Clinical.caption(11))

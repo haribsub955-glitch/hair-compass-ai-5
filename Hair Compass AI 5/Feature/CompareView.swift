@@ -2,11 +2,11 @@ import Charts
 import SwiftData
 import SwiftUI
 
-/// The Compare builder: overlay one hair-fall variable against one lifestyle statistic, with a lag
-/// control (shedding follows lifestyle by weeks) and an honest, hedged read — never a coefficient,
-/// never a causal claim. Ephemeral: pick and view, nothing saved.
+/// The Compare builder: overlay one hair-fall variable against one lifestyle statistic, with an
+/// automatic time-lag scan (shedding follows lifestyle by weeks — the scan checks same-day
+/// through 3-month delays itself) and an honest, hedged read — never a coefficient, never a
+/// causal claim. Ephemeral: pick and view, nothing saved.
 struct CompareView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
 
@@ -24,7 +24,6 @@ struct CompareView: View {
     @State private var hairID = "shed"
     @State private var overlayID = "sleepQuality"
     @State private var window: Window = .m3
-    @State private var lag: Lag = .none
 
     @State private var showChat = false
     @State private var chatDetent: PresentationDetent = .large
@@ -32,9 +31,6 @@ struct CompareView: View {
 
     enum Window: String, CaseIterable { case m1 = "1M", m3 = "3M", m6 = "6M"
         var days: Int { self == .m1 ? 30 : (self == .m3 ? 90 : 180) }
-    }
-    enum Lag: String, CaseIterable { case none = "0", w2 = "2wk", w6 = "6wk", m3 = "3mo"
-        var days: Int { switch self { case .none: return 0; case .w2: return 14; case .w6: return 42; case .m3: return 90 } }
     }
 
     private var hair: ChartMetric { ChartMetric[hairID] ?? ChartMetric.hairFall[0] }
@@ -76,15 +72,14 @@ struct CompareView: View {
 
                 chartCard
                     .staggeredEntrance(index: 4)
-                lagCard
-                    .staggeredEntrance(index: 5)
                 readCard
-                    .staggeredEntrance(index: 6)
+                    .staggeredEntrance(index: 5)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
         }
+        .proGated(.compare)
         .clinicalScreen()
         .sheet(isPresented: $showChat) {
             HairChatSheet(contextJSON: chatContext, focus: focusLine)
@@ -104,6 +99,9 @@ struct CompareView: View {
             HStack(spacing: 8) {
                 presetChip("Shedding vs Sleep", "shed", "sleepQuality")
                 presetChip("Shedding vs Stress", "shed", "stress")
+                // The confound preset: wash days make shed hair visible, so this is the first
+                // comparison worth ruling out before believing any other shedding pattern.
+                presetChip("Shedding vs Wash day", "shed", "washDay")
                 presetChip("Scalp vs Sleep", "scalp", "sleepHours")
                 presetChip("Shedding vs Weight", "shed", "bodyMass")
                 if !activeTreatments.isEmpty {
@@ -185,7 +183,7 @@ struct CompareView: View {
         VStack(alignment: .leading, spacing: 12) {
             MetricScrubber(title: "Hair fall", options: ChartMetric.hairFall, selectionID: $hairID,
                            tint: Clinical.ink,
-                           normalizedSeries: { ChartMath.normalize(series(for: $0.id).map(\.value)) })
+                           normalizedSeries: { previewSeries(for: $0.id) })
             HStack(spacing: 10) {
                 Rectangle().fill(Clinical.hairline).frame(height: 1)
                 Image(systemName: "arrow.up.arrow.down").font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
@@ -193,8 +191,16 @@ struct CompareView: View {
             }
             MetricScrubber(title: "Lifestyle & plan", options: ChartMetric.lifestyle + treatmentMetrics, selectionID: $overlayID,
                            tint: Clinical.sage,
-                           normalizedSeries: { ChartMath.normalize(series(for: $0.id).map(\.value)) })
+                           normalizedSeries: { previewSeries(for: $0.id) })
         }
+    }
+
+    /// The scrubber-strip sparkline: lightly smoothed (3-day mean) before normalizing. Raw daily
+    /// self-reports live on a few discrete levels, and the unsmoothed strip was a full-width
+    /// sawtooth — the most prominent zigzag on the screen. Three days keeps each metric's
+    /// fingerprint recognizable; the real evidence chart below draws raw dots + trend honestly.
+    private func previewSeries(for id: String) -> [Double] {
+        ChartMath.normalize(ChartMath.rollingMean(series(for: id).map(\.value), window: 3))
     }
 
     // MARK: Chart
@@ -216,15 +222,18 @@ struct CompareView: View {
                     previewLocked(daysLogged: overlapDays)
                 } else {
                     Chart {
-                        // Faint daily reality behind the trend — kept visible for honesty.
-                        ForEach(normalizedMarks(hairPts, name: hair.title + " (daily)"), id: \.0) { date, v, name in
-                            LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
-                                .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 1))
-                                .foregroundStyle(Clinical.ink.opacity(0.22))
+                        // Faint daily reality behind the trend — kept visible for honesty, drawn
+                        // as dots rather than a connected line: daily self-reports live on a few
+                        // discrete levels, and joining them produced the sawtooth zigzag that
+                        // made this chart read as noise (JourneyChart made the same call).
+                        ForEach(normalizedMarks(hairPts, name: hair.title + " (daily)"), id: \.0) { date, v, _ in
+                            PointMark(x: .value("Date", date), y: .value("Level", v))
+                                .symbolSize(rawDotSize)
+                                .foregroundStyle(Clinical.ink.opacity(0.18))
                         }
-                        ForEach(normalizedMarks(overlayPts, name: overlay.title + " (daily)"), id: \.0) { date, v, name in
-                            LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
-                                .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 1))
+                        ForEach(normalizedMarks(overlayPts, name: overlay.title + " (daily)"), id: \.0) { date, v, _ in
+                            PointMark(x: .value("Date", date), y: .value("Level", v))
+                                .symbolSize(rawDotSize)
                                 .foregroundStyle(Clinical.sage.opacity(0.22))
                         }
                         // Smoothed rolling-mean trend on top — this is the line to read.
@@ -252,7 +261,7 @@ struct CompareView: View {
                             }
                         }
                     }
-                    Text("Bold lines are a \(smoothWindow)-day smoothed trend over the faint daily values. Each signal is scaled to its own range, so this shows shape and timing — not absolute levels.")
+                    Text("Bold lines are a \(smoothWindow)-day smoothed trend through the faint daily dots, breaking where more than a week went unlogged. Each signal is scaled to its own range, so this shows shape and timing — not absolute levels.")
                         .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
             }
@@ -347,32 +356,27 @@ struct CompareView: View {
         }
     }
 
-    private var lagCard: some View {
-        ClinicalCard(padding: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                Eyebrow(text: "Time lag")
-                Text("Lifestyle affects shedding weeks later — shift the comparison to line them up.")
-                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                ClinicalSegmented(options: Lag.allCases, label: { $0.rawValue }, selection: $lag)
-                    // Spring the copper pill between lag options; Reduce Motion keeps the
-                    // segmented control's stock quick ease.
-                    .animation(
-                        reduceMotion ? .easeOut(duration: 0.18) : .spring(response: 0.3, dampingFraction: 0.75),
-                        value: lag
-                    )
-            }
-        }
-    }
-
+    /// The read, with the lag science built in: instead of the old manual 0/2wk/6wk/3mo control
+    /// (which only ever changed this sentence — the chart never moved, so scrubbing it read as a
+    /// dead knob), the scan checks all four delays itself and reports the clearest one. The
+    /// method line below the verdict says what was checked and on how many overlapping days, so
+    /// the claim is never bigger than its evidence.
     private var readCard: some View {
-        let paired = ChartMath.pairWithLag(hair: series(for: hairID), lifestyle: series(for: overlayID), lagDays: lag.days)
-        let assoc = ChartMath.association(hair: paired.hair, lifestyle: paired.lifestyle)
+        let scan = ChartMath.lagScan(hair: series(for: hairID), lifestyle: series(for: overlayID))
+        let judged: Bool = {
+            if case .insufficient = scan.association { return false }
+            return true
+        }()
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "sparkle.magnifyingglass").font(Clinical.caption(15)).foregroundStyle(Clinical.accent)
-                    Text(ChartMath.phrasing(assoc, hairTitle: hair.title, lifestyleTitle: overlay.title, lagDays: lag.days))
+                    Text(ChartMath.scanPhrasing(scan, hairTitle: hair.title, lifestyleTitle: overlay.title))
                         .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
+                }
+                if judged {
+                    Text("Checked at same-day, 2-week, 6-week and 3-month delays · \(scan.pairs) overlapping days.")
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
                 askWrenChip
             }
@@ -396,9 +400,21 @@ struct CompareView: View {
         .accessibilityLabel("Ask \(Companion.name) about this comparison")
     }
 
-    /// One line telling the chat what's on screen, so answers land on it.
+    /// One line telling the chat what's on screen, so answers land on it — including what the
+    /// automatic lag scan concluded, so Wren talks about the delay actually found, not a
+    /// hypothetical one. Keeps the word "lag" in every variant: the chart-comparison starter
+    /// set keys its third question off it.
     private var focusLine: String {
-        let lagText = lag == .none ? "no time lag" : "lifestyle shifted \(lag.rawValue) earlier"
+        let scan = ChartMath.lagScan(hair: series(for: hairID), lifestyle: series(for: overlayID))
+        let lagText: String
+        switch scan.association {
+        case .together, .opposite:
+            lagText = scan.lagDays == 0
+                ? "time lags auto-checked (same day through 3 months); the clearest read is same-day"
+                : "time lags auto-checked (same day through 3 months); the clearest read has lifestyle leading by \(ChartMath.lagLabel(scan.lagDays))"
+        case .unclear, .insufficient:
+            lagText = "time lags auto-checked (same day through 3 months); no clear lag stood out"
+        }
         return "User is currently comparing: \(hair.title) (hair fall) vs \(overlay.title) (lifestyle), \(window.rawValue) window, \(lagText)."
     }
 
@@ -438,6 +454,7 @@ struct CompareView: View {
         case "stress": pairs = e.map { ($0.date, Double($0.stress)) }
         case "cigarettes": pairs = e.map { ($0.date, Double($0.cigarettes)) }
         case "alcohol": pairs = e.map { ($0.date, Double($0.alcoholDrinks)) }
+        case "washDay": pairs = e.map { ($0.date, $0.washedHair ? 1.0 : 0.0) }
         case "sleepHours": pairs = s.compactMap { snap in snap.sleepHours.map { (snap.date, $0) } }
         case "hrv": pairs = s.compactMap { snap in snap.hrvSDNN.map { (snap.date, $0) } }
         case "restingHR": pairs = s.compactMap { snap in snap.restingHR.map { (snap.date, $0) } }
@@ -462,11 +479,31 @@ struct CompareView: View {
     /// Rolling-mean window for the smoothed trend — wider for the longer chart windows.
     private var smoothWindow: Int { window == .m1 ? 5 : 7 }
 
-    /// The smoothed display series: centered rolling mean of the RAW values, then normalized to
-    /// 0…1 by its own range. Smoothing only — no invented data.
+    /// Raw-dot size for the faint daily layer — reading distance (1M) keeps a visible dot, the
+    /// longer windows shrink it so the dots recede behind the bold trend (JourneyChart's scale).
+    private var rawDotSize: CGFloat { window == .m1 ? 12 : 7 }
+
+    /// The smoothed display series: centered rolling mean of the RAW values, normalized to 0…1
+    /// by the RAW series' own range — the same scale its daily dots use, so the bold line runs
+    /// through its cloud. (Normalizing the mean by its own, always-narrower range used to
+    /// re-inflate a nearly-flat week to full chart height.) Computed per gap-free run and given
+    /// a per-run series name, so the bold line breaks at any logging gap wider than a week
+    /// instead of fabricating a trend across it. Smoothing only — no invented data.
     private func smoothedMarks(_ pts: [(day: Date, value: Double)], name: String) -> [(Date, Double, String)] {
-        let smooth = ChartMath.normalize(ChartMath.rollingMean(pts.map(\.value), window: smoothWindow))
-        return zip(pts, smooth).map { ($0.0.day, $0.1, name) }
+        let raw = pts.map(\.value)
+        let lo = raw.min() ?? 0
+        let hi = raw.max() ?? 1
+        var marks: [(Date, Double, String)] = []
+        for (segmentIndex, segment) in ChartMath.gapSegments(dates: pts.map(\.day)).enumerated() {
+            let smooth = ChartMath.normalize(
+                ChartMath.rollingMean(Array(raw[segment]), window: smoothWindow),
+                lo: lo, hi: hi
+            )
+            for (j, i) in segment.enumerated() {
+                marks.append((pts[i].day, smooth[j], "\(name) \(segmentIndex)"))
+            }
+        }
+        return marks
     }
 
     private func fmt(_ v: Double) -> String {

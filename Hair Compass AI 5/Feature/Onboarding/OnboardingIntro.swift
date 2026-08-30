@@ -195,7 +195,7 @@ struct IntroPage: Identifiable {
             id: 3,
             eyebrow: "Private by design",
             title: "Yours alone.",
-            body: "Your entries stay on this device. \(Companion.name) thinks on-device too, using Apple Intelligence — your record is never sent anywhere to be read.",
+            body: "Your entries stay on this device. \(Companion.name) can answer on-device, or — only if you say yes — with a secure cloud model. Your name and photos are never sent, either way.",
             backArt: "intro-private-back",
             frontArt: "intro-private-front",
             motif: .safekeeping,

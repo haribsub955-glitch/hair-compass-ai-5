@@ -1,0 +1,26 @@
+{
+  "configurations" : [
+    {
+      "id" : "D3A10C01-64B0-4A5B-93F2-3C57F1E10001",
+      "name" : "Demo",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "storeKitConfiguration" : {
+      "identifier" : "HairCompass.storekit"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:Hair Compass AI 5.xcodeproj",
+        "identifier" : "9117FFFA2F73F3BC0081475D",
+        "name" : "Hair Compass AI 5UITests"
+      }
+    }
+  ],
+  "version" : 1
+}

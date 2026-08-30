@@ -126,6 +126,8 @@ struct BaselineFlow: View {
 
                     privacySection
 
+                    CloudAISettingsSection()
+
                     ResearchConsentSection(consent: researchConsent, payload: researchPayload)
 
                     if purchases.hasPro {
@@ -234,8 +236,9 @@ struct BaselineFlow: View {
         FlowChips(items: items, selected: selected, onPick: onPick)
     }
 
-    /// Privacy controls: App Lock (Face ID / passcode). All AI runs on-device now, so there is no
-    /// off-device data consent to manage — the app simply keeps everything on the phone.
+    /// Privacy controls: App Lock (Face ID / passcode). AI answers can now use an opt-in cloud
+    /// model (DeepSeek) — `CloudAISettingsSection`, rendered directly below this section, IS the
+    /// consent control for that choice, reversible any time.
     private var privacySection: some View {
         @Bindable var appLock = appLock
         return VStack(alignment: .leading, spacing: 10) {
@@ -261,7 +264,7 @@ struct BaselineFlow: View {
                     Image(systemName: "lock.iphone")
                         .font(Clinical.caption(14)).foregroundStyle(Clinical.accent)
                         .frame(width: 20)
-                    Text("Everything stays on your device. Your records, photos and the AI features all run on-device — nothing is uploaded to any server.")
+                    Text("Your records and photos always stay on this device. AI answers use a secure cloud model only if Cloud AI (below) is turned on — sending a limited tracking summary of numbers, dates and notes, never your name, contact details or photos.")
                         .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 }
             }

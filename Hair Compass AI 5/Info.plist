@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
+	<key>HCDeepSeekAPIKey</key>
+	<string>$(HC_DEEPSEEK_API_KEY)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -17,17 +17,5 @@
 			</array>
 		</dict>
 	</array>
-	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
-	<string>Hair Compass can add a booked procedure (like a PRP session) to your calendar so you get a reminder — it only adds events and never reads your calendar.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Hair Compass uses the camera for scalp and hair photos kept as records and comparisons. Only text on ingredient labels is summarized, fully on-device.</string>
-	<key>NSFaceIDUsageDescription</key>
-	<string>Hair Compass uses Face ID to unlock the app so your hair records and photos stay private.</string>
-	<key>NSHealthShareUsageDescription</key>
-	<string>Hair Compass reads sleep, mindful sessions, heart-rate variability, resting heart rate, body weight, body mass index, and dietary protein so you can compare lifestyle patterns with hair records. It does not diagnose hair or scalp conditions.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Hair Compass uses your photo library for scalp and hair photos kept as records and comparisons. Only text on ingredient labels is summarized, fully on-device.</string>
-	<key>NSSupportsLiveActivities</key>
-	<true/>
 </dict>
 </plist>

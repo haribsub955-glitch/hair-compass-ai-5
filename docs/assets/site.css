@@ -1,0 +1,299 @@
+/* Hair Compass AI — shared site shell.
+   Tokens are lifted verbatim from the app's design system (Design/Clinical.swift):
+   warm ivory canvas with a vertical light wash and paper grain, espresso ink,
+   copper accent, serif display, monospaced eyebrows, hairline rules. */
+
+:root {
+  --canvas: #fbf6ef;
+  --canvas-light: #fdf9f3;
+  --canvas-warm: #f8f2e9;
+  --surface: #fefcf9;
+  --ink: #2b211a;
+  --secondary: #7a6b5d;
+  --tertiary: #7c6d5f;
+  --hairline: #ede1d3;
+  --copper: #b1592e;
+  --copper-soft: rgba(177, 89, 46, 0.1);
+  --gold: #c9a15a;
+  --sage: #8a9d7b;
+  --positive: #5c7a52;
+  --shadow-warm: rgba(90, 56, 27, 0.1);
+
+  --serif: "Iowan Old Style", "New York", ui-serif, Georgia, "Times New Roman", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --col: 680px;
+  --wide: 900px;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.65;
+  /* The app's canvas wash: light falls at the top, the page rests warmer below. */
+  background: linear-gradient(to bottom, var(--canvas-light) 0%, var(--canvas) 45%, var(--canvas-warm) 100%) var(--canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Paper grain, tiled over everything — the canvas should never read as a flat
+   digital fill. Espresso-tinted noise, barely there. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.353 0 0 0 0 0.275 0 0 0 0 0.216 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+main, footer, header { position: relative; z-index: 1; }
+
+/* ---- Type roles ---- */
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--secondary);
+  margin: 0 0 14px;
+}
+
+h1, h2 {
+  font-family: var(--serif);
+  color: var(--ink);
+  line-height: 1.14;
+  letter-spacing: -0.01em;
+  margin: 0 0 18px;
+  font-weight: 700;
+}
+
+h1 { font-size: clamp(2.1rem, 5.4vw, 3.3rem); }
+h2 { font-size: clamp(1.45rem, 3vw, 1.9rem); }
+
+p, li { color: var(--secondary); }
+p { margin: 0 0 16px; }
+
+strong { color: var(--ink); font-weight: 600; }
+
+a { color: var(--copper); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ---- Layout ---- */
+
+.col { max-width: var(--col); margin: 0 auto; padding: 0 24px; }
+.wide { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
+
+section { padding: 64px 0 8px; }
+
+/* The strand seam — the app's StrandDivider, doing the work borders would
+   otherwise do. */
+.seam {
+  display: block;
+  width: min(420px, 62vw);
+  margin: 56px auto 0;
+  opacity: 0.75;
+}
+
+/* Hairline rule, for quieter seams inside a section. */
+.rule {
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  margin: 40px 0;
+}
+
+/* ---- Components quoted from the app ---- */
+
+/* Today's signal ledger: mono label, ink value, one quiet note. */
+.ledger { margin: 8px 0 0; }
+.ledger-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 4px 24px;
+  align-items: baseline;
+  padding: 15px 0;
+  border-top: 1px solid var(--hairline);
+}
+.ledger-row:last-child { border-bottom: 1px solid var(--hairline); }
+.ledger-key {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tertiary);
+}
+.ledger-value { color: var(--ink); font-weight: 500; }
+.ledger-note {
+  grid-column: 2;
+  font-size: 0.9rem;
+  color: var(--secondary);
+  margin: 0;
+}
+
+/* Evidence-tier pills — the app's honesty made visible. */
+.tier-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 10px; }
+.tier {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+.tier-strong { color: var(--ink); background: rgba(43, 33, 26, 0.09); }
+.tier-moderate { color: #9a7728; background: rgba(201, 161, 90, 0.16); }
+.tier-weak { color: var(--tertiary); background: rgba(124, 109, 95, 0.12); }
+
+/* InfoCallout — the bordered "read this first" card. */
+.callout {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid rgba(177, 89, 46, 0.25);
+  border-radius: 16px;
+  padding: 16px 18px;
+  margin: 26px 0;
+}
+.callout-mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--copper-soft);
+  color: var(--copper);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 15px;
+  font-style: italic;
+  display: grid;
+  place-items: center;
+}
+.callout p { margin: 2px 0 0; font-size: 0.92rem; }
+
+/* Screenshot plates, framed the way BrandBanner frames imagery:
+   continuous corners, hairline stroke, layered warm shadow. */
+.plates {
+  display: flex;
+  justify-content: center;
+  gap: 34px;
+  flex-wrap: wrap;
+  margin-top: 52px;
+}
+.plate { width: min(300px, 78vw); }
+.plate img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 26px;
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 2px var(--shadow-warm), 0 18px 44px rgba(90, 56, 27, 0.14);
+}
+.plate figcaption {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--tertiary);
+  text-align: center;
+  margin-top: 14px;
+}
+figure { margin: 0; }
+
+/* ---- Footer: meadow closer + colophon ---- */
+
+.colophon {
+  border-top: 1px solid var(--hairline);
+  padding: 22px 0 0;
+  text-align: center;
+}
+.colophon p { font-size: 0.86rem; color: var(--secondary); margin: 0 0 10px; }
+.foot-links {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 26px;
+  font-size: 0.86rem;
+  padding: 4px 0 0;
+}
+.foot-fine {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tertiary);
+  text-align: center;
+  margin: 26px 0 0;
+}
+.meadow {
+  display: block;
+  width: min(1000px, 100%);
+  margin: 12px auto 0;
+}
+footer { padding-top: 56px; }
+
+/* ---- Document pages (support, privacy) ---- */
+
+.doc-header { padding: 72px 0 6px; }
+.doc-nav {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding-top: 28px;
+}
+.doc-nav a { color: var(--tertiary); }
+.doc-nav a:hover { color: var(--copper); }
+.doc h2 {
+  font-size: 1.3rem;
+  margin: 44px 0 10px;
+  padding-top: 30px;
+  border-top: 1px solid var(--hairline);
+}
+.doc h2:first-of-type { border-top: 0; padding-top: 8px; }
+.doc ul { margin: 0 0 16px; padding-left: 20px; }
+.doc li { margin: 4px 0; }
+
+/* ---- Motion: the app's staggered entrance, once, on load ---- */
+
+.rise { animation: rise 0.6s cubic-bezier(0.22, 0.9, 0.35, 1) both; }
+.rise-1 { animation-delay: 0.05s; }
+.rise-2 { animation-delay: 0.1s; }
+.rise-3 { animation-delay: 0.15s; }
+.rise-4 { animation-delay: 0.22s; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise { animation: fade 0.3s ease-out both; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+}
+
+/* ---- Small screens ---- */
+
+@media (max-width: 560px) {
+  section { padding-top: 52px; }
+  .ledger-row { grid-template-columns: 1fr; gap: 2px; }
+  .ledger-note { grid-column: 1; }
+  .plates { gap: 26px; }
+}

@@ -31,6 +31,10 @@ struct ChartMetric: Identifiable {
         .init(id: "stress", title: "Stress", group: .lifestyle, unit: "1–5"),
         .init(id: "cigarettes", title: "Cigarettes", group: .lifestyle, unit: "count"),
         .init(id: "alcohol", title: "Alcohol", group: .lifestyle, unit: "drinks"),
+        // The app's most-taught confound, finally plottable: shed hair is far more visible on
+        // wash days, so seeing wash days move with "shedding" is the honest explanation for
+        // most day-to-day spikes (same fact `TrajectorySummary.washDayHedge` hedges in prose).
+        .init(id: "washDay", title: "Wash day", group: .lifestyle, unit: "washed = 1"),
         // Body & recovery (auto from Health)
         .init(id: "sleepHours", title: "Sleep (hours)", group: .body, unit: "h"),
         .init(id: "hrv", title: "HRV", group: .body, unit: "ms"),
@@ -66,6 +70,15 @@ enum ChartMath {
             return values.map { _ in 0.5 }
         }
         return values.map { ($0 - lo) / (hi - lo) }
+    }
+
+    /// Normalize against explicit shared bounds instead of the series' own range — used to draw
+    /// a smoothed trend on the SAME scale as the raw daily values it summarizes. A rolling mean's
+    /// own range is always narrower than the raw series', so self-normalizing it re-inflates tiny
+    /// wiggles to full chart height and floats the "trend" off the daily cloud it claims to trace.
+    static func normalize(_ values: [Double], lo: Double, hi: Double) -> [Double] {
+        guard hi > lo else { return values.map { _ in 0.5 } }
+        return values.map { min(1, max(0, ($0 - lo) / (hi - lo))) }
     }
 
     static func mean(_ v: [Double]) -> Double { v.isEmpty ? 0 : v.reduce(0, +) / Double(v.count) }
@@ -118,6 +131,102 @@ enum ChartMath {
         return max(0.25, 2.0 / Double(pairs).squareRoot())
     }
 
+    /// Split a dated (ascending) series into runs of entries no more than `maxGapDays` apart.
+    /// Charts draw each run as its own line segment: a connected line across a multi-week
+    /// logging gap fabricates a trend where nothing was recorded, and a rolling mean computed
+    /// across the gap quietly averages values from before it. Empty input → no segments.
+    static func gapSegments(dates: [Date], maxGapDays: Int = 7, calendar: Calendar = .current) -> [Range<Int>] {
+        guard !dates.isEmpty else { return [] }
+        var segments: [Range<Int>] = []
+        var start = 0
+        for i in 1..<dates.count {
+            let gap = calendar.dateComponents(
+                [.day],
+                from: calendar.startOfDay(for: dates[i - 1]),
+                to: calendar.startOfDay(for: dates[i])
+            ).day ?? 0
+            if gap > maxGapDays {
+                segments.append(start..<i)
+                start = i
+            }
+        }
+        segments.append(start..<dates.count)
+        return segments
+    }
+
+    // MARK: Automatic lag scan
+
+    /// The delays the app teaches (telogen effluvium shows up weeks-to-months after its cause):
+    /// same day, 2 weeks, 6 weeks, 3 months. The scan checks all four so nobody has to know to
+    /// scrub a lag control to find the one where a real relationship lines up.
+    static let scanLags: [Int] = [0, 14, 42, 90]
+
+    /// The clarity gate for the scan. Checking the same two signals at four delays is four looks
+    /// at the same data — a Bonferroni-shaped widening (2.5/√n vs the single-look 2/√n, i.e.
+    /// roughly α 0.05/4) keeps a lag "discovered" by the scan at least as trustworthy as one the
+    /// person picked by hand. Same 0.25 floor as `clarityThreshold`.
+    static func scanClarityThreshold(pairs: Int) -> Double {
+        guard pairs > 0 else { return 1 }
+        return max(0.25, 2.5 / Double(pairs).squareRoot())
+    }
+
+    /// What the scan concluded: the delay with the clearest directional pattern (if any), the
+    /// verdict at that delay, and how many overlapping days backed it — surfaced to the person
+    /// so the read is never a naked claim.
+    struct LagScanResult: Equatable {
+        let lagDays: Int
+        let association: Association
+        let pairs: Int
+    }
+
+    /// Evaluate the association at every scanned delay and return the clearest one. A delay only
+    /// counts when it has `minPairs` overlapping days AND clears `scanClarityThreshold`; among
+    /// clear delays the winner is the one with the largest margin over its own gate (not raw |r|,
+    /// so a delay with fewer days can't win on an inflated small-sample correlation). With no
+    /// clear delay: `.unclear` if at least one delay had enough days to judge, else
+    /// `.insufficient` — the same honesty ladder as `association`.
+    static func lagScan(
+        hair: [(day: Date, value: Double)],
+        lifestyle: [(day: Date, value: Double)],
+        lags: [Int] = scanLags,
+        minPairs: Int = 8,
+        calendar: Calendar = .current
+    ) -> LagScanResult {
+        var best: (lag: Int, margin: Double, association: Association, pairs: Int)?
+        var judgeablePairs = 0
+        for lag in lags {
+            let paired = pairWithLag(hair: hair, lifestyle: lifestyle, lagDays: lag, calendar: calendar)
+            let n = paired.hair.count
+            guard n >= minPairs else { continue }
+            judgeablePairs = max(judgeablePairs, n)
+            guard let r = correlation(paired.hair, paired.lifestyle) else { continue }
+            let margin = abs(r) - scanClarityThreshold(pairs: n)
+            guard margin >= 0 else { continue }
+            if best == nil || margin > best!.margin {
+                best = (lag, margin, r > 0 ? .together : .opposite, n)
+            }
+        }
+        if let best {
+            return LagScanResult(lagDays: best.lag, association: best.association, pairs: best.pairs)
+        }
+        if judgeablePairs > 0 {
+            return LagScanResult(lagDays: 0, association: .unclear, pairs: judgeablePairs)
+        }
+        return LagScanResult(lagDays: 0, association: .insufficient(need: minPairs), pairs: 0)
+    }
+
+    /// The scan's hedged sentence: a found delay reuses the standard phrasing at that delay; an
+    /// unclear read says out loud that every delay was checked, so "no pattern" can't be
+    /// mistaken for "didn't look".
+    static func scanPhrasing(_ result: LagScanResult, hairTitle: String, lifestyleTitle: String) -> String {
+        switch result.association {
+        case .unclear:
+            return "No clear pattern between \(lifestyleTitle.lowercased()) and \(hairTitle.lowercased()) in this window — same-day through 3-month delays all checked."
+        case .insufficient, .together, .opposite:
+            return phrasing(result.association, hairTitle: hairTitle, lifestyleTitle: lifestyleTitle, lagDays: result.lagDays)
+        }
+    }
+
     /// Pair a hair-fall day series with a lifestyle series shifted `lagDays` earlier — i.e. compare
     /// today's shedding against lifestyle from `lagDays` ago (within a ±`tolerance`-day match).
     static func pairWithLag(
@@ -161,12 +270,17 @@ enum ChartMath {
         }
     }
 
-    private static func lagLabel(_ days: Int) -> String {
+    /// Human label for a lag in days. Internal (was private) so the Compare focus line can name
+    /// the scan's found delay to the chat. 42 days used to fall through to "1 months" — it now
+    /// reads "6 weeks", and a true month count pluralizes properly.
+    static func lagLabel(_ days: Int) -> String {
         switch days {
         case 0: return "same day"
         case 1..<14: return "\(days) days"
-        case 14..<30: return "\(days / 7) weeks"
-        default: return "\(Int((Double(days) / 30).rounded())) months"
+        case 14..<60: return "\(days / 7) weeks"
+        default:
+            let months = max(1, Int((Double(days) / 30).rounded()))
+            return months == 1 ? "1 month" : "\(months) months"
         }
     }
 }

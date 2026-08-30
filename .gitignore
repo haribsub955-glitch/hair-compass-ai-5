@@ -4,3 +4,11 @@
 # npm install output for the shadcn CLI in package.json — restorable from package-lock.json,
 # and nothing in the iOS app links against it.
 node_modules/
+
+# App Store screenshot exports — 382MB of PNGs, uploaded to App Store Connect by hand,
+# never part of the buildable app.
+AppStoreScreenshots/
+
+# The real DeepSeek API key for the cloud AI — this repo is public; the key must never land
+# in history. Config/AI.xcconfig holds the empty committed default.
+Config/Secrets.local.xcconfig

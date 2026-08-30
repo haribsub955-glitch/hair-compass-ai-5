@@ -203,6 +203,7 @@ struct BodySignalsDashboard: View {
             refreshRow
             contextNotes
         }
+        .proGated(.bodySignals)
     }
 
     // MARK: Header

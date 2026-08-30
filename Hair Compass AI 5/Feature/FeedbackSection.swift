@@ -2,8 +2,9 @@ import SwiftUI
 import UIKit
 import MessageUI
 
-/// A "Send feedback" section for the Baseline / profile screen. Hair Compass is fully on-device
-/// with no backend, so feedback is collected the backend-free way: by email. Tapping opens the
+/// A "Send feedback" section for the Baseline / profile screen. Feedback itself has no backend —
+/// AI answers may use the opt-in cloud model, but this form does not — so feedback is collected
+/// the backend-free way: by email. Tapping opens the
 /// system mail composer prefilled to the support address with the app version and device/OS so
 /// issues can be reproduced — never any of the person's tracking data. If no mail account is set
 /// up, it falls back to a `mailto:` link, then to an alert showing the address to copy.

@@ -13,6 +13,31 @@ import UIKit
 /// (`matchedGeometryEffect`); the tapped symbol still gives a light haptic and a small bounce.
 /// Under Reduce Motion the underline glides with an ease curve (no overshoot) and the bounce is
 /// dropped. Each item is a real button: label = tab title, `.isSelected` when active.
+/// The fade that dissolves scrolling content into `Clinical.canvas` before it reaches the bottom
+/// chrome. It used to be `FloatingTabBar`'s own background, and that geometry was the bug twice
+/// over: the gradient's stops were spread across the bar's full height, so content still ghosted
+/// through the icons at half strength — and the Wren button rides *above* the bar in the same
+/// safe-area inset, entirely outside the bar's background, so content behind her showed at full
+/// opacity. The scrim is now its own view so the host can put it behind the complete chrome block
+/// (Wren + bar + home-indicator area): a fixed 28pt clear→canvas strip, then solid canvas all the
+/// way down. Host it with `.padding(.top, -28)` so the fade strip rises above the chrome instead
+/// of eating into it.
+struct TabBarScrim: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [Clinical.canvas.opacity(0), Clinical.canvas],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 28)
+            Clinical.canvas
+        }
+        .ignoresSafeArea(edges: .bottom)
+        .allowsHitTesting(false)
+    }
+}
+
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -28,7 +53,6 @@ struct FloatingTabBar: View {
             }
         }
         .padding(.horizontal, 6)
-        .background(scrim)
         // Scoped to the bar: the underline slide + tint changes animate, the screen swap stays instant.
         .animation(
             reduceMotion ? .easeInOut(duration: 0.22) : .spring(response: 0.32, dampingFraction: 0.72),
@@ -36,22 +60,6 @@ struct FloatingTabBar: View {
         )
         .padding(.horizontal, 20)
         .padding(.bottom, 8)
-    }
-
-    /// Clear at the top, full canvas by the labels' own top edge, extended into the bottom safe
-    /// area — so content scrolled behind the bar dissolves into the page instead of ghosting
-    /// through a transparent white pill. Widened past the item stack (via `.padding(.top, -24)`)
-    /// so nothing shows a hard-edged rectangle above the tallest label.
-    private var scrim: some View {
-        LinearGradient(
-            colors: [Clinical.canvas.opacity(0), Clinical.canvas.opacity(0.85), Clinical.canvas],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .padding(.top, -24)
-        .padding(.horizontal, -20)
-        .ignoresSafeArea(edges: .bottom)
-        .allowsHitTesting(false)
     }
 
     private func item(_ tab: AppTab) -> some View {

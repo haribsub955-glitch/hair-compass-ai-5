@@ -1,17 +1,20 @@
 import SwiftUI
 
-/// The one hard requirement Pro carries, disclosed *on* the paywall instead of after the charge.
+/// What the paywalls disclose about the two AI features, decided in one place.
 ///
-/// Everything `hasPro` gates — `HairChatSheet` and `DeepAnalysisSheet` — runs on Apple Intelligence
-/// with no cloud fallback. On an iPhone that can't run it, a subscription buys literally nothing,
-/// so both purchase surfaces (`OnboardingPlanStep`, `ProGate`) put `ProAvailabilityNotice` above
-/// their buttons and check `sellable` before offering them at all.
+/// With the cloud model configured (`CloudAIConfig` — the shipping configuration), Ask Wren and
+/// Deep analysis run on every iPhone and there is nothing to disclose: `canRun` is true
+/// everywhere and `message` is empty, so `ProAvailabilityNotice` renders nothing. The consent
+/// story is told at first use (`CloudAIConsentCard`), not on the paywall — a person who
+/// declines cloud AI has made a choice, not hit a device limit.
 ///
-/// The three unavailable reasons are not equivalent and are deliberately not collapsed into one:
+/// In a build *without* the cloud key, the two features fall back to needing Apple Intelligence
+/// hardware, and the original disclosure rules apply. The three unavailable reasons are not
+/// equivalent and are deliberately not collapsed into one:
 /// - `.notEnabled` / `.modelNotReady` — the person can fix this themselves (a Settings toggle, or
-///   waiting for a download to finish). Warn, and still sell: refusing the sale to someone who is
-///   one tap away from using it would be its own kind of wrong.
-/// - `.deviceNotEligible` — nothing they do on *this* iPhone will ever make Pro work. Don't sell.
+///   waiting for a download to finish). Warn, and it still runs once fixed.
+/// - `.deviceNotEligible` — nothing they do on *this* iPhone will make the on-device model work.
+///   The subscription still sells regardless — the other ten features run fine.
 ///
 /// Restore stays available in every case, so someone who already subscribed elsewhere is never
 /// locked out of a purchase they've already made.
@@ -45,33 +48,67 @@ enum ProAvailability {
     }
     #endif
 
-    /// Whether the purchase buttons should be offered at all. False only for permanently
-    /// ineligible hardware — see the type doc for why the transient reasons still sell.
-    static func sellable(_ status: OnDeviceAvailability) -> Bool { status != .deviceNotEligible }
+    /// Whether a given Pro feature can actually run on this device right now.
+    ///
+    /// This replaced `sellable(_:)`, and the change of scope is the point. `sellable` asked "may
+    /// we sell a subscription at all", which tied the entire product to Apple Intelligence and
+    /// left ineligible hardware with nothing to buy. This asks the narrower, correct question:
+    /// the subscription always sells, and only features that can genuinely not run here are
+    /// disclosed. With the cloud model configured, that set is empty — DeepSeek answers on any
+    /// iPhone, so device eligibility stops being an input.
+    static func canRun(
+        _ feature: ProFeature,
+        status: OnDeviceAvailability,
+        cloudConfigured: Bool = CloudAIConfig.current.isConfigured
+    ) -> Bool {
+        guard feature.usesAI else { return true }
+        return cloudConfigured || status != .deviceNotEligible
+    }
+
+    /// Whether a paywall may show its purchase buttons. **Apple Intelligence is not an input.**
+    ///
+    /// This function exists to be the one place that question is asked, and to be asserted: the
+    /// old `sellable(_:)` withdrew the buttons on ineligible hardware, which left an iPhone 14
+    /// with a mostly-locked app and nothing to buy. Ten of the twelve Pro features run on any
+    /// supported iPhone, so the sale is always honest. The only reason to withhold the buttons is
+    /// having no real prices to show — never a device capability, never a feature.
+    static func showsPurchaseButtons(status: OnDeviceAvailability, hasLoadedProducts: Bool) -> Bool {
+        hasLoadedProducts
+    }
 
     /// Paywall-specific wording. `OnDeviceAvailability.message` is written for someone already
     /// inside a feature ("everything else still works"); here the reader is deciding whether to
-    /// pay, so each line leads with what it means for the purchase.
-    static func message(for status: OnDeviceAvailability) -> String {
+    /// pay, so each line leads with what it means for the purchase. Crucially, none of these three
+    /// says Pro is worthless here — Ask Wren and Deep analysis are 2 of 12 gated features, so even
+    /// `.deviceNotEligible` is a scoped limitation next to live purchase buttons, never a reason
+    /// not to buy.
+    ///
+    /// With the cloud model configured there is nothing to warn about — the AI features run on
+    /// every iPhone — so every status maps to the empty string and the notice renders nothing.
+    static func message(
+        for status: OnDeviceAvailability,
+        cloudConfigured: Bool = CloudAIConfig.current.isConfigured
+    ) -> String {
+        if cloudConfigured { return "" }
         switch status {
         case .available:
             return ""
         case .notEnabled:
-            return "Both Pro features need Apple Intelligence, and it's switched off on this iPhone. "
-                + "Turn it on in Settings › Apple Intelligence & Siri and they'll work."
+            return "Ask Wren and Deep analysis need Apple Intelligence, and it's switched off on "
+                + "this iPhone. Turn it on in Settings › Apple Intelligence & Siri and they'll work."
         case .modelNotReady:
-            return "Apple Intelligence is still getting ready on this iPhone. Both Pro features will "
-                + "work as soon as it finishes preparing."
+            return "Apple Intelligence is still getting ready on this iPhone. Ask Wren and Deep "
+                + "analysis will work as soon as it finishes preparing."
         case .deviceNotEligible:
-            return "Pro wouldn't work on this iPhone. Both of its features run on Apple Intelligence, "
-                + "which needs iPhone 15 Pro or newer, and there's no cloud version to fall back on. "
-                + "Everything else in Hair Compass works fully here, free."
+            return "Two Pro features — Ask Wren and Deep analysis — run on Apple Intelligence, "
+                + "which this iPhone can't run. Everything else Pro unlocks works here normally."
         }
     }
 }
 
-/// The paywall's Apple Intelligence disclosure. Renders nothing when the model is available, a
-/// fixable warning when the person can act, and a plain "this wouldn't work here" when they can't.
+/// The paywall's AI-availability disclosure. Renders nothing whenever there is nothing to warn
+/// about — the cloud model is configured, or the on-device model is available — a fixable
+/// warning when the person can act, and a plain "this wouldn't work here" when they can't.
 struct ProAvailabilityNotice: View {
     let status: OnDeviceAvailability
 
@@ -80,14 +117,15 @@ struct ProAvailabilityNotice: View {
     private var isPermanent: Bool { status == .deviceNotEligible }
 
     var body: some View {
-        if status != .available {
+        let message = ProAvailability.message(for: status)
+        if !message.isEmpty {
             ClinicalCard {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: isPermanent ? "exclamationmark.triangle" : "sparkles")
                             .font(Clinical.caption(14))
                             .foregroundStyle(isPermanent ? Clinical.critical : Clinical.warning)
-                        Text(ProAvailability.message(for: status))
+                        Text(message)
                             .font(Clinical.caption(13))
                             .foregroundStyle(Clinical.secondary)
                             .fixedSize(horizontal: false, vertical: true)

@@ -19,11 +19,18 @@ enum PurchaseFlowState: Equatable {
 @MainActor
 @Observable
 final class PurchaseService {
-    static let monthlyID = "com.harib.haircompass.pro.monthly"
-    static let yearlyID  = "com.harib.haircompass.pro.yearly"
+    static let monthlyID = "com.harib.haircompass.pro.monthly2"
+    static let yearlyID  = "com.harib.haircompass.pro.yearly2"
 
     private(set) var products: [Product] = []
     private(set) var hasPro = false
+    /// Whether StoreKit has actually answered yet. `hasPro` starts `false` because there is no
+    /// third state to start in — but "no subscription" and "not asked yet" are not the same
+    /// claim, and treating them as one downgrades a paying subscriber for the first moments of
+    /// every cold launch (paywalls over a paid app, and a suppressed widget snapshot written to
+    /// the App Group that outlives the launch if the app is killed first). Callers must read
+    /// this before acting on `hasPro` — see `Entitlements.effectiveHasPro`.
+    private(set) var isEntitlementResolved = false
     private(set) var isLoading = false
     /// Lifecycle of the most recent `purchase(_:)` call — `.idle` once it's been consumed or
     /// before any attempt. Callers reset it themselves (e.g. on the next tap) rather than this
@@ -51,12 +58,16 @@ final class PurchaseService {
     func load() async {
         isLoading = true
         defer { isLoading = false }
+        // Entitlement first: it's a local `Transaction.currentEntitlements` walk, so a genuine
+        // subscriber is recognised before — not after — the App Store round-trip for products.
+        // The old order left `isEntitlementResolved` waiting on the network fetch, which was
+        // only ever over-permissive for the free tier but slow for the paying one.
+        await refreshEntitlement()
         do {
             products = try await Product.products(for: [Self.monthlyID, Self.yearlyID])
         } catch {
             products = []
         }
-        await refreshEntitlement()
     }
 
     /// Clears a stale `.failed`/`.pending` state — call when the user dismisses the message or
@@ -163,15 +174,19 @@ final class PurchaseService {
     }
 
     private func refreshEntitlement() async {
+        // `isEntitlementResolved` is set on BOTH exits: once StoreKit has enumerated the current
+        // entitlements, "no subscription" is a real answer and may be acted on.
         for await entitlement in Transaction.currentEntitlements {
             if case .verified(let t) = entitlement,
                t.productID == Self.monthlyID || t.productID == Self.yearlyID,
                t.revocationDate == nil {
                 hasPro = true
+                isEntitlementResolved = true
                 return
             }
         }
         hasPro = false
+        isEntitlementResolved = true
     }
 
     var monthly: Product? { products.first { $0.id == Self.monthlyID } }

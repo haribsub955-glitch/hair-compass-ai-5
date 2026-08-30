@@ -80,12 +80,12 @@
           },
           "localizations" : [
             {
-              "description" : "On-device AI chat and record analysis.",
+              "description" : "AI chat, deep analysis and your full record.",
               "displayName" : "Pro Monthly",
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.harib.haircompass.pro.monthly",
+          "productID" : "com.harib.haircompass.pro.monthly2",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Pro Monthly",
           "subscriptionGroupID" : "21442176",
@@ -101,12 +101,12 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "On-device AI chat and record analysis.",
+              "description" : "AI chat, deep analysis and your full record.",
               "displayName" : "Pro Yearly",
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.harib.haircompass.pro.yearly",
+          "productID" : "com.harib.haircompass.pro.yearly2",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Pro Yearly",
           "subscriptionGroupID" : "21442176",

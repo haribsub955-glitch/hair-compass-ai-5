@@ -49,7 +49,9 @@ struct WrenChatButton: View {
                 contextJSON: contextJSON,
                 focus: Companion.chatFocus(for: tab),
                 eyebrow: "Ask \(Companion.name)",
-                starterKind: .fullRecord
+                // Per-screen starters: the chat opens proposing questions about the screen the
+                // person is actually on, not the generic full-record set.
+                starterKind: .screen(tab)
             )
         }
         // A new screen invalidates whatever she was offering about the old one.

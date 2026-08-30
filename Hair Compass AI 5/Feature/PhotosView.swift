@@ -21,6 +21,9 @@ struct PhotosView: View {
     /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
     /// directly from the ScrollView's own content offset.
     @State private var headerCondense: CGFloat = 0
+    /// The outer ScrollView's visible height — proposed to the locked gate so it can centre
+    /// (see the `.frame(minHeight:)` note below). Zero until the first layout pass reports.
+    @State private var viewportHeight: CGFloat = 0
     /// Non-nil while the grid's context-menu delete confirmation is up — the JPEG on disk is
     /// gone the moment this confirms, unrecoverable, so it's confirm-first rather than an
     /// instant single-tap delete.
@@ -155,10 +158,24 @@ struct PhotosView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+            .proGated(.photos)
+            // Photos gates its ENTIRE content — header included — inside its own ScrollView, so
+            // when locked, ProGate's nested ScrollView is unconstrained and sizes to its card
+            // (`containerSize` = content, so its internal centring is a no-op) and the card
+            // hugged the top with every spare pixel piled under the legal links. Proposing the
+            // outer viewport height turns the locked gate into a full-height child that centres
+            // internally. `.top` alignment keeps entitled content exactly where it always was —
+            // a short page (day-one empty state) must not drift to vertical centre.
+            .frame(minHeight: viewportHeight > 0 ? viewportHeight : nil, alignment: .top)
         }
         // Condenses the header's serif title as the page scrolls — direct 1:1 offset tracking.
         .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, newY in
             headerCondense = Clinical.headerCondenseFraction(newY)
+        }
+        // The viewport measurement feeding the locked-gate `minHeight` above; excludes the tab
+        // bar inset, so "centred" means centred in the visible region, not the physical screen.
+        .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, new in
+            viewportHeight = new
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { GuidedCaptureView(defaultRegion: region) }
