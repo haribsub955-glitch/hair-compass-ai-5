@@ -222,7 +222,9 @@ final class PurchaseService {
 
     /// "3-day", "2-week", "1-month" — a hyphenated compound modifier keeps the unit singular in
     /// English regardless of the count (the old plural form shipped "3-days free trial").
-    static func periodLabel(value: Int, unit: Product.SubscriptionPeriod.Unit) -> String {
+    /// `nonisolated`: a pure string function on a `@MainActor` class, callable from any context
+    /// (the unit tests run nonisolated).
+    nonisolated static func periodLabel(value: Int, unit: Product.SubscriptionPeriod.Unit) -> String {
         let name: String
         switch unit {
         case .day: name = "day"
