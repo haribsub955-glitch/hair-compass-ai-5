@@ -3,15 +3,17 @@ import SwiftUI
 /// The one hard requirement Pro carries, disclosed *on* the paywall instead of after the charge.
 ///
 /// Everything `hasPro` gates — `HairChatSheet` and `DeepAnalysisSheet` — runs on Apple Intelligence
-/// with no cloud fallback. On an iPhone that can't run it, a subscription buys literally nothing,
-/// so both purchase surfaces (`OnboardingPlanStep`, `ProGate`) put `ProAvailabilityNotice` above
-/// their buttons and check `sellable` before offering them at all.
+/// with no cloud fallback. So both purchase surfaces (`OnboardingPlanStep`, `ProGate`) put
+/// `ProAvailabilityNotice` above their buttons and check `sellable` before offering them at all.
 ///
-/// The three unavailable reasons are not equivalent and are deliberately not collapsed into one:
-/// - `.notEnabled` / `.modelNotReady` — the person can fix this themselves (a Settings toggle, or
-///   waiting for a download to finish). Warn, and still sell: refusing the sale to someone who is
-///   one tap away from using it would be its own kind of wrong.
-/// - `.deviceNotEligible` — nothing they do on *this* iPhone will ever make Pro work. Don't sell.
+/// **Pro is sold only while the model is `.available` right now.** The earlier design still sold
+/// in `.notEnabled`/`.modelNotReady` ("they're one tap away"), and that is exactly the state App
+/// Review tests in: the reviewer subscribes, opens a Pro feature, and finds a "needs Apple
+/// Intelligence" card instead of the feature — a paid product that doesn't work on the device it
+/// was just bought on (Guidelines 2.1 + 3.1.2, rejected build 4, 2026-08). Charging anyone in a
+/// state where the purchase can't deliver was wrong for users for the same reason. The notice
+/// still tells fixable states exactly how to enable Apple Intelligence; the buttons return the
+/// moment `current` reads `.available`.
 ///
 /// Restore stays available in every case, so someone who already subscribed elsewhere is never
 /// locked out of a purchase they've already made.
@@ -45,9 +47,9 @@ enum ProAvailability {
     }
     #endif
 
-    /// Whether the purchase buttons should be offered at all. False only for permanently
-    /// ineligible hardware — see the type doc for why the transient reasons still sell.
-    static func sellable(_ status: OnDeviceAvailability) -> Bool { status != .deviceNotEligible }
+    /// Whether the purchase buttons should be offered at all. Only while the model can actually
+    /// run — see the type doc for why the transient reasons no longer sell.
+    static func sellable(_ status: OnDeviceAvailability) -> Bool { status == .available }
 
     /// Paywall-specific wording. `OnDeviceAvailability.message` is written for someone already
     /// inside a feature ("everything else still works"); here the reader is deciding whether to
@@ -58,10 +60,10 @@ enum ProAvailability {
             return ""
         case .notEnabled:
             return "Both Pro features need Apple Intelligence, and it's switched off on this iPhone. "
-                + "Turn it on in Settings › Apple Intelligence & Siri and they'll work."
+                + "Turn it on in Settings › Apple Intelligence & Siri, then come back — Pro unlocks here."
         case .modelNotReady:
-            return "Apple Intelligence is still getting ready on this iPhone. Both Pro features will "
-                + "work as soon as it finishes preparing."
+            return "Apple Intelligence is still getting ready on this iPhone. Pro will be available "
+                + "to unlock as soon as it finishes preparing."
         case .deviceNotEligible:
             return "Pro wouldn't work on this iPhone. Both of its features run on Apple Intelligence, "
                 + "which needs iPhone 15 Pro or newer, and there's no cloud version to fall back on. "
@@ -74,8 +76,6 @@ enum ProAvailability {
 /// fixable warning when the person can act, and a plain "this wouldn't work here" when they can't.
 struct ProAvailabilityNotice: View {
     let status: OnDeviceAvailability
-
-    @Environment(\.openURL) private var openURL
 
     private var isPermanent: Bool { status == .deviceNotEligible }
 
@@ -93,14 +93,9 @@ struct ProAvailabilityNotice: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if status.showsSettingsButton {
-                        Button("Open Settings") {
-                            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                            openURL(url)
-                        }
-                        .buttonStyle(ClinicalButtonStyle(filled: false))
-                        .accessibilityIdentifier("paywallOpenSettings")
-                    }
+                    // No "Open Settings" shortcut: `UIApplication.openSettingsURLString` opens
+                    // THIS app's settings page, not Apple Intelligence & Siri, and no public URL
+                    // reaches that pane — the message carries the manual path instead.
                 }
             }
             .accessibilityIdentifier("proAvailabilityNotice")

@@ -9,7 +9,6 @@ import UIKit
 /// record-keeping, never diagnosis. Shows a clear card on hardware without on-device AI.
 struct DeepAnalysisSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
     @State private var service = OnDeviceAnalysisService()
     @State private var showChat = false
     @State private var chatDetent: PresentationDetent = .large
@@ -79,14 +78,6 @@ struct DeepAnalysisSheet: View {
                                 Image(systemName: "sparkles").font(Clinical.caption(14)).foregroundStyle(Clinical.warning)
                                 Text(status.message)
                                     .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
-                            }
-                            if status.showsSettingsButton {
-                                Button("Open Settings") {
-                                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                                    openURL(url)
-                                }
-                                .buttonStyle(ClinicalButtonStyle(filled: false))
-                                .accessibilityIdentifier("deepAnalysisOpenSettings")
                             }
                         }
                     }

@@ -23,7 +23,6 @@ struct HairChatSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.openURL) private var openURL
     @State private var service = HairChatService()
     @State private var draft = ""
     #if DEBUG
@@ -433,14 +432,6 @@ struct HairChatSheet: View {
                 .foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            if status.showsSettingsButton {
-                Button("Open Settings") {
-                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                    openURL(url)
-                }
-                .buttonStyle(ClinicalButtonStyle(filled: false))
-                .accessibilityIdentifier("hairChatOpenSettings")
-            }
             Spacer(minLength: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

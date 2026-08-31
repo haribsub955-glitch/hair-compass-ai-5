@@ -217,15 +217,21 @@ final class PurchaseService {
         guard let offer = product.subscription?.introductoryOffer, offer.paymentMode == .freeTrial
         else { return nil }
         let period = offer.period
-        let unit: String
-        switch period.unit {
-        case .day: unit = period.value == 1 ? "day" : "days"
-        case .week: unit = period.value == 1 ? "week" : "weeks"
-        case .month: unit = period.value == 1 ? "month" : "months"
-        case .year: unit = period.value == 1 ? "year" : "years"
-        @unknown default: unit = "days"
+        return "\(Self.periodLabel(value: period.value, unit: period.unit)) free trial, then \(product.displayPrice)"
+    }
+
+    /// "3-day", "2-week", "1-month" — a hyphenated compound modifier keeps the unit singular in
+    /// English regardless of the count (the old plural form shipped "3-days free trial").
+    static func periodLabel(value: Int, unit: Product.SubscriptionPeriod.Unit) -> String {
+        let name: String
+        switch unit {
+        case .day: name = "day"
+        case .week: name = "week"
+        case .month: name = "month"
+        case .year: name = "year"
+        @unknown default: name = "day"
         }
-        return "\(period.value)-\(unit) free trial, then \(product.displayPrice)"
+        return "\(value)-\(name)"
     }
 
     /// What a year on the **monthly** plan actually costs, versus the yearly plan — e.g.

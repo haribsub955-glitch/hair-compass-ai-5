@@ -81,8 +81,9 @@ struct ProGate<Content: View>: View {
             ProAvailabilityNotice(status: availability)
 
             if !ProAvailability.sellable(availability) {
-                // Nothing to sell on hardware that can never run either Pro feature. Restore and
-                // the legal footer stay below, so an existing subscriber isn't stranded.
+                // No purchase while the model can't run right now (off, downloading, or
+                // ineligible hardware) — the notice above says which and how to fix it. Restore
+                // and the legal footer stay below, so an existing subscriber isn't stranded.
                 EmptyView()
             } else if !purchases.products.isEmpty {
                 VStack(spacing: 10) {

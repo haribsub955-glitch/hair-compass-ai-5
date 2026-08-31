@@ -74,4 +74,44 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
             XCUIApplication().launch()
         }
     }
+
+    // MARK: - Paywall availability gate (App Review 2.1 + 3.1.2, rejected build 4)
+
+    /// With Apple Intelligence merely switched OFF, the paywall must explain — and must NOT
+    /// offer the purchase buttons (the pre-fix build sold here, so this fails on it). The free
+    /// path and the availability notice stay.
+    @MainActor
+    func testPaywallWithholdsPurchaseWhenAINotEnabled() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_ONBOARD", "HC_ONBOARD_STEP", "13", "HC_AI_STATUS", "notEnabled",
+                               "HC_PAYWALL_BOTTOM", "HC_NORITUAL"]
+        app.launch()
+
+        XCTAssertTrue(app.descendants(matching: .any)["proAvailabilityNotice"].waitForExistence(timeout: 10),
+                      "the availability notice must explain why Pro can't be bought yet")
+        XCTAssertTrue(app.buttons["onboardContinueFree"].waitForExistence(timeout: 6),
+                      "the free path must remain the forward move")
+        XCTAssertFalse(app.buttons["onboardPurchaseYearly"].exists,
+                       "no yearly purchase while Apple Intelligence is off — Pro wouldn't work after the charge")
+        XCTAssertFalse(app.buttons["onboardPurchaseMonthly"].exists,
+                       "no monthly purchase while Apple Intelligence is off")
+    }
+
+    /// Same screen with the model available: the purchase buttons must be offered (products come
+    /// from the scheme's StoreKit configuration). Guards against over-correcting into a paywall
+    /// that never sells.
+    @MainActor
+    func testPaywallOffersPurchaseWhenAIAvailable() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_ONBOARD", "HC_ONBOARD_STEP", "13", "HC_AI_STATUS", "available",
+                               "HC_PAYWALL_BOTTOM", "HC_NORITUAL"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["onboardPurchaseYearly"].waitForExistence(timeout: 12),
+                      "yearly must be purchasable when the model is available")
+        XCTAssertTrue(app.buttons["onboardPurchaseMonthly"].exists,
+                      "monthly must be purchasable when the model is available")
+        XCTAssertFalse(app.descendants(matching: .any)["proAvailabilityNotice"].exists,
+                       "no availability warning when the model is available")
+    }
 }

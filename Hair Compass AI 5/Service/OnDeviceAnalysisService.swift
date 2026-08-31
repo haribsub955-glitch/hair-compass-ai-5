@@ -25,9 +25,6 @@ enum OnDeviceAvailability: Equatable {
 
     var isAvailable: Bool { self == .available }
 
-    /// Whether the unavailable card should offer an "Open Settings" shortcut for this reason.
-    var showsSettingsButton: Bool { self == .notEnabled }
-
     /// The plain-language, actionable message shown when this status isn't `.available`. Always
     /// closes on the same honest reassurance: the rest of the app still works fully on-device.
     var message: String {

@@ -324,8 +324,9 @@ struct OnboardingPlanStep: View {
             ProAvailabilityNotice(status: availability)
 
             if !ProAvailability.sellable(availability) {
-                // Nothing to sell on hardware that can never run either Pro feature — the free
-                // path below becomes the only forward move, which is the honest outcome here.
+                // No purchase while the model can't run right now (off, downloading, or
+                // ineligible hardware) — the free path below becomes the only forward move,
+                // which is the honest outcome here.
                 EmptyView()
             } else if !purchases.products.isEmpty {
                 purchaseButtons
