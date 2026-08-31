@@ -63,7 +63,7 @@ struct ProGate<Content: View>: View {
                 // While the model can't run, re-check every 2 s: the foreground bump alone
                 // misses the person who stays on this screen while the model finishes
                 // downloading — without this, the buttons would never appear for them.
-                .task(id: availability.isAvailable) {
+                .task(id: availabilityRefresh) {
                     guard !availability.isAvailable else { return }
                     while !Task.isCancelled {
                         try? await Task.sleep(for: .seconds(2))
