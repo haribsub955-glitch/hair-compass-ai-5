@@ -60,14 +60,17 @@ struct ProGate<Content: View>: View {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { availabilityRefresh += 1 }
                 }
-                // While the model can't run, re-check every 2 s: the foreground bump alone
-                // misses the person who stays on this screen while the model finishes
-                // downloading — without this, the buttons would never appear for them.
-                .task(id: availabilityRefresh) {
-                    guard !availability.isAvailable else { return }
+                // Watch availability every 2 s in BOTH directions while this gate is on screen:
+                // toward available (the person waits here while the model finishes downloading —
+                // the foreground bump alone would miss it) and away from it (the model is evicted
+                // or switched off mid-visit — stopping the watch once available would leave live
+                // purchase buttons on a feature that can no longer run). Bumps only on change.
+                .task {
+                    var last = ProAvailability.current
                     while !Task.isCancelled {
                         try? await Task.sleep(for: .seconds(2))
-                        availabilityRefresh += 1
+                        let now = ProAvailability.current
+                        if now != last { last = now; availabilityRefresh += 1 }
                     }
                 }
         }

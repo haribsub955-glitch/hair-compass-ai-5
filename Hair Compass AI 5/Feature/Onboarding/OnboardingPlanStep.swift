@@ -384,13 +384,16 @@ struct OnboardingPlanStep: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { availabilityRefresh += 1 }
         }
-        // While the model can't run, re-check every 2 s: the foreground bump alone misses the
-        // person who stays on this screen while the model finishes downloading.
-        .task(id: availability.isAvailable) {
-            guard !availability.isAvailable else { return }
+        // Watch availability every 2 s in BOTH directions while this step is on screen: toward
+        // available (waiting out a model download here) and away from it (a one-way watch that
+        // stops once available would leave live purchase buttons on a feature that can no longer
+        // run). Bumps only on change.
+        .task {
+            var last = ProAvailability.current
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
-                availabilityRefresh += 1
+                let now = ProAvailability.current
+                if now != last { last = now; availabilityRefresh += 1 }
             }
         }
     }

@@ -53,13 +53,15 @@ struct HairChatSheet: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { availabilityRefresh += 1 }
         }
-        // While the model can't run, re-check every 2 s so the unavailable notice clears the
-        // moment a Settings enable or a finishing download makes chat usable.
-        .task(id: service.availability.isAvailable) {
-            guard !service.availability.isAvailable else { return }
+        // Watch availability every 2 s in both directions while the sheet is up: the unavailable
+        // notice clears the moment the model becomes usable, and reappears if it stops being
+        // usable mid-session. Bumps only on change.
+        .task {
+            var last = service.availability
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
-                availabilityRefresh += 1
+                let now = service.availability
+                if now != last { last = now; availabilityRefresh += 1 }
             }
         }
         #if DEBUG
