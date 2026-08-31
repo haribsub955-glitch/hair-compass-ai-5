@@ -4,10 +4,11 @@ import Foundation
 /// are intentionally empty placeholders — fill them (the docs/ GitHub Pages site) before submitting;
 /// empty means the link is simply hidden in-app rather than showing a broken button.
 nonisolated enum AppInfo {
-    /// The docs/ GitHub Pages site. Requires GitHub Pages to be enabled for the repo
-    /// (Settings → Pages → source: /docs on the default branch) so these resolve.
-    static let privacyPolicyURLString = "https://haribsub955-glitch.github.io/hair-compass-ai-5/privacy-policy.html"
-    static let supportURLString = "https://haribsub955-glitch.github.io/hair-compass-ai-5/"
+    /// The live site (GitHub Pages behind the custom domain — the old
+    /// haribsub955-glitch.github.io URLs 301 here, so link the destination directly:
+    /// no redirect hop for App Review to trip on). Verified 200 on 2026-08-31.
+    static let privacyPolicyURLString = "https://haircompass-ai.com/privacy-policy.html"
+    static let supportURLString = "https://haircompass-ai.com/"
 
     /// Apple's standard end-user licence (EULA) — used on the subscription paywall when you don't
     /// host a custom one. Swap for your own Terms URL if you write one.
