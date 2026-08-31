@@ -17,6 +17,7 @@ struct ProGate<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     @Environment(PurchaseService.self) private var purchases
+    @Environment(\.scenePhase) private var scenePhase
     /// Only for picking the matching illustration pair — the gate itself stays profile-agnostic.
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
@@ -24,12 +25,21 @@ struct ProGate<Content: View>: View {
     @State private var purchasingProductID: String?
     @State private var yearlyIntroEligible = false
     @State private var monthlyIntroEligible = false
+    /// Bumped on every return to the foreground. `ProAvailability.current` is a static system
+    /// read SwiftUI does not track, so without this the gate would stay stale — a person who
+    /// follows the notice, enables Apple Intelligence in Settings, and comes back would still
+    /// see the purchase buttons withheld until an app restart.
+    @State private var availabilityRefresh = 0
 
     private var isBusy: Bool { purchasingProductID != nil || purchases.isRestoring }
 
-    /// Read fresh on every body evaluation rather than cached in `@State`: Apple Intelligence can
-    /// be switched on, or finish downloading, while this gate is on screen.
-    private var availability: OnDeviceAvailability { ProAvailability.current }
+    /// Read fresh on every body evaluation, and invalidated by `availabilityRefresh` when the
+    /// app foregrounds: Apple Intelligence can be switched on, or finish downloading, while
+    /// this gate is on screen or while the person is away in Settings.
+    private var availability: OnDeviceAvailability {
+        _ = availabilityRefresh
+        return ProAvailability.current
+    }
 
     var body: some View {
         if purchases.hasPro {
@@ -47,6 +57,9 @@ struct ProGate<Content: View>: View {
                 // A failed/pending message from THIS gate shouldn't still be showing if the user
                 // dismisses it and opens a different feature's gate later.
                 .onDisappear { purchases.resetPurchaseState() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { availabilityRefresh += 1 }
+                }
         }
     }
 

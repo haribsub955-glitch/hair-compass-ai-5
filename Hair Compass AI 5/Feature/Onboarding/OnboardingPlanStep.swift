@@ -24,9 +24,19 @@ struct OnboardingPlanStep: View {
 
     private var isBusy: Bool { purchasingProductID != nil || purchases.isRestoring }
 
-    /// Read fresh on every body evaluation rather than cached in `@State`: Apple Intelligence can
-    /// be switched on, or finish downloading, while this step is on screen.
-    private var availability: OnDeviceAvailability { ProAvailability.current }
+    @Environment(\.scenePhase) private var scenePhase
+    /// Bumped on every return to the foreground — `ProAvailability.current` is a static system
+    /// read SwiftUI does not track, so without this a person who enables Apple Intelligence in
+    /// Settings and comes back would find the purchase buttons still withheld.
+    @State private var availabilityRefresh = 0
+
+    /// Read fresh on every body evaluation, and invalidated by `availabilityRefresh` when the
+    /// app foregrounds: Apple Intelligence can be switched on, or finish downloading, while
+    /// this step is on screen or while the person is away in Settings.
+    private var availability: OnDeviceAvailability {
+        _ = availabilityRefresh
+        return ProAvailability.current
+    }
 
     /// Scroll target for the DEBUG bottom-of-page screenshot hook.
     private static let footerAnchor = "planFooter"
@@ -371,6 +381,9 @@ struct OnboardingPlanStep: View {
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
         .padding(.top, 8)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { availabilityRefresh += 1 }
+        }
     }
 
     /// The last thing before the price. Wren is not decoration here — she *is* the thing being

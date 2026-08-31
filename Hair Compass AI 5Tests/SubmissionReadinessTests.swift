@@ -69,34 +69,7 @@ struct SubmissionReadinessTests {
     }
 }
 
-/// Pro is sold on exactly two features, and both run on Apple Intelligence with no cloud fallback.
-/// The rule that keeps that honest lives in `ProAvailability`.
-struct ProAvailabilityTests {
-
-    @Test func permanentlyIneligibleHardwareIsNotSoldPro() {
-        #expect(ProAvailability.sellable(.deviceNotEligible) == false)
-    }
-
-    /// A person one Settings toggle away from using Pro should still be able to buy it — refusing
-    /// that sale would be its own kind of wrong.
-    @Test func fixableAndTransientReasonsStillSell() {
-        #expect(ProAvailability.sellable(.notEnabled))
-        #expect(ProAvailability.sellable(.modelNotReady))
-        #expect(ProAvailability.sellable(.available))
-    }
-
-    @Test func everyUnavailableReasonExplainsItselfOnThePaywall() {
-        for status: OnDeviceAvailability in [.notEnabled, .modelNotReady, .deviceNotEligible] {
-            #expect(!ProAvailability.message(for: status).isEmpty)
-        }
-        #expect(ProAvailability.message(for: .available).isEmpty)
-    }
-
-    /// The ineligible-hardware copy has one job: say that paying would buy nothing here, and that
-    /// the rest of the app still works. Losing either half turns an honest notice into a trap.
-    @Test func ineligibleCopyNamesTheRequirementAndTheFreePath() {
-        let message = ProAvailability.message(for: .deviceNotEligible)
-        #expect(message.contains("Apple Intelligence"))
-        #expect(message.lowercased().contains("free"))
-    }
-}
+// The availability-gate suite moved to ProAvailabilityTests.swift when the sell rule changed
+// (spec change: App Review rejected build 4 under 2.1 + 3.1.2 for selling in states where the
+// paid features cannot run — `sellable` now requires `.available`, and the old "fixable and
+// transient reasons still sell" expectation was retired with its rationale).

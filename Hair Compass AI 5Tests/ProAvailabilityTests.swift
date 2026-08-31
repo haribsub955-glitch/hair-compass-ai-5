@@ -40,10 +40,12 @@ struct ProAvailabilityTests {
         #expect(ProAvailability.message(for: .notEnabled).contains("Apple Intelligence & Siri"))
     }
 
-    /// The permanent state says the honest thing: this hardware can never run Pro.
+    /// The permanent state says the honest things: what's required, that paying here would buy
+    /// nothing, and that the rest of the app stays free. Losing any turns the notice into a trap.
     @Test func deviceNotEligibleCopySaysItIsPermanent() {
         let msg = ProAvailability.message(for: .deviceNotEligible)
+        #expect(msg.contains("Apple Intelligence"))
         #expect(msg.contains("wouldn't work"))
-        #expect(msg.contains("free"))
+        #expect(msg.lowercased().contains("free"))
     }
 }

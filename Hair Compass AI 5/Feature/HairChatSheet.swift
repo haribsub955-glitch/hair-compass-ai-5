@@ -23,6 +23,11 @@ struct HairChatSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    /// Bumped on foreground: `service.availability` is a static system read SwiftUI does not
+    /// track, so the unavailable notice would otherwise survive the person enabling Apple
+    /// Intelligence in Settings and returning.
+    @State private var availabilityRefresh = 0
     @State private var service = HairChatService()
     @State private var draft = ""
     #if DEBUG
@@ -45,6 +50,9 @@ struct HairChatSheet: View {
             }
         }
         .clinicalScreen()
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { availabilityRefresh += 1 }
+        }
         #if DEBUG
         // `HC_CHAT_ASK <question>` submits one question on open, so a chat turn — the agent's
         // whole tool-calling round trip included — can be exercised from `simctl launch` without
@@ -420,6 +428,7 @@ struct HairChatSheet: View {
     // whose model is still downloading, gets a next step instead of being told their iPhone can't
     // do this. Honest and reassuring either way: everything else in the app still works.
     private var unavailableNotice: some View {
+        _ = availabilityRefresh
         let status = service.availability
         return VStack(spacing: 12) {
             Spacer(minLength: 20)
