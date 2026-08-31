@@ -60,7 +60,8 @@ enum ProAvailability {
             return ""
         case .notEnabled:
             return "Both Pro features need Apple Intelligence, and it's switched off on this iPhone. "
-                + "Turn it on in Settings › Apple Intelligence & Siri, then come back — Pro unlocks here."
+                + "Turn it on in Settings › Apple Intelligence & Siri, then come back — Pro unlocks "
+                + "here as soon as it's ready."
         case .modelNotReady:
             return "Apple Intelligence is still getting ready on this iPhone. Pro will be available "
                 + "to unlock as soon as it finishes preparing."

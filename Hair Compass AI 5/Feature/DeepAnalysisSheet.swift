@@ -49,6 +49,15 @@ struct DeepAnalysisSheet: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { availabilityRefresh += 1 }
         }
+        // While the model can't run, re-check every 2 s so the unavailability card clears the
+        // moment a Settings enable or a finishing download makes the summary runnable.
+        .task(id: service.availability.isAvailable) {
+            guard !service.availability.isAvailable else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                availabilityRefresh += 1
+            }
+        }
         .sheet(isPresented: $showChat) {
             HairChatSheet(
                 contextJSON: chatContext, focus: chatFocus,

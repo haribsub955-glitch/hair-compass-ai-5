@@ -53,6 +53,15 @@ struct HairChatSheet: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { availabilityRefresh += 1 }
         }
+        // While the model can't run, re-check every 2 s so the unavailable notice clears the
+        // moment a Settings enable or a finishing download makes chat usable.
+        .task(id: service.availability.isAvailable) {
+            guard !service.availability.isAvailable else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                availabilityRefresh += 1
+            }
+        }
         #if DEBUG
         // `HC_CHAT_ASK <question>` submits one question on open, so a chat turn — the agent's
         // whole tool-calling round trip included — can be exercised from `simctl launch` without
