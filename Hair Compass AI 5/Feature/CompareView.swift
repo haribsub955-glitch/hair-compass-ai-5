@@ -311,12 +311,12 @@ struct CompareView: View {
         let assoc = ChartMath.association(hair: paired.hair, lifestyle: paired.lifestyle)
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "sparkle.magnifyingglass").font(Clinical.caption(15)).foregroundStyle(Clinical.accent)
-                    if case .insufficient(let need) = assoc {
-                        // Same pill as every locked chart: the rule, and the honest progress.
-                        ChartPlaceholderPill(required: need, have: paired.hair.count, unit: .pairedDays)
-                    } else {
+                if case .insufficient(let need) = assoc {
+                    // Same pill as every locked chart: the rule, and the honest progress.
+                    ChartPlaceholderPill(required: need, have: paired.hair.count, unit: .pairedDays)
+                } else {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "sparkle.magnifyingglass").font(Clinical.caption(15)).foregroundStyle(Clinical.accent)
                         Text(ChartMath.phrasing(assoc, hairTitle: hair.title, lifestyleTitle: overlay.title, lagDays: lag.days))
                             .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
                     }
