@@ -17,3 +17,6 @@ Secrets.swift
 
 # Brainstorming visual companion (mockups, session state)
 .superpowers/
+
+# Native worktrees created by the harness
+.claude/worktrees/
