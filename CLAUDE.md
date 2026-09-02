@@ -79,24 +79,25 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
 
 ## QUEUE
 
-0. **Decision (user + Harib): does the cloud agent ship at all, and to whom?** Full analysis in
-   the "Spend Line" review (artifact, 2026-09-02). Recommendation: cloud = paying subscribers
-   only, verified from the `subscription_token` StoreKit JWS already in the `/v1/session`
-   contract, with `originalTransactionId` + `appAccountToken` bound to one principal; free tier
-   stays on-device (which is what ships today). That single decision removes the anonymous
-   free-tier farming risk and takes App Attest off the v1 critical path. Everything below in
-   this block depends on it. Not started — it is a product decision, not mine.
-0b. Server work (Harib's repo, not this one), in order once 0 is decided: make the five unwired
-   controls reachable and prove it through the real HTTP route · atomic USD reservation before
-   every provider call (a counter does not cap under concurrency) · four kill switches, failing
-   closed to the on-device path · edge caps (input size, history window, one tool wave,
-   tool-result bytes, `max_tokens`, whole-turn deadline, disconnect cancellation).
-0c. This repo, small, blocked on 0: move `AgentBridge.installationID` from `UserDefaults` to the
-   Keychain — UserDefaults is wiped by app deletion, so reinstall currently mints a new user with
-   a fresh allowance. `AccessWindow` already does exactly this for the 3-day window. Also decide
-   what `X-Access-Key` is in a Release build: it currently defaults to a scheme env var and the
-   client omits the header when empty, so a shipped build would send none. Both only matter if
-   the cloud path ships, hence blocked on 0.
+0. **Agent-platform cost review — "The Spend Line" (artifact, 2026-09-02, corrected).**
+   ⚠️ MOOSAWI_HANDOVER.md §8 ("five controls implemented, unit-tested, and not on the request
+   path") is **STALE**. Verified against `Programming/Harib/agent-platform` source: atomic
+   reservation (`reserve → provider call → settle`, single ON CONFLICT statement), receipt
+   verification non-bypassable when live, `uq_principal_subscription`, free plan
+   `daily_token_budget: 0`, device binding + access key refused-at-boot when live, rate limiter
+   and consent gate on the path. Do not re-derive the threat model from the handover.
+0b. Genuinely open, server side (Harib's repo, on this machine at `../agent-platform`):
+   **no aggregate/global spend ceiling** (per-principal only — total = principals × cap) ·
+   **no kill switch** (no admin endpoint, no spend-disable flag) · image cost not reserved
+   (their audit `agent.py:449`) · four pay-for-nothing bugs from
+   `docs/ENGINE_AUDIT_2026-08-31.md` (`dispatch.py:157` HIGH — every write turn dies after the
+   model call is paid for; `agent.py:344`, `:253`, `:276`).
+0c. This repo, small, not started: move `AgentBridge.installationID` from `UserDefaults` to the
+   Keychain, as `AccessWindow` already does. The server has priced this reinstall cycle as an
+   accepted risk (taster ≈ $0.45), so this closes an accepted risk rather than a hole. Also
+   decide what `X-Access-Key` is in a Release build — it defaults to a scheme env var and the
+   client omits the header when empty, while the server refuses to boot live without one, so a
+   shipped build would be locked out. Both only matter if the cloud path ships.
 1. User: re-test the three chat questions on a real AI-capable iPhone at `266a476` — expect
    real answers (words, not digits) instead of the "couldn't safely summarize" fallback.
 2. Harib (or user says merge): pull `0ea1e55` + `266a476` from `fix/1.1-polish` into
