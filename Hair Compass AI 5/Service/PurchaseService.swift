@@ -19,18 +19,14 @@ enum PurchaseFlowState: Equatable {
 @MainActor
 @Observable
 final class PurchaseService {
-    static let monthlyID = "com.harib.haircompass.pro.monthly"
-    static let yearlyID  = "com.harib.haircompass.pro.yearly"
+    // The "2" suffix is load-bearing: the un-suffixed IDs were created and deleted in App Store
+    // Connect long ago, and Apple never allows a product ID to be reused after deletion. These
+    // match the live ASC products in the "Premium" subscription group.
+    static let monthlyID = "com.harib.haircompass.pro.monthly2"
+    static let yearlyID  = "com.harib.haircompass.pro.yearly2"
 
     private(set) var products: [Product] = []
     private(set) var hasPro = false
-    /// Whether StoreKit has actually answered yet. `hasPro` starts `false` because there is no
-    /// third state to start in — but "no subscription" and "not asked yet" are not the same
-    /// claim, and treating them as one downgrades a paying subscriber for the first moments of
-    /// every cold launch (paywalls over a paid app, and a suppressed widget snapshot written to
-    /// the App Group that outlives the launch if the app is killed first). Callers must read
-    /// this before acting on `hasPro` — see `Entitlements.effectiveHasPro`.
-    private(set) var isEntitlementResolved = false
     private(set) var isLoading = false
     /// Lifecycle of the most recent `purchase(_:)` call — `.idle` once it's been consumed or
     /// before any attempt. Callers reset it themselves (e.g. on the next tap) rather than this
@@ -42,7 +38,22 @@ final class PurchaseService {
     private(set) var isRestoring = false
     private var updatesTask: Task<Void, Never>?
 
+    #if DEBUG
+    /// `HC_PRO` forces the Pro entitlement on, so the AI features (`HairChatSheet`,
+    /// `DeepAnalysisSheet`) can be exercised without a StoreKit configuration or a purchase.
+    ///
+    /// Same shape and rationale as `ProAvailability.forcedStatus`: DEBUG-only and opt-in per
+    /// launch, so release builds are unchanged and omitting the flag still shows the real
+    /// paywall — the gate stays QA-able instead of being deleted.
+    static var forcedPro: Bool { ProcessInfo.processInfo.arguments.contains("HC_PRO") }
+    #endif
+
     init() {
+        #if DEBUG
+        // Set before any async work, so the very first render is already unlocked rather than
+        // showing the paywall for a frame until `load()`'s entitlement refresh lands.
+        hasPro = Self.forcedPro
+        #endif
         updatesTask = Task { [weak self] in
             for await update in Transaction.updates {
                 if case .verified(let t) = update { await t.finish() }
@@ -58,16 +69,12 @@ final class PurchaseService {
     func load() async {
         isLoading = true
         defer { isLoading = false }
-        // Entitlement first: it's a local `Transaction.currentEntitlements` walk, so a genuine
-        // subscriber is recognised before — not after — the App Store round-trip for products.
-        // The old order left `isEntitlementResolved` waiting on the network fetch, which was
-        // only ever over-permissive for the free tier but slow for the paying one.
-        await refreshEntitlement()
         do {
             products = try await Product.products(for: [Self.monthlyID, Self.yearlyID])
         } catch {
             products = []
         }
+        await refreshEntitlement()
     }
 
     /// Clears a stale `.failed`/`.pending` state — call when the user dismisses the message or
@@ -174,19 +181,21 @@ final class PurchaseService {
     }
 
     private func refreshEntitlement() async {
-        // `isEntitlementResolved` is set on BOTH exits: once StoreKit has enumerated the current
-        // entitlements, "no subscription" is a real answer and may be acted on.
+        #if DEBUG
+        // The override has to survive every refresh, not just launch: `load()` and each
+        // `Transaction.updates` event call through here and would otherwise clear it back to
+        // false the moment StoreKit reports no entitlement.
+        if Self.forcedPro { hasPro = true; return }
+        #endif
         for await entitlement in Transaction.currentEntitlements {
             if case .verified(let t) = entitlement,
                t.productID == Self.monthlyID || t.productID == Self.yearlyID,
                t.revocationDate == nil {
                 hasPro = true
-                isEntitlementResolved = true
                 return
             }
         }
         hasPro = false
-        isEntitlementResolved = true
     }
 
     var monthly: Product? { products.first { $0.id == Self.monthlyID } }
@@ -208,15 +217,23 @@ final class PurchaseService {
         guard let offer = product.subscription?.introductoryOffer, offer.paymentMode == .freeTrial
         else { return nil }
         let period = offer.period
-        let unit: String
-        switch period.unit {
-        case .day: unit = period.value == 1 ? "day" : "days"
-        case .week: unit = period.value == 1 ? "week" : "weeks"
-        case .month: unit = period.value == 1 ? "month" : "months"
-        case .year: unit = period.value == 1 ? "year" : "years"
-        @unknown default: unit = "days"
+        return "\(Self.periodLabel(value: period.value, unit: period.unit)) free trial, then \(product.displayPrice)"
+    }
+
+    /// "3-day", "2-week", "1-month" — a hyphenated compound modifier keeps the unit singular in
+    /// English regardless of the count (the old plural form shipped "3-days free trial").
+    /// `nonisolated`: a pure string function on a `@MainActor` class, callable from any context
+    /// (the unit tests run nonisolated).
+    nonisolated static func periodLabel(value: Int, unit: Product.SubscriptionPeriod.Unit) -> String {
+        let name: String
+        switch unit {
+        case .day: name = "day"
+        case .week: name = "week"
+        case .month: name = "month"
+        case .year: name = "year"
+        @unknown default: name = "day"
         }
-        return "\(period.value)-\(unit) free trial, then \(product.displayPrice)"
+        return "\(value)-\(name)"
     }
 
     /// What a year on the **monthly** plan actually costs, versus the yearly plan — e.g.

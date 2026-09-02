@@ -2,20 +2,32 @@ import StoreKit
 import SwiftData
 import SwiftUI
 
-/// Wraps premium content: shows it for Pro users, otherwise an inline, honest upsell
-/// (feature name + a one-line description + the two Pro purchase buttons + restore). Used by
-/// the AI sheets — gate at the caller's top level so the sheet's own chrome (title, Close
-/// button) stays outside the gate and is always reachable. Purchase buttons never show a
+/// Wraps premium content: shows it for Pro users and for the 3-day first-install window,
+/// otherwise an inline, honest upsell (feature name + a one-line description + the two Pro
+/// purchase buttons + restore). Used by the gated tabs (`RootView.tabContent` — everything
+/// except Plan/medication) and by the AI sheets — for sheets, gate at the caller's top level
+/// so the sheet's own chrome (title, Close button) stays outside the gate and is always
+/// reachable. Purchase buttons never show a
 /// placeholder price: while products haven't loaded they're replaced by `StoreUnavailableView`
 /// (a loading spinner, or an honest "can't reach the store" message with Retry), matching
 /// `OnboardingPlanStep`'s honesty rules. Does not apply its own background — callers already own
 /// `.clinicalScreen()`.
 struct ProGate<Content: View>: View {
-    let feature: ProFeature
+    let feature: String
+    let symbol: String
+    var description: String = "Included with Hair Compass Pro."
+    /// True only for the two Apple Intelligence features — they carry the hardware notice.
+    /// Tab-level gates (check-ins, trends, labs, photos) work on every iPhone and must not.
+    var requiresOnDeviceAI: Bool = false
     @ViewBuilder var content: () -> Content
 
     @Environment(PurchaseService.self) private var purchases
-    @Environment(\.entitlements) private var entitlements
+    @Environment(AccessWindow.self) private var accessWindow
+    @Environment(\.scenePhase) private var scenePhase
+    /// Bumped when availability may have changed: `ProAvailability.current` is a static system
+    /// read SwiftUI does not track, so without this the AI notice would keep showing "switched
+    /// off" after the person enables Apple Intelligence in Settings and comes back.
+    @State private var availabilityRefresh = 0
     /// Only for picking the matching illustration pair — the gate itself stays profile-agnostic.
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
@@ -31,7 +43,9 @@ struct ProGate<Content: View>: View {
     private var availability: OnDeviceAvailability { ProAvailability.current }
 
     var body: some View {
-        if entitlements.canAccess(feature) {
+        // The 3-day first-install window opens every gate exactly like Pro does — the paywall
+        // only exists for lapsed, unsubscribed installs.
+        if purchases.hasPro || accessWindow.isActive {
             content()
         } else {
             locked
@@ -46,53 +60,39 @@ struct ProGate<Content: View>: View {
                 // A failed/pending message from THIS gate shouldn't still be showing if the user
                 // dismisses it and opens a different feature's gate later.
                 .onDisappear { purchases.resetPurchaseState() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { availabilityRefresh += 1 }
+                }
+                // Watch availability every 2 s in both directions while an AI gate is up: the
+                // notice clears the moment the model becomes usable, and reappears if it stops
+                // being usable mid-session. Bumps only on change; non-AI gates skip the loop.
+                .task {
+                    guard requiresOnDeviceAI else { return }
+                    var last = ProAvailability.current
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(2))
+                        let now = ProAvailability.current
+                        if now != last { last = now; availabilityRefresh += 1 }
+                    }
+                }
         }
     }
 
-    /// Tracks the gate ScrollView's own viewport height so `lockedBody` can centre in it. Inside
-    /// a ScrollView the height proposal is nil, so the old `.frame(maxHeight: .infinity)` did
-    /// nothing and the card hugged the top of the full-screen gates (Photos, Compare,
-    /// Procedures) with all the leftover space piled below the legal links. Deliberately NOT a
-    /// `GeometryReader` around the ScrollView: on the nested surfaces (CareView, TrendsView,
-    /// LabsView put `.proGated(_:)` inside their own ScrollView) an unconstrained GeometryReader
-    /// falls back to its 10pt ideal height and would collapse the gate outright. For a nested,
-    /// unconstrained ScrollView `containerSize` is its own content-sized frame, so `minHeight`
-    /// resolves to the height it already has — a no-op exactly where centring must not meddle.
-    @State private var gateViewportHeight: CGFloat = 0
-
-    /// Scrollable: `CompareView`/`ProceduresView` apply `.proGated(_:)` in place of their own
-    /// `ScrollView`, so at large accessibility text sizes this card was tall enough to push its
-    /// own purchase buttons off-screen — a paywall that hides the thing it exists to offer.
     private var locked: some View {
-        ScrollView {
-            lockedBody
-                .frame(minHeight: gateViewportHeight > 0 ? gateViewportHeight : nil)
-        }
-        // Several surfaces (CareView, TrendsView, LabsView…) apply `.proGated(_:)` INSIDE their
-        // own ScrollView, so this one is nested. `.basedOnSize` keeps it inert whenever the card
-        // already fits — no bounce, no captured pan — and it only becomes a real scroll view at
-        // the accessibility sizes this exists for.
-        .scrollBounceBehavior(.basedOnSize)
-        .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, new in
-            gateViewportHeight = new
-        }
-    }
-
-    private var lockedBody: some View {
         VStack(spacing: 18) {
             Spacer(minLength: 20)
 
-            Image(systemName: feature.gateSymbol)
+            Image(systemName: symbol)
                 .font(Clinical.body(26, weight: .medium))
                 .foregroundStyle(Clinical.accent)
                 .frame(width: 60, height: 60)
                 .background(Clinical.accentSoft, in: Circle())
 
             VStack(spacing: 6) {
-                Text(feature.gateTitle)
+                Text(feature)
                     .font(Clinical.headline(20))
                     .foregroundStyle(Clinical.ink)
-                Text(feature.gateDescription)
+                Text(description)
                     .font(Clinical.caption(13))
                     .foregroundStyle(Clinical.secondary)
                     .multilineTextAlignment(.center)
@@ -104,26 +104,77 @@ struct ProGate<Content: View>: View {
             // inside a sheet alongside the feature's own chrome.
             ClarityContrast(size: .compact, sex: profiles.first?.sex ?? .male)
 
-            // The notice only speaks for features that actually need the on-device model, so
-            // gating Trends never tells someone their iPhone is the problem — and with the
-            // cloud model configured `canRun` is true for everything, so no gate warns at all.
-            // Asked through `canRun` rather than `usesAI` directly so the tested policy
-            // function is the shipping one, not a parallel copy. `.deviceNotEligible` here is
-            // deliberately hardcoded, not the live `availability` — this is a worst-case probe
-            // ("could this feature ever be device-limited at all?"), independent of whatever
-            // this particular iPhone's status actually is; the live status still drives what
-            // `ProAvailabilityNotice` renders when this check passes.
-            if !ProAvailability.canRun(feature, status: .deviceNotEligible) {
+            // Only the two Apple Intelligence features disclose the hardware requirement here;
+            // every other gate sells device-independent value and stays quiet about AI.
+            if requiresOnDeviceAI {
+                // Reading the refresh token ties this branch to the watch above — the computed
+                // `availability` alone would never invalidate the view.
+                let _ = availabilityRefresh
                 ProAvailabilityNotice(status: availability)
             }
 
-            // The purchase buttons are UNCONDITIONAL on Apple Intelligence — see
-            // `ProAvailability.showsPurchaseButtons`, which is where that rule is asserted. Even
-            // where this particular feature can never run, the subscription still unlocks the
-            // other ten, so withdrawing the sale would be wrong — it is what left ineligible
-            // iPhones with nothing to buy.
-            if ProAvailability.showsPurchaseButtons(status: availability, hasLoadedProducts: !purchases.products.isEmpty) {
-                purchaseButtons
+            if !purchases.products.isEmpty {
+                VStack(spacing: 10) {
+                    if let yearly = purchases.yearly {
+                        // Eligibility-gated: the launch offer only renders for Apple IDs that
+                        // haven't already used the group's introductory offer.
+                        let offer = yearlyIntroEligible ? purchases.launchOffer(for: yearly) : nil
+                        VStack(spacing: 8) {
+                            if let offer {
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text(offer.base)
+                                        .font(Clinical.caption(14))
+                                        .strikethrough()
+                                        .foregroundStyle(Clinical.tertiary)
+                                    Text(offer.intro)
+                                        .font(Clinical.body(18, weight: .semibold))
+                                        .foregroundStyle(Clinical.ink)
+                                    Text("/year")
+                                        .font(Clinical.caption(13))
+                                        .foregroundStyle(Clinical.secondary)
+                                }
+                            }
+                            Button {
+                                buy(yearly)
+                            } label: {
+                                PurchaseButtonLabel(isPurchasing: purchasingProductID == yearly.id, tint: Clinical.surface) {
+                                    VStack(spacing: 2) {
+                                        if let offer {
+                                            Text("Start yearly — \(offer.intro) first year")
+                                            Text("First year — save \(offer.percentOff)%, then \(offer.base)/year · Limited-time")
+                                                .font(Clinical.body(11, weight: .regular))
+                                        } else {
+                                            Text("Yearly — \(yearly.displayPrice)/year")
+                                            if let perMonth = yearly.monthlyEquivalentDisplay {
+                                                Text(perMonth).font(Clinical.body(11, weight: .regular))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            .buttonStyle(ClinicalButtonStyle())
+                            .disabled(isBusy)
+                            .accessibilityIdentifier("proGatePurchaseYearly")
+                        }
+                    }
+                    if let monthly = purchases.monthly {
+                        let trialText = monthlyIntroEligible ? purchases.trialDescriptor(for: monthly) : nil
+                        Button {
+                            buy(monthly)
+                        } label: {
+                            PurchaseButtonLabel(isPurchasing: purchasingProductID == monthly.id, tint: Clinical.ink) {
+                                if let trialText {
+                                    Text("\(trialText)/month")
+                                } else {
+                                    Text("Monthly — \(monthly.displayPrice)/month")
+                                }
+                            }
+                        }
+                        .buttonStyle(ClinicalButtonStyle(filled: false))
+                        .disabled(isBusy)
+                        .accessibilityIdentifier("proGatePurchaseMonthly")
+                    }
+                }
             } else {
                 StoreUnavailableView(isLoading: purchases.isLoading) {
                     Task { await purchases.load() }
@@ -152,73 +203,7 @@ struct ProGate<Content: View>: View {
             Spacer(minLength: 20)
         }
         .padding(.horizontal, 24)
-        // Width only. `maxHeight: .infinity` was dead code inside the ScrollView (nil height
-        // proposal); vertical filling is the `minHeight:` in `locked`, where the viewport is known.
-        .frame(maxWidth: .infinity)
-    }
-
-    private var purchaseButtons: some View {
-        VStack(spacing: 10) {
-            if let yearly = purchases.yearly {
-                // Eligibility-gated: the launch offer only renders for Apple IDs that
-                // haven't already used the group's introductory offer.
-                let offer = yearlyIntroEligible ? purchases.launchOffer(for: yearly) : nil
-                VStack(spacing: 8) {
-                    if let offer {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(offer.base)
-                                .font(Clinical.caption(14))
-                                .strikethrough()
-                                .foregroundStyle(Clinical.tertiary)
-                            Text(offer.intro)
-                                .font(Clinical.body(18, weight: .semibold))
-                                .foregroundStyle(Clinical.ink)
-                            Text("/year")
-                                .font(Clinical.caption(13))
-                                .foregroundStyle(Clinical.secondary)
-                        }
-                    }
-                    Button {
-                        buy(yearly)
-                    } label: {
-                        PurchaseButtonLabel(isPurchasing: purchasingProductID == yearly.id, tint: Clinical.surface) {
-                            VStack(spacing: 2) {
-                                if let offer {
-                                    Text("Start yearly — \(offer.intro) first year")
-                                    Text("First year — save \(offer.percentOff)%, then \(offer.base)/year · Limited-time")
-                                        .font(Clinical.body(11, weight: .regular))
-                                } else {
-                                    Text("Yearly — \(yearly.displayPrice)/year")
-                                    if let perMonth = yearly.monthlyEquivalentDisplay {
-                                        Text(perMonth).font(Clinical.body(11, weight: .regular))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .buttonStyle(ClinicalButtonStyle())
-                    .disabled(isBusy)
-                    .accessibilityIdentifier("proGatePurchaseYearly")
-                }
-            }
-            if let monthly = purchases.monthly {
-                let trialText = monthlyIntroEligible ? purchases.trialDescriptor(for: monthly) : nil
-                Button {
-                    buy(monthly)
-                } label: {
-                    PurchaseButtonLabel(isPurchasing: purchasingProductID == monthly.id, tint: Clinical.ink) {
-                        if let trialText {
-                            Text("\(trialText)/month")
-                        } else {
-                            Text("Monthly — \(monthly.displayPrice)/month")
-                        }
-                    }
-                }
-                .buttonStyle(ClinicalButtonStyle(filled: false))
-                .disabled(isBusy)
-                .accessibilityIdentifier("proGatePurchaseMonthly")
-            }
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func buy(_ product: Product) {

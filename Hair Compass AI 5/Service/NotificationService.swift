@@ -183,29 +183,10 @@ final class NotificationService {
 
     func disable() {
         UserDefaults.standard.set(false, forKey: Self.enabledKey)
-        Task { await cancelRecordReminders() }
-    }
-
-    /// The same stop, awaited, for a tier that may no longer see the records these reminders are
-    /// about.
-    ///
-    /// Every reminder cancelled here is built from Pro-gated data: the routine banner spells out
-    /// treatment names ("3 steps: Minoxidil · Finasteride · Ketoconazole") and repeats daily
-    /// FOREVER, the refill and milestone ones name a treatment, and the procedure/progress
-    /// reminders name a gated record too. Being nagged with data you've been told you can't see —
-    /// from a schedule whose only off switch used to live behind the same wall — is the failure
-    /// this closes. The evening check-in is deliberately untouched: it invites a check-in, which
-    /// is free on every tier, and it stays switchable from Plan's reminders card.
-    func stopRecordReminders() async {
-        UserDefaults.standard.set(false, forKey: Self.enabledKey)
-        await cancelRecordReminders()
-    }
-
-    private func cancelRecordReminders() async {
         let prefixes = [treatmentPrefix, refillPrefix, photoReminderID,
                         procedurePrefix, progressCheckInID, milestonePrefix]
         let generation = nextGeneration(for: prefixes)
-        await reconcile(prefixes: prefixes, desired: [], generation: generation)
+        Task { await reconcile(prefixes: prefixes, desired: [], generation: generation) }
     }
 
     /// Replace all scheduled reminders with fresh ones for the current active daily treatments.

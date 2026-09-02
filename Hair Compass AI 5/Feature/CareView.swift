@@ -11,7 +11,6 @@ struct CareView: View {
     @Environment(DeepLinkRouter.self) private var deepLinks
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openURL) private var openURL
-    @Environment(\.entitlements) private var entitlements
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
     @Query private var missedDoseRecords: [MissedDoseRecord]
@@ -25,6 +24,7 @@ struct CareView: View {
     @Query(sort: \PhotoRecord.createdAt) private var photoRecords: [PhotoRecord]
 
     @State private var showAdd = false
+    @State private var showRecommender = false
     @State private var remindersOn = false
     /// Whether the collapsed "Reminders · Off" footnote is sprung open to its two toggles —
     /// starts collapsed every fresh appearance of the screen, same as the ledger's own
@@ -39,14 +39,12 @@ struct CareView: View {
     /// second treatment's milestone opens THAT treatment's report.
     @State private var reportFocusTreatment: Treatment?
     @State private var showProcedures = false
+    /// The educational catalogue, kept distinct from `showProcedures` (this person's own log).
+    @State private var showInClinicOptions = false
     @State private var showProgressCheckIn = false
     /// Opens `LifeEventsSheet` — the full list of dated `TriggerEvent`s, view/edit/delete —
     /// rather than jumping straight to the add form; mirrors `showProcedures`.
     @State private var showLifeEvents = false
-    /// Labs merged into Plan rather than keeping its own tab (Task 9) — it's Pro either way, and
-    /// it's the same kind of clinical record as Procedures. `LabsView` carries its own
-    /// `.proGated(.labs)`, so this is just the entry point.
-    @State private var showLabs = false
     /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
     /// directly from the ScrollView's own content offset.
     @State private var headerCondense: CGFloat = 0
@@ -55,6 +53,11 @@ struct CareView: View {
     /// `.cascade` delete rules), so this is a confirm-first path with "Mark inactive instead"
     /// offered alongside the destructive action.
     @State private var deleteTreatmentCandidate: Treatment?
+    @State private var recommendedTreatmentClass: TreatmentClass?
+    @State private var showRecommendedLab = false
+    @State private var recommendedLabTest: LabTest = .ferritin
+    @State private var showRecommendedTrigger = false
+    @State private var showRecommendedPhoto = false
     @State private var missedDoseCandidate: MissedDoseCandidate?
 
     /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
@@ -68,21 +71,17 @@ struct CareView: View {
     private var calendar: Calendar { .current }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenHeader(
                     eyebrow: "Ritual",
                     title: "Plan",
-                    // "Add treatment" writes into the treatment ledger below, which is behind
-                    // `.proGated(.treatments)` — so on a free tier the button itself is withheld
-                    // rather than left live above a lock card a saved treatment would vanish
-                    // into. Every other header action in the app already lives inside its gate
-                    // (`LabsView`, `ProceduresView`); this is the one header that sits above one.
-                    trailing: entitlements.canAccess(.treatments) ? AnyView(
+                    trailing: AnyView(
                         HeaderActionButton(systemName: "plus", accessibilityLabel: "Add treatment") {
                             showAdd = true
                         }
-                    ) : nil,
+                    ),
                     condensed: headerCondense
                 ).padding(.top, 8)
                     .staggeredEntrance(index: 0)
@@ -100,93 +99,56 @@ struct CareView: View {
                 // that fact already lives in Today's ROUTINE annotation and in the unchecked
                 // circles of the list below, so the header now flows straight into the routine
                 // section itself, the page's uncontested focal object.
-                // RecommenderView, InClinicOptionsView and the science catalogue used to sit
-                // here, deliberately free on every tier. Task 9 moved all three into their own
-                // Shop tab (`ShopView`) — an affiliate link earns nothing from a free user who
-                // can't reach it, so keeping them behind this page's Pro wall would cost revenue
-                // rather than protect a feature. Everything left in this page's body is the
-                // user's own tracked record — Pro.
-                // Safety copy stays OUTSIDE the wall. This banner exists because a severity-3
-                // side effect was logged in the last 14 days; a lapsed subscriber is exactly as
-                // capable of having one as a paying one, and "worth discussing with your
-                // prescriber" must never be something a paywall withholds. It reveals nothing
-                // the free tier isn't already shown — the wall's own counter says the record
-                // exists; this says one recent entry in it deserves a clinician's attention.
                 if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
-
-                VStack(alignment: .leading, spacing: 16) {
-                    if !routine.isEmpty {
-                        routineSection.staggeredEntrance(index: 3)
-                    } else {
-                        // `v2-plan-ritual` — dropper bottles, a comb and a notepad — was drawn to
-                        // explain what a routine *is*, so it stands in for the routine section on the
-                        // one visit where there isn't one yet. Same contract as Labs' context plate:
-                        // it teaches while the screen is empty and retires the moment there's data.
-                        planRitualPlate.staggeredEntrance(index: 3)
-                    }
-                    gateExplainer.staggeredEntrance(index: 6)
-                    if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
-
-                    // The page changes subject here: everything above is what you do today, everything
-                    // below is the longer record of what you're on and what you've had done.
-                    StrandDivider()
-
-                    if treatments.isEmpty {
-                        empty.staggeredEntrance(index: 8)
-                    } else {
-                        ForEach(Array(treatments.enumerated()), id: \.element.id) { i, t in
-                            // Capped: everything past here is below the fold at load anyway.
-                            treatmentCard(t).staggeredEntrance(index: min(8 + i, 12))
-                        }
-                    }
-
-                    // Same cap as the last treatment card above — lands in the same beat, no
-                    // renumbering of the fixed indices elsewhere in this stack required. Split
-                    // from the old `proceduresSection`: this is the tracked ledger only — the
-                    // free "Explore in-clinic options" row moved to `ShopView` (Task 9).
-                    proceduresLedger.staggeredEntrance(index: 12)
-
-                    // New card, new trailing index — appended past the capped treatment/procedures
-                    // beat rather than renumbering any index above.
-                    progressCheckInSection.staggeredEntrance(index: 13)
-
-                    // Same trailing pattern one index later — a life event (illness, crash diet,
-                    // childbirth, a new medication…) is the only entry point to `TriggerEvent`
-                    // outside onboarding, so every downstream surface that reads dated triggers
-                    // (journey markers, insights, the clinician export) stays usable for the whole
-                    // life of the record, not just its first day.
-                    lifeEventSection.staggeredEntrance(index: 14)
-
-                    // New trailing index, appended rather than interleaved with `proceduresLedger`
-                    // above — same "clinical record" family (Task 9: Labs merged into Plan, since
-                    // both are Pro and both are records of what's already happened), but placing
-                    // it here keeps every earlier index's animation order untouched.
-                    labsLedgerRow.staggeredEntrance(index: 15)
+                if !routine.isEmpty {
+                    routineSection.staggeredEntrance(index: 3)
+                } else {
+                    // `v2-plan-ritual` — dropper bottles, a comb and a notepad — was drawn to
+                    // explain what a routine *is*, so it stands in for the routine section on the
+                    // one visit where there isn't one yet. Same contract as Labs' context plate:
+                    // it teaches while the screen is empty and retires the moment there's data.
+                    planRitualPlate.staggeredEntrance(index: 3)
                 }
-                .proGated(.treatments)
+                guidanceCard.staggeredEntrance(index: 4)
+                remindersCard.staggeredEntrance(index: 5)
+                gateExplainer.staggeredEntrance(index: 6)
+                if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
 
-                // The honesty colophon, restated below the lock for anyone the gate turned
-                // away: "judged at 24 weeks" is expectation-setting about hair itself, not a
-                // feature, and it reads strangest of all directly under a purchase button —
-                // buying should not be what it takes to learn that patience is the deal.
-                // Entitled tiers see the same line once, in its usual seat inside the stack.
-                if !entitlements.canAccess(.treatments) {
-                    gateExplainer.staggeredEntrance(index: 7)
+                // The page changes subject here: everything above is what you do today, everything
+                // below is the longer record of what you're on and what you've had done.
+                StrandDivider()
+
+                if treatments.isEmpty {
+                    empty.staggeredEntrance(index: 8)
+                } else {
+                    ForEach(Array(treatments.enumerated()), id: \.element.id) { i, t in
+                        // Capped: everything past here is below the fold at load anyway.
+                        treatmentCard(t).staggeredEntrance(index: min(8 + i, 12))
+                    }
                 }
 
-                // Reminders sit OUTSIDE the wall, and deliberately below it: they are the app's
-                // controls, not the user's record, and a schedule you can't switch off is worse
-                // than one you can't configure. A lapsed subscriber's routine reminders are
-                // already cancelled for them (`stopRecordReminders`), but the evening check-in —
-                // free on every tier, since check-ins are — has to stay reachable, and this is
-                // the only surface that owns it. For an entitled tier this moves the row from
-                // mid-page to the page's tail, next to the closing garland, which is where a
-                // settings footnote belongs anyway.
-                remindersCard.staggeredEntrance(index: 16)
+                // Same cap as the last treatment card above — lands in the same beat, no
+                // renumbering of the fixed indices elsewhere in this stack required.
+                proceduresSection.staggeredEntrance(index: 12)
 
-                // Closes the app's longest scroll. Deliberately after the last ledger row rather
+                // New card, new trailing index — appended past the capped treatment/procedures
+                // beat rather than renumbering any index above.
+                progressCheckInSection.staggeredEntrance(index: 13)
+
+                // Same trailing pattern one index later — a life event (illness, crash diet,
+                // childbirth, a new medication…) is the only entry point to `TriggerEvent`
+                // outside onboarding, so every downstream surface that reads dated triggers
+                // (journey markers, insights, the clinician export) stays usable for the whole
+                // life of the record, not just its first day.
+                lifeEventSection.staggeredEntrance(index: 14)
+
+                // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
+                // straight to it and must never catch a mid-fade frame.
+                ScienceProductsSection().id("science")
+
+                // Closes the app's longest scroll. Deliberately after the science section rather
                 // than before it: a garland placed above would read as decoration *for* the
-                // ledger, and this page needs an ending more than it needs another seam.
+                // product rows, and this page needs an ending more than it needs another seam.
                 PageCloser(opacity: 0.8)
             }
             .padding(.horizontal, 20)
@@ -199,6 +161,10 @@ struct CareView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
+        .sheet(item: $recommendedTreatmentClass) { AddTreatmentSheet(initialClass: $0) }
+        .sheet(isPresented: $showRecommendedLab) { AddLabSheet(initialTest: recommendedLabTest) }
+        .sheet(isPresented: $showRecommendedTrigger) { AddTriggerSheet() }
+        .sheet(isPresented: $showRecommendedPhoto) { GuidedCaptureView(defaultRegion: .frontal) }
         .sheet(item: $detailTreatment) { TreatmentDetailSheet(treatment: $0) }
         // Deleting a treatment cascades away every logged dose and side-effect entry
         // (`Models.swift`'s `.cascade` delete rules) — the adherence history the 24-week
@@ -238,8 +204,8 @@ struct CareView: View {
             Text("This records a missed application. It does not change or start any treatment.")
         }
         .sheet(isPresented: $showProcedures) { ProceduresView() }
+        .sheet(isPresented: $showInClinicOptions) { InClinicOptionsView() }
         .sheet(isPresented: $showLifeEvents) { LifeEventsSheet() }
-        .sheet(isPresented: $showLabs) { LabsView() }
         .sheet(isPresented: $showProgressCheckIn) {
             ProgressCheckInSheet(
                 treatmentContext: progressCheckInTreatmentContext,
@@ -249,10 +215,24 @@ struct CareView: View {
         .sheet(isPresented: $showReport) {
             if let report = progressReport { ProgressReportSheet(report: report, photos: photoRecords) }
         }
+        .sheet(isPresented: $showRecommender) {
+            NavigationStack {
+                RecommenderView(condition: profile?.condition ?? .unsure, sex: profile?.sex ?? .male) { action in
+                    showRecommender = false
+                    DispatchQueue.main.async { presentRecommendedAction(action) }
+                }
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showRecommender = false } } }
+            }
+        }
         .task {
             await notifications.refreshAuthorization()
             remindersOn = notifications.isEnabled
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("HC_INCLINIC") { showInClinicOptions = true }
+            if ProcessInfo.processInfo.arguments.contains("HC_SCROLL_PRODUCTS") {
+                try? await Task.sleep(for: .milliseconds(250))
+                withAnimation { proxy.scrollTo("science", anchor: .top) }
+            }
             if ProcessInfo.processInfo.arguments.contains("HC_TREATMENT_DETAIL") {
                 try? await Task.sleep(for: .milliseconds(250))
                 detailTreatment = treatments.first
@@ -282,16 +262,7 @@ struct CareView: View {
         // `removeAllPendingNotificationRequests()`, so it must land before the
         // procedure/progress-check-in/evening calls or it would wipe the reminders they just
         // scheduled.
-        .task(id: "\(treatmentFingerprint)||\(procedureFingerprint)||\(checkIns.first?.date.timeIntervalSince1970 ?? 0)||\(genericNotificationWording)||\(entitlements.canAccess(.treatments))") {
-            // This task sits OUTSIDE the gate (it has to — the gate replaces the page body), so
-            // on a lapsed tier it used to re-arm the very treatment-named reminders the tier can
-            // no longer see, and then render a paywall where the off switch used to be. Now
-            // opening Plan is what stops them.
-            guard canScheduleRecordReminders else {
-                await notifications.stopRecordReminders()
-                await replanEveningCheckIn()
-                return
-            }
+        .task(id: "\(treatmentFingerprint)||\(procedureFingerprint)||\(checkIns.first?.date.timeIntervalSince1970 ?? 0)||\(genericNotificationWording)") {
             await notifications.reschedule(treatments: notifTreatments, refills: notifRefills)
             await notifications.planProcedureReminders(notifProcedures)
             await notifications.planProgressCheckInReminder(lastCheckIn: checkIns.first?.date)
@@ -348,9 +319,21 @@ struct CareView: View {
             guard eveningCheckInEnabled else { return }
             Task { await replanEveningCheckIn() }
         }
+        }
     }
 
     // MARK: Derived state
+
+    private func presentRecommendedAction(_ action: RecommendedAction) {
+        switch action {
+        case .addToPlan(let treatmentClass): recommendedTreatmentClass = treatmentClass
+        case .scheduleDoctorVisit: showProcedures = true
+        case .startPatchPhotoSeries: showRecommendedPhoto = true
+        case .recordTrigger: showRecommendedTrigger = true
+        case .addLabResult(let test): recommendedLabTest = test; showRecommendedLab = true
+        case .reviewPregnancyCaution: recommendedTreatmentClass = .spironolactone
+        }
+    }
 
     /// "Delete "Minoxidil"?" — the treatment name, quoted, falling back to its class title for
     /// treatments the user never named.
@@ -374,11 +357,6 @@ struct CareView: View {
             : "This also deletes \(parts.joined(separator: " and ")) — it can't be undone."
         return consequence + " Consider \"Mark inactive instead\" to keep the history."
     }
-
-    /// Every reminder except the evening check-in is built from a record this page gates behind
-    /// `.treatments` — routine slots, refills, milestones, procedures, the monthly progress
-    /// check-in. One question, asked once, for all of them.
-    private var canScheduleRecordReminders: Bool { entitlements.canAccess(.treatments) }
 
     private var activeTreatments: [Treatment] { treatments.filter(\.isActive) }
     private var treatmentWeeks: [(name: String, weeks: Int)] {
@@ -588,6 +566,34 @@ struct CareView: View {
         return text
     }
 
+    /// A single hairline-ruled footnote row — decongested from an icon-tile card with its own
+    /// subtitle. "Education, not a prescription" now lives inside the sheet this opens (see
+    /// `TreatmentRecommender.disclaimer` in `RecommenderView`) instead of being said twice.
+    /// Round-9: the leading stethoscope glyph is gone — the last purely decorative icon among
+    /// this tail's three footnote rows — so this row reads exactly like `remindersCard` below it:
+    /// text in ink, chevron in the margin, hairline above, nothing else.
+    private var guidanceCard: some View {
+        Button { showRecommender = true } label: {
+            VStack(spacing: 0) {
+                Divider().overlay(Clinical.hairline)
+                HStack(spacing: 10) {
+                    Text("What the evidence supports for you")
+                        .font(Clinical.body(14, weight: .medium))
+                        .foregroundStyle(Clinical.ink)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(Clinical.body(11, weight: .semibold))
+                        .foregroundStyle(Clinical.tertiary)
+                }
+                .padding(.vertical, 13)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.clinicalPressable)
+        .accessibilityLabel("What the evidence supports for you")
+        .accessibilityHint("Opens ranked treatment options for your pattern — education, not a prescription")
+    }
+
     /// One calm, non-blocking nudge when a severity-3 side effect was logged in the last 14 days.
     /// A prompt to have a conversation — never advice to stop or change anything.
     private var severeSideEffectBanner: some View {
@@ -698,39 +704,27 @@ struct CareView: View {
     private var remindersDetail: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                if canScheduleRecordReminders {
-                    Toggle(isOn: $remindersOn) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Routine reminders").font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
-                            Text("Nudge me at my routine times.")
-                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                        }
-                    }
-                    .tint(Clinical.accent)
-                    .onChange(of: remindersOn) { _, on in
-                        Task {
-                            if on {
-                                let granted = await notifications.enable(treatments: notifTreatments, refills: notifRefills)
-                                if !granted { remindersOn = false }
-                            } else {
-                                notifications.disable()
-                            }
-                        }
-                    }
-                    if remindersOn && notifTreatments.isEmpty {
-                        Text("Add a daily treatment with times to get routine reminders.")
-                            .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
-                    }
-                } else {
-                    // No dead toggle: routine, refill and milestone reminders name a treatment,
-                    // so on this tier they are already stopped rather than merely switchable.
-                    // Said plainly, once, instead of leaving a control that can only disappoint.
+                Toggle(isOn: $remindersOn) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Routine reminders").font(Clinical.body(15, weight: .medium)).foregroundStyle(Clinical.ink)
-                        Text("These name your treatments, so they're stopped while your plan is locked. Nothing on your Lock Screen mentions them.")
+                        Text("Nudge me at my routine times.")
                             .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+                .tint(Clinical.accent)
+                .onChange(of: remindersOn) { _, on in
+                    Task {
+                        if on {
+                            let granted = await notifications.enable(treatments: notifTreatments, refills: notifRefills)
+                            if !granted { remindersOn = false }
+                        } else {
+                            notifications.disable()
+                        }
+                    }
+                }
+                if remindersOn && notifTreatments.isEmpty {
+                    Text("Add a daily treatment with times to get routine reminders.")
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
             }
             .padding(.top, 4)
@@ -811,7 +805,7 @@ struct CareView: View {
 
     /// Round-5: demoted from a boxed `ClinicalCard` with its own icon tile — the page's last
     /// surviving box — to a plain hairline-ruled footnote row in the same family as
-    /// `remindersCard`. Round-7: shortened from a three-line paragraph to the one
+    /// `guidanceCard`/`remindersCard`. Round-7: shortened from a three-line paragraph to the one
     /// sentence that actually matters — the tail was stacking four typographic families across
     /// five rows, and this closing line was the longest of them. Round-9: promoted to the shared
     /// `Colophon` component — the app's one closing-sentence voice — so this line and Labs'
@@ -920,11 +914,7 @@ struct CareView: View {
     /// hairline-ruled ledger the rest of the page reads as — an eyebrow heading row that opens
     /// `ProceduresView`, then each upcoming appointment as a dated entry row. Same data, same
     /// destination, no card edge.
-    ///
-    /// The user's own booked/completed record, so it's Pro — split from the free, evidence-graded
-    /// in-clinic catalogue, which now lives in `ShopView` (Task 9) and has to stay reachable on
-    /// every tier.
-    private var proceduresLedger: some View {
+    private var proceduresSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Divider().overlay(Clinical.hairline)
             ledgerSectionHeader("Procedures") { showProcedures = true }
@@ -947,37 +937,25 @@ struct CareView: View {
                         .padding(.bottom, 10)
                 }
             }
-        }
-    }
 
-    /// The blood work that matters for hair — ferritin, thyroid, vitamin D and the rest. Labs no
-    /// longer has its own tab (Task 9: merged into Plan — it's Pro either way, and it's the same
-    /// kind of clinical record as `proceduresLedger` above). `LabsView` still carries its own
-    /// `.proGated(.labs)`; this row is just the entry point into it.
-    private var labsLedgerRow: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Divider().overlay(Clinical.hairline)
-            ledgerSectionHeader("Labs") { showLabs = true }
-            if let latest = labs.max(by: { $0.collectedAt < $1.collectedAt }) {
-                LedgerEntryRow(
-                    date: latest.collectedAt.formatted(.dateTime.month(.abbreviated).day()),
-                    title: latest.test.title,
-                    caption: latest.flag == .normal ? nil : latest.flag.title
-                )
-                .padding(.bottom, 10)
-            } else {
-                Text("Ferritin, thyroid, vitamin D — the blood work that actually matters for hair.")
-                    .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 13)
-            }
+            // The catalogue sits directly under this section's own log, so "what have I booked?"
+            // and "what exists, and is it worth asking about?" are one tap apart but never mixed
+            // into one list. A card rather than a bare `ledgerSectionHeader`, because unlike the
+            // headings around it this is a standalone destination, not a heading over rows.
+            BrandNavRow(
+                symbol: "cross.case",
+                title: "Explore in-clinic options",
+                line: "What clinics offer, evidence-graded. Discuss with your clinician."
+            ) { showInClinicOptions = true }
+            .padding(.bottom, 13)
+
             Divider().overlay(Clinical.hairline)
         }
     }
 
     // MARK: Life events (dated TE triggers)
 
-    /// A ledger section in the same family as `proceduresLedger`: the most recent recorded
+    /// A ledger section in the same family as `proceduresSection`: the most recent recorded
     /// event (if any) as a dated row, an eyebrow heading that opens the full `LifeEventsSheet`
     /// list — view, edit, or delete any dated event, not just add another one. Kept quiet and
     /// optional — this is a record, never a prompt suggesting something is wrong.
@@ -1043,7 +1021,7 @@ struct CareView: View {
 
     /// The dermatologist's between-visit questions (new regrowth, density/shedding/hairline
     /// trend, overall, scalp red flag), captured monthly. Round-6: dissolved into the same
-    /// ledger section language as `proceduresLedger`/`lifeEventSection` — the heading row itself
+    /// ledger section language as `proceduresSection`/`lifeEventSection` — the heading row itself
     /// opens the new check-in sheet, the "Due" chip rides beside it, and the last-check-in date
     /// plus the explainer sentence continue underneath as plain lines instead of a boxed form.
     private var progressCheckInSection: some View {

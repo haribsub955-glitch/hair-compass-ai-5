@@ -34,33 +34,23 @@ struct ScenePhaseDecision: Equatable {
 }
 
 enum AppTab: String, CaseIterable, Identifiable {
-    // Labs no longer has its own tab — it's Pro either way, and it's the same kind of clinical
-    // record as Procedures, so it's reached from a row inside Plan instead (see `CareView`).
-    // Guide takes the freed slot. The case is still `shop` — it is where the affiliate links
-    // live and the rawValue anchors HC_TAB scripts and old notes — but the tab presents as
-    // GUIDANCE, not a storefront: the owner's ruling (2026-08-21) is that this surface exists to
-    // help someone decide what's worth buying and which procedure is worth considering, and a
-    // shopping-bag label would promise a checkout that doesn't exist. Deliberately kept outside
-    // the Pro wall either way.
-    case today, shop, trends, care, photos
+    case today, trends, care, labs, photos
     var id: String { rawValue }
     var title: String {
         switch self {
         case .today: return "Today"
-        case .shop: return "Guide"
         case .trends: return "Trends"
         case .care: return "Plan"
+        case .labs: return "Labs"
         case .photos: return "Photos"
         }
     }
     var symbol: String {
         switch self {
         case .today: return "checkmark.circle"
-        // A wayfinding mark, not a bag — the tab advises, it doesn't sell. (Pairs with the
-        // compass identity better too.)
-        case .shop: return "signpost.right"
         case .trends: return "chart.xyaxis.line"
         case .care: return "checklist"
+        case .labs: return "testtube.2"
         case .photos: return "camera"
         }
     }
@@ -90,13 +80,8 @@ struct RootView: View {
     @StateObject private var ritualCoordinator = LaunchRitualCoordinator()
     @State private var ritualKind: RitualKind?
     @State private var purchases = PurchaseService()
+    @State private var accessWindow = AccessWindow()
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
-    // `0` means "never written" — `Entitlements.firstLaunchStamp` treats that as "the taster
-    // starts now", not as 1970, so an existing installation never wakes up mid-expired.
-    @AppStorage("firstLaunchAt") private var firstLaunchAt: TimeInterval = 0
-    /// The last tier StoreKit actually reported, so an unresolved answer on the next cold launch
-    /// never downgrades a paying subscriber — see `Entitlements.effectiveHasPro`.
-    @AppStorage("lastKnownHasPro") private var lastKnownHasPro = false
     @State private var showTutorial = false
     @State private var deepLinks = DeepLinkRouter()
 
@@ -110,36 +95,6 @@ struct RootView: View {
     @AppStorage("eveningCheckInMinutes") private var eveningCheckInMinutes = 20 * 60 + 30
 
     private var profile: Profile? { profiles.first }
-    /// The one tier resolution for the whole app — every gated surface reads this instead of
-    /// re-deriving `purchases.hasPro` and the taster window itself.
-    private var entitlements: Entitlements {
-        #if DEBUG
-        // `HC_TIER free|taster|pro` — the only way anyone (QA, App Review, an implementer) can
-        // see the free tier on a device, since a fresh install stamps `firstLaunchAt` below and
-        // is therefore a taster for its first three days.
-        if let forced = Entitlements.forcedTier() { return Entitlements(tier: forced) }
-        #endif
-        return Entitlements(
-            tier: Entitlements.resolve(
-                hasPro: Entitlements.effectiveHasPro(
-                    resolved: purchases.isEntitlementResolved,
-                    current: purchases.hasPro,
-                    lastKnown: lastKnownHasPro
-                ),
-                firstLaunch: Entitlements.firstLaunchStamp(stored: firstLaunchAt)
-            )
-        )
-    }
-    /// Whether the tier above is a real answer rather than "StoreKit hasn't replied yet". Nothing
-    /// that PERSISTS a consequence of the tier (the App Group snapshot, cancelling reminders) may
-    /// run before this is true — an unresolved launch that gets killed would otherwise leave a
-    /// downgraded widget or a cancelled schedule behind it.
-    private var entitlementResolved: Bool {
-        #if DEBUG
-        if Entitlements.forcedTier() != nil { return true }
-        #endif
-        return purchases.isEntitlementResolved
-    }
     private var launchPresentation: LaunchPresentationState {
         LaunchPresentationState.reduce(.init(
             // Persistence recovery is selected by HairCompassApp before RootView exists.
@@ -157,13 +112,7 @@ struct RootView: View {
         let latestEntry = entries.first.map { "\($0.shedRaw)-\($0.flaking)-\($0.erythema)-\($0.itch)" } ?? "none"
         let activeTreatments = treatments.filter(\.isActive).count
         let photoWeek = photos.first.map { "\($0.createdAt.timeIntervalSince1970)" } ?? "nophoto"
-        // The tier leads the fingerprint so the snapshot is rewritten the moment someone
-        // subscribes or their taster expires — without it, the widget could keep showing a
-        // stale, over-privileged (or under-privileged) snapshot until some unrelated field
-        // happened to change. Resolution leads it in turn: the write below is skipped while the
-        // entitlement is unresolved, and a genuinely free user's tier string doesn't change when
-        // StoreKit finally answers, so without this the skipped write would never be retried.
-        return "\(entitlementResolved)-\(entitlements.tier)-\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)-\(photoWeek)"
+        return "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)-\(photoWeek)"
     }
 
     // MARK: Evening check-in reminder
@@ -205,13 +154,36 @@ struct RootView: View {
 
     @ViewBuilder private var tabContent: some View {
         switch tab {
-        case .today: TodayView(profile: profile,
-                               onOpenBaseline: { showProfileEdit = true },
-                               onOpenPlan: { tab = .care })
-        case .shop: ShopView()
-        case .trends: TrendsView()
+        // Since 1.1 every tab except Plan is part of Pro, unlocked by the 3-day first-install
+        // window or a subscription. Plan (medication/treatment logging) stays free forever: a
+        // dose schedule is a health-safety surface, and it must never sit behind a paywall.
+        case .today:
+            ProGate(feature: "Daily Check-ins",
+                    symbol: "checkmark.circle",
+                    description: "Log shedding, scalp, and treatments in seconds — part of Hair Compass Pro.") {
+                TodayView(profile: profile,
+                          onOpenBaseline: { showProfileEdit = true },
+                          onOpenPlan: { tab = .care })
+            }
+        case .trends:
+            ProGate(feature: "Trends & Evidence",
+                    symbol: "chart.xyaxis.line",
+                    description: "Deterministic charts of your record over time — part of Hair Compass Pro.") {
+                TrendsView()
+            }
         case .care: CareView()
-        case .photos: PhotosView()
+        case .labs:
+            ProGate(feature: "Lab Results",
+                    symbol: "testtube.2",
+                    description: "Track ferritin, vitamin D, thyroid and more — part of Hair Compass Pro.") {
+                LabsView()
+            }
+        case .photos:
+            ProGate(feature: "Progress Photos",
+                    symbol: "camera",
+                    description: "Standardized angles for honest comparisons — part of Hair Compass Pro.") {
+                PhotosView()
+            }
         }
     }
 
@@ -240,9 +212,9 @@ struct RootView: View {
         }
         // Reserve real layout space for navigation. The previous overlay obscured the final
         // card on every tab and made users scroll content underneath an active control.
-        // The scrim backs the WHOLE chrome block here, not just the bar: when it was the bar's
-        // own background, the Wren row above it had nothing behind her and mid-scroll content
-        // collided with the tab labels at full opacity on every tab (see `TabBarScrim`).
+        // Round-13: the canvas fade that used to live here (behind the tab bar's now-retired
+        // ivory capsule) moved onto `FloatingTabBar` itself — the bar owns its own scrim so the
+        // frame speaks the same ink grammar wherever it's hosted, not just in RootView.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 8) {
                 // Wren rides directly above the bar, inside the same inset, so she reserves real
@@ -251,7 +223,6 @@ struct RootView: View {
                 WrenChatButton(tab: tab, profile: profile)
                 FloatingTabBar(selection: $tab)
             }
-            .background { TabBarScrim().padding(.top, -28) }
             // Charts can establish their own compositing layers. Flatten the complete bar
             // above them so no tab item is painted underneath a scrolling chart card.
             .compositingGroup()
@@ -267,11 +238,8 @@ struct RootView: View {
         .environment(notifications)
         .environment(affiliates)
         .environment(purchases)
+        .environment(accessWindow)
         .environment(deepLinks)
-        .environment(\.entitlements, entitlements)
-        // Written once, on first appearance only — never overwritten, or a reinstall-free
-        // relaunch would keep resetting an existing installation's taster clock.
-        .onAppear { if firstLaunchAt == 0 { firstLaunchAt = Date.now.timeIntervalSince1970 } }
         .task {
             // A force-quit can bypass RitualView.onDisappear. Clear any ActivityKit survivors
             // before launch decides whether to present a fresh ritual.
@@ -344,32 +312,7 @@ struct RootView: View {
             }
         }
         .task(id: widgetFingerprint) {
-            // Never write a snapshot off an unresolved entitlement: `hasPro` is false for the
-            // first moments of every cold launch, and this write PERSISTS into the App Group —
-            // a subscriber whose app is killed before StoreKit answers would be left with a
-            // downgraded Home Screen until some later launch happened to rewrite it.
-            guard entitlementResolved else { return }
-            // The App Group snapshot is a second read path into the same data — it must respect
-            // the same wall the app does, so the resolved tier goes in alongside the raw queries.
-            WidgetBridge.write(WidgetSnapshotBuilder.build(
-                entries: entries, treatments: treatments, doses: doses, photos: photos,
-                entitlements: entitlements
-            ))
-        }
-        // Remember the answer, so the NEXT cold launch has something better than `false` to
-        // stand on while StoreKit is still thinking.
-        .task(id: "\(purchases.isEntitlementResolved)-\(purchases.hasPro)") {
-            guard purchases.isEntitlementResolved else { return }
-            lastKnownHasPro = purchases.hasPro
-        }
-        // A lapsed subscriber's treatment reminders repeat daily, forever ("3 steps: Minoxidil ·
-        // Finasteride · Ketoconazole" on the Lock Screen), and every surface that could re-plan
-        // them lives on the Plan tab behind the wall. RootView is always alive, so this is where
-        // they stop — gated on `entitlementResolved` so a subscriber's own reminders are never
-        // cancelled by a launch that simply hadn't heard back from StoreKit yet.
-        .task(id: "\(entitlementResolved)-\(entitlements.tier)") {
-            guard entitlementResolved, !entitlements.canAccess(.treatments) else { return }
-            await notifications.stopRecordReminders()
+            WidgetBridge.write(WidgetSnapshotBuilder.build(entries: entries, treatments: treatments, doses: doses, photos: photos))
         }
         // Keeps the evening check-in's 3-day rolling horizon alive regardless of which tab is on
         // screen — `CareView` (the Plan tab) only exists while it's the selected tab, so without
@@ -434,10 +377,7 @@ struct RootView: View {
                 })
                 .environment(healthKit)
                 .environment(purchases)
-                // `\.entitlements` too, for the same inheritance reason — its `.free` default
-                // means a missing injection doesn't crash, it silently hard-locks a Pro
-                // subscriber the moment any `.proGated(…)` surface appears inside this cover.
-                .environment(\.entitlements, entitlements)
+                .environment(accessWindow)
             }
         }
         // The pure launch reducer makes these cover predicates mutually exclusive. Effect
@@ -461,9 +401,7 @@ struct RootView: View {
                 BaselineFlow(profile: profile)
                     .environment(healthKit)
                     .environment(purchases)
-                    // Same as the onboarding cover: without this, `.proGated(…)` content
-                    // presented from Baseline reads the environment's `.free` default.
-                    .environment(\.entitlements, entitlements)
+                    .environment(accessWindow)
             }
         }
         .onChange(of: scenePhase) { _, phase in

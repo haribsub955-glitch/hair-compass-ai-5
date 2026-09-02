@@ -20,21 +20,15 @@ struct TutorialOverlay: View {
         let line: String
     }
 
-    // Order matches the tab bar's own left-to-right order (`AppTab.allCases`), so advancing the
-    // tour always moves the same direction the live tab pill does underneath.
     private static let pages: [Page] = [
         .init(tab: .today, title: "Today",
               line: "Log your day in seconds — shedding, scalp, and treatments live here."),
-        // Task 9: Labs' old page here is gone — Labs merged into Plan rather than keeping its own
-        // tab. Guide takes the freed slot: the decide-what's-worth-it surface (recommendations,
-        // evidence-graded products, the in-clinic catalogue), deliberately free on every tier, so
-        // it's worth a stop on the tour.
-        .init(tab: .shop, title: "Guide",
-              line: "What's worth buying and which procedures are worth considering — graded by evidence, free on every tier."),
         .init(tab: .trends, title: "Trends",
               line: "Every log builds these charts. Apple Health fills in sleep and recovery automatically."),
         .init(tab: .care, title: "Plan",
-              line: "Your treatments and routines, with reminders, refill tracking, and lab results."),
+              line: "Your treatments and routines, with reminders and refill tracking."),
+        .init(tab: .labs, title: "Labs",
+              line: "The blood work that matters for hair — ferritin, thyroid, vitamin D."),
         .init(tab: .photos, title: "Photos",
               line: "Standardized progress photos — your most objective signal."),
     ]

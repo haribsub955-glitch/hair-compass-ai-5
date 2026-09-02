@@ -12,7 +12,11 @@ import UIKit
 /// neither engine can run.
 struct DeepAnalysisSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    /// Bumped on foreground: `service.availability` is a static system read SwiftUI does not
+    /// track, so the unavailability card would otherwise survive the person enabling Apple
+    /// Intelligence in Settings and returning.
+    @State private var availabilityRefresh = 0
     @State private var service = HairAnalysisService()
     /// Bumped when the consent card records a choice — `CloudAIConsent` lives in UserDefaults,
     /// which SwiftUI cannot observe, so this is what re-evaluates `service.engine`.
@@ -36,13 +40,32 @@ struct DeepAnalysisSheet: View {
 
     var body: some View {
         NavigationStack {
-            ProGate(feature: .deepAnalysis) {
+            ProGate(
+                feature: "AI record summary",
+                symbol: "sparkles.rectangle.stack",
+                description: "A one-tap written read of your full tracking record — on-device and private, record-keeping, not diagnosis.",
+                requiresOnDeviceAI: true
+            ) {
                 analysisContent
             }
             .clinicalScreen()
             .navigationTitle("Record summary")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { availabilityRefresh += 1 }
+        }
+        // Watch availability every 2 s in both directions while the sheet is up: the
+        // unavailability card clears the moment the model becomes usable, and reappears if it
+        // stops being usable mid-session. Bumps only on change.
+        .task {
+            var last = service.availability
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                let now = service.availability
+                if now != last { last = now; availabilityRefresh += 1 }
+            }
         }
         .sheet(isPresented: $showChat) {
             HairChatSheet(
@@ -58,6 +81,12 @@ struct DeepAnalysisSheet: View {
     private var analysisContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
+                // Read the refresh token unconditionally: the unavailability card below only
+                // renders while unavailable, so a sheet that STARTS available would otherwise
+                // register no dependency and an available → unavailable flip would never
+                // re-evaluate this body — leaving Analyze enabled against a dead model
+                // (codex review, 2026-09-02).
+                let _ = availabilityRefresh
                 // A masthead rather than a framed picture: the plate bleeds to the sheet's edges
                 // and dissolves into the canvas instead of sitting in a bordered, shadowed
                 // rectangle. `-20` cancels the `.padding(20)` on this stack; the sheet clips the
@@ -83,20 +112,17 @@ struct DeepAnalysisSheet: View {
                     CloudAIConsentCard { consentVersion += 1 }
                 case .unavailable(let message):
                     let status = service.availability
+                    // Permanent ineligibility reads as critical, matching ProAvailabilityNotice;
+                    // the fixable states keep the soft sparkles-warning.
+                    let isPermanent = status == .deviceNotEligible
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "sparkles").font(Clinical.caption(14)).foregroundStyle(Clinical.warning)
+                                Image(systemName: isPermanent ? "exclamationmark.triangle" : "sparkles")
+                                    .font(Clinical.caption(14))
+                                    .foregroundStyle(isPermanent ? Clinical.critical : Clinical.warning)
                                 Text(message)
                                     .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
-                            }
-                            if status.showsSettingsButton {
-                                Button("Open Settings") {
-                                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                                    openURL(url)
-                                }
-                                .buttonStyle(ClinicalButtonStyle(filled: false))
-                                .accessibilityIdentifier("deepAnalysisOpenSettings")
                             }
                         }
                     }
@@ -136,13 +162,7 @@ struct DeepAnalysisSheet: View {
                 } label: {
                     if service.isRunning {
                         HStack(spacing: 8) {
-                            // A compass needle seeking its bearing — the app's own metaphor for
-                            // "working out what the record says" — in place of the stock UIKit
-                            // spinner, which was the only off-palette element on this sheet.
-                            // Tinted to the button's text color; the JSON's authored copper
-                            // would vanish against the filled copper button.
-                            ClinicalLottie(name: "compass-analyzing", tint: Clinical.surface)
-                                .frame(width: 20, height: 20)
+                            ProgressView().tint(Clinical.surface)
                             Text("Analyzing…")
                         }
                     } else {

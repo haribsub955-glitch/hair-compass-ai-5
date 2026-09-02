@@ -25,32 +25,84 @@ struct HairChatSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    /// Bumped on foreground: `service.availability` is a static system read SwiftUI does not
+    /// track, so the unavailable notice would otherwise survive the person enabling Apple
+    /// Intelligence in Settings and returning.
+    @State private var availabilityRefresh = 0
     @State private var service = HairChatService()
     @State private var draft = ""
+    #if DEBUG
+    @Environment(\.modelContext) private var modelContext
+    /// One conversation, one id, for the life of this sheet — what scopes the agent's
+    /// session-level memories so an aside here can't surface in an unrelated chat later.
+    @State private var agentSessionID = UUID().uuidString
+    #endif
     /// Bumped when the consent card records a choice — `CloudAIConsent` lives in UserDefaults,
     /// which SwiftUI cannot observe, so this is what re-evaluates `service.engine`.
     @State private var consentVersion = 0
+
+    /// What `gatedContent` renders for. In DEBUG with `HC_AGENT`, the agent server answers and
+    /// neither engine's availability applies — the sheet must reach the input bar or the agent
+    /// is never called (mirrors `HairChatService.isAvailable`).
+    private var renderedEngine: AIEngine {
+        #if DEBUG
+        if AgentBridge.isEnabled { return .onDevice }
+        #endif
+        return service.engine
+    }
     @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            ProGate(feature: .askWren) {
+            ProGate(
+                feature: "AI hair chat",
+                symbol: "bubble.left.and.text.bubble.right",
+                description: "Ask anything about your tracked data — grounded in your own numbers, never a diagnosis.",
+                requiresOnDeviceAI: true
+            ) {
                 gatedContent
             }
         }
         .clinicalScreen()
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { availabilityRefresh += 1 }
+        }
+        // Watch availability every 2 s in both directions while the sheet is up: the unavailable
+        // notice clears the moment the model becomes usable, and reappears if it stops being
+        // usable mid-session. Bumps only on change.
+        .task {
+            var last = service.availability
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                let now = service.availability
+                if now != last { last = now; availabilityRefresh += 1 }
+            }
+        }
+        // Dismissing mid-reply cancels the in-flight turn — and the billed cloud request under it.
         .onDisappear { service.cancel() }
+        #if DEBUG
+        // `HC_CHAT_ASK <question>` submits one question on open, so a chat turn — the agent's
+        // whole tool-calling round trip included — can be exercised from `simctl launch` without
+        // a hand on the keyboard. Same argument shape as `HC_TAB <tab>`.
+        .task {
+            let args = ProcessInfo.processInfo.arguments
+            guard let i = args.firstIndex(of: "HC_CHAT_ASK"), i + 1 < args.count else { return }
+            submit(args[i + 1])
+        }
+        #endif
     }
 
     @ViewBuilder
     private var gatedContent: some View {
-        // Belt-and-braces: the re-render when consent is recorded is driven by the
-        // `consentVersion` @State bump in `onDecided` below, not by reading it here — future
-        // refactors must keep that @State mutation.
+        // Read both refresh tokens BEFORE branching: with the available branch rendered, nothing
+        // else here reads them, so an available → unavailable flip (or a consent choice) would
+        // bump a token no rendered view depends on and this body would never re-evaluate
+        // (codex review, 2026-09-02).
+        let _ = availabilityRefresh
         let _ = consentVersion
-        switch service.engine {
+        switch renderedEngine {
         case .cloud, .onDevice:
             conversation
             inputBar
@@ -105,7 +157,11 @@ struct HairChatSheet: View {
                         emptyState
                     }
                     ForEach(service.messages) { bubble($0) }
-                    if service.isRunning {
+                    if let streaming = service.streamingText {
+                        streamingBubble(streaming)
+                    } else if let activity = service.activityNote {
+                        activityRow(activity)
+                    } else if service.isRunning {
                         thinkingRow.id("thinking")
                     }
                     if let error = service.errorMessage {
@@ -121,6 +177,8 @@ struct HairChatSheet: View {
                     value: service.messages.count
                 )
                 .animation(.easeOut(duration: 0.2), value: service.isRunning)
+                .animation(.easeOut(duration: 0.2), value: service.streamingText != nil)
+                .animation(.easeOut(duration: 0.2), value: service.activityNote)
             }
             .onChange(of: service.messages.count) {
                 guard let last = service.messages.last else { return }
@@ -130,35 +188,175 @@ struct HairChatSheet: View {
                 guard service.isRunning else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("thinking", anchor: .bottom) }
             }
+            .onChange(of: service.streamingText) {
+                guard service.streamingText != nil else { return }
+                proxy.scrollTo("streaming", anchor: .bottom)
+            }
         }
     }
 
+    /// Two speakers, two shapes — and the asymmetry is the point.
+    ///
+    /// A question is an utterance: discrete, yours, so it keeps its copper pill. An answer is the
+    /// app talking about your own record, so it is set as prose on the canvas with no card around
+    /// it, the way every other considered surface in this app reads (`CareView`'s ledger rows,
+    /// the retired tab-bar capsule). Boxing Wren's replies made the chat look like a widget
+    /// bolted onto the app instead of part of it.
     private func bubble(_ message: ChatMessage) -> some View {
-        let isUser = message.role == .user
-        return HStack(spacing: 0) {
-            if isUser { Spacer(minLength: 44) }
+        message.role == .user ? AnyView(userBubble(message)) : AnyView(wrenReply(message))
+    }
+
+    private func userBubble(_ message: ChatMessage) -> some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 44)
             Text(message.text)
                 .font(Clinical.caption(14))
-                .foregroundStyle(isUser ? Clinical.surface : Clinical.ink)
+                .foregroundStyle(Clinical.surface)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(isUser ? Clinical.accent : Clinical.surface)
+                .background(Clinical.accent)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(isUser ? Color.clear : Clinical.hairline, lineWidth: 1)
-                )
-            if !isUser { Spacer(minLength: 44) }
         }
-        .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
-        .transition(
-            reduceMotion
-                ? .opacity
-                : .asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity)
-        )
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.top, 6)
+        .transition(entrance)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(isUser ? "You" : Companion.name): \(message.text)")
+        .accessibilityLabel("You: \(message.text)")
         .id(message.id)
+    }
+
+    private func wrenReply(_ message: ChatMessage) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // A hairline and the name instead of a bubble outline: it marks who is speaking
+            // without drawing a container, and matches the eyebrow rhythm used app-wide.
+            HStack(spacing: 7) {
+                CompanionView(moment: .listening, variant: .avatar, size: 20)
+                Text(Companion.name.uppercased())
+                    .font(Clinical.eyebrow(10))
+                    .foregroundStyle(Clinical.tertiary)
+                Rectangle()
+                    .fill(Clinical.hairline)
+                    .frame(height: 1)
+            }
+            Text(Self.formatted(message.text))
+                .font(Clinical.body(15))
+                .foregroundStyle(Clinical.ink)
+                .lineSpacing(4)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if !message.sources.isEmpty {
+                sourceLine(message.sources)
+            }
+        }
+        .padding(.trailing, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+        .transition(entrance)
+        .contextMenu {
+            // Worth having in a health app: an answer is often the thing you want to paste into
+            // a note or hand to a clinician.
+            Button {
+                UIPasteboard.general.string = message.text
+            } label: {
+                Label("Copy answer", systemImage: "doc.on.doc")
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(Companion.name): \(message.text)")
+        .id(message.id)
+    }
+
+    /// What the answer above was actually read from.
+    ///
+    /// The paywall promises answers "grounded in your own numbers, never a diagnosis". This is
+    /// that claim made checkable rather than asserted: the agent chooses which parts of the
+    /// record to open, and naming them lets someone see that an answer about their labs really
+    /// did read their labs — and, just as usefully, that a general answer read only the evidence
+    /// library and nothing personal at all.
+    ///
+    /// Kept deliberately quiet: tertiary, small, below the answer. It is provenance, not a
+    /// headline, and a loud version would compete with the words that matter.
+    private func sourceLine(_ sources: [String]) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "leaf")
+                .font(Clinical.caption(10))
+                .foregroundStyle(Clinical.sage)
+            Text("Read \(ListFormatter.localizedString(byJoining: sources))")
+                .font(Clinical.caption(11))
+                .foregroundStyle(Clinical.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Read \(ListFormatter.localizedString(byJoining: sources))")
+    }
+
+    private var entrance: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity)
+    }
+
+    /// Renders the model's markdown instead of printing it. Without this an answer arrives as
+    /// literal `**Growth rate:**` and reads as broken — the one flaw everybody notices first.
+    /// `inlineOnlyPreservingWhitespace` keeps the line breaks that carry the answer's structure;
+    /// full block parsing would collapse them into a paragraph. Leading list dashes become real
+    /// bullets, since the model writes them and stripping them would lose the grouping.
+    static func formatted(_ text: String) -> AttributedString {
+        let bulleted = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") else { return String(line) }
+                return "•  " + trimmed.dropFirst(2)
+            }
+            .joined(separator: "\n")
+        let parsed = try? AttributedString(
+            markdown: bulleted,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )
+        return parsed ?? AttributedString(text)
+    }
+
+    /// The assistant's reply rendered live as it streams in, replacing the thinking dots the
+    /// moment the first token arrives. Same look as a finished assistant bubble in `bubble(_:)`,
+    /// just re-rendered on every new snapshot instead of once at the end.
+    private func streamingBubble(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                CompanionView(moment: .listening, variant: .avatar, size: 20)
+                Text(Companion.name.uppercased())
+                    .font(Clinical.eyebrow(10))
+                    .foregroundStyle(Clinical.tertiary)
+                Rectangle().fill(Clinical.hairline).frame(height: 1)
+            }
+            Text(Self.formatted(text))
+                .font(Clinical.body(15))
+                .foregroundStyle(Clinical.ink)
+                .lineSpacing(4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.trailing, 16)
+        .padding(.top, 10)
+        .id("streaming")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(Companion.name) is typing: \(text)")
+    }
+
+    /// What Wren is doing, not saying. Kept deliberately quiet and un-bubbled so it never reads
+    /// as an answer: the agent's tool waves can take a while, and a silent screen looks broken.
+    private func activityRow(_ note: String) -> some View {
+        HStack(spacing: 8) {
+            CompanionView(moment: .thinking, variant: .pose, size: 26)
+            Text(note)
+                .font(Clinical.caption(12))
+                .foregroundStyle(Clinical.tertiary)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 8)
+        .transition(.opacity)
+        .id("thinking")
+        .accessibilityLabel(note)
     }
 
     private var thinkingRow: some View {
@@ -167,13 +365,6 @@ struct HairChatSheet: View {
             Text("\(Companion.name) is thinking")
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.tertiary)
-            // The breathing-dots ellipsis: on-device generation takes real seconds and this
-            // row was the app's single most-watched dead moment — static text beside a static
-            // pose. The dots are the sentence's punctuation, not a spinner, so they sit on the
-            // text baseline at text scale. (Under Reduce Motion they hold their resting frame.)
-            ClinicalLottie(name: "wren-thinking")
-                .frame(width: 34, height: 12)
-                .offset(y: 2)
         }
         .transition(.opacity)
         .accessibilityLabel("\(Companion.name) is thinking")
@@ -265,7 +456,12 @@ struct HairChatSheet: View {
         guard !trimmed.isEmpty, !service.isRunning else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         draft = ""
+        #if DEBUG
+        let agentContext = AgentChatContext(modelContext: modelContext, sessionID: agentSessionID)
+        Task { await service.send(trimmed, context: contextJSON, focus: focus, agentContext: agentContext) }
+        #else
         Task { await service.send(trimmed, context: contextJSON, focus: focus) }
+        #endif
     }
 
     // Shown when neither engine can answer right now — cloud declined (or unconfigured) and no
@@ -273,8 +469,7 @@ struct HairChatSheet: View {
     // whose model is still downloading, gets a next step instead of being told their iPhone can't
     // do this. Honest and reassuring either way: everything else in the app still works.
     private func unavailableNotice(_ message: String) -> some View {
-        let status = service.availability
-        return VStack(spacing: 12) {
+        VStack(spacing: 12) {
             Spacer(minLength: 20)
             CompanionView(moment: .resting, variant: .avatar, size: 56)
             Text("AI unavailable")
@@ -285,14 +480,6 @@ struct HairChatSheet: View {
                 .foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            if status.showsSettingsButton {
-                Button("Open Settings") {
-                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                    openURL(url)
-                }
-                .buttonStyle(ClinicalButtonStyle(filled: false))
-                .accessibilityIdentifier("hairChatOpenSettings")
-            }
             Spacer(minLength: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -36,15 +36,6 @@ struct InsightContext: Sendable {
     /// `ClinicianReviewFlags`) — fed in ahead of everything else so both the rule-based
     /// paragraph and the on-device model prioritize them over routine trend commentary.
     var clinicianReviewFlags: [ClinicianReviewFlag]
-    /// Whether this context is allowed to say which WAY anything is moving.
-    ///
-    /// A direction is a statement about history ("scalp severity is mild and improving"), and
-    /// history is Pro (`HistoryAccess`). A free tier's context is built from today's entry alone,
-    /// where `HairAnalytics.direction` returns 0 for want of data — which would render as the
-    /// equally untrue "and steady". So the trend clause is dropped rather than neutralised: the
-    /// sentence states today's value and stops. Defaults to `true`; only `TodayGating`
-    /// .insightContext ever passes `false`.
-    var describesTrend: Bool = true
 
     struct TriggerNote: Sendable { var title: String; var weeks: Int }
     struct TreatmentSummary: Sendable {
@@ -66,8 +57,7 @@ struct InsightContext: Sendable {
         labs: [LabResult],
         profile: Profile?,
         progressCheckIns: [ProgressCheckIn] = [],
-        sideEffects: [SideEffectLog] = [],
-        describesTrend: Bool = true
+        sideEffects: [SideEffectLog] = []
     ) -> InsightContext {
         let sortedEntries = entries.sorted { $0.date < $1.date }
         let shedValues = sortedEntries.map { Double($0.shed.rawValue) }
@@ -150,8 +140,7 @@ struct InsightContext: Sendable {
             recentStop: stop,
             treatments: treatmentSummaries,
             labs: labNotes,
-            clinicianReviewFlags: reviewFlags,
-            describesTrend: describesTrend
+            clinicianReviewFlags: reviewFlags
         )
     }
 }
@@ -180,18 +169,9 @@ enum RuleBasedInsight {
             lines.append("Worth a clinician's review: \(flagText)")
         }
         lines.append("Daily logs recorded: \(c.entryCount); current streak \(c.streak) days.")
-        // The trend clause is withheld, not neutralised, when the context can't see history —
-        // handing the on-device model a "trend steady" it can't support is how an invented
-        // direction gets into a free tier's paragraph (see `InsightContext.describesTrend`).
-        if let shed = c.latestShed {
-            lines.append(c.describesTrend
-                ? "Latest shedding: \(shed); trend \(trend(c.shedDirection, invert: true))."
-                : "Latest shedding today: \(shed). No trend available.")
-        }
+        if let shed = c.latestShed { lines.append("Latest shedding: \(shed); trend \(trend(c.shedDirection, invert: true)).") }
         if c.usesScalpScale, let total = c.latestScalpTotal, let band = c.latestScalpBand {
-            lines.append(c.describesTrend
-                ? "Scalp severity: \(total)/16 (\(band)); trend \(trend(c.scalpDirection, invert: true))."
-                : "Scalp severity today: \(total)/16 (\(band)). No trend available.")
+            lines.append("Scalp severity: \(total)/16 (\(band)); trend \(trend(c.scalpDirection, invert: true)).")
         }
         if let s = c.sleepHours { lines.append("Sleep (auto): \(s.formatted(.number.precision(.fractionLength(1)))) h.") }
         if let h = c.hrvSDNN { lines.append("HRV (auto, stress proxy only): \(Int(h.rounded())) ms.") }
@@ -226,14 +206,12 @@ enum RuleBasedInsight {
 
         if c.entryCount < 3 {
             parts.append("Keep logging for a few more days — trends and a clearer readout appear once there's a short history to compare against.")
-        } else if c.usesScalpScale, let band = c.latestScalpBand {
-            parts.append(c.describesTrend
-                ? "Scalp severity is \(band.lowercased()) and \(trend(c.scalpDirection, invert: true))."
-                : "Scalp severity is \(band.lowercased()) today.")
-        } else if let shed = c.latestShed {
-            parts.append(c.describesTrend
-                ? "Shedding is \(shed.lowercased()) and \(trend(c.shedDirection, invert: true))."
-                : "Shedding is \(shed.lowercased()) today.")
+        } else {
+            if c.usesScalpScale, let band = c.latestScalpBand {
+                parts.append("Scalp severity is \(band.lowercased()) and \(trend(c.scalpDirection, invert: true)).")
+            } else if let shed = c.latestShed {
+                parts.append("Shedding is \(shed.lowercased()) and \(trend(c.shedDirection, invert: true)).")
+            }
         }
 
         if let pending = c.treatments.first(where: { !$0.outcomeReady }) {

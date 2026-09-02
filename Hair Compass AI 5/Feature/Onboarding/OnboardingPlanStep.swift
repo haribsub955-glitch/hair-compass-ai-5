@@ -4,18 +4,23 @@ import SwiftUI
 
 /// Onboarding step 12 — "your plan". The honest Pro offer: a scientifically grounded projection
 /// (the ONLY quantitative number is the published male-AGA combination-therapy average from
-/// `docs/TrackingSpec.md`; everyone else gets qualitative milestones), a checklist of everything
-/// `ProFeature.allCases` gates — all twelve, not just the two that need Apple Intelligence — and
-/// purchase buttons that never show a placeholder price. Until real products load they're replaced
-/// by `StoreUnavailableView` (a spinner, or an honest "can't reach the store" message with Retry).
-/// "Continue free" sits directly under them, same size of voice, and there is no countdown, no
-/// fake discount, no back navigation trap: this screen only moves forward, either through a
-/// purchase or through the free path.
+/// `docs/TrackingSpec.md`; everyone else gets qualitative milestones), an illustrated card per
+/// genuinely-gated feature — there are exactly two, and only what `hasPro` actually gates may be
+/// listed here — and purchase buttons that never show a placeholder price. Until real products load
+/// they're replaced by `StoreUnavailableView` (a spinner, or an honest "can't reach the store"
+/// message with Retry). "Continue free" sits directly under them, same size of voice, and there
+/// is no countdown, no fake discount, no back navigation trap: this screen only moves forward,
+/// either through a purchase or through the free path.
 struct OnboardingPlanStep: View {
     let profile: Profile
     var onContinue: () -> Void
 
     @Environment(PurchaseService.self) private var purchases
+    @Environment(\.scenePhase) private var scenePhase
+    /// Bumped when availability may have changed: `ProAvailability.current` is a static system
+    /// read SwiftUI does not track, so without this the AI notice would keep showing "switched
+    /// off" after the person enables Apple Intelligence in Settings and comes back.
+    @State private var availabilityRefresh = 0
     /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
     /// only the button the user actually tapped shows its spinner.
     @State private var purchasingProductID: String?
@@ -75,6 +80,20 @@ struct OnboardingPlanStep: View {
         .task(id: purchases.monthly?.id) {
             guard let monthly = purchases.monthly else { return }
             monthlyIntroEligible = await purchases.isEligibleForIntro(monthly)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { availabilityRefresh += 1 }
+        }
+        // Watch availability every 2 s in both directions while the paywall is up: the AI
+        // notice clears the moment the model becomes usable, and reappears if it stops being
+        // usable mid-session. Bumps only on change.
+        .task {
+            var last = ProAvailability.current
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                let now = ProAvailability.current
+                if now != last { last = now; availabilityRefresh += 1 }
+            }
         }
     }
 
@@ -287,31 +306,40 @@ struct OnboardingPlanStep: View {
 
     // MARK: What Pro adds
 
-    /// Every `ProFeature`, not just the two AI ones — this was previously hand-limited to Ask
-    /// Wren and Deep analysis, which made the screen advertise exactly what it disclaimed on
-    /// ineligible hardware. Driven by `ProFeature.allCases` so it can never drift from
-    /// `Entitlements`'s policy table again: a thirteenth case shows up here automatically, with
-    /// real copy, because `EntitlementsTests.everyFeatureHasGateCopy` fails the build otherwise.
-    /// The ten that run everywhere read as a plain checkmark list; the two Apple Intelligence
-    /// features get their own marked rows, with `ProAvailabilityNotice` sitting beside them —
-    /// never above the (unconditional) purchase buttons below, which sell all twelve regardless
-    /// of what this iPhone can run.
+    /// Since 1.1 Pro is the whole app except medication/treatment logging: daily check-ins,
+    /// trends, labs, photos, export — plus the two Apple Intelligence features below. Every
+    /// install starts with 3 full days of everything before this screen's promise is tested,
+    /// and the honesty rule is unchanged: nothing may be listed here that `hasPro` (with the
+    /// trial window) does not actually gate — check `RootView.tabContent` before editing.
     private var proAdds: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Eyebrow(text: "What Pro adds")
-
-            FlowLayout(spacing: 8) {
-                ForEach(ProFeature.allCases.filter { !$0.usesAI }, id: \.self) { feature in
-                    ProFeatureChip(feature: feature)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(ProFeature.allCases.filter(\.usesAI), id: \.self) { feature in
-                    ProFeatureChip(feature: feature)
-                }
-                ProAvailabilityNotice(status: availability)
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            Eyebrow(text: "What Pro includes")
+            Text("Daily check-ins, trends & evidence, lab tracking, progress photos, and your "
+                 + "exportable clinician report — everything except medication logging, which "
+                 + "stays free on every iPhone, always. Your first 3 days include all of it, "
+                 + "no purchase needed.")
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            // Each AI card's footnote states that feature's real limit, and the limit depends on
+            // the build: with the cloud model configured (the shipping build) answers come from
+            // the cloud after consent, on any iPhone; without it, on Apple Intelligence only.
+            let cloudAI = CloudAIConfig.current.isConfigured
+            ProFeatureCard(
+                art: CompanionArt.listening,
+                title: "Ask \(Companion.name) anything",
+                line: "Your record, in plain language. \"Is my shedding actually improving?\" — answered from your own entries"
+                    + (cloudAI ? "." : ", on-device."),
+                footnote: cloudAI
+                    ? "Answered by a cloud model, only after you say yes. Your entries are sent without your name or photos."
+                    : "Runs on Apple Intelligence. Nothing leaves your phone."
+            )
+            ProFeatureCard(
+                art: "pro-analysis",
+                title: "Deep record analysis",
+                line: "\(Companion.name) reads months of your entries at once and surfaces what moved together — the connections you'd need a spreadsheet to spot.",
+                footnote: "A reading of your record, never a diagnosis."
+            )
         }
     }
 
@@ -321,13 +349,14 @@ struct OnboardingPlanStep: View {
         VStack(spacing: 10) {
             wrenClose
 
-            // The purchase buttons are UNCONDITIONAL: even on hardware that can never run Ask
-            // Wren or Deep analysis, the subscription still unlocks the other ten Pro features,
-            // so withdrawing the sale here would be the same mistake `ProAvailabilityNotice`
-            // beside the two AI rows above already warned about. Routed through
-            // `ProAvailability.showsPurchaseButtons` so both purchase surfaces ask the one
-            // function that `ProAvailabilityTests` pins to "availability is not an input".
-            if ProAvailability.showsPurchaseButtons(status: availability, hasLoadedProducts: !purchases.products.isEmpty) {
+            // Directly above the price. `proAdds` has just promised two Apple Intelligence
+            // features; if this iPhone can't run them, that has to be said before the buttons,
+            // not discovered after the charge. Reading the refresh token ties the notice to the
+            // availability watch — the computed `availability` alone never invalidates the view.
+            let _ = availabilityRefresh
+            ProAvailabilityNotice(status: availability)
+
+            if !purchases.products.isEmpty {
                 purchaseButtons
             } else {
                 StoreUnavailableView(isLoading: purchases.isLoading) {
@@ -365,7 +394,7 @@ struct OnboardingPlanStep: View {
             .buttonStyle(.plain)
             .disabled(isBusy)
 
-            PaywallLegal(showsRenewalDisclosure: true)
+            PaywallLegal(showsRenewalDisclosure: ProAvailability.sellable(availability))
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
@@ -516,84 +545,61 @@ struct OnboardingPlanStep: View {
     }
 }
 
-/// One row in `proAdds`'s checklist — a checkmark for the ten features every iPhone runs, and a
-/// marked row for the two AI features. With the cloud model configured (the shipping build) the
-/// AI rows carry a quiet "AI" tag and no warning — they run on every iPhone; only a build
-/// without the cloud key falls back to the "Needs Apple Intelligence" disclosure. Deliberately
-/// plain (no card background, no border, no shadow): twelve of these is already a lot of ink on
-/// one screen, and this codebase's screen-art grammar reserves heavier chrome for the one thing
-/// per screen that's meant to be looked at, not read past. `gateDescription` isn't shown on
-/// screen — the row itself is a title-only chip so the list stays scannable — but it still does
-/// its job as the accessibility label, so VoiceOver hears the same one-line explanation
-/// `ProGate` shows visually.
-private struct ProFeatureChip: View {
-    let feature: ProFeature
+/// One genuinely-gated feature, sold with its own gouache emblem rather than a 15pt SF Symbol.
+/// The `footnote` line is load-bearing: each card states its own limit (on-device, not a
+/// diagnosis) so the honesty sits *with* the claim instead of in a disclaimer far below it.
+private struct ProFeatureCard: View {
+    let art: String
+    let title: String
+    let line: String
+    var footnote: String? = nil
 
-    private var isAI: Bool { feature.usesAI }
-    /// Whether this row must disclose a hardware requirement — only in a no-cloud-key build.
-    private var needsAppleIntelligence: Bool { isAI && !CloudAIConfig.current.isConfigured }
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: needsAppleIntelligence ? "exclamationmark.triangle" : "checkmark")
-                .font(Clinical.caption(11))
-                .foregroundStyle(needsAppleIntelligence ? Clinical.warning : Clinical.accent)
-            Text(feature.gateTitle)
-                .font(Clinical.caption(13))
-                .foregroundStyle(Clinical.ink)
-            if isAI {
-                Spacer(minLength: 8)
-                Text(needsAppleIntelligence ? "Needs Apple Intelligence" : "AI")
-                    .font(Clinical.caption(11))
-                    .foregroundStyle(Clinical.tertiary)
+        // Art beside copy normally; stacked once the text is large enough that an 84pt emblem
+        // would squeeze the words into a sliver.
+        let stacked = typeSize.isAccessibilitySize
+        return VStack(alignment: .leading, spacing: 10) {
+            if stacked { emblem }
+            HStack(alignment: .top, spacing: 14) {
+                if !stacked { emblem }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(Clinical.body(15, weight: .semibold))
+                        .foregroundStyle(Clinical.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(line)
+                        .font(Clinical.caption(13))
+                        .foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let footnote {
+                        Text(footnote)
+                            .font(Clinical.caption(11))
+                            .foregroundStyle(Clinical.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 1)
+                    }
+                }
+                Spacer(minLength: 0)
             }
         }
-        .frame(maxWidth: isAI ? .infinity : nil, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            needsAppleIntelligence
-                ? "\(feature.gateTitle). \(feature.gateDescription). Needs Apple Intelligence."
-                : "\(feature.gateTitle). \(feature.gateDescription). Included with Pro."
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Clinical.surfaceWash, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Clinical.hairline, lineWidth: 1)
         )
-    }
-}
-
-/// A minimal left-to-right wrap, used only by `proAdds`'s ten-item checklist: items pack by
-/// their own width and wrap to a new line, rather than sitting in a fixed column count that
-/// would leave uneven gaps next to short titles like "Photos" or "Labs".
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var origin = CGPoint.zero
-        var rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if origin.x > 0, origin.x + size.width > maxWidth {
-                origin.x = 0
-                origin.y += rowHeight + spacing
-                rowHeight = 0
-            }
-            origin.x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        return CGSize(width: maxWidth.isFinite ? maxWidth : origin.x, height: origin.y + rowHeight)
+        .shadow(color: Clinical.cardShadow, radius: 8, y: 3)
+        .accessibilityElement(children: .combine)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var origin = CGPoint(x: bounds.minX, y: bounds.minY)
-        var rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if origin.x > bounds.minX, origin.x + size.width > bounds.maxX {
-                origin.x = bounds.minX
-                origin.y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(at: origin, proposal: .unspecified)
-            origin.x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
+    private var emblem: some View {
+        Image(art)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 84, height: 84)
+            .accessibilityHidden(true)
     }
 }

@@ -4,10 +4,9 @@ import SwiftUI
 /// disclosure plus **functional** links to the Terms of Use (EULA) and the Privacy Policy. Shared
 /// by the onboarding paywall and the in-app `ProGate` upsell so both stay compliant.
 struct PaywallLegal: View {
-    /// The subscription always sells now, so both callers pass `true`. The parameter stays
-    /// rather than becoming a constant: a screen that genuinely offers nothing purchasable would
-    /// still need to say so without a renewal disclosure, and this is where that switch lives.
-    /// The Terms and Privacy links stay either way — they're useful, and restore is still on screen.
+    /// False when the purchase buttons have been withdrawn (see `ProAvailability.sellable`), where
+    /// a renewal disclosure would describe a subscription this screen isn't offering. The Terms and
+    /// Privacy links stay either way — they're useful, and restore is still on screen.
     var showsRenewalDisclosure: Bool = true
 
     var body: some View {

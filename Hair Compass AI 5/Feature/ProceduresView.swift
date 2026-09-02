@@ -49,7 +49,6 @@ struct ProceduresView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 24)
             }
-            .proGated(.procedures)
             .clinicalScreen()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

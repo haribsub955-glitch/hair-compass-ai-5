@@ -19,6 +19,7 @@ struct ExportSheet: View {
     @Query(sort: \SideEffectLog.date, order: .reverse) private var sideEffects: [SideEffectLog]
     @Query(sort: \ProcedureAppointment.date, order: .reverse) private var procedures: [ProcedureAppointment]
     @Query(sort: \PhotoRecord.createdAt) private var photos: [PhotoRecord]
+    @Query(sort: \AgentMemory.createdAt) private var agentMemories: [AgentMemory]
 
     @State private var jsonURL: URL?
     @State private var pdfURL: URL?
@@ -167,7 +168,7 @@ struct ExportSheet: View {
                 doses: doses, sideEffects: sideEffects,
                 labs: labs, photos: photos, snapshots: snapshots, triggers: triggers,
                 procedures: procedures, progressCheckIns: progressCheckIns,
-                missedDoses: missedDoses
+                missedDoses: missedDoses, agentMemories: agentMemories
             )
         } catch {
             backupErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

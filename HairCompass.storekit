@@ -85,7 +85,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.harib.haircompass.pro.monthly",
+          "productID" : "com.harib.haircompass.pro.monthly2",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Pro Monthly",
           "subscriptionGroupID" : "21442176",
@@ -106,7 +106,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.harib.haircompass.pro.yearly",
+          "productID" : "com.harib.haircompass.pro.yearly2",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Pro Yearly",
           "subscriptionGroupID" : "21442176",

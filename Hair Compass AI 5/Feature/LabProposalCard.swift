@@ -69,15 +69,10 @@ struct LabProposalCard: View {
                 Button {
                     openURL(url)
                 } label: {
-                    // Named from the link's own host — see `AffiliateStore.merchantLabel`.
-                    Label(AffiliateStore.merchantLabel(for: url), systemImage: "arrow.up.right.square")
+                    Label("View on iHerb", systemImage: "arrow.up.right.square")
                         .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.accent)
                 }
                 .buttonStyle(.plain)
-                // This card renders on Labs, not Shop, so `ShopView`'s body-text disclosure is
-                // nowhere on screen — the one outbound link here carries its own line.
-                Text(ShopView.linkDisclosureShort)
-                    .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
             }
         }
     }

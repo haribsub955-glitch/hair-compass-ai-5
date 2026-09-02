@@ -104,20 +104,9 @@ enum WidgetSnapshotBuilder {
         treatments: [Treatment],
         doses: [TreatmentDose],
         photos: [PhotoRecord],
-        // Defaults to the least-restricted tier so every existing call site/test that predates
-        // entitlement awareness keeps building the full snapshot it always did — only a caller
-        // that explicitly passes a free/taster tier gets the suppression below.
-        entitlements: Entitlements = Entitlements(tier: .pro),
         now: Date = .now,
         calendar: Calendar = .current
     ) -> WidgetSnapshot {
-        // The Home Screen is a second read path into the same walled features. `.treatments` and
-        // `.photos` are both Pro-gated in-app (CareView/PhotosView), so a free tier's widget must
-        // not carry treatment names or photo-completion state either — a locked feature's detail
-        // shouldn't be spelled out on a surface with no paywall attached to tap through.
-        let canSeeTreatments = entitlements.canAccess(.treatments)
-        let canSeePhotos = entitlements.canAccess(.photos)
-
         let active = treatments.filter { $0.isActive && !$0.slots.isEmpty }
         var due: [String] = []
         var doneCount = 0, totalCount = 0
@@ -129,35 +118,22 @@ enum WidgetSnapshotBuilder {
                         && $0.slot == slot && calendar.isDate($0.loggedAt, inSameDayAs: now)
                 }
                 if logged { doneCount += 1 }
-                else if canSeeTreatments {
-                    due.append("\(t.name.isEmpty ? t.treatmentClass.title : t.name) · \(slot)")
-                }
+                else { due.append("\(t.name.isEmpty ? t.treatmentClass.title : t.name) · \(slot)") }
             }
         }
 
         let hasLoggedToday = entries.contains { calendar.isDate($0.date, inSameDayAs: now) }
-        let hasPhotoThisWeek = canSeePhotos && photos.contains {
+        let hasPhotoThisWeek = photos.contains {
             calendar.isDate($0.createdAt, equalTo: now, toGranularity: .weekOfYear)
         }
         let compass = CompassScore(
             hasLoggedToday: hasLoggedToday,
             medsDone: doneCount,
-            // Forcing 0 (rather than filtering `due`) is what makes CompassScore treat Care the
-            // same way it treats a plan-less day: `medsTotal > 0 ? ... : nil`, so the ring falls
-            // back to the existing "no plan today" dotted state instead of a new one.
-            medsTotal: canSeeTreatments ? totalCount : 0,
+            medsTotal: totalCount,
             hasPhotoThisWeek: hasPhotoThisWeek
         )
 
-        // Whatever the free tier cannot review in-app (HistoryAccess/LockedHistoryCard) must not
-        // surface here either — only today's own entry, if logged, ever backs shedLabel/scalpLabel
-        // for a free tier. The shielded streak below deliberately keeps reading the FULL, unfiltered
-        // `entries`: the streak COUNT itself stays free even while the day-by-day record behind it
-        // does not (see HistoryAccess.swift's "log forever, see only today"), and TodayView/CareView
-        // compute it the same unfiltered way — filtering it here would make the widget's number
-        // wrong, not just more private.
-        let historyVisible = HistoryAccess.snapshotEntries(entries, entitlements: entitlements, now: now, calendar: calendar)
-        let latest = historyVisible.max { $0.date < $1.date }
+        let latest = entries.max { $0.date < $1.date }
         let shedLabel = latest.map { $0.shed.title } ?? ""
         let scalpLabel = latest.map { "Scalp \($0.scalpBand.title.lowercased())" } ?? ""
 

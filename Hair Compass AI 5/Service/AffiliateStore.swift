@@ -19,12 +19,6 @@ final class AffiliateStore {
     /// Where the owner hosts the remote catalog. Empty string = remote refresh disabled
     /// (bundled links still serve). The endpoint must return the same JSON shape as the
     /// bundled file: `{"version": 1, "updatedAt": "…", "links": {"<productID>": "https://…"}}`.
-    ///
-    /// Region routing — recorded, not decided: Amazon links are storefront-locked, so a UK tap
-    /// on a US-tagged link earns nothing. There is no Associates tag yet and the catalogue below
-    /// is empty, so there is nothing to route. Once a tag exists, decide then whether to route by
-    /// `Locale.current.region` or accept the storefront mismatch knowingly — don't build that
-    /// routing against an empty catalogue now.
     struct RemoteConfig {
         static var catalogURLString = ""
     }
@@ -84,16 +78,6 @@ final class AffiliateStore {
     var configuredCount: Int {
         _ = revision
         return ScienceCatalog.products.filter { hasLink(for: $0.id) }.count
-    }
-
-    /// How many product ids currently resolve to a link, across every source in the resolution
-    /// order. Zero is the honest current answer — there is no Associates tag yet — and this
-    /// exists so the moment a catalogue lands, a test can prove the buy buttons actually appear.
-    var resolvedLinkCount: Int {
-        _ = revision
-        var ids = Set(bundledLinks.keys)
-        ids.formUnion(remoteLinks.keys)
-        return ids.filter { link(for: $0) != nil }.count
     }
 
     // MARK: - Remote refresh
@@ -162,23 +146,6 @@ final class AffiliateStore {
         guard payload.links.keys.allSatisfy(knownIDs.contains),
               payload.links.values.allSatisfy({ validHTTPSURL($0) != nil }) else { return nil }
         return payload.links
-    }
-
-    /// The buy button's label, derived from the resolved link's own host — so the UI can never
-    /// name a merchant the tap doesn't actually go to. The label used to hardcode "View on
-    /// iHerb" while the catalogue work targeted Amazon; the moment those links landed, every
-    /// button would have named the wrong merchant directly beneath a disclosure promising
-    /// honesty. Unknown merchants get the neutral "View product" rather than a guessed name.
-    nonisolated static func merchantLabel(for url: URL) -> String {
-        guard let host = url.host()?.lowercased() else { return "View product" }
-        let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-        if bare == "amazon.com" || bare.hasPrefix("amazon.") || bare.contains(".amazon.") {
-            return "View on Amazon"
-        }
-        if bare == "iherb.com" || bare.hasSuffix(".iherb.com") {
-            return "View on iHerb"
-        }
-        return "View product"
     }
 
     /// Accept only ordinary HTTPS web URLs with a syntactically usable host and no embedded

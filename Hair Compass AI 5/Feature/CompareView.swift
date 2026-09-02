@@ -85,7 +85,6 @@ struct CompareView: View {
             .padding(.top, 8)
             .padding(.bottom, 24)
         }
-        .proGated(.compare)
         .clinicalScreen()
         .sheet(isPresented: $showChat) {
             HairChatSheet(contextJSON: chatContext, focus: focusLine)

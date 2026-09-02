@@ -27,6 +27,15 @@ final class Profile {
     /// (never asked / declined), which raises no caution — schema-safe as a stored String.
     var pregnancyStatusRaw: String = PregnancyStatus.unspecified.rawValue
 
+    /// Optional, asked in onboarding, and it never leaves the device.
+    ///
+    /// Exact age matters here — several evidence tiers and treatment cautions turn on it, and
+    /// `ageBand` ("25-34") is too coarse to gate on. But a birth date is a direct identifier, so
+    /// only the *derived integer* is ever projected to the agent (`AgentProfile.derivedAge`).
+    /// Optional with no default, which is what keeps lightweight migration safe for anyone who
+    /// onboarded before this field existed.
+    var birthDate: Date?
+
     init(
         name: String = "",
         sex: BiologicalSex = .male,
@@ -39,7 +48,8 @@ final class Profile {
         wearsTightStyles: Bool = false,
         usesHeat: Bool = false,
         usesChemicalTreatments: Bool = false,
-        pregnancyStatus: PregnancyStatus = .unspecified
+        pregnancyStatus: PregnancyStatus = .unspecified,
+        birthDate: Date? = nil
     ) {
         self.name = name
         self.sexRaw = sex.rawValue
@@ -53,6 +63,7 @@ final class Profile {
         self.usesHeat = usesHeat
         self.usesChemicalTreatments = usesChemicalTreatments
         self.pregnancyStatusRaw = pregnancyStatus.rawValue
+        self.birthDate = birthDate
     }
 
     /// True if any mechanical/thermal/chemical stressor is in play — surfaces a traction note.

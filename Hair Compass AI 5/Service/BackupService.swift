@@ -20,7 +20,7 @@ enum BackupService {
     static let manifest = [
         "Profile", "DailyEntry", "Treatment", "TreatmentDose → Treatment?", "MissedDoseRecord → Treatment?",
         "SideEffectLog → Treatment?", "LabResult", "PhotoRecord", "HealthSnapshot",
-        "TriggerEvent", "ProcedureAppointment", "ProgressCheckIn"
+        "TriggerEvent", "ProcedureAppointment", "ProgressCheckIn", "AgentMemory"
     ]
 
     // MARK: - Errors
@@ -69,6 +69,22 @@ enum BackupService {
         // rather than failing the whole restore.
         var procedures: [ProcedureDTO] = []
         var progressCheckIns: [ProgressCheckInDTO] = []
+        var agentMemories: [AgentMemoryDTO] = []
+    }
+
+    /// What the agent has learned about the person. Included in the archive because it is the
+    /// user's own data and lives only on the device — omitting it makes "restore your backup"
+    /// quietly lossy. `forgottenAt` travels with it: a tombstone that didn't survive the round
+    /// trip would resurrect something the person explicitly asked the agent to forget.
+    nonisolated struct AgentMemoryDTO: Codable, Sendable {
+        var scopeRaw = AgentMemoryScope.session.rawValue
+        var sessionID = ""
+        var text = ""
+        var kindRaw = AgentMemoryKind.fact.rawValue
+        var createdAt = Date.now
+        var lastRecalledAt: Date?
+        var recallCount = 0
+        var forgottenAt: Date?
     }
 
     nonisolated struct ProfileDTO: Codable, Sendable {
@@ -237,6 +253,7 @@ enum BackupService {
         procedures: [ProcedureAppointment],
         progressCheckIns: [ProgressCheckIn],
         missedDoses: [MissedDoseRecord] = [],
+        agentMemories: [AgentMemory] = [],
         createdAt: Date = .now,
         photoData: (String) -> Data?
     ) -> Envelope {
@@ -342,6 +359,15 @@ enum BackupService {
             )
         }
 
+        envelope.agentMemories = agentMemories.map {
+            AgentMemoryDTO(
+                scopeRaw: $0.scopeRaw, sessionID: $0.sessionID, text: $0.text,
+                kindRaw: $0.kindRaw, createdAt: $0.createdAt,
+                lastRecalledAt: $0.lastRecalledAt, recallCount: $0.recallCount,
+                forgottenAt: $0.forgottenAt
+            )
+        }
+
         return envelope
     }
 
@@ -387,6 +413,7 @@ enum BackupService {
         procedures: [ProcedureAppointment],
         progressCheckIns: [ProgressCheckIn],
         missedDoses: [MissedDoseRecord] = [],
+        agentMemories: [AgentMemory] = [],
         now: Date = .now,
         photoData: (String) -> Data? = { PhotoStore.shared.loadData($0) }
     ) throws -> URL {
@@ -395,7 +422,7 @@ enum BackupService {
             sideEffects: sideEffects, labs: labs,
             photos: photos, snapshots: snapshots, triggers: triggers,
             procedures: procedures, progressCheckIns: progressCheckIns,
-            missedDoses: missedDoses,
+            missedDoses: missedDoses, agentMemories: agentMemories,
             createdAt: now, photoData: photoData
         )
         var missingPhotos = zip(photos, envelope.photos).compactMap { record, dto in
@@ -441,6 +468,7 @@ enum BackupService {
         procedures: [ProcedureAppointment],
         progressCheckIns: [ProgressCheckIn],
         missedDoses: [MissedDoseRecord] = [],
+        agentMemories: [AgentMemory] = [],
         now: Date = .now,
         photoData: @Sendable @escaping (String) -> Data? = { PhotoStore.shared.loadData($0) }
     ) async throws -> URL {
@@ -449,7 +477,7 @@ enum BackupService {
             sideEffects: sideEffects, labs: labs,
             photos: photos, snapshots: snapshots, triggers: triggers,
             procedures: procedures, progressCheckIns: progressCheckIns,
-            missedDoses: missedDoses,
+            missedDoses: missedDoses, agentMemories: agentMemories,
             createdAt: now, photoData: { _ in nil }
         )
         // Same order as `envelope.photos` (both come from mapping `photos` in order), so the
@@ -871,6 +899,30 @@ enum BackupService {
             summary.inserted += 1
         }
 
+        var memoryKeys = Set(
+            try context.fetch(FetchDescriptor<AgentMemory>())
+                .map { agentMemoryKey(sessionID: $0.sessionID, text: $0.text, createdAt: $0.createdAt) }
+        )
+        for dto in envelope.agentMemories {
+            let key = agentMemoryKey(sessionID: dto.sessionID, text: dto.text, createdAt: dto.createdAt)
+            guard !memoryKeys.contains(key) else { summary.skipped += 1; continue }
+            memoryKeys.insert(key)
+            let memory = AgentMemory(
+                scope: AgentMemoryScope(rawValue: dto.scopeRaw) ?? .session,
+                sessionID: dto.sessionID,
+                text: dto.text,
+                kind: AgentMemoryKind(rawValue: dto.kindRaw) ?? .fact,
+                createdAt: dto.createdAt
+            )
+            // Recall history and the forget tombstone are restored rather than reset: they are
+            // what consolidation ranks by, and what keeps a forgotten memory forgotten.
+            memory.lastRecalledAt = dto.lastRecalledAt
+            memory.recallCount = dto.recallCount
+            memory.forgottenAt = dto.forgottenAt
+            context.insert(memory)
+            summary.inserted += 1
+        }
+
         let pathsToCommit = stagedPaths.filter { committedPaths.contains($0) }
         stagedPaths.filter { !committedPaths.contains($0) }.forEach(photoRemover)
         var finalizedPaths: [String] = []
@@ -942,6 +994,10 @@ enum BackupService {
                     && ($0.patchTrendRaw == nil || ProgressTrend(rawValue: $0.patchTrendRaw!) != nil)
                     && ($0.hairFeelingRaw == nil || HairFeeling(rawValue: $0.hairFeelingRaw!) != nil)
             }
+            && envelope.agentMemories.allSatisfy {
+                AgentMemoryScope(rawValue: $0.scopeRaw) != nil
+                    && AgentMemoryKind(rawValue: $0.kindRaw) != nil
+            }
         guard valid else { throw BackupError.unreadableFile }
     }
 
@@ -973,6 +1029,13 @@ enum BackupService {
 
     static func missedDoseKey(date: Date, reasonRaw: String, calendar: Calendar) -> String {
         "\(calendar.startOfDay(for: date).timeIntervalSinceReferenceDate)|\(reasonRaw)"
+    }
+
+    /// Natural key for a memory: which conversation wrote it, its exact words, and when. Two
+    /// memories with the same text in the same conversation a second apart are genuinely two
+    /// memories; the same one restored twice is not.
+    static func agentMemoryKey(sessionID: String, text: String, createdAt: Date) -> String {
+        "\(sessionID)|\(text)|\(secondKey(createdAt))"
     }
 
     static func labKey(testRaw: String, collectedAt: Date) -> String {

@@ -87,85 +87,76 @@ struct TrendsView: View {
                         .offset(y: -8)
                 }
 
-                // The header above (and its Export action) is deliberately outside the gate:
-                // Export must stay reachable on every tier — App Store Guideline 3.1.2(a) — a
-                // lapsed subscriber still has to be able to retrieve data they logged while
-                // paying, and this header's "Export trends" button is the app's one entry
-                // point to the full backup/clinician-summary sheet. Everything that actually
-                // reads the tracked record is Pro.
-                VStack(alignment: .leading, spacing: 16) {
-                    // A quiet text-tab row instead of a bordered 5-segment capsule — the active
-                    // range reads by weight + a sliding copper underline, not a filled pill.
-                    InkTabs(
-                        options: Range.allCases,
-                        selection: $range,
-                        namespace: rangeNamespace,
-                        spacing: 22,
-                        accessibilityLabel: { $0.rawValue }
-                    ) { option, isOn in
-                        Text(option.rawValue)
-                            .font(Clinical.body(13, weight: isOn ? .semibold : .regular))
-                            .foregroundStyle(isOn ? Clinical.ink : Clinical.secondary)
-                    }
-
-                    trajectoryAnnotation
-
-                    currentReadCard
-
-                    JourneyChart(
-                        entries: entries,
-                        treatments: treatments,
-                        doses: doses,
-                        triggers: triggers,
-                        procedures: procedureAppointments,
-                        windowDays: range.days
-                    )
-
-                    clinicianReviewCard
-
-                    progressCheckInsCard
-
-                    // The page turns here: everything above reads the hair, everything below reads
-                    // the tracking. A painted seam says that more quietly than a heading would.
-                    StrandDivider()
-
-                    ConsistencyCard(
-                        entries: entries,
-                        treatments: treatments,
-                        doses: doses,
-                        photos: photos,
-                        labs: labs,
-                        triggers: triggers,
-                        showAllBadges: $showBadges
-                    )
-
-                    BodySignalsDashboard(
-                        snapshots: snapshots,
-                        windowDays: range.days,
-                        hasTractionRisk: profile?.hasTractionRisk == true,
-                        recentTrigger: triggers.first
-                    )
-                    .id("body-signals")
-                    compareFootnoteRow
-
-                    if windowEntries.count < 2 {
-                        emptyState
-                    } else {
-                        // The hero JourneyChart above already IS the shedding chart — a second
-                        // shedding card here used to re-plot the exact same fact. Scalp and
-                        // adherence continue as quiet ledger rows instead of their own boxed charts,
-                        // in the same margin-note language as Today's signal ledger.
-                        scalpRow
-                        adherenceRows
-                    }
-
-                    excludedFootnote
-
-                    // Ends the scroll the way Today does, so the app's two longest reference pages
-                    // close in one voice. Inset rather than full-bleed on purpose — see `PageCloser`.
-                    PageCloser(opacity: 0.8)
+                // A quiet text-tab row instead of a bordered 5-segment capsule — the active
+                // range reads by weight + a sliding copper underline, not a filled pill.
+                InkTabs(
+                    options: Range.allCases,
+                    selection: $range,
+                    namespace: rangeNamespace,
+                    spacing: 22,
+                    accessibilityLabel: { $0.rawValue }
+                ) { option, isOn in
+                    Text(option.rawValue)
+                        .font(Clinical.body(13, weight: isOn ? .semibold : .regular))
+                        .foregroundStyle(isOn ? Clinical.ink : Clinical.secondary)
                 }
-                .proGated(.trends)
+
+                trajectoryAnnotation
+
+                currentReadCard
+
+                JourneyChart(
+                    entries: entries,
+                    treatments: treatments,
+                    doses: doses,
+                    triggers: triggers,
+                    procedures: procedureAppointments,
+                    windowDays: range.days
+                )
+
+                clinicianReviewCard
+
+                progressCheckInsCard
+
+                // The page turns here: everything above reads the hair, everything below reads
+                // the tracking. A painted seam says that more quietly than a heading would.
+                StrandDivider()
+
+                ConsistencyCard(
+                    entries: entries,
+                    treatments: treatments,
+                    doses: doses,
+                    photos: photos,
+                    labs: labs,
+                    triggers: triggers,
+                    showAllBadges: $showBadges
+                )
+
+                BodySignalsDashboard(
+                    snapshots: snapshots,
+                    windowDays: range.days,
+                    hasTractionRisk: profile?.hasTractionRisk == true,
+                    recentTrigger: triggers.first
+                )
+                .id("body-signals")
+                compareFootnoteRow
+
+                if windowEntries.count < 2 {
+                    emptyState
+                } else {
+                    // The hero JourneyChart above already IS the shedding chart — a second
+                    // shedding card here used to re-plot the exact same fact. Scalp and
+                    // adherence continue as quiet ledger rows instead of their own boxed charts,
+                    // in the same margin-note language as Today's signal ledger.
+                    scalpRow
+                    adherenceRows
+                }
+
+                excludedFootnote
+
+                // Ends the scroll the way Today does, so the app's two longest reference pages
+                // close in one voice. Inset rather than full-bleed on purpose — see `PageCloser`.
+                PageCloser(opacity: 0.8)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)

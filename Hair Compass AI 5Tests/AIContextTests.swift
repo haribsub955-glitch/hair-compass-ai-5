@@ -269,6 +269,56 @@ struct AIContextTests {
         #expect(ctx.meta.omitted.progressCheckIns == 24)
     }
 
+    /// `AIOutputValidator` treats a handful of clinical words as premises that must already be in
+    /// the record — "thyroid" among them. Asked about a TSH result, any competent answer says
+    /// "thyroid function", so a fact set containing only the string "TSH" gets a correct answer
+    /// replaced by the safety notice. `LabTest.note` carries the app's own wording for each test
+    /// and is what closes that gap, so it has to keep carrying it.
+    @Test func everyLabTestNoteSuppliesTheVocabularyAnAnswerWillUse() {
+        #expect(LabTest.tsh.note.lowercased().contains("thyroid"))
+        #expect(LabTest.freeT4.note.lowercased().contains("thyroid"))
+        #expect(LabTest.ferritin.note.lowercased().contains("telogen effluvium"))
+
+        // The end-to-end shape: with the note in the facts, the answer survives the gate.
+        let facts = #"{"test":"tsh","name":"TSH","value":2.1,"note":"Thyroid function — a treatable shedding driver."}"#
+        #expect(AIOutputValidator.isSafe("Your TSH is 2.1, so thyroid function looks normal.",
+                                         suppliedFacts: facts))
+        // …and without it, the same sentence is refused — which is the bug this guards.
+        #expect(!AIOutputValidator.isSafe("Your TSH is 2.1, so thyroid function looks normal.",
+                                          suppliedFacts: #"{"test":"tsh","value":2.1}"#))
+    }
+
+    /// Refusing to judge a treatment is the 24-week rule being *obeyed*, not broken.
+    ///
+    /// The efficacy guard matches phrases like "it is working". An answer that says "it's too
+    /// early to say whether it's working" contains that phrase while asserting the opposite, so
+    /// it was being replaced by the "couldn't safely summarize" text — the app suppressing
+    /// exactly the answer its own policy asks for. Asked "is minoxidil working?" at week 21, the
+    /// user got a safety notice instead of "too early, you're at 21 of 24 weeks".
+    @Test func aRefusalToJudgeBeforeTwentyFourWeeksIsAllowed() {
+        let facts = #"{"outcomeReady":false,"weeksElapsed":21,"name":"minoxidil"}"#
+        #expect(AIOutputValidator.isSafe(
+            "On whether it's working: it's too early to judge. Treatments aren't assessed until the 24-week point, and you're at 21 weeks.",
+            suppliedFacts: facts))
+        #expect(AIOutputValidator.isSafe(
+            "I can't say yet whether minoxidil is working — that's not a fair question before 24 weeks.",
+            suppliedFacts: facts))
+        #expect(AIOutputValidator.isSafe(
+            "It's too soon to tell if the treatment is effective.", suppliedFacts: facts))
+    }
+
+    /// The other half, and the one that must not regress: an actual efficacy claim before the
+    /// judging point is still refused, and a prematurity phrase elsewhere in the answer does not
+    /// buy a free pass for a claim made in a different sentence.
+    @Test func anEfficacyClaimBeforeTwentyFourWeeksIsStillRefused() {
+        let facts = #"{"outcomeReady":false,"weeksElapsed":21,"name":"minoxidil"}"#
+        #expect(!AIOutputValidator.isSafe("Minoxidil is working.", suppliedFacts: facts))
+        #expect(!AIOutputValidator.isSafe(
+            "It's too early for most things. Minoxidil is working well for you.", suppliedFacts: facts))
+        #expect(!AIOutputValidator.isSafe(
+            "The treatment has failed.", suppliedFacts: facts))
+    }
+
     @Test func generatedOutputValidatorRejectsClinicalAndUngroundedClaims() {
         let facts = #"{"outcomeReady":false,"weeksElapsed":8,"shed7d":1.2}"#
         #expect(!AIOutputValidator.isSafe("You definitely have alopecia.", suppliedFacts: facts))

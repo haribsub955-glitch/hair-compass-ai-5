@@ -27,9 +27,6 @@ enum OnDeviceAvailability: Equatable {
 
     var isAvailable: Bool { self == .available }
 
-    /// Whether the unavailable card should offer an "Open Settings" shortcut for this reason.
-    var showsSettingsButton: Bool { self == .notEnabled }
-
     /// The plain-language, actionable message shown when this status isn't `.available`. Always
     /// closes on the same honest reassurance: the rest of the app still works fully on-device.
     var message: String {
@@ -466,11 +463,27 @@ enum AIOutputValidator {
         ]
         if forbidden.contains(where: { gatedValue.range(of: $0, options: .regularExpression) != nil }) { return false }
 
-        let efficacy = value.range(
-            of: #"\b(treatment|medication|minoxidil|finasteride|it) (is |has |isn't |hasn't )?(working|effective|ineffective|failed|improving regrowth)\b"#,
-            options: .regularExpression) != nil
-        if efficacy {
-            let mentioned = facts.treatmentReadiness.filter { value.contains($0.key) }
+        // Efficacy language is judged sentence by sentence, and a sentence that explicitly
+        // declines to judge is exempt.
+        //
+        // The 24-week rule exists to stop the app calling a treatment working before it can be
+        // known. "It's too soon to tell if the treatment is effective" *obeys* that rule, but it
+        // contains the same words as a violation, so a whole-text match suppressed exactly the
+        // answer the policy asks for — the user asked "is minoxidil working?" at week 21 and got
+        // the safety notice instead of "too early, you're at 21 of 24 weeks".
+        //
+        // Scoping to the sentence keeps the guard honest: a claim in one sentence is still
+        // refused no matter how much hedging surrounds it elsewhere.
+        let efficacyPattern = #"\b(treatment|medication|minoxidil|finasteride|it) (is |has |isn't |hasn't )?(working|effective|ineffective|failed|improving regrowth)\b"#
+        let decliningToJudge = #"\b(too early|too soon|not yet|premature|can'?t (say|tell|judge|know)|cannot (say|tell|judge|know)|before (the )?24)\b"#
+        let claims = gatedValue
+            .split(whereSeparator: { ".!?\n".contains($0) })
+            .filter { $0.range(of: efficacyPattern, options: .regularExpression) != nil }
+            .filter { $0.range(of: decliningToJudge, options: .regularExpression) == nil }
+        if !claims.isEmpty {
+            let mentioned = facts.treatmentReadiness.filter { name, _ in
+                claims.contains { $0.contains(name) }
+            }
             if mentioned.isEmpty {
                 if facts.treatmentReadiness.values.contains(false) { return false }
             } else if mentioned.values.contains(false) { return false }
