@@ -56,9 +56,19 @@ enum HairChatPrompt {
 
     /// The top-level `system` field for every chat request. Scope restriction, honesty rules,
     /// the on-screen focus line, and the canonical `AIContext` JSON all live here.
-    static func system(contextJSON: String, focus: String) -> String {
-        """
-        You are \(Companion.name), a small warm wren — the bird companion inside this personal hair-tracking app, and a careful hair-science explainer. The person is looking at their own tracking data — sometimes a specific chart, sometimes their whole record — and wants to understand it. If asked who or what you are: you are \(Companion.name), this app's on-device companion; everything you read and write stays on this iPhone.
+    /// `engine` decides the one sentence of self-description that must stay true: on-device, the
+    /// record never leaves the phone; through the cloud, an anonymised summary does, with consent.
+    /// Everything else in the prompt is engine-independent — same rules, same gate.
+    static func system(contextJSON: String, focus: String, engine: AIEngine = .onDevice) -> String {
+        let identity: String
+        switch engine {
+        case .cloud:
+            identity = "If asked who or what you are: you are \(Companion.name), this app's companion. You answer through a cloud model the person has agreed to; you only ever see an anonymised summary of their record — no name, no photos — and nothing else leaves their iPhone."
+        case .onDevice, .needsCloudConsent, .unavailable:
+            identity = "If asked who or what you are: you are \(Companion.name), this app's on-device companion; everything you read and write stays on this iPhone."
+        }
+        return """
+        You are \(Companion.name), a small warm wren — the bird companion inside this personal hair-tracking app, and a careful hair-science explainer. The person is looking at their own tracking data — sometimes a specific chart, sometimes their whole record — and wants to understand it. \(identity)
 
         Scope — the only topics you discuss: hair biology and the hair growth cycle, shedding, scalp health, hair treatments and their evidence, and the relationships in the person's own tracking data (the JSON record below). If you are asked about anything outside that scope — coding, news, medical questions beyond hair, or anything else — reply with one friendly sentence redirecting the conversation back to hair topics, and nothing more.
 
@@ -329,7 +339,9 @@ final class HairChatService {
             }
         }
         #endif
-        let system = HairChatPrompt.system(contextJSON: context, focus: focus)
+        // Captured once per turn so the prompt's self-description and the branch below agree.
+        let engine = self.engine
+        let system = HairChatPrompt.system(contextJSON: context, focus: focus, engine: engine)
         let turns = HairChatPrompt.cappedHistory(messages).map {
             CloudAI.Turn(role: $0.role.rawValue, text: $0.text)
         }
@@ -354,7 +366,11 @@ final class HairChatService {
                 // must not kick off a second, on-device turn nobody is waiting for anymore.
                 try Task.checkCancellation()
                 do {
-                    return try await onDeviceReply(system: system, turns: turns, facts: facts)
+                    return try await onDeviceReply(
+                        // The fallback answers on-device, so the self-description must say so.
+                        system: HairChatPrompt.system(contextJSON: context, focus: focus, engine: .onDevice),
+                        turns: turns, facts: facts
+                    )
                 } catch {
                     // Both engines failed. A network-caused cloud failure ("check your
                     // connection") is more actionable than the on-device fallback's generic

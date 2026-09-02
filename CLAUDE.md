@@ -88,8 +88,9 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
 
 1. User: re-test the three chat questions on a real AI-capable iPhone at `266a476` — expect
    real answers (words, not digits) instead of the "couldn't safely summarize" fallback.
-2. Harib (or user says merge): pull `0ea1e55` + `266a476` from `fix/1.1-polish` into
-   `feat/agent-profile-memory` — he already fast-forwarded onto `3a899f1` on 2026-09-02.
+2. done 2026-09-02 — `0ea1e55` + `266a476` merged into `feat/agent-profile-memory` (and main)
+   together with the cloud-engine port; the prompt's self-description now follows the engine
+   (`HairChatPrompt.system(engine:)`: "stays on this iPhone" only when answering on-device).
 3. User: final on-device/simulator UX pass of 1.1 before submitting build 5.
 3b. done 2026-09-02 — Wren-identity prompt hardening + gate-contract test, full suite green
    at `266a476` (unit 180s, UITests 91s).

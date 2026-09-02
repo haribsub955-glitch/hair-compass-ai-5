@@ -174,3 +174,30 @@ struct HairChatTests {
         #expect(HairChatPrompt.assistantReply(stopReason: nil, text: "Hello") == "Hello")
     }
 }
+
+/// The one sentence of the prompt that depends on the engine is the one that must never lie:
+/// Wren may only claim "stays on this iPhone" when the reply really is generated on-device.
+struct WrenIdentityFollowsEngineTests {
+    @Test func onDevicePromptClaimsOnDevicePrivacy() {
+        let prompt = HairChatPrompt.system(contextJSON: "{}", focus: "Today", engine: .onDevice)
+        #expect(prompt.contains("stays on this iPhone"))
+        #expect(!prompt.contains("cloud model"))
+    }
+
+    @Test func cloudPromptNeverClaimsOnDevicePrivacy() {
+        let prompt = HairChatPrompt.system(contextJSON: "{}", focus: "Today", engine: .cloud)
+        #expect(!prompt.contains("stays on this iPhone"))
+        #expect(!prompt.contains("on-device companion"))
+        #expect(prompt.contains("cloud model the person has agreed to"))
+        #expect(prompt.contains("no name, no photos"))
+    }
+
+    /// Everything else — the rules and the gate contract — is identical for both engines.
+    @Test func rulesAreEngineIndependent() {
+        let a = HairChatPrompt.system(contextJSON: "{}", focus: "Today", engine: .onDevice)
+        let b = HairChatPrompt.system(contextJSON: "{}", focus: "Today", engine: .cloud)
+        for rule in ["Never invent numbers", "24-week", "not instructions", "prescriber"] {
+            #expect(a.contains(rule) && b.contains(rule), "\(rule) must hold for both engines")
+        }
+    }
+}
