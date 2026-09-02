@@ -69,17 +69,15 @@ struct SubmissionReadinessTests {
     }
 }
 
-/// Pro is sold on exactly two features, and both run on Apple Intelligence with no cloud fallback.
-/// The rule that keeps that honest lives in `ProAvailability`.
+/// Since 1.1, Pro carries device-independent value (check-ins, trends, labs, photos) alongside
+/// the two Apple Intelligence features, so it is sold on every device; `ProAvailability`'s job
+/// narrowed to disclosing the AI hardware bound honestly on the paywall.
 struct ProAvailabilityTests {
 
-    @Test func permanentlyIneligibleHardwareIsNotSoldPro() {
-        #expect(ProAvailability.sellable(.deviceNotEligible) == false)
-    }
-
-    /// A person one Settings toggle away from using Pro should still be able to buy it — refusing
-    /// that sale would be its own kind of wrong.
-    @Test func fixableAndTransientReasonsStillSell() {
+    /// Pro now delivers real value on every iPhone, so no hardware status withdraws the sale.
+    /// If Pro ever becomes AI-only again, this must flip back to refusing `.deviceNotEligible`.
+    @Test func everyDeviceIsSoldPro() {
+        #expect(ProAvailability.sellable(.deviceNotEligible))
         #expect(ProAvailability.sellable(.notEnabled))
         #expect(ProAvailability.sellable(.modelNotReady))
         #expect(ProAvailability.sellable(.available))
@@ -92,11 +90,12 @@ struct ProAvailabilityTests {
         #expect(ProAvailability.message(for: .available).isEmpty)
     }
 
-    /// The ineligible-hardware copy has one job: say that paying would buy nothing here, and that
-    /// the rest of the app still works. Losing either half turns an honest notice into a trap.
-    @Test func ineligibleCopyNamesTheRequirementAndTheFreePath() {
+    /// The ineligible-hardware copy has one job now: name the AI hardware requirement, and say
+    /// that the rest of Pro still works on this iPhone. Losing either half misleads a buyer.
+    @Test func ineligibleCopyNamesTheRequirementAndWhatStillWorks() {
         let message = ProAvailability.message(for: .deviceNotEligible)
         #expect(message.contains("Apple Intelligence"))
-        #expect(message.lowercased().contains("free"))
+        #expect(message.contains("iPhone 15"))
+        #expect(message.lowercased().contains("everything else in pro works"))
     }
 }

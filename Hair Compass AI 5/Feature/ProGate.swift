@@ -2,10 +2,12 @@ import StoreKit
 import SwiftData
 import SwiftUI
 
-/// Wraps premium content: shows it for Pro users, otherwise an inline, honest upsell
-/// (feature name + a one-line description + the two Pro purchase buttons + restore). Used by
-/// the AI sheets — gate at the caller's top level so the sheet's own chrome (title, Close
-/// button) stays outside the gate and is always reachable. Purchase buttons never show a
+/// Wraps premium content: shows it for Pro users and for the 3-day first-install window,
+/// otherwise an inline, honest upsell (feature name + a one-line description + the two Pro
+/// purchase buttons + restore). Used by the gated tabs (`RootView.tabContent` — everything
+/// except Plan/medication) and by the AI sheets — for sheets, gate at the caller's top level
+/// so the sheet's own chrome (title, Close button) stays outside the gate and is always
+/// reachable. Purchase buttons never show a
 /// placeholder price: while products haven't loaded they're replaced by `StoreUnavailableView`
 /// (a loading spinner, or an honest "can't reach the store" message with Retry), matching
 /// `OnboardingPlanStep`'s honesty rules. Does not apply its own background — callers already own
@@ -14,9 +16,13 @@ struct ProGate<Content: View>: View {
     let feature: String
     let symbol: String
     var description: String = "Included with Hair Compass Pro."
+    /// True only for the two Apple Intelligence features — they carry the hardware notice.
+    /// Tab-level gates (check-ins, trends, labs, photos) work on every iPhone and must not.
+    var requiresOnDeviceAI: Bool = false
     @ViewBuilder var content: () -> Content
 
     @Environment(PurchaseService.self) private var purchases
+    @Environment(AccessWindow.self) private var accessWindow
     /// Only for picking the matching illustration pair — the gate itself stays profile-agnostic.
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
@@ -32,7 +38,9 @@ struct ProGate<Content: View>: View {
     private var availability: OnDeviceAvailability { ProAvailability.current }
 
     var body: some View {
-        if purchases.hasPro {
+        // The 3-day first-install window opens every gate exactly like Pro does — the paywall
+        // only exists for lapsed, unsubscribed installs.
+        if purchases.hasPro || accessWindow.isActive {
             content()
         } else {
             locked
@@ -76,15 +84,13 @@ struct ProGate<Content: View>: View {
             // inside a sheet alongside the feature's own chrome.
             ClarityContrast(size: .compact, sex: profiles.first?.sex ?? .male)
 
-            // Above the price, always: this gate's own feature is one of the two that need Apple
-            // Intelligence, so an unavailable model is the single most important thing on screen.
-            ProAvailabilityNotice(status: availability)
+            // Only the two Apple Intelligence features disclose the hardware requirement here;
+            // every other gate sells device-independent value and stays quiet about AI.
+            if requiresOnDeviceAI {
+                ProAvailabilityNotice(status: availability)
+            }
 
-            if !ProAvailability.sellable(availability) {
-                // Nothing to sell on hardware that can never run either Pro feature. Restore and
-                // the legal footer stay below, so an existing subscriber isn't stranded.
-                EmptyView()
-            } else if !purchases.products.isEmpty {
+            if !purchases.products.isEmpty {
                 VStack(spacing: 10) {
                     if let yearly = purchases.yearly {
                         // Eligibility-gated: the launch offer only renders for Apple IDs that
@@ -169,7 +175,7 @@ struct ProGate<Content: View>: View {
             .buttonStyle(.plain)
             .disabled(isBusy)
 
-            PaywallLegal(showsRenewalDisclosure: ProAvailability.sellable(availability))
+            PaywallLegal(showsRenewalDisclosure: true)
 
             Spacer(minLength: 20)
         }

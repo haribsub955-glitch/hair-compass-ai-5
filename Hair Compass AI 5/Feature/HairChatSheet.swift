@@ -40,7 +40,8 @@ struct HairChatSheet: View {
             ProGate(
                 feature: "AI hair chat",
                 symbol: "bubble.left.and.text.bubble.right",
-                description: "Ask anything about your tracked data — grounded in your own numbers, never a diagnosis."
+                description: "Ask anything about your tracked data — grounded in your own numbers, never a diagnosis.",
+                requiresOnDeviceAI: true
             ) {
                 gatedContent
             }

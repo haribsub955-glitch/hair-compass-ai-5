@@ -45,9 +45,10 @@ enum ProAvailability {
     }
     #endif
 
-    /// Whether the purchase buttons should be offered at all. False only for permanently
-    /// ineligible hardware — see the type doc for why the transient reasons still sell.
-    static func sellable(_ status: OnDeviceAvailability) -> Bool { status != .deviceNotEligible }
+    /// Since 1.1, Pro contains device-independent value (check-ins, trends, labs, photos,
+    /// reports) alongside the two AI features, so the purchase buttons are offered on every
+    /// device — ineligible hardware gets an honest AI disclosure instead of a withdrawn sale.
+    static func sellable(_ status: OnDeviceAvailability) -> Bool { true }
 
     /// Paywall-specific wording. `OnDeviceAvailability.message` is written for someone already
     /// inside a feature ("everything else still works"); here the reader is deciding whether to
@@ -63,9 +64,9 @@ enum ProAvailability {
             return "Apple Intelligence is still getting ready on this iPhone. Both Pro features will "
                 + "work as soon as it finishes preparing."
         case .deviceNotEligible:
-            return "Pro wouldn't work on this iPhone. Both of its features run on Apple Intelligence, "
-                + "which needs iPhone 15 Pro or newer, and there's no cloud version to fall back on. "
-                + "Everything else in Hair Compass works fully here, free."
+            return "The two AI features (Ask Wren and Deep analysis) run on Apple Intelligence, "
+                + "which needs iPhone 15 Pro or newer, so they won't work on this iPhone. "
+                + "Everything else in Pro works fully here."
         }
     }
 }

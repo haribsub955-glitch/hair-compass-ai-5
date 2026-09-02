@@ -287,16 +287,21 @@ struct OnboardingPlanStep: View {
 
     // MARK: What Pro adds
 
-    /// Exactly the two things `hasPro` actually gates — `HairChatSheet` and `DeepAnalysisSheet`.
-    ///
-    /// This list previously carried a third row, "Smart reminders & trends". Nothing gates those:
-    /// `PurchaseService` is referenced in five files total and `hasPro` appears at two feature
-    /// call sites, so reminders and trends ship free to everyone. Selling them here was a claim
-    /// the app doesn't honour, so the row is gone. If a benefit isn't behind `hasPro`, it does not
-    /// belong on this screen — check before adding one.
+    /// Since 1.1 Pro is the whole app except medication/treatment logging: daily check-ins,
+    /// trends, labs, photos, export — plus the two Apple Intelligence features below. Every
+    /// install starts with 3 full days of everything before this screen's promise is tested,
+    /// and the honesty rule is unchanged: nothing may be listed here that `hasPro` (with the
+    /// trial window) does not actually gate — check `RootView.tabContent` before editing.
     private var proAdds: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Eyebrow(text: "What Pro adds")
+            Eyebrow(text: "What Pro includes")
+            Text("Daily check-ins, trends & evidence, lab tracking, progress photos, and your "
+                 + "exportable clinician report — everything except medication logging, which "
+                 + "stays free on every iPhone, always. Your first 3 days include all of it, "
+                 + "no purchase needed.")
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             ProFeatureCard(
                 art: CompanionArt.listening,
                 title: "Ask \(Companion.name) anything",
@@ -323,11 +328,7 @@ struct OnboardingPlanStep: View {
             // not discovered after the charge.
             ProAvailabilityNotice(status: availability)
 
-            if !ProAvailability.sellable(availability) {
-                // Nothing to sell on hardware that can never run either Pro feature — the free
-                // path below becomes the only forward move, which is the honest outcome here.
-                EmptyView()
-            } else if !purchases.products.isEmpty {
+            if !purchases.products.isEmpty {
                 purchaseButtons
             } else {
                 StoreUnavailableView(isLoading: purchases.isLoading) {

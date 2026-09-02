@@ -80,6 +80,7 @@ struct RootView: View {
     @StateObject private var ritualCoordinator = LaunchRitualCoordinator()
     @State private var ritualKind: RitualKind?
     @State private var purchases = PurchaseService()
+    @State private var accessWindow = AccessWindow()
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @State private var showTutorial = false
     @State private var deepLinks = DeepLinkRouter()
@@ -153,13 +154,36 @@ struct RootView: View {
 
     @ViewBuilder private var tabContent: some View {
         switch tab {
-        case .today: TodayView(profile: profile,
-                               onOpenBaseline: { showProfileEdit = true },
-                               onOpenPlan: { tab = .care })
-        case .trends: TrendsView()
+        // Since 1.1 every tab except Plan is part of Pro, unlocked by the 3-day first-install
+        // window or a subscription. Plan (medication/treatment logging) stays free forever: a
+        // dose schedule is a health-safety surface, and it must never sit behind a paywall.
+        case .today:
+            ProGate(feature: "Daily Check-ins",
+                    symbol: "checkmark.circle",
+                    description: "Log shedding, scalp, and treatments in seconds — part of Hair Compass Pro.") {
+                TodayView(profile: profile,
+                          onOpenBaseline: { showProfileEdit = true },
+                          onOpenPlan: { tab = .care })
+            }
+        case .trends:
+            ProGate(feature: "Trends & Evidence",
+                    symbol: "chart.xyaxis.line",
+                    description: "Deterministic charts of your record over time — part of Hair Compass Pro.") {
+                TrendsView()
+            }
         case .care: CareView()
-        case .labs: LabsView()
-        case .photos: PhotosView()
+        case .labs:
+            ProGate(feature: "Lab Results",
+                    symbol: "testtube.2",
+                    description: "Track ferritin, vitamin D, thyroid and more — part of Hair Compass Pro.") {
+                LabsView()
+            }
+        case .photos:
+            ProGate(feature: "Progress Photos",
+                    symbol: "camera",
+                    description: "Standardized angles for honest comparisons — part of Hair Compass Pro.") {
+                PhotosView()
+            }
         }
     }
 
@@ -214,6 +238,7 @@ struct RootView: View {
         .environment(notifications)
         .environment(affiliates)
         .environment(purchases)
+        .environment(accessWindow)
         .environment(deepLinks)
         .task {
             // A force-quit can bypass RitualView.onDisappear. Clear any ActivityKit survivors
@@ -352,6 +377,7 @@ struct RootView: View {
                 })
                 .environment(healthKit)
                 .environment(purchases)
+                .environment(accessWindow)
             }
         }
         // The pure launch reducer makes these cover predicates mutually exclusive. Effect
@@ -375,6 +401,7 @@ struct RootView: View {
                 BaselineFlow(profile: profile)
                     .environment(healthKit)
                     .environment(purchases)
+                    .environment(accessWindow)
             }
         }
         .onChange(of: scenePhase) { _, phase in
