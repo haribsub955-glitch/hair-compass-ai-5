@@ -23,6 +23,11 @@ struct ProGate<Content: View>: View {
 
     @Environment(PurchaseService.self) private var purchases
     @Environment(AccessWindow.self) private var accessWindow
+    @Environment(\.scenePhase) private var scenePhase
+    /// Bumped when availability may have changed: `ProAvailability.current` is a static system
+    /// read SwiftUI does not track, so without this the AI notice would keep showing "switched
+    /// off" after the person enables Apple Intelligence in Settings and comes back.
+    @State private var availabilityRefresh = 0
     /// Only for picking the matching illustration pair — the gate itself stays profile-agnostic.
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
@@ -55,6 +60,21 @@ struct ProGate<Content: View>: View {
                 // A failed/pending message from THIS gate shouldn't still be showing if the user
                 // dismisses it and opens a different feature's gate later.
                 .onDisappear { purchases.resetPurchaseState() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { availabilityRefresh += 1 }
+                }
+                // Watch availability every 2 s in both directions while an AI gate is up: the
+                // notice clears the moment the model becomes usable, and reappears if it stops
+                // being usable mid-session. Bumps only on change; non-AI gates skip the loop.
+                .task {
+                    guard requiresOnDeviceAI else { return }
+                    var last = ProAvailability.current
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(2))
+                        let now = ProAvailability.current
+                        if now != last { last = now; availabilityRefresh += 1 }
+                    }
+                }
         }
     }
 
@@ -87,6 +107,9 @@ struct ProGate<Content: View>: View {
             // Only the two Apple Intelligence features disclose the hardware requirement here;
             // every other gate sells device-independent value and stays quiet about AI.
             if requiresOnDeviceAI {
+                // Reading the refresh token ties this branch to the watch above — the computed
+                // `availability` alone would never invalidate the view.
+                let _ = availabilityRefresh
                 ProAvailabilityNotice(status: availability)
             }
 

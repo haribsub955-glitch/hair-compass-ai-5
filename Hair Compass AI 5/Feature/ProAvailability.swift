@@ -1,17 +1,18 @@
 import SwiftUI
 
-/// The one hard requirement Pro carries, disclosed *on* the paywall instead of after the charge.
+/// The one hardware bound Pro carries, disclosed *on* the paywall instead of after the charge.
 ///
-/// Everything `hasPro` gates — `HairChatSheet` and `DeepAnalysisSheet` — runs on Apple Intelligence
-/// with no cloud fallback. On an iPhone that can't run it, a subscription buys literally nothing,
-/// so both purchase surfaces (`OnboardingPlanStep`, `ProGate`) put `ProAvailabilityNotice` above
-/// their buttons and check `sellable` before offering them at all.
+/// Since 1.1, Pro is the whole app except medication logging — check-ins, trends, labs, photos,
+/// export — plus the two Apple Intelligence features (`HairChatSheet`, `DeepAnalysisSheet`),
+/// which run on-device with no cloud fallback. The non-AI half works on every iPhone, so the
+/// sale is never withdrawn; this type's whole job is to say honestly, before the buttons, what
+/// the AI half needs and whether *this* iPhone has it.
 ///
 /// The three unavailable reasons are not equivalent and are deliberately not collapsed into one:
 /// - `.notEnabled` / `.modelNotReady` — the person can fix this themselves (a Settings toggle, or
-///   waiting for a download to finish). Warn, and still sell: refusing the sale to someone who is
-///   one tap away from using it would be its own kind of wrong.
-/// - `.deviceNotEligible` — nothing they do on *this* iPhone will ever make Pro work. Don't sell.
+///   waiting for a download to finish). Name the path, and sell.
+/// - `.deviceNotEligible` — the two AI features will never run on this iPhone. Say so plainly,
+///   and say what still works, so nobody buys expecting Wren on an iPhone 12.
 ///
 /// Restore stays available in every case, so someone who already subscribed elsewhere is never
 /// locked out of a purchase they've already made.
@@ -76,8 +77,6 @@ enum ProAvailability {
 struct ProAvailabilityNotice: View {
     let status: OnDeviceAvailability
 
-    @Environment(\.openURL) private var openURL
-
     private var isPermanent: Bool { status == .deviceNotEligible }
 
     var body: some View {
@@ -94,14 +93,10 @@ struct ProAvailabilityNotice: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if status.showsSettingsButton {
-                        Button("Open Settings") {
-                            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                            openURL(url)
-                        }
-                        .buttonStyle(ClinicalButtonStyle(filled: false))
-                        .accessibilityIdentifier("paywallOpenSettings")
-                    }
+                    // No "Open Settings" button: `openSettingsURLString` opens THIS app's
+                    // settings page, not Apple Intelligence & Siri (which has no public URL),
+                    // so a button here would land the person somewhere the toggle isn't. The
+                    // copy names the exact Settings path instead.
                 }
             }
             .accessibilityIdentifier("proAvailabilityNotice")

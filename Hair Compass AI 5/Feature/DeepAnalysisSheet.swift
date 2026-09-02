@@ -9,7 +9,11 @@ import UIKit
 /// record-keeping, never diagnosis. Shows a clear card on hardware without on-device AI.
 struct DeepAnalysisSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    /// Bumped on foreground: `service.availability` is a static system read SwiftUI does not
+    /// track, so the unavailability card would otherwise survive the person enabling Apple
+    /// Intelligence in Settings and returning.
+    @State private var availabilityRefresh = 0
     @State private var service = OnDeviceAnalysisService()
     @State private var showChat = false
     @State private var chatDetent: PresentationDetent = .large
@@ -43,6 +47,20 @@ struct DeepAnalysisSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { availabilityRefresh += 1 }
+        }
+        // Watch availability every 2 s in both directions while the sheet is up: the
+        // unavailability card clears the moment the model becomes usable, and reappears if it
+        // stops being usable mid-session. Bumps only on change.
+        .task {
+            var last = service.availability
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                let now = service.availability
+                if now != last { last = now; availabilityRefresh += 1 }
+            }
+        }
         .sheet(isPresented: $showChat) {
             HairChatSheet(
                 contextJSON: chatContext, focus: chatFocus,
@@ -73,6 +91,7 @@ struct DeepAnalysisSheet: View {
                 }
 
                 if !service.isAvailable {
+                    let _ = availabilityRefresh
                     let status = service.availability
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 10) {
@@ -80,14 +99,6 @@ struct DeepAnalysisSheet: View {
                                 Image(systemName: "sparkles").font(Clinical.caption(14)).foregroundStyle(Clinical.warning)
                                 Text(status.message)
                                     .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
-                            }
-                            if status.showsSettingsButton {
-                                Button("Open Settings") {
-                                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                                    openURL(url)
-                                }
-                                .buttonStyle(ClinicalButtonStyle(filled: false))
-                                .accessibilityIdentifier("deepAnalysisOpenSettings")
                             }
                         }
                     }

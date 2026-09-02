@@ -16,6 +16,11 @@ struct OnboardingPlanStep: View {
     var onContinue: () -> Void
 
     @Environment(PurchaseService.self) private var purchases
+    @Environment(\.scenePhase) private var scenePhase
+    /// Bumped when availability may have changed: `ProAvailability.current` is a static system
+    /// read SwiftUI does not track, so without this the AI notice would keep showing "switched
+    /// off" after the person enables Apple Intelligence in Settings and comes back.
+    @State private var availabilityRefresh = 0
     /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
     /// only the button the user actually tapped shows its spinner.
     @State private var purchasingProductID: String?
@@ -75,6 +80,20 @@ struct OnboardingPlanStep: View {
         .task(id: purchases.monthly?.id) {
             guard let monthly = purchases.monthly else { return }
             monthlyIntroEligible = await purchases.isEligibleForIntro(monthly)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { availabilityRefresh += 1 }
+        }
+        // Watch availability every 2 s in both directions while the paywall is up: the AI
+        // notice clears the moment the model becomes usable, and reappears if it stops being
+        // usable mid-session. Bumps only on change.
+        .task {
+            var last = ProAvailability.current
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                let now = ProAvailability.current
+                if now != last { last = now; availabilityRefresh += 1 }
+            }
         }
     }
 
@@ -325,7 +344,9 @@ struct OnboardingPlanStep: View {
 
             // Directly above the price. `proAdds` has just promised two Apple Intelligence
             // features; if this iPhone can't run them, that has to be said before the buttons,
-            // not discovered after the charge.
+            // not discovered after the charge. Reading the refresh token ties the notice to the
+            // availability watch — the computed `availability` alone never invalidates the view.
+            let _ = availabilityRefresh
             ProAvailabilityNotice(status: availability)
 
             if !purchases.products.isEmpty {
