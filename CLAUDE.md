@@ -5,17 +5,24 @@ Guidance for Claude Code in this repository. Target gate: G3 (Production — shi
 ## What this app is
 
 Hair Compass AI 5 — native iOS hair/scalp tracking app. SwiftUI + SwiftData, iOS 26 deployment
-target, Apple frameworks only (no SPM/CocoaPods). AI features run on-device via FoundationModels
-(Apple Intelligence) — no cloud, no key. Tests use **Swift Testing** (`@Test`/`#expect`), UI tests
-use XCTest. A Home Screen widget shares data through App Group `group.harib.Hair-Compass-AI-5`.
+target, Apple frameworks only (no SPM/CocoaPods). AI is cloud-first: DeepSeek through
+`Service/CloudAI.swift`, only after `CloudAIConsent` is granted, with Apple Intelligence
+(FoundationModels) on-device as the no-consent/offline fallback; every reply from either engine
+passes `AIOutputValidator` before display. The key lives ONLY in `Config/Secrets.local.xcconfig`
+(gitignored) → `Config/AI.xcconfig` → Info.plist `HCDeepSeekAPIKey`; a clone without that file
+builds and simply has no cloud. **This repo is PUBLIC — never commit a key.** Tests use
+**Swift Testing** (`@Test`/`#expect`), UI tests use XCTest. A Home Screen widget shares data through App Group `group.harib.Hair-Compass-AI-5`.
 
 ## Branch topology (read this before choosing a base)
 
 - **`feat/agent-profile-memory` is the LIVE product line.** 1.0 was approved by App Review from
   `6e966f1` (build 4 lineage). `131c4ba` on it is the 1.1 feature commit (see Monetization).
-- `rebuild/clinical-minimal` (the nominal main) is **dead since 2026-08-22** — it holds an
-  abandoned direction (cloud DeepSeek AI, full monetization wall, Wren-everywhere). Don't base
-  new work on it without an explicit decision.
+- `rebuild/clinical-minimal` (the nominal main, and the GitHub Pages source for
+  haircompass-ai.com via `docs/`) was dead from 2026-08-22 to 2026-09-02, holding an abandoned
+  direction (full monetization wall, Guide/Shop tab, Lottie, Wren-everywhere). On 2026-09-02 the
+  cloud DeepSeek engine and its three audit rounds were ported from it onto the live line
+  (`feat/cloud-ai-on-1.1`), and main was merged to that tree. The wall/Lottie/Guide work stays
+  only in history and on `design/monetization-hard-wall`.
 - `fix/appstore-2.1-3.1.2` — rejection-fix wave for 1.0; superseded by 1.1. Its three surviving
   fixes were ported to `fix/1.1-polish` (availability watch, Open Settings removal, periodLabel).
 - `design/monetization-hard-wall` holds the App Review rejection log (both rejections + causes).

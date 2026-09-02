@@ -84,7 +84,9 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
     @MainActor
     func testPaywallDisclosesAINotEnabledAndStillSells() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["HC_ONBOARD", "HC_ONBOARD_STEP", "13", "HC_AI_STATUS", "notEnabled",
+        // HC_AI_CLOUD_OFF: with the cloud key configured the paywall has nothing to disclose (the
+        // AI features run on every iPhone), so this asserts the no-cloud build's contract.
+        app.launchArguments = ["HC_ONBOARD", "HC_ONBOARD_STEP", "13", "HC_AI_STATUS", "notEnabled", "HC_AI_CLOUD_OFF",
                                "HC_PAYWALL_BOTTOM", "HC_NORITUAL"]
         app.launch()
 
