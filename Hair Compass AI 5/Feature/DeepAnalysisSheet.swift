@@ -74,6 +74,12 @@ struct DeepAnalysisSheet: View {
     private var analysisContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
+                // Read the refresh token unconditionally: the unavailability card below only
+                // renders while unavailable, so a sheet that STARTS available would otherwise
+                // register no dependency and an available → unavailable flip would never
+                // re-evaluate this body — leaving Analyze enabled against a dead model
+                // (codex review, 2026-09-02).
+                let _ = availabilityRefresh
                 // A masthead rather than a framed picture: the plate bleeds to the sheet's edges
                 // and dissolves into the canvas instead of sitting in a bordered, shadowed
                 // rectangle. `-20` cancels the `.padding(20)` on this stack; the sheet clips the
@@ -91,12 +97,16 @@ struct DeepAnalysisSheet: View {
                 }
 
                 if !service.isAvailable {
-                    let _ = availabilityRefresh
                     let status = service.availability
+                    // Permanent ineligibility reads as critical, matching ProAvailabilityNotice;
+                    // the fixable states keep the soft sparkles-warning.
+                    let isPermanent = status == .deviceNotEligible
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "sparkles").font(Clinical.caption(14)).foregroundStyle(Clinical.warning)
+                                Image(systemName: isPermanent ? "exclamationmark.triangle" : "sparkles")
+                                    .font(Clinical.caption(14))
+                                    .foregroundStyle(isPermanent ? Clinical.critical : Clinical.warning)
                                 Text(status.message)
                                     .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                             }

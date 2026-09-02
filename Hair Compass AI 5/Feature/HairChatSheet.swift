@@ -79,6 +79,10 @@ struct HairChatSheet: View {
 
     @ViewBuilder
     private var gatedContent: some View {
+        // Read the refresh token BEFORE branching: with the available branch rendered, nothing
+        // else here reads it, so an available → unavailable flip would bump a token no rendered
+        // view depends on and this body would never re-evaluate (codex review, 2026-09-02).
+        let _ = availabilityRefresh
         if service.isAvailable {
             conversation
             inputBar
@@ -440,7 +444,7 @@ struct HairChatSheet: View {
     // whose model is still downloading, gets a next step instead of being told their iPhone can't
     // do this. Honest and reassuring either way: everything else in the app still works.
     private var unavailableNotice: some View {
-        _ = availabilityRefresh
+        // Dependency on availabilityRefresh is registered by `gatedContent` before branching.
         let status = service.availability
         return VStack(spacing: 12) {
             Spacer(minLength: 20)
