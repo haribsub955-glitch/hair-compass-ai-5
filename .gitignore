@@ -14,3 +14,6 @@ Secrets.swift
 **/Secrets/
 *.p12
 *.mobileprovision
+
+# Brainstorming visual companion (mockups, session state)
+.superpowers/
