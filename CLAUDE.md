@@ -67,6 +67,15 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
   free trial"); regression-tested in `PurchaseCopyTests`.
 - Legal/support URLs live in `Model/AppInfo.swift` and must point at `haircompass-ai.com`
   directly (the GitHub Pages host is a redirect hop the readiness test blacklists).
+- Every AI reply passes `AIOutputValidator` (OnDeviceAnalysisService.swift) AFTER generation:
+  any digit not literally present in the record JSON (only "24" exempt) or any ungrounded
+  clinical term (thyroid, vitamin d, pregnancy…) replaces the WHOLE answer with the "couldn't
+  safely summarize" fallback. The chat system prompt (`HairChatPrompt.system`) is written to
+  keep the model inside those rules — digits only from the record, general knowledge in words —
+  so keep prompt and validator in step when editing either (contract tests: HairChatTests).
+- FoundationModels generations cannot run on the Intel Mac's simulators (host lacks Apple
+  Intelligence) — prompt/gate behavior with a LIVE model is verifiable only on a real
+  AI-capable iPhone.
 
 ## QUEUE
 

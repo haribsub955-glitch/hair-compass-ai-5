@@ -319,6 +319,23 @@ struct AIContextTests {
             "The treatment has failed.", suppliedFacts: facts))
     }
 
+    /// The chat prompt's words-not-digits contract (HairChatPrompt.system), seen from the gate's
+    /// side. A general-knowledge answer phrased in words survives even an EMPTY record; the same
+    /// content with digits is replaced — which is exactly what happened in the field: "does
+    /// exercise help?" generated "30 minutes, 5 times a week" against a near-empty record and the
+    /// person got the "couldn't safely summarize" fallback instead of an answer (2026-09-02).
+    /// If the number rule here loosens, or the prompt drops the words-not-digits clause, one of
+    /// these two halves goes red.
+    @Test func generalKnowledgeInWordsSurvivesAnEmptyRecord() {
+        let emptyFacts = #"{"schemaVersion":1,"treatments":[]}"#
+        #expect(AIOutputValidator.isSafe(
+            "Regular exercise supports circulation and stress balance, both friendly to hair — about half an hour of movement most days is a reasonable aim. Your record doesn't track activity yet.",
+            suppliedFacts: emptyFacts))
+        #expect(!AIOutputValidator.isSafe(
+            "Aim for 30 minutes of exercise, 5 times a week — it supports circulation.",
+            suppliedFacts: emptyFacts))
+    }
+
     @Test func generatedOutputValidatorRejectsClinicalAndUngroundedClaims() {
         let facts = #"{"outcomeReady":false,"weeksElapsed":8,"shed7d":1.2}"#
         #expect(!AIOutputValidator.isSafe("You definitely have alopecia.", suppliedFacts: facts))
