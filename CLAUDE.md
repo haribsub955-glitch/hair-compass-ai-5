@@ -74,13 +74,26 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
   free trial"); regression-tested in `PurchaseCopyTests`.
 - Legal/support URLs live in `Model/AppInfo.swift` and must point at `haircompass-ai.com`
   directly (the GitHub Pages host is a redirect hop the readiness test blacklists).
+- Every AI reply passes `AIOutputValidator` (OnDeviceAnalysisService.swift) AFTER generation:
+  any digit not literally present in the record JSON (only "24" exempt) or any ungrounded
+  clinical term (thyroid, vitamin d, pregnancy…) replaces the WHOLE answer with the "couldn't
+  safely summarize" fallback. The chat system prompt (`HairChatPrompt.system`) is written to
+  keep the model inside those rules — digits only from the record, general knowledge in words —
+  so keep prompt and validator in step when editing either (contract tests: HairChatTests).
+- FoundationModels generations cannot run on the Intel Mac's simulators (host lacks Apple
+  Intelligence) — prompt/gate behavior with a LIVE model is verifiable only on a real
+  AI-capable iPhone.
 
 ## QUEUE
 
-1. Mac verification rerun of `fix/1.1-polish` @ `d0def34` (post-review fixes) — running (log:
-   `~/hc-polishtest.log` on the Mac).
-2. User decision: merge `fix/1.1-polish` into `feat/agent-profile-memory` for the 1.1 build.
+1. User: re-test the three chat questions on a real AI-capable iPhone at `266a476` — expect
+   real answers (words, not digits) instead of the "couldn't safely summarize" fallback.
+2. done 2026-09-02 — `0ea1e55` + `266a476` merged into `feat/agent-profile-memory` (and main)
+   together with the cloud-engine port; the prompt's self-description now follows the engine
+   (`HairChatPrompt.system(engine:)`: "stays on this iPhone" only when answering on-device).
 3. User: final on-device/simulator UX pass of 1.1 before submitting build 5.
+3b. done 2026-09-02 — Wren-identity prompt hardening + gate-contract test, full suite green
+   at `266a476` (unit 180s, UITests 91s).
 4. done 2026-09-02 — diff GitHub vs local, port surviving fixes onto 1.1 (`e2ad25a`).
 5. done 2026-09-02 — codex+agy review round: codex P2 (dependency read inside unavailable
    branch) + agy icon-severity fixed in `d0def34`; agy's step-13 and DCE findings discarded
