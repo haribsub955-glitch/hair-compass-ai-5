@@ -1,60 +1,78 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code in this repository. Target gate: G3 (Production — shipped App Store app).
 
-## Overview
+## What this app is
 
-Hair Compass AI 5 is a native iOS app (SwiftUI + SwiftData, iOS 26.2 deployment target, Swift 5) for tracking hair/scalp health: daily check-ins, routines, medications/supplements, lab results, procedures, lifestyle triggers, progress photos, and a Home Screen widget. There is no README in the repo root; `docs/` only holds the GitHub Pages marketing/privacy/support site.
+Hair Compass AI 5 — native iOS hair/scalp tracking app. SwiftUI + SwiftData, iOS 26 deployment
+target, Apple frameworks only (no SPM/CocoaPods). AI features run on-device via FoundationModels
+(Apple Intelligence) — no cloud, no key. Tests use **Swift Testing** (`@Test`/`#expect`), UI tests
+use XCTest. A Home Screen widget shares data through App Group `group.harib.Hair-Compass-AI-5`.
 
-## Build, Run, Test
+## Branch topology (read this before choosing a base)
 
-This is an Xcode project (no Swift Package Manager, no CocoaPods/SPM dependencies — Apple frameworks only). Use the workspace-less `.xcodeproj` with scheme **`Hair Compass AI 5`**.
+- **`feat/agent-profile-memory` is the LIVE product line.** 1.0 was approved by App Review from
+  `6e966f1` (build 4 lineage). `131c4ba` on it is the 1.1 feature commit (see Monetization).
+- `rebuild/clinical-minimal` (the nominal main) is **dead since 2026-08-22** — it holds an
+  abandoned direction (cloud DeepSeek AI, full monetization wall, Wren-everywhere). Don't base
+  new work on it without an explicit decision.
+- `fix/appstore-2.1-3.1.2` — rejection-fix wave for 1.0; superseded by 1.1. Its three surviving
+  fixes were ported to `fix/1.1-polish` (availability watch, Open Settings removal, periodLabel).
+- `design/monetization-hard-wall` holds the App Review rejection log (both rejections + causes).
+
+## Build, run, test
+
+Scheme **`Hair Compass AI 5`**, plain `.xcodeproj`. Builds run on the Mac
+(`ssh mac`, clone at `~/Projects/hair-compass-ai-5`); GitHub is the only sync plane — push a
+branch, fetch on the Mac. Full remote-loop recipe: `ios-remote-loop` skill.
 
 ```bash
-# Build for simulator
-xcodebuild build -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 5" -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
-
-# Run the full test suite (unit + UI tests)
-xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 5" -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
-
-# Run a single unit test (Swift Testing framework, not XCTest)
-xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 5" -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -only-testing:"Hair Compass AI 5Tests/Hair_Compass_AI_5Tests/calculatesInsightMetrics"
+# Unit suite (~220-350 s on the 2016 Intel MBP)
+xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 5" \
+  -destination "platform=iOS Simulator,id=DBA94B02-F422-45A8-B0F6-57487CD5AA72" \
+  -only-testing:"Hair Compass AI 5Tests"
+# UI tests: ALWAYS -parallel-testing-enabled NO (parallel clone sims crash launchd_sim on Intel)
 ```
 
-Note: the project name contains spaces — always quote paths/arguments. Pick a simulator that exists (`xcrun simctl list devices`); the deployment target is iOS 26.2, so the runtime must be new enough.
+- Automation simulator `HC-Automation` = `DBA94B02-F422-45A8-B0F6-57487CD5AA72`; never touch the
+  user's iPhone 16e sim.
+- Test targets use file-system-synchronized groups — a new test file needs no pbxproj edit.
 
-### Targets
-- **Hair Compass AI 5** — the app.
-- **Hair Compass CheckIn Widget** — WidgetKit extension (embedded app extension).
-- **Hair Compass AI 5Tests** — unit tests, written with the **Swift Testing** framework (`import Testing`, `@Test`, `#expect`), not XCTest.
-- **Hair Compass AI 5UITests** — XCUITest UI tests.
+## Monetization (1.1 access model)
 
-## Architecture
-
-### SwiftData is the source of truth
-`Hair_Compass_AI_5App.swift` builds one `ModelContainer` over all `@Model` types defined in [Item.swift](Hair%20Compass%20AI%205/Data/Item.swift): `HairProfile`, `CheckInEntry`, `DailyObservation`, `RoutineTask`, `RoutineCompletionEntry`, `PhotoRecord`, `MedicationLog`, `MedicationDoseEntry`, `ProcedureEvent`, `LifestyleEntry`, `LabResultEntry`, `HairTriggerEvent`. The container is persisted on disk; if opening the store fails it deletes the `.store`/`.wal`/`.shm` files and recreates a fresh store (rather than falling back to in-memory) — relevant when changing the schema. Pure analytics helpers (`HairInsightCalculator`: averages, completion rate, streaks) also live in `Item.swift` and are what the unit tests cover.
-
-### ContentView.swift is the entire UI (~11.6k lines)
-[ContentView.swift](Hair%20Compass%20AI%205/App/ContentView.swift) holds the root `ContentView` plus ~55 `private struct ... : View` nested in the same file. Navigation is a custom `FloatingTabBar` over the `AppTab` enum with five tabs: `today` / `chart` / `photo` / `plan` / `you` (the enum keeps legacy aliases like `dashboard`, `checkIns`, `routine`, `profile` mapping onto these). Each tab is a top-level view here — `DashboardTab`, `CheckInsTab`, `RoutineTab`, `PhotoRecordsTab`, `ProfileTab`/`GuidanceTab`/`MedicationTab` — followed by their sheets, cards, library views, and chart views (`RoutineImpactChart`, `ChartEvidenceCard`, etc.). When adding UI, follow the existing pattern of a new `private struct ...: View` in this file unless extracting a feature.
-
-### Services (`Services/`)
-- **OpenAIServices.swift** — `OpenAIAnalysisService` calls the OpenAI `/v1/responses` endpoint (`gpt-4.1-mini`) with multi-angle photos for **record-keeping summaries only, explicitly not diagnosis** (preserve this framing in prompts). Also defines `PhotoFileStore` (singleton that saves/loads JPEGs to disk by path; `PhotoRecord` stores the path, not the image).
-- **HealthInsightsStore.swift** — `@MainActor @Observable` HealthKit reader; surfaces daily metrics with an authorization state machine.
-- **AffiliateCatalogService.swift** — `AffiliateCatalogStore` loads a bundled `AffiliateProducts.json` and can refresh from a (currently empty) remote URL; powers affiliate product rows.
-- **ClinicianExportService.swift** — builds a plain-text clinical summary string from the SwiftData models for sharing/export.
-- **AnalyticsService.swift** — local-only analytics; logs via `os.Logger` and stores event counts/properties in `UserDefaults`. No third-party analytics SDK.
-
-### Monetization & gating
-`Service/PurchaseService.swift` (`@MainActor @Observable`) wraps StoreKit 2: product IDs `com.harib.haircompass.pro.monthly2` / `.yearly2` (the "2" suffix is required — the un-suffixed IDs were burned by an old create-and-delete in App Store Connect), ASC subscription group "Premium". `hasPro` is the entitlement flag premium features check, injected via `@Environment(PurchaseService.self)`.
-
-### Widget data sharing
-The app writes a `HairCompassWidgetSnapshot` (Codable) into the shared App Group **`group.harib.Hair-Compass-AI-5`** under key `dashboardSnapshot`, then calls `WidgetCenter.shared.reloadTimelines(ofKind: "HairCompassCheckInWidget")`. The widget target ([HairCompassCheckInWidget.swift](Hair%20Compass%20CheckIn%20Widget/HairCompassCheckInWidget.swift)) reads the same App Group. The snapshot struct is duplicated on both sides — keep them in sync when changing fields.
-
-### Design system
-`DesignSystem/PremiumTheme.swift` — `PremiumTheme` enum of brand colors and gradients. Use these constants for any new UI rather than hardcoding colors.
+- StoreKit 2 in `Service/PurchaseService.swift`; product IDs `com.harib.haircompass.pro.monthly2`
+  / `.yearly2` (the "2" suffix is required — un-suffixed IDs were burned in ASC), group "Premium".
+- Since 1.1 (`131c4ba`): every fresh install gets a **3-day full-access window** anchored in the
+  Keychain (`Service/AccessWindow.swift` — reinstalls and clock rollbacks cannot restart it).
+  After it, Today/Trends/Labs/Photos sit behind `ProGate`; **Plan (medication logging) is free
+  forever** — a dose schedule is a safety surface. `ProAvailability.sellable` is always true: Pro
+  carries device-independent value, so the paywall sells on every iPhone and the Apple
+  Intelligence notice narrows to the two AI gates (`requiresOnDeviceAI: true`).
 
 ## Conventions & gotchas
 
-- **OpenAI key**: read from the `OPENAI_API_KEY` environment variable at launch (`seedOpenAIKeyIfProvided`) and stored in `UserDefaults` under `openAIAPIKey`. There is no key in the repo; set the env var in the scheme's run arguments for local testing.
-- **Pre-submission placeholders**: `AppSubmissionLinks.privacyPolicyURL` and `.supportURL` in ContentView.swift, and `AffiliateCatalogStore.Configuration.remoteCatalogURLString`, are intentionally empty and must be filled before App Store submission (see `docs/README.md`).
-- Tests use **Swift Testing**, not XCTest — write new unit tests with `@Test`/`#expect`.
+- `ProAvailability.current` / `OnDeviceAvailability.current` are static system reads SwiftUI does
+  NOT track. Any view rendering availability needs the watch pattern: `scenePhase` bump + 2 s
+  change-detecting poll into an `availabilityRefresh` token (see `ProGate`). One-way polls fail
+  open — watch both directions.
+- Never add an "Open Settings" button for Apple Intelligence: `openSettingsURLString` opens THIS
+  app's settings page, and the Apple Intelligence & Siri pane has no public URL. Name the Settings
+  path in copy instead. (BodySignals/Care keep their buttons — those target app permissions.)
+- Archive builds ignore the scheme's `.storekit` fixture — a green local StoreKit test proves
+  nothing about submission readiness; only TestFlight sandbox purchases prove ASC config.
+  Submission checklist: `ios-appstore-submission` skill.
+- DEBUG launch args for QA: `HC_AI_STATUS <available|notEnabled|modelNotReady|deviceNotEligible>`,
+  `HC_ONBOARD`, `HC_ONBOARD_STEP <n>`, `HC_PAYWALL_BOTTOM`, `HC_NORITUAL`.
+- Trial copy: hyphenated compound modifiers stay singular — `PurchaseService.periodLabel` ("3-day
+  free trial"); regression-tested in `PurchaseCopyTests`.
+- Legal/support URLs live in `Model/AppInfo.swift` and must point at `haircompass-ai.com`
+  directly (the GitHub Pages host is a redirect hop the readiness test blacklists).
+
+## QUEUE
+
+1. Mac verification run of `fix/1.1-polish` (unit + 2 paywall UITests) — running (log:
+   `~/hc-polishtest.log` on the Mac).
+2. User decision: merge `fix/1.1-polish` into `feat/agent-profile-memory` for the 1.1 build.
+3. User: final on-device/simulator UX pass of 1.1 before submitting build 5.
+4. done 2026-09-02 — diff GitHub vs local, port surviving fixes onto 1.1 (`e2ad25a`).
+5. dropped — resubmission ASC lane for 1.0: app already approved and live.
