@@ -79,10 +79,13 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
 
 ## QUEUE
 
-1. Mac verification rerun of `fix/1.1-polish` @ `d0def34` (post-review fixes) — running (log:
-   `~/hc-polishtest.log` on the Mac).
-2. User decision: merge `fix/1.1-polish` into `feat/agent-profile-memory` for the 1.1 build.
+1. User: re-test the three chat questions on a real AI-capable iPhone at `266a476` — expect
+   real answers (words, not digits) instead of the "couldn't safely summarize" fallback.
+2. Harib (or user says merge): pull `0ea1e55` + `266a476` from `fix/1.1-polish` into
+   `feat/agent-profile-memory` — he already fast-forwarded onto `3a899f1` on 2026-09-02.
 3. User: final on-device/simulator UX pass of 1.1 before submitting build 5.
+3b. done 2026-09-02 — Wren-identity prompt hardening + gate-contract test, full suite green
+   at `266a476` (unit 180s, UITests 91s).
 4. done 2026-09-02 — diff GitHub vs local, port surviving fixes onto 1.1 (`e2ad25a`).
 5. done 2026-09-02 — codex+agy review round: codex P2 (dependency read inside unavailable
    branch) + agy icon-severity fixed in `d0def34`; agy's step-13 and DCE findings discarded
