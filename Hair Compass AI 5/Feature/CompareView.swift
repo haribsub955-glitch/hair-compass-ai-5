@@ -306,22 +306,28 @@ struct CompareView: View {
         }
     }
 
+    @ViewBuilder
     private var readCard: some View {
         let paired = ChartMath.pairWithLag(hair: series(for: hairID), lifestyle: series(for: overlayID), lagDays: lag.days)
         let assoc = ChartMath.association(hair: paired.hair, lifestyle: paired.lifestyle)
-        return ClinicalCard {
+        if case .insufficient(let need) = assoc {
+            // Short of pairs: the same pill every locked chart shows, on the bare canvas — the
+            // pill already carries its own chrome, so a card around it would be a box in a box.
             VStack(alignment: .leading, spacing: 12) {
-                if case .insufficient(let need) = assoc {
-                    // Same pill as every locked chart: the rule, and the honest progress.
-                    ChartPlaceholderPill(required: need, have: paired.hair.count, unit: .pairedDays)
-                } else {
+                ChartPlaceholderPill(required: need, have: paired.hair.count, unit: .pairedDays)
+                askWrenChip
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            ClinicalCard {
+                VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "sparkle.magnifyingglass").font(Clinical.caption(15)).foregroundStyle(Clinical.accent)
                         Text(ChartMath.phrasing(assoc, hairTitle: hair.title, lifestyleTitle: overlay.title, lagDays: lag.days))
                             .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
                     }
+                    askWrenChip
                 }
-                askWrenChip
             }
         }
     }
