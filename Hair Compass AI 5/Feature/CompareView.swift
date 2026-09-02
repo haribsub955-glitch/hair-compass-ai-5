@@ -261,68 +261,10 @@ struct CompareView: View {
 
     // MARK: Faded illustrative preview (< 7 overlapping days)
 
-    /// A fixed, hand-authored 14-point sample — never real data. Already normalized to 0...1: a
-    /// gently declining "your signal" curve, mirroring what a real shedding trend easing down
-    /// would look like once the chart unlocks.
-    private static let sampleSignal: [Double] = [
-        0.80, 0.78, 0.74, 0.76, 0.70, 0.66, 0.68, 0.60, 0.58, 0.54, 0.50, 0.48, 0.44, 0.40,
-    ]
-    /// The paired sample overlay curve — a rising lifestyle/treatment signal, purely illustrative.
-    private static let sampleOverlay: [Double] = [
-        0.22, 0.26, 0.24, 0.30, 0.28, 0.34, 0.38, 0.36, 0.42, 0.46, 0.44, 0.50, 0.54, 0.58,
-    ]
-
-    /// Honest "not enough data yet" state: a faded static sample chart (never mistaken for real
-    /// data — see the "Sample" eyebrow) drawn at the same styling/height as the real chart, so
-    /// nothing visually jumps the moment the comparison crosses the 7-day threshold and the real
-    /// chart takes its place.
+    /// Honest "not enough data yet" state: the shared shaded placeholder at the real chart's
+    /// height, so nothing visually jumps the moment the comparison crosses the 7-day threshold.
     private func previewLocked(daysLogged: Int) -> some View {
-        ZStack {
-            Chart {
-                ForEach(Array(Self.sampleSignal.enumerated()), id: \.offset) { i, v in
-                    LineMark(x: .value("Day", i), y: .value("Level", v), series: .value("s", "sample-signal"))
-                        .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 2.5))
-                        .foregroundStyle(Clinical.ink)
-                }
-                ForEach(Array(Self.sampleOverlay.enumerated()), id: \.offset) { i, v in
-                    LineMark(x: .value("Day", i), y: .value("Level", v), series: .value("s", "sample-overlay"))
-                        .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 2.5))
-                        .foregroundStyle(Clinical.sage)
-                }
-            }
-            .frame(height: 170)
-            .chartYScale(domain: 0...1)
-            .chartYAxis(.hidden)
-            .chartXAxis(.hidden)
-            .opacity(0.28)
-            .accessibilityHidden(true)
-
-            VStack(spacing: 8) {
-                Eyebrow(text: "Sample — your data will replace this")
-                lockChip(daysLogged: daysLogged)
-            }
-        }
-        .frame(height: 170)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Sample chart, illustrative only. Your real graph unlocks after 7 days of tracking. \(daysLogged) of 7 days logged.")
-    }
-
-    private func lockChip(daysLogged: Int) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "lock.fill")
-                .font(Clinical.caption(13)).foregroundStyle(Clinical.tertiary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Your real graph unlocks after 7 days of tracking")
-                    .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
-                Text("\(daysLogged) of 7 days logged")
-                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-            }
-        }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .frame(maxWidth: 260)
-        .background(Clinical.surface.opacity(0.9), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
-        .shadow(color: Clinical.cardShadow, radius: 6, y: 2)
+        ChartPlaceholder(required: Self.readyThreshold, have: daysLogged, unit: .days, height: 170)
     }
 
     private func legend(hairPts: [(day: Date, value: Double)], overlayPts: [(day: Date, value: Double)]) -> some View {
@@ -371,8 +313,13 @@ struct CompareView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "sparkle.magnifyingglass").font(Clinical.caption(15)).foregroundStyle(Clinical.accent)
-                    Text(ChartMath.phrasing(assoc, hairTitle: hair.title, lifestyleTitle: overlay.title, lagDays: lag.days))
-                        .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
+                    if case .insufficient(let need) = assoc {
+                        // Same pill as every locked chart: the rule, and the honest progress.
+                        ChartPlaceholderPill(required: need, have: paired.hair.count, unit: .pairedDays)
+                    } else {
+                        Text(ChartMath.phrasing(assoc, hairTitle: hair.title, lifestyleTitle: overlay.title, lagDays: lag.days))
+                            .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
+                    }
                 }
                 askWrenChip
             }
