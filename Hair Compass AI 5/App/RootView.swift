@@ -410,6 +410,7 @@ struct RootView: View {
                 // health step and paywall step would crash reading their `@Environment(...)`.
                 OnboardingFlow(profile: profile, onFinish: {
                     showOnboarding = false
+                    tab = .care
                     if !hasSeenTutorial { showTutorial = true }
                 })
                 .environment(healthKit)
