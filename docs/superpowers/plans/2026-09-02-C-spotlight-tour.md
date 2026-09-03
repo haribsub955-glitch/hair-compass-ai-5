@@ -509,6 +509,9 @@ In `Hair Compass AI 5/App/RootView.swift`:
                 SpotlightTourOverlay(anchors: anchors, tab: $tab) {
                     hasSeenTutorial = true
                     showTutorial = false
+                    // The finale's promise is "Open my plan": whatever tab the last step lit,
+                    // the tour hands the person to the Plan tab (sub-project B ruling B-R5).
+                    tab = .care
                 }
                 .transition(.opacity)
             }
