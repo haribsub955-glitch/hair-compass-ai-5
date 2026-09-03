@@ -1,0 +1,134 @@
+//
+//  StarterPlanSection.swift
+//  Hair Compass AI 5
+//
+//  "Set up your plan": the starting plan as a checklist at the top of the Plan tab. Rows are
+//  grouped under the plan's four eyebrows; a tap opens the right sheet (the owner decides which,
+//  through `onTap`); swipe or long-press says "Not for me". Done rows keep their place with a
+//  filled circle, and the whole section hands over to the ritual once everything is done or
+//  dismissed. No enclosing card — hairline rules and spacing, as the rest of Plan.
+//
+
+import SwiftUI
+
+struct StarterPlanSection: View {
+    let items: [StarterPlanItem]
+    let showsCloser: Bool
+    let canUndo: Bool
+    let onTap: (StarterPlanItem) -> Void
+    let onDismiss: (StarterPlanItem) -> Void
+    let onUndo: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if showsCloser {
+                closer
+            } else {
+                header
+                ForEach(StarterPlanGroup.allCases) { group in
+                    let inGroup = items.filter { $0.group == group }
+                    if !inGroup.isEmpty {
+                        groupBlock(group, inGroup)
+                    }
+                }
+                if canUndo {
+                    Button("Undo \"Not for me\"") { onUndo() }
+                        .font(Clinical.caption(12))
+                        .foregroundStyle(Clinical.accent)
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("starterPlanUndo")
+                }
+                Text(TreatmentRecommender.disclaimer)
+                    .font(Clinical.caption(11))
+                    .foregroundStyle(Clinical.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityIdentifier("starterPlanSection")
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Eyebrow(text: "Set up your plan")
+            Text("Your starting plan")
+                .font(Clinical.headline(22))
+                .foregroundStyle(Clinical.ink)
+            Text("What's worth asking about, what the evidence supports, and the few things that make the record useful. Tick them off, or say not for me.")
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func groupBlock(_ group: StarterPlanGroup, _ rows: [StarterPlanItem]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Eyebrow(text: group.eyebrow)
+                .padding(.top, 6)
+                .padding(.bottom, 4)
+            Divider().overlay(Clinical.hairline)
+            ForEach(rows) { item in
+                row(item)
+                Divider().overlay(Clinical.hairline)
+            }
+        }
+    }
+
+    private func row(_ item: StarterPlanItem) -> some View {
+        Button { onTap(item) } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
+                    .font(Clinical.body(18))
+                    .foregroundStyle(item.isDone ? Clinical.accent : Clinical.tertiary)
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(Clinical.body(15, weight: .medium))
+                        .foregroundStyle(item.isDone ? Clinical.secondary : Clinical.ink)
+                        .strikethrough(item.isDone, color: Clinical.tertiary)
+                    Text(item.why)
+                        .font(Clinical.caption(12))
+                        .foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let caution = item.caution {
+                        Text(caution)
+                            .font(Clinical.caption(11))
+                            .foregroundStyle(Clinical.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(Clinical.body(11, weight: .semibold))
+                    .foregroundStyle(Clinical.tertiary)
+                    .padding(.top, 4)
+            }
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.clinicalPressable)
+        .contextMenu {
+            Button("Not for me", role: .destructive) { onDismiss(item) }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button("Not for me", role: .destructive) { onDismiss(item) }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.title). \(item.why)\(item.isDone ? ". Done." : "")")
+        .accessibilityHint(item.isDone ? "" : "Opens the place to do this")
+        .accessibilityIdentifier("starterPlanRow.\(item.id)")
+    }
+
+    private var closer: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(Clinical.body(16))
+                .foregroundStyle(Clinical.accent)
+            Text("Starting plan done — your ritual takes it from here.")
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 8)
+        .accessibilityIdentifier("starterPlanCloser")
+    }
+}
