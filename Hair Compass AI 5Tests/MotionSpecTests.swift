@@ -24,6 +24,11 @@ struct MotionSpecTests {
         #expect(MotionSpec.note.actionDelay == 0.08)
     }
 
+    @Test func horizonMarkerAndReviewDotFadesWithinBudget() {
+        #expect((0.1...0.4).contains(MotionSpec.horizon.markerFade))
+        #expect((0.1...0.4).contains(MotionSpec.horizon.reviewDotFade))
+    }
+
     @Test func closeTheDayTotalWithinBudget() {
         #expect((1.2...1.6).contains(MotionSpec.closeTheDay.total))
     }

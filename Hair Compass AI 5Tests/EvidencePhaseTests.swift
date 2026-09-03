@@ -71,6 +71,25 @@ struct EvidencePhaseTests {
         #expect(phase.week == 4 && phase.daysIntoWeek == 0)
     }
 
+    @Test func progressToReviewTracksTheReviewClock() {
+        let dayOne = EvidencePhase(anchor: .record, start: now, dayNumber: 1, week: 0,
+                                   label: "Building the baseline", nextReviewWeek: 4,
+                                   nextReviewDate: now, daysToReview: 27)
+        #expect(dayOne.progressToReview == 0)
+
+        // Day 34 of a week-12 review: 33/84.
+        let day34 = EvidencePhase(anchor: .record, start: now, dayNumber: 34, week: 4,
+                                  label: "Early evidence", nextReviewWeek: 12,
+                                  nextReviewDate: now, daysToReview: 50)
+        #expect(abs(day34.progressToReview - 33.0 / 84.0) < 0.0001)
+
+        // The review day itself: dayNumber - 1 == nextReviewWeek * 7.
+        let reviewDay = EvidencePhase(anchor: .record, start: now, dayNumber: 85, week: 12,
+                                      label: "Assessment", nextReviewWeek: 12,
+                                      nextReviewDate: now, daysToReview: 0)
+        #expect(reviewDay.progressToReview == 1)
+    }
+
     @Test func weekMatchesProgressReportsClock() throws {
         let t = Treatment(name: "M", treatmentClass: .minoxidil, dose: "", scheduleTimes: "08:00",
                           startDate: daysAgo(33), isActive: true)

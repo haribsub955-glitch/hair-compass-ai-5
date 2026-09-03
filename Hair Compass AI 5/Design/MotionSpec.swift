@@ -17,6 +17,8 @@ enum MotionSpec {
         static let markerSpring = (response: 0.7, damping: 0.85)
         static let driftAmplitude: CGFloat = 1   // decorative bob, pt
         static let driftPeriod: Double = 4
+        static let markerFade: Double = 0.2      // 0.1–0.4 s
+        static let reviewDotFade: Double = 0.3   // 0.1–0.4 s
     }
     enum note {
         static let duration: Double = 0.35

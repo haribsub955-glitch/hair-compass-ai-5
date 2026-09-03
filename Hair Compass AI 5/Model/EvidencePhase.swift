@@ -30,6 +30,13 @@ struct EvidencePhase: Equatable {
     var isMilestoneWeek: Bool { ProgressReport.isMilestone(week: week) }
     /// 0 on the first day of the current week, 6 on the last.
     var daysIntoWeek: Int { (dayNumber - 1) - week * 7 }
+    /// 0…1 through the current review window — the horizon marker's position (Important 4). 0
+    /// on the start day, 1 on the review day itself (and beyond, clamped); the denominator is
+    /// the review's own week count, not a fixed horizon, so an early review (week 4) and a late
+    /// one (week 24+) both read as "how far through this stretch", not "how far through a year".
+    var progressToReview: Double {
+        min(1, max(0, Double(dayNumber - 1) / Double(max(1, nextReviewWeek * 7))))
+    }
 
     static func label(forWeek week: Int) -> String {
         switch week {

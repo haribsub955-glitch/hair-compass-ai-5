@@ -11,6 +11,12 @@ import UIKit
 /// big serif band word as the "temperature". Greeting/date/streak stay small around it. The
 /// scene doubles as a drag-to-set input when `onShedSet` is supplied (see `sceneLayer`).
 struct ConditionsHero: View {
+    /// The full hero's floor height (header + shedding scene).
+    static let heroHeight: CGFloat = 304
+    /// Important 8: without the header row (and its `Spacer(minLength: 12)`), the hero needs
+    /// less floor — otherwise the missing header leaves a blank band above "TODAY'S SHEDDING".
+    static let headerlessHeroHeight: CGFloat = 256
+
     var shed: ShedLevel?
     var scalpTotal: Int?
     var scalpBand: SeverityBand?
@@ -109,7 +115,7 @@ struct ConditionsHero: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 304, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: showsHeader ? Self.heroHeight : Self.headerlessHeroHeight, alignment: .topLeading)
     }
 
     // MARK: - Scene (backdrop + drag-to-set)
@@ -170,8 +176,17 @@ struct ConditionsHero: View {
     /// Where falling strands become fully visible, as a fraction of hero height. At the calmest
     /// band (Minimal) the few strands are pushed below the band word, so one never drifts across
     /// the headline; busier bands keep the higher default and let the simulation fill the scene.
+    /// Important 8: without the header, every line of content sits `Self.heroHeight -
+    /// Self.headerlessHeroHeight` points higher, so the mask's start moves up by the same
+    /// absolute amount before being re-expressed as a fraction of the shorter frame — otherwise
+    /// a fraction calibrated for the full-height hero leaves a blank band above "TODAY'S
+    /// SHEDDING" once the header (and its height) is gone.
     private var strandMaskTop: CGFloat {
-        SheddingDial.band(displayIntensity) == ShedLevel.minimal.rawValue ? 0.56 : 0.36
+        let base = SheddingDial.band(displayIntensity) == ShedLevel.minimal.rawValue ? 0.56 : 0.36
+        guard !showsHeader else { return base }
+        let headerHeight = Self.heroHeight - Self.headerlessHeroHeight
+        let absoluteY = max(0, base * Self.heroHeight - headerHeight)
+        return absoluteY / Self.headerlessHeroHeight
     }
 
     private func dragGesture(height: CGFloat, set: @escaping (ShedLevel) -> Void) -> some Gesture {
@@ -231,8 +246,8 @@ struct ConditionsHero: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Edit profile and baseline")
                 }
+                Spacer(minLength: 12)
             }
-            Spacer(minLength: 12)
             VStack(alignment: .leading, spacing: 8) {
                 Eyebrow(text: "Today's shedding")
                 if let shed, dragIntensity == nil {

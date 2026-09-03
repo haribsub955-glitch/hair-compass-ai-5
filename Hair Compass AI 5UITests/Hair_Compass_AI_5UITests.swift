@@ -217,6 +217,17 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["groundingReason"].waitForExistence(timeout: 4), "Why this? shows the reason")
         XCTAssertFalse(app.buttons["tutorialSkip"].exists, "the card tour is gone")
         XCTAssertFalse(app.buttons["Skip the tour"].exists, "the card tour is gone")
+
+        // Important 8: the headerless shedding scene should close its gap — a scrolled
+        // screenshot for a human look, since "no blank band above TODAY'S SHEDDING" is a
+        // visual claim no assertion can make on its own.
+        app.swipeUp()
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.lifetime = .keepAlways
+        attachment.name = "g2-shedding-scene"
+        add(attachment)
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/private/tmp/claude-501/-Users-haribazri-Hair-Compass-AI-5/ff0a543b-cd29-4e99-83c4-0d3dc9b8f4cb/scratchpad/g2-shedding-scene.png"))
     }
 
     /// Polls an element's accessibility `value` rather than sleeping a fixed amount — the write

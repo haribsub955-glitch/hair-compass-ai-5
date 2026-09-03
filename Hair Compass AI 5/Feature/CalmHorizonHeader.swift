@@ -95,8 +95,8 @@ private struct HorizonPath: View {
             GeometryReader { geo in
                 let width = geo.size.width
                 let markerStartX = dotRadius
-                let markerRestX = width / 2
-                let travel = max(0, markerRestX - markerStartX)
+                let restX = markerRestX(width: width)
+                let travel = max(0, restX - markerStartX)
                 let lineWidth = travel * lineDrawn
                 let markerX = markerStartX + travel * markerProgress
                 let midY = rowHeight / 2
@@ -126,13 +126,23 @@ private struct HorizonPath: View {
                 }
             }
             .frame(height: rowHeight)
-            HStack {
-                Text("Baseline")
-                Spacer()
-                Text("You are here")
-                Spacer()
-                Text("Week \(phase.nextReviewWeek) review")
+            // Labels: "Baseline" and "Week N review" stay anchored to the row's ends; "You are
+            // here" centres under the marker's rest position (Important 4) via `.position`,
+            // rather than sitting equidistant between the other two the way a plain three-way
+            // HStack would place it once the marker itself is no longer always centered.
+            GeometryReader { geo in
+                let restX = markerRestX(width: geo.size.width)
+                ZStack {
+                    HStack {
+                        Text("Baseline")
+                        Spacer()
+                        Text("Week \(phase.nextReviewWeek) review")
+                    }
+                    Text("You are here")
+                        .position(x: restX, y: geo.size.height / 2)
+                }
             }
+            .frame(height: 14)
             .font(Clinical.caption(10.5))
             .foregroundStyle(Clinical.tertiary)
             .lineLimit(1)
@@ -143,6 +153,16 @@ private struct HorizonPath: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Baseline behind you, you are here, week \(phase.nextReviewWeek) review ahead")
         .onAppear { animate() }
+    }
+
+    /// The marker's target x, as a fraction of the row's own width — `progressToReview`
+    /// (Important 4) clamped away from either dot so the marker (and Wren) never sits on top of
+    /// Baseline or the review dot.
+    private func markerRestX(width: CGFloat) -> CGFloat {
+        let markerStartX = dotRadius
+        let fullTravel = max(0, width - 2 * dotRadius)
+        let clampedProgress = min(0.88, max(0.12, phase.progressToReview))
+        return markerStartX + fullTravel * clampedProgress
     }
 
     @ViewBuilder
@@ -177,7 +197,7 @@ private struct HorizonPath: View {
         withAnimation(.easeInOut(duration: MotionSpec.horizon.draw)) {
             lineDrawn = 1
         }
-        withAnimation(.easeOut(duration: 0.2).delay(MotionSpec.horizon.markerDelay)) {
+        withAnimation(.easeOut(duration: MotionSpec.horizon.markerFade).delay(MotionSpec.horizon.markerDelay)) {
             markerOpacity = 1
         }
         withAnimation(
@@ -190,7 +210,7 @@ private struct HorizonPath: View {
         } completion: {
             settled = true
         }
-        withAnimation(.easeOut(duration: 0.3).delay(0.9)) {
+        withAnimation(.easeOut(duration: MotionSpec.horizon.reviewDotFade).delay(0.9)) {
             reviewDotOpacity = 1
         }
     }
