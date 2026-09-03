@@ -112,19 +112,45 @@ enum GroundingCards {
         return loggedToday ? .none : .logCheckIn
     }
 
+    /// Safety copy of its own — never the raw flag title/detail, which are written for a
+    /// clinician, not a card headline. `flag.detail` still surfaces, verbatim, behind "Why this?"
+    /// via `reason`.
+    private static func safetyCard(for flag: ClinicianReviewFlag) -> GroundingCard {
+        let headline: String
+        let body: String
+        switch flag.id {
+        case "scalpPain":
+            headline = "Scalp pain is worth a clinician's look"
+            body = "You reported scalp pain or tenderness in a check-in. That is the one symptom this app always hands to a clinician rather than reading itself."
+        case "severeSideEffect":
+            headline = "A severe side effect is on the record"
+            body = "A severe side effect was logged in the last two weeks. That belongs with your prescriber, not with an app's reassurance."
+        case "heavyShed":
+            headline = "Heavy shedding on most recent days"
+            body = "Shedding was logged Heavy on most of the last two weeks. A sustained pattern like this is worth a clinician's read, not a daily note."
+        case "staleTrigger":
+            headline = "Shedding has outlasted its trigger"
+            body = "A trigger from more than six months ago is still followed by rising shedding. Shedding that outlasts its trigger by this long is worth a clinician's read."
+        default:
+            headline = flag.title
+            body = "A pattern in your record met a clinician-review rule. It is saved for your clinician."
+        }
+        return GroundingCard(
+            kind: .safety, eyebrow: "Worth a clinician's look",
+            headline: headline, body: body, evidenceAnchor: nil,
+            primary: .prepareVisit,
+            closure: "This note is saved for your clinician. Do not change or double a medication because of anything in the app; follow your prescriber's or the product's instructions.",
+            reason: flag.detail
+        )
+    }
+
     static func select(_ input: GroundingInput) -> GroundingCard {
         let phase = input.phase
         let dayLine = phase.map { "Day \($0.dayNumber)" } ?? "Today"
 
         // 1. Safety: a clinician-review rule fired. No motivation, one care step.
         if let flag = input.flags.first {
-            return GroundingCard(
-                kind: .safety, eyebrow: "Worth a clinician's look",
-                headline: flag.title, body: flag.detail, evidenceAnchor: nil,
-                primary: .prepareVisit,
-                closure: "This note is saved for your clinician. Do not change or double a medication because of anything in the app; follow your prescriber's or the product's instructions.",
-                reason: "A pattern in your record met the clinician-review rule \"\(flag.id)\"."
-            )
+            return safetyCard(for: flag)
         }
 
         // 2. (An explicit concern from "I'm worried" arrives with sub-project G4.)
@@ -156,9 +182,29 @@ enum GroundingCards {
             )
         }
 
-        // 5. Preparation: a comparable photo is due, a baseline is pending, or a review is close.
-        switch input.photo {
-        case .due(let overdue):
+        // 5. Recovery: something was missed yesterday and today's plan is not yet complete.
+        if input.missedYesterday > 0 && !input.plan.isComplete {
+            let rhythm = input.consistency30.map { "Over the last 30 days you completed \($0.completed) of \($0.planned) planned actions. " } ?? ""
+            let due = dueAction(input.plan, loggedToday: input.loggedToday)
+            let primary: GroundingCard.Action
+            if case .completePlanItem = due {
+                primary = due
+            } else {
+                primary = input.loggedToday ? .openPlan : .logCheckIn
+            }
+            return GroundingCard(
+                kind: .recovery, eyebrow: "Today's grounding",
+                headline: "Today is a clean place to restart",
+                body: "One missed action does not erase the record already built. \(rhythm)Resume your normal plan today unless your clinician instructed otherwise.",
+                evidenceAnchor: reviewAnchor(phase),
+                primary: primary,
+                closure: "Nothing needs catching up. Today's step is the only one that counts now.",
+                reason: "\(input.missedYesterday) planned action\(input.missedYesterday == 1 ? " was" : "s were") not recorded yesterday."
+            )
+        }
+
+        // 6. Preparation: a comparable photo is due, or a review is close.
+        if case .due(let overdue) = input.photo {
             return GroundingCard(
                 kind: .preparation, eyebrow: "Coming up",
                 headline: "A comparable photo is due",
@@ -168,18 +214,6 @@ enum GroundingCards {
                 closure: "After that, nothing else is needed today.",
                 reason: "Your last photo is \(PhotoCadence.intervalDays + overdue) days old; the cadence is every \(PhotoCadence.intervalDays) days."
             )
-        case .noBaseline:
-            return GroundingCard(
-                kind: .preparation, eyebrow: "Coming up",
-                headline: "A baseline photo anchors everything",
-                body: "There is no baseline photo yet. One photo in good light, taken the same way each time, is what every later comparison is measured against.",
-                evidenceAnchor: reviewAnchor(phase),
-                primary: .openPhotos,
-                closure: "Whenever you are ready — it does not have to be today.",
-                reason: "The record has no photo yet."
-            )
-        case .upcoming:
-            break
         }
         if let phase, phase.daysToReview <= 7 {
             let headline = phase.nextReviewWeek == 4 ? "Your first review is approaching" : "Your week \(phase.nextReviewWeek) review is approaching"
@@ -194,7 +228,7 @@ enum GroundingCards {
             )
         }
 
-        // 6. Settled or closure: every planned action today is recorded.
+        // 7. Settled or closure: every planned action today is recorded.
         if input.plan.isComplete {
             if input.plan.completedCount == 0 {
                 return GroundingCard(
@@ -218,28 +252,20 @@ enum GroundingCards {
             )
         }
 
-        // 7. Recovery: something was missed yesterday and today has not started yet.
-        if input.missedYesterday > 0 {
-            let rhythm = input.consistency30.map { "Over the last 30 days you completed \($0.completed) of \($0.planned) planned actions. " } ?? ""
-            let due = dueAction(input.plan, loggedToday: input.loggedToday)
-            let primary: GroundingCard.Action
-            if case .completePlanItem = due {
-                primary = due
-            } else {
-                primary = input.loggedToday ? .openPlan : .logCheckIn
-            }
+        // 8. Preparation: a baseline photo is pending.
+        if input.photo == .noBaseline {
             return GroundingCard(
-                kind: .recovery, eyebrow: "Today's grounding",
-                headline: "Today is a clean place to restart",
-                body: "One missed action does not erase the record already built. \(rhythm)Resume your normal plan today unless your clinician instructed otherwise.",
+                kind: .preparation, eyebrow: "Coming up",
+                headline: "A baseline photo anchors everything",
+                body: "There is no baseline photo yet. One photo in good light, taken the same way each time, is what every later comparison is measured against.",
                 evidenceAnchor: reviewAnchor(phase),
-                primary: primary,
-                closure: "Nothing needs catching up. Today's step is the only one that counts now.",
-                reason: "\(input.missedYesterday) planned action\(input.missedYesterday == 1 ? " was" : "s were") not recorded yesterday."
+                primary: .openPhotos,
+                closure: "Whenever you are ready — it does not have to be today.",
+                reason: "The record has no photo yet."
             )
         }
 
-        // 8. Recognition: a milestone week, on its first two days only.
+        // 9. Recognition: a milestone week, on its first two days only.
         if let phase, phase.isMilestoneWeek, phase.daysIntoWeek <= 1 {
             let weeks: String
             switch phase.week {
@@ -259,7 +285,7 @@ enum GroundingCards {
             )
         }
 
-        // 9. Education: too early to judge.
+        // 10. Education: too early to judge.
         if let phase, phase.week < 4 {
             return GroundingCard(
                 kind: .education, eyebrow: "Today's grounding",
@@ -272,7 +298,7 @@ enum GroundingCards {
             )
         }
 
-        // 10. Quiet day.
+        // 11. Quiet day.
         return GroundingCard(
             kind: .quiet, eyebrow: "Today's grounding",
             headline: "You are allowed to have a normal day",

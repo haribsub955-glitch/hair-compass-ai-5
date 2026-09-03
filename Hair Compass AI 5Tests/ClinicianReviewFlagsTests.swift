@@ -171,4 +171,26 @@ struct ClinicianReviewFlagsTests {
             #expect(flag.detail.localizedCaseInsensitiveContains("diagnos") == false)
         }
     }
+
+    // MARK: - forToday (recency)
+
+    @Test func forTodayDropsAYearOldScalpPain() {
+        let checkIns = [ProgressCheckIn(date: daysAgo(400), scalpPain: true)]
+        let flags = ClinicianReviewFlags.evaluate(
+            progressCheckIns: checkIns, entries: [], triggers: [], sideEffects: [], now: now, calendar: calendar
+        )
+        #expect(flags.contains { $0.id == "scalpPain" })
+        let today = ClinicianReviewFlags.forToday(flags, now: now, calendar: calendar)
+        #expect(today.isEmpty)
+    }
+
+    @Test func forTodayPrefersTheNewestFlag() {
+        let checkIns = [ProgressCheckIn(date: daysAgo(20), scalpPain: true)]
+        let sideEffects = [SideEffectLog(type: .headache, severity: 3, date: daysAgo(0))]
+        let flags = ClinicianReviewFlags.evaluate(
+            progressCheckIns: checkIns, entries: [], triggers: [], sideEffects: sideEffects, now: now, calendar: calendar
+        )
+        let today = ClinicianReviewFlags.forToday(flags, now: now, calendar: calendar)
+        #expect(today.first?.id == "severeSideEffect")
+    }
 }

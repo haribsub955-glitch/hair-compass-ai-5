@@ -84,10 +84,34 @@ struct GroundingCardsTests {
         let flag = ClinicianReviewFlag(id: "scalpPain", title: "Scalp pain reported", detail: "Scalp pain was reported in a monthly check-in — persistent pain can be a sign of scarring alopecia, worth a prompt review.")
         let card = GroundingCards.select(input(flags: [flag], plan: open, sheddingAboveUsual: true))
         #expect(card.kind == .safety)
-        #expect(card.headline == "Scalp pain reported")
-        #expect(card.body == flag.detail)
+        #expect(card.headline == "Scalp pain is worth a clinician's look")
+        #expect(card.reason == flag.detail)
         #expect(card.primary == .prepareVisit)
         #expect(card.closure.contains("prescriber"))
+    }
+
+    @Test func safetyCopyForEveryKnownFlag() throws {
+        let context = try makeContext()
+        let (open, _) = plan(open: true, in: context)
+        let longNote = Array(repeating: "word", count: 40).joined(separator: " ")
+        let ids = ["scalpPain", "severeSideEffect", "heavyShed", "staleTrigger", "other"]
+        for id in ids {
+            let flag = ClinicianReviewFlag(
+                id: id, title: "Pattern flagged for review",
+                detail: "This is a clinician-only sentence about alopecia and telogen effluvium. \(longNote)"
+            )
+            let card = GroundingCards.select(input(flags: [flag], plan: open))
+            #expect(card.kind == .safety, "\(id)")
+            #expect(card.headline.split(separator: " ").count <= 10, "\(id): \(card.headline)")
+            #expect(card.body.split(separator: " ").count <= 55, "\(id): \(card.body)")
+            #expect(card.reason == flag.detail, "\(id)")
+            for text in [card.headline, card.body] {
+                let lower = text.lowercased()
+                for word in ["alopecia", "effluvium", "diagnos", "you have", "!"] {
+                    #expect(!lower.contains(word), "\(id): \(text) contains \(word)")
+                }
+            }
+        }
     }
 
     @Test func higherSheddingGroundsBeforeTheDueAction() throws {
@@ -125,11 +149,31 @@ struct GroundingCardsTests {
 
     @Test func missingBaselineIsAnInvitationNotAnOverdueTask() throws {
         let context = try makeContext()
-        let (done, _) = plan(open: false, in: context)
-        let card = GroundingCards.select(input(plan: done, photo: .noBaseline))
+        let evening = Treatment(name: "Finasteride", treatmentClass: .finasteride, dose: "1 mg",
+                                scheduleTimes: "21:00", startDate: daysAgo(33), isActive: true)
+        context.insert(evening)
+        let upcomingOnly = PlanAdherence.today(treatments: [evening], doses: [], missed: [], now: now, calendar: calendar)
+        let card = GroundingCards.select(input(plan: upcomingOnly, photo: .noBaseline))
         #expect(card.kind == .preparation)
         #expect(card.headline == "A baseline photo anchors everything")
         #expect(card.closure == "Whenever you are ready — it does not have to be today.")
+    }
+
+    @Test func completedDayOutranksAMissingBaseline() throws {
+        let context = try makeContext()
+        let (done, _) = plan(open: false, in: context)
+        let card = GroundingCards.select(input(plan: done, photo: .noBaseline))
+        #expect(card.kind == .closure)
+    }
+
+    @Test func recoveryOutranksAPendingPhoto() throws {
+        let context = try makeContext()
+        let evening = Treatment(name: "Finasteride", treatmentClass: .finasteride, dose: "1 mg",
+                                scheduleTimes: "21:00", startDate: daysAgo(33), isActive: true)
+        context.insert(evening)
+        let upcomingOnly = PlanAdherence.today(treatments: [evening], doses: [], missed: [], now: now, calendar: calendar)
+        let card = GroundingCards.select(input(plan: upcomingOnly, missedYesterday: 1, photo: .due(daysOverdue: 0)))
+        #expect(card.kind == .recovery)
     }
 
     @Test func reviewWithinAWeekIsPreparation() throws {
@@ -251,12 +295,16 @@ struct GroundingCardsTests {
                      MissedDoseRecord(treatment: allSkippedTreatment, date: daysAgo(0), slot: "21:00", reason: .forgot)]
         skips.forEach { context.insert($0) }
         let allSkipped = PlanAdherence.today(treatments: [allSkippedTreatment], doses: [], missed: skips, now: now, calendar: calendar)
+        let eveningOnly = Treatment(name: "Finasteride", treatmentClass: .finasteride, dose: "1 mg",
+                                    scheduleTimes: "21:00", startDate: daysAgo(33), isActive: true)
+        context.insert(eveningOnly)
+        let upcomingOnly = PlanAdherence.today(treatments: [eveningOnly], doses: [], missed: [], now: now, calendar: calendar)
         let cards = [
             GroundingCards.select(input(flags: [flag], plan: open)),
             GroundingCards.select(input(plan: open, sheddingAboveUsual: true)),
             GroundingCards.select(input(plan: open)),
             GroundingCards.select(input(plan: done, photo: .due(daysOverdue: 0))),
-            GroundingCards.select(input(plan: done, photo: .noBaseline)),
+            GroundingCards.select(input(plan: upcomingOnly, photo: .noBaseline)),
             GroundingCards.select(input(plan: done, phase: phase(daysAgo: 80), photoWithinTwoWeeks: false)),
             GroundingCards.select(input(plan: done)),
             GroundingCards.select(input(plan: open, missedYesterday: 2)),

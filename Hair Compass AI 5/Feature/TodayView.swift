@@ -92,9 +92,12 @@ struct TodayView: View {
     }
     private var groundingInput: GroundingInput {
         GroundingInput(
-            flags: ClinicianReviewFlags.evaluate(
-                progressCheckIns: progressCheckIns, entries: entries, triggers: triggers,
-                sideEffects: sideEffectLogs, now: .now, calendar: calendar
+            flags: ClinicianReviewFlags.forToday(
+                ClinicianReviewFlags.evaluate(
+                    progressCheckIns: progressCheckIns, entries: entries, triggers: triggers,
+                    sideEffects: sideEffectLogs, now: .now, calendar: calendar
+                ),
+                now: .now, calendar: calendar
             ),
             plan: todayPlan,
             missedYesterday: GroundingSignals.missedYesterday(

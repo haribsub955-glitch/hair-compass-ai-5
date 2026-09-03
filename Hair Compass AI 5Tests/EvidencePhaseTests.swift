@@ -70,4 +70,12 @@ struct EvidencePhaseTests {
         let phase = try #require(EvidencePhase.current(treatments: [t], entries: [], now: now, calendar: calendar))
         #expect(phase.week == 4 && phase.daysIntoWeek == 0)
     }
+
+    @Test func weekMatchesProgressReportsClock() throws {
+        let t = Treatment(name: "M", treatmentClass: .minoxidil, dose: "", scheduleTimes: "08:00",
+                          startDate: daysAgo(33), isActive: true)
+        let phase = try #require(EvidencePhase.current(treatments: [t], entries: [], now: now, calendar: calendar))
+        let progressWeek = HairAnalytics.weeksElapsed(since: phase.start, now: now, calendar: calendar)
+        #expect(phase.week == progressWeek)
+    }
 }

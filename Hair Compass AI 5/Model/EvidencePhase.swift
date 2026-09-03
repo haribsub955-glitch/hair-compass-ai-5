@@ -63,7 +63,9 @@ struct EvidencePhase: Equatable {
         let start = calendar.startOfDay(for: startDate)
         let today = calendar.startOfDay(for: now)
         let days = max(0, calendar.dateComponents([.day], from: start, to: today).day ?? 0)
-        let week = days / 7
+        // One review clock: the same weeksElapsed ProgressReport uses, so this phase's "week"
+        // never disagrees with the progress report's.
+        let week = HairAnalytics.weeksElapsed(since: start, now: now, calendar: calendar)
         let nextWeek = ProgressReport.nextMilestone(after: week)
         let nextDate = calendar.date(byAdding: .day, value: nextWeek * 7, to: start) ?? today
         let daysToReview = max(0, calendar.dateComponents([.day], from: today, to: nextDate).day ?? 0)
