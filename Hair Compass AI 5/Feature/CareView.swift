@@ -109,7 +109,7 @@ struct CareView: View {
                 if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
                 // The starting plan leads the page until every item is done or dismissed; the
                 // one-line closer shows once, then the section retires on the next visit.
-                if profiles.first != nil, !(starterPlanIsComplete && starterPlanCloserSeen) {
+                if showsStarterPlan {
                     starterPlanSection(proxy: proxy).staggeredEntrance(index: 2)
                 }
                 if !routine.isEmpty {
@@ -121,7 +121,12 @@ struct CareView: View {
                     // it teaches while the screen is empty and retires the moment there's data.
                     planRitualPlate.staggeredEntrance(index: 3)
                 }
-                guidanceCard.staggeredEntrance(index: 4)
+                // The starting plan's "Options with evidence" group already shows this same
+                // three-option set — only surface the standalone card once that section has
+                // retired, so the choices don't appear twice on the page at once.
+                if !showsStarterPlan {
+                    guidanceCard.staggeredEntrance(index: 4)
+                }
                 remindersCard.id("reminders").staggeredEntrance(index: 5)
                 gateExplainer.staggeredEntrance(index: 6)
                 if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
@@ -510,29 +515,43 @@ struct CareView: View {
 
     private var starterPlanIsComplete: Bool { StarterPlan.isComplete(starterPlanItems) }
 
+    /// Whether the starting-plan section is the one showing (and, by extension, whether the
+    /// standalone `guidanceCard` footnote below it should stay hidden to avoid repeating the same
+    /// three evidence options). `!starterPlanCloserSeen` is checked first — it's a stored flag, so
+    /// once the closer has been seen this short-circuits past recomputing `starterPlanItems` for
+    /// most visits, only falling through to `starterPlanIsComplete` for someone past the starting
+    /// phase whose plan has since gone incomplete again (a new item became due).
+    private var showsStarterPlan: Bool {
+        profiles.first != nil && (!starterPlanCloserSeen || !starterPlanIsComplete)
+    }
+
     private func starterPlanSection(proxy: ScrollViewProxy) -> some View {
         StarterPlanSection(
             items: starterPlanItems,
             showsCloser: starterPlanIsComplete,
             canUndo: lastStarterDismissal != nil,
             onTap: { openStarterPlanItem($0, proxy: proxy) },
-            onDismiss: { item in
-                var ids = StarterPlanDismissals.decode(starterPlanDismissedJSON)
-                ids.insert(item.id)
-                starterPlanDismissedJSON = StarterPlanDismissals.encode(ids)
-                lastStarterDismissal = item.id
-            },
-            onUndo: {
-                guard let id = lastStarterDismissal else { return }
-                var ids = StarterPlanDismissals.decode(starterPlanDismissedJSON)
-                ids.remove(id)
-                starterPlanDismissedJSON = StarterPlanDismissals.encode(ids)
-                lastStarterDismissal = nil
-            }
+            onDismiss: dismissStarterItem,
+            onUndo: undoStarterDismissal
         )
         // The closer shows once the plan completes; leaving the tab marks it seen so the section
         // is gone on the next visit.
         .onDisappear { if starterPlanIsComplete { starterPlanCloserSeen = true } }
+    }
+
+    private func dismissStarterItem(_ item: StarterPlanItem) {
+        var ids = StarterPlanDismissals.decode(starterPlanDismissedJSON)
+        ids.insert(item.id)
+        starterPlanDismissedJSON = StarterPlanDismissals.encode(ids)
+        lastStarterDismissal = item.id
+    }
+
+    private func undoStarterDismissal() {
+        guard let id = lastStarterDismissal else { return }
+        var ids = StarterPlanDismissals.decode(starterPlanDismissedJSON)
+        ids.remove(id)
+        starterPlanDismissedJSON = StarterPlanDismissals.encode(ids)
+        lastStarterDismissal = nil
     }
 
     /// Each row opens the place where the thing gets done. Nothing here writes to the record.

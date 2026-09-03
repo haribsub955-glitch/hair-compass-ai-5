@@ -239,6 +239,9 @@ struct RootView: View {
                 TutorialOverlay(tab: $tab) {
                     hasSeenTutorial = true
                     showTutorial = false
+                    // The finale's promise was "Open my plan" — restore that destination now that
+                    // the tour (which drives `tab` through all five pages, ending on Photos) is done.
+                    tab = .care
                 }
                 .transition(.opacity)
             }

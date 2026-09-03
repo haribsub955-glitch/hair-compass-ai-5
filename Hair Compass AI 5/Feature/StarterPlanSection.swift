@@ -53,6 +53,7 @@ struct StarterPlanSection: View {
             .font(Clinical.caption(12))
             .foregroundStyle(Clinical.accent)
             .buttonStyle(.plain)
+            .minimumHitTarget()
             .accessibilityIdentifier("starterPlanUndo")
     }
 
@@ -66,6 +67,9 @@ struct StarterPlanSection: View {
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Text("Long-press a row to say not for me.")
+                .font(Clinical.caption(11))
+                .foregroundStyle(Clinical.tertiary)
         }
     }
 
@@ -122,8 +126,9 @@ struct StarterPlanSection: View {
             Button("Not for me", role: .destructive) { onDismiss(item) }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.title). \(item.why)\(item.isDone ? ". Done." : "")")
+        .accessibilityLabel("\(item.title). \(item.why)\(item.caution.map { ". \($0)" } ?? "")\(item.isDone ? ". Done." : "")")
         .accessibilityHint(item.isDone ? "" : "Opens the place to do this")
+        .accessibilityAction(named: "Not for me") { onDismiss(item) }
         .accessibilityIdentifier("starterPlanRow.\(item.id)")
     }
 

@@ -48,6 +48,12 @@ struct StarterPlanFinale: View {
                                             .font(Clinical.caption(12))
                                             .foregroundStyle(Clinical.secondary)
                                             .fixedSize(horizontal: false, vertical: true)
+                                        if let caution = item.caution {
+                                            Text(caution)
+                                                .font(Clinical.caption(11))
+                                                .foregroundStyle(Clinical.warning)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
                                     }
                                     .padding(.vertical, 9)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -63,15 +69,19 @@ struct StarterPlanFinale: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 12)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 20)
             }
 
             Button("Open my plan", action: onOpenPlan)
                 .buttonStyle(ClinicalButtonStyle())
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 28)
                 .accessibilityIdentifier("onboardOpenPlan")
         }
-        .accessibilityIdentifier("starterPlanFinale")
+        // No identifier on the outer VStack: it isn't an accessibility element itself, so an
+        // identifier here doesn't tag the screen — it bleeds down and clobbers the button's own
+        // "onboardOpenPlan" (both ended up reporting the container's id in the accessibility
+        // tree), making "Open my plan" unfindable by identifier. Unused elsewhere, so removed
+        // rather than reconciled.
     }
 }

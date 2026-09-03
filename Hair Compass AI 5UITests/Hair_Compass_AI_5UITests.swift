@@ -140,4 +140,22 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(app.buttons["onboardIntroPrimary"].waitForExistence(timeout: 12),
                       "after the wipe the app must open on the illustrated cover")
     }
+
+    /// The finale's promise is "Open my plan": after onboarding (and the tour that follows), the
+    /// person is on the Plan tab with the starting plan on screen.
+    @MainActor
+    func testOpenMyPlanLandsOnThePlanTab() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_ONBOARD", "HC_ONBOARD_STEP", "14", "HC_NORITUAL"]
+        app.launch()
+        let open = app.buttons["onboardOpenPlan"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10), "the finale must offer Open my plan")
+        open.tap()
+        // The card tour may follow; skip it if it appears.
+        let skip = app.buttons["tutorialSkip"]
+        if skip.waitForExistence(timeout: 4) { skip.tap() }
+        XCTAssertTrue(app.otherElements["starterPlanSection"].waitForExistence(timeout: 10)
+                      || app.staticTexts["Your starting plan"].waitForExistence(timeout: 2),
+                      "after Open my plan the Plan tab with the starting plan must be showing")
+    }
 }
