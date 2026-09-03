@@ -28,6 +28,11 @@ struct FloatingTabBar: View {
             }
         }
         .padding(.horizontal, 6)
+        // Order matters: `materialBand` is applied first so it paints in front of `scrim` (the
+        // fade), directly behind the items — the fade dissolves scrolled content on its way up
+        // to the bar, and the material band guarantees the row itself stays legible no matter
+        // where the fade's own opacity lands at that height.
+        .background(materialBand)
         .background(scrim)
         // Scoped to the bar: the underline slide + tint changes animate, the screen swap stays instant.
         .animation(
@@ -38,17 +43,28 @@ struct FloatingTabBar: View {
         .padding(.bottom, 8)
     }
 
+    /// Directly behind the labels, clipped to the bar's own height (it takes no padding of its
+    /// own, so it is proposed exactly the item row's size) — a blurred, canvas-tinted ground the
+    /// items always read against, independent of how far the fade above has faded in yet.
+    private var materialBand: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .overlay(Clinical.canvas.opacity(0.55))
+            .allowsHitTesting(false)
+    }
+
     /// Clear at the top, full canvas by the labels' own top edge, extended into the bottom safe
     /// area — so content scrolled behind the bar dissolves into the page instead of ghosting
-    /// through a transparent white pill. Widened past the item stack (via `.padding(.top, -24)`)
-    /// so nothing shows a hard-edged rectangle above the tallest label.
+    /// through a transparent white pill. Widened past the item stack (via `.padding(.top, -48)`,
+    /// 24 pt more than before) so the fade starts higher and nothing shows a hard-edged rectangle
+    /// above the tallest label.
     private var scrim: some View {
         LinearGradient(
-            colors: [Clinical.canvas.opacity(0), Clinical.canvas.opacity(0.85), Clinical.canvas],
+            colors: [Clinical.canvas.opacity(0), Clinical.canvas],
             startPoint: .top,
             endPoint: .bottom
         )
-        .padding(.top, -24)
+        .padding(.top, -48)
         .padding(.horizontal, -20)
         .ignoresSafeArea(edges: .bottom)
         .allowsHitTesting(false)
