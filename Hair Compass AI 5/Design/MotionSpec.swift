@@ -36,6 +36,14 @@ enum MotionSpec {
         static let connector: Double = 0.5
         static var total: Double { max(breath, halo + 0.12, capsuleStep * 6 + connector) + 0.25 }  // ≤ 1.6
     }
+    enum evidencePath {
+        static let draw: Double = 0.9
+        static let segment: Double = 0.34
+        static let segmentStep: Double = 0.12
+        static let nodeStep: Double = 0.07
+        static let currentSpring = (response: 0.5, damping: 0.82)
+        static let total: Double = 1.15
+    }
 }
 
 /// DEBUG QA switch: `HC_MOTION_STATIC` renders every one-shot in its final state, the way

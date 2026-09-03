@@ -36,4 +36,10 @@ struct MotionSpecTests {
     @Test func completionWashUnderOneSecond() {
         #expect(MotionSpec.completion.washDuration < 1)
     }
+
+    @Test func evidencePathIsAQuietOneShot() {
+        #expect((0.7...1.2).contains(MotionSpec.evidencePath.draw))
+        #expect(MotionSpec.evidencePath.nodeStep < 0.1)
+        #expect(MotionSpec.evidencePath.total <= 1.2)
+    }
 }
