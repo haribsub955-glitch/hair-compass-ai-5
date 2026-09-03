@@ -29,10 +29,17 @@ enum EraseAndStartOver {
     ) async throws {
         // 1. The record. One delete per model type: relationships cascade, but naming every
         //    type here is what makes "everything" true when a new model is added later.
+        //    Treatment must be deleted before its cascade children (doses, missed doses, side
+        //    effects) — `Treatment`'s `@Relationship(deleteRule: .cascade, ...)` compiles to a
+        //    SQLite trigger, and batch-deleting a child row directly while it still points at a
+        //    live parent trips that trigger ("mandatory OTO nullify inverse"). Deleting the
+        //    parent first cascades the children away, so the batch delete lines below become
+        //    no-ops for a real record with active treatments — Task 5's own unit test never
+        //    caught this because it inserts a `TreatmentDose` with no `treatment` set.
+        try context.delete(model: Treatment.self)
         try context.delete(model: TreatmentDose.self)
         try context.delete(model: MissedDoseRecord.self)
         try context.delete(model: SideEffectLog.self)
-        try context.delete(model: Treatment.self)
         try context.delete(model: DailyEntry.self)
         try context.delete(model: LabResult.self)
         try context.delete(model: PhotoRecord.self)
