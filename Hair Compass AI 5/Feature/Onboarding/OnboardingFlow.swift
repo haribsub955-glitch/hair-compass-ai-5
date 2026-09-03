@@ -657,21 +657,9 @@ struct OnboardingFlow: View {
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
     }
 
+    /// Step 14: the starting plan, previewed. `finish()` seeds day one and hands over; the
+    /// Plan tab then shows the same items as a checklist.
     private var finale: some View {
-        ZStack {
-            FallingHairView(intensity: 0.25)
-            VStack(spacing: 0) {
-                Spacer()
-                Image(systemName: "checkmark.seal.fill").font(Clinical.caption(54)).foregroundStyle(Clinical.accent)
-                    .padding(.bottom, 16)
-                Text(profile.name.isEmpty ? "You're all set" : "You're all set, \(profile.name)")
-                    .font(Clinical.headline(30)).foregroundStyle(Clinical.ink).multilineTextAlignment(.center)
-                Text("Your compass is calibrated. A quick tour starts when you close this.")
-                    .font(Clinical.caption(15)).foregroundStyle(Clinical.secondary).multilineTextAlignment(.center)
-                    .padding(.horizontal, 40).padding(.top, 8)
-                Spacer()
-                primary("Start tracking") { finish() }
-            }
-        }
+        StarterPlanFinale(profile: profile) { finish() }
     }
 }

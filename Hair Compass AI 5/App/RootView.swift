@@ -201,7 +201,10 @@ struct RootView: View {
                     description: "Deterministic charts of your record over time — part of Hair Compass Pro.") {
                 TrendsView()
             }
-        case .care: CareView()
+        case .care: CareView(onLogToday: {
+            tab = .today
+            deepLinks.openLogRequested = true
+        })
         case .labs:
             ProGate(feature: "Lab Results",
                     symbol: "testtube.2",
@@ -236,6 +239,9 @@ struct RootView: View {
                 TutorialOverlay(tab: $tab) {
                     hasSeenTutorial = true
                     showTutorial = false
+                    // The finale's promise was "Open my plan" — restore that destination now that
+                    // the tour (which drives `tab` through all five pages, ending on Photos) is done.
+                    tab = .care
                 }
                 .transition(.opacity)
             }
@@ -407,6 +413,7 @@ struct RootView: View {
                 // health step and paywall step would crash reading their `@Environment(...)`.
                 OnboardingFlow(profile: profile, onFinish: {
                     showOnboarding = false
+                    tab = .care
                     if !hasSeenTutorial { showTutorial = true }
                 })
                 .environment(healthKit)
