@@ -39,6 +39,10 @@ struct ChartPlaceholderPill: View {
     let have: Int
     let unit: ChartPlaceholderUnit
 
+    // Wide enough for the longest two-line label at the default size; scales with text so
+    // accessibility sizes don't clip against a fixed cap.
+    @ScaledMetric private var maxWidth: CGFloat = 260
+
     var body: some View {
         let copy = ChartPlaceholderCopy.label(required: required, have: have, unit: unit)
         HStack(alignment: .top, spacing: 8) {
@@ -52,7 +56,7 @@ struct ChartPlaceholderPill: View {
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .frame(maxWidth: 260)
+        .frame(maxWidth: maxWidth)
         .background(Clinical.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
         .shadow(color: Clinical.cardShadow, radius: 6, y: 2)
@@ -98,7 +102,10 @@ struct ChartPlaceholder: View {
 
             ChartPlaceholderPill(required: required, have: have, unit: unit)
         }
-        .frame(height: height)
+        // `minHeight`, not a hard `height`: the "nothing jumps" guarantee only needs to hold at
+        // non-accessibility sizes — at larger Dynamic Type the pill's own scaled width can need
+        // more vertical room than the illustrative chart's fixed height provides.
+        .frame(minHeight: height)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Chart not open yet. \(copy.primary). \(copy.progress).")
     }

@@ -65,8 +65,9 @@ enum EraseAndStartOver {
         // 5. The Home Screen widget must not keep showing the erased record.
         writeWidget(.placeholder)
 
-        // 6. A fresh profile, un-onboarded, exactly as a first install gets.
-        Seed.bootstrapIfNeeded(context: context, profiles: [])
+        // 6. A fresh profile, un-onboarded, exactly as a first install gets. Fetch rather than
+        //    passing `[]` — the guard only means something if it checks what is actually there.
+        Seed.bootstrapIfNeeded(context: context, profiles: try context.fetch(FetchDescriptor<Profile>()))
         try context.save()
     }
 }

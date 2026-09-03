@@ -127,4 +127,25 @@ struct EraseAndStartOverTests {
             #expect(!text.contains(forbidden), "EraseAndStartOver must never touch the access window (found \(forbidden))")
         }
     }
+
+    /// "Everything" stays true only if every model the container declares is deleted by name.
+    /// Reads the schema list in HairCompassApp.swift and the delete list in the service, so a
+    /// model added to one without the other fails here instead of leaving records behind.
+    @Test func eraseDeletesEveryModelTheContainerDeclares() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let app = try String(contentsOf: root.appendingPathComponent("Hair Compass AI 5/App/HairCompassApp.swift"), encoding: .utf8)
+        let service = try String(contentsOf: root.appendingPathComponent("Hair Compass AI 5/Service/EraseAndStartOver.swift"), encoding: .utf8)
+        let pattern = try NSRegularExpression(pattern: #"([A-Z][A-Za-z0-9]+)\.self"#)
+        // The schema array is the first `[Profile.self, …]` literal in the app file.
+        guard let start = app.range(of: "[Profile.self") else { Issue.record("schema list not found"); return }
+        let tail = app[start.lowerBound...]
+        guard let end = tail.firstIndex(of: "]") else { Issue.record("schema list end not found"); return }
+        let list = String(tail[..<end])
+        let ns = list as NSString
+        let models = pattern.matches(in: list, range: NSRange(location: 0, length: ns.length)).map { ns.substring(with: $0.range(at: 1)) }
+        #expect(models.count >= 13, "expected the full schema list, got \(models)")
+        for model in models {
+            #expect(service.contains("delete(model: \(model).self)"), "EraseAndStartOver never deletes \(model)")
+        }
+    }
 }
