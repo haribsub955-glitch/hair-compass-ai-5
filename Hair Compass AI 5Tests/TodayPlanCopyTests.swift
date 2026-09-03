@@ -17,7 +17,7 @@ struct TodayPlanCopyTests {
             TodayPlanCopy.settledTitle, TodayPlanCopy.settledBody,
             TodayPlanCopy.quietTitle, TodayPlanCopy.quietBody, TodayPlanCopy.skippedLabel,
             TodayPlanCopy.undo, TodayPlanCopy.recordedLine(1), TodayPlanCopy.recordedLine(3),
-            TodayPlanCopy.weekEyebrow, TodayPlanCopy.weekLine(completed: 6, expected: 7),
+            TodayPlanCopy.weekEyebrow, TodayPlanCopy.weekLine(completed: 6, planned: 7),
             TodayPlanCopy.weekEmpty, TodayPlanCopy.viewPlan,
             TodayPlanCopy.skipTitle, TodayPlanCopy.skipMessage,
             TodayPlanCopy.pauseTitle("Minoxidil"), TodayPlanCopy.pauseMessage, TodayPlanCopy.pauseAction
@@ -39,7 +39,7 @@ struct TodayPlanCopyTests {
         #expect(TodayPlanCopy.closureBody.lowercased().contains("nothing else"))
         #expect(TodayPlanCopy.recordedLine(1) == "1 action recorded")
         #expect(TodayPlanCopy.recordedLine(2) == "2 actions recorded")
-        #expect(TodayPlanCopy.weekLine(completed: 6, expected: 7) == "6 of 7 planned actions")
+        #expect(TodayPlanCopy.weekLine(completed: 6, planned: 7) == "6 of 7 planned actions")
     }
 
     @Test func settledDayDoesNotClaimShowingUp() {

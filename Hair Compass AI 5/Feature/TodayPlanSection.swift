@@ -28,8 +28,8 @@ enum TodayPlanCopy {
         count == 1 ? "1 action recorded" : "\(count) actions recorded"
     }
     static let weekEyebrow = "This week"
-    static func weekLine(completed: Int, expected: Int) -> String {
-        "\(completed) of \(expected) planned actions"
+    static func weekLine(completed: Int, planned: Int) -> String {
+        "\(completed) of \(planned) planned actions"
     }
     static let weekEmpty = "No planned actions yet this week"
     static let skipTitle = "Skip this one today?"
@@ -422,7 +422,7 @@ struct ContinuityStrip: View {
     @Environment(\.calendar) private var calendar
 
     private var summaryLine: String {
-        summary.map { TodayPlanCopy.weekLine(completed: $0.completed, expected: $0.expected) }
+        summary.map { TodayPlanCopy.weekLine(completed: $0.completed, planned: $0.planned) }
             ?? TodayPlanCopy.weekEmpty
     }
 

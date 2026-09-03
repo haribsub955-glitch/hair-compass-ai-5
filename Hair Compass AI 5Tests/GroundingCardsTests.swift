@@ -62,7 +62,7 @@ struct GroundingCardsTests {
         phase: EvidencePhase? = nil,
         photo: PhotoCadence.Status = .upcoming(daysUntil: 12),
         photoWithinTwoWeeks: Bool = true,
-        consistency30: PlanAdherence.Consistency? = PlanAdherence.Consistency(completed: 26, expected: 30),
+        consistency30: PlanAdherence.Consistency? = PlanAdherence.Consistency(completed: 26, planned: 30, scored: 30),
         sheddingAboveUsual: Bool = false,
         loggedToday: Bool = true
     ) -> GroundingInput {

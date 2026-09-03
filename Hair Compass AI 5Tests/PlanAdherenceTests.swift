@@ -105,7 +105,7 @@ struct PlanAdherenceTests {
                                             from: day(-1), through: day(-1), now: now, calendar: calendar)
         #expect(occ.map(\.state) == [.skipped, .notExpected])
         let c = try #require(PlanAdherence.consistency(occurrences: occ))
-        #expect(c.completed == 0 && c.expected == 1)
+        #expect(c.completed == 0 && c.planned == 1 && c.scored == 1)
     }
 
     @Test func pausedTreatmentKeepsTheStopDayUpToTheStopTime() throws {
@@ -143,7 +143,10 @@ struct PlanAdherenceTests {
         let all = try fetchAll(context)
         let c = try #require(PlanAdherence.consistency(treatment: t, doses: all.doses, missed: all.missed,
                                                        windowDays: 30, now: now, calendar: calendar))
-        #expect(c.expected == 4) // two past days × two slots; today's open slots do not count yet
+        // Three days × two slots, including today's two open slots, which are planned but not
+        // yet scored.
+        #expect(c.planned == 6)
+        #expect(c.scored == 4) // two past days × two slots
         #expect(c.completed == 3)
         #expect(c.percent == 75)
     }
@@ -158,9 +161,12 @@ struct PlanAdherenceTests {
             treatments: [minox, fin], doses: [], missed: [],
             from: day(-6), through: day(0), now: now, calendar: calendar
         ))
-        // Six past days × minoxidil's two slots, plus two past days × finasteride's one slot
-        // (it started 2 days ago); today's open slots don't count for either.
-        #expect(c.expected == 12 + 2)
+        // Minoxidil: seven days (including today) × two slots = 14 planned, of which the six
+        // past days' 12 slots are scored. Finasteride started 2 days ago: three days × one slot
+        // = 3 planned, of which the two past days' 2 slots are scored. Today's open slots are
+        // planned but not scored for either treatment.
+        #expect(c.planned == 14 + 3)
+        #expect(c.scored == 12 + 2)
         #expect(c.completed == 0)
     }
 
@@ -202,7 +208,7 @@ struct PlanAdherenceTests {
         #expect(occ.map(\.state) == [.missed, .missed])
     }
 
-    @Test func todaysOpenOccurrencesStayOutOfTheDenominator() throws {
+    @Test func todaysOpenOccurrencesArePlannedButNotScored() throws {
         let context = try makeContext()
         let t = minoxidil(in: context)
         log(t, dayOffset: 0, slot: "08:00", in: context)
@@ -210,7 +216,58 @@ struct PlanAdherenceTests {
         let occ = PlanAdherence.occurrences(treatment: t, doses: all.doses, missed: all.missed,
                                             from: day(0), through: day(0), now: now, calendar: calendar)
         let c = try #require(PlanAdherence.consistency(occurrences: occ))
-        #expect(c.completed == 1 && c.expected == 1)
+        // 08:00 logged (completed, scored); 21:00 still upcoming — planned, not scored.
+        #expect(c.completed == 1 && c.planned == 2 && c.scored == 1)
+    }
+
+    @Test func plannedDenominatorIsInvariantAcrossLogging() throws {
+        let context = try makeContext()
+        let t = minoxidil(in: context, startedDaysAgo: 10)
+        var all = try fetchAll(context)
+        let before = try #require(PlanAdherence.consistency(treatment: t, doses: all.doses, missed: all.missed,
+                                                             windowDays: 7, now: now, calendar: calendar))
+        #expect(before.planned == 14)
+        #expect(before.completed == 0)
+        #expect(before.scored == 12)
+
+        log(t, dayOffset: 0, slot: "08:00", in: context)
+        log(t, dayOffset: 0, slot: "21:00", in: context)
+        all = try fetchAll(context)
+        let after = try #require(PlanAdherence.consistency(treatment: t, doses: all.doses, missed: all.missed,
+                                                            windowDays: 7, now: now, calendar: calendar))
+        // The denominator today's completions land in never moves.
+        #expect(after.planned == 14)
+        #expect(after.completed == before.completed + 2)
+        #expect(after.scored == before.scored + 2)
+    }
+
+    @Test func percentReadsOnlySettledOccurrences() throws {
+        let context = try makeContext()
+        let t = minoxidil(in: context)
+        log(t, dayOffset: 0, slot: "08:00", in: context)
+        let all = try fetchAll(context)
+        let c = try #require(PlanAdherence.consistency(treatment: t, doses: all.doses, missed: all.missed,
+                                                       windowDays: 1, now: now, calendar: calendar))
+        // 08:00 logged; 21:00 has not been reached yet at 09:30 — planned but not scored, so it
+        // does not pull the percentage down.
+        #expect(c.planned == 2)
+        #expect(c.scored == 1)
+        #expect(c.completed == 1)
+        #expect(c.percent == 100)
+    }
+
+    @Test func futureDaysNeverEnterPlanned() throws {
+        let context = try makeContext()
+        let t = minoxidil(in: context)
+        let clamped = try #require(PlanAdherence.consistency(
+            treatments: [t], doses: [], missed: [],
+            from: day(0), through: day(0), now: now, calendar: calendar
+        ))
+        let unclamped = try #require(PlanAdherence.consistency(
+            treatments: [t], doses: [], missed: [],
+            from: day(0), through: day(3), now: now, calendar: calendar
+        ))
+        #expect(unclamped == clamped)
     }
 
     // MARK: Today

@@ -47,12 +47,16 @@ enum PlanAdherence {
         var isSettled: Bool { state == .completed || state == .skipped }
     }
 
-    /// Completed planned actions over the actions that counted. `expected` never includes a
-    /// future, paused, not-expected or still-open occurrence.
+    /// Completed planned actions over two denominators. `planned` is every occurrence expected
+    /// through today — open ones included — so it never changes when something is completed;
+    /// "x of y planned actions" reads it. `scored` is the settled subset (completed, skipped,
+    /// missed) the percentage reads, so a slot that has not come due yet does not pull the
+    /// rhythm down. Future days, pauses and not-expected occurrences are in neither.
     struct Consistency: Equatable {
         let completed: Int
-        let expected: Int
-        var fraction: Double { expected == 0 ? 0 : Double(completed) / Double(expected) }
+        let planned: Int
+        let scored: Int
+        var fraction: Double { scored == 0 ? 0 : Double(completed) / Double(scored) }
         var percent: Int { Int((fraction * 100).rounded()) }
     }
 
@@ -166,14 +170,15 @@ enum PlanAdherence {
 
     // MARK: Folds
 
-    /// nil when nothing counted — a fresh item, an as-needed item, a window with no expected day.
+    /// nil when nothing counted — a fresh item, an as-needed item, a window with no planned day.
     static func consistency(occurrences: [Occurrence]) -> Consistency? {
+        let planned = occurrences.filter { $0.state != .notExpected }.count
+        guard planned > 0 else { return nil }
         let scored = occurrences.filter {
             $0.state == .completed || $0.state == .skipped || $0.state == .missed
         }
-        guard !scored.isEmpty else { return nil }
         return Consistency(completed: scored.filter { $0.state == .completed }.count,
-                           expected: scored.count)
+                           planned: planned, scored: scored.count)
     }
 
     /// One treatment over the trailing `windowDays` (today included; the start date clamps it).
@@ -195,6 +200,7 @@ enum PlanAdherence {
     }
 
     /// Every treatment over an explicit day range — the week ribbon and the overall plan rhythm.
+    /// `through` is clamped to today: a caller can never fold a future day into `planned`.
     static func consistency(
         treatments: [Treatment],
         doses: [TreatmentDose],
@@ -204,9 +210,10 @@ enum PlanAdherence {
         now: Date,
         calendar: Calendar
     ) -> Consistency? {
-        consistency(occurrences: treatments.flatMap {
+        let clampedThrough = min(calendar.startOfDay(for: lastDay), calendar.startOfDay(for: now))
+        return consistency(occurrences: treatments.flatMap {
             occurrences(treatment: $0, doses: doses, missed: missed,
-                        from: firstDay, through: lastDay, now: now, calendar: calendar)
+                        from: firstDay, through: clampedThrough, now: now, calendar: calendar)
         })
     }
 

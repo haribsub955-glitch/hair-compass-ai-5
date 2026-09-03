@@ -220,7 +220,7 @@ enum GroundingCards {
 
         // 7. Recovery: something was missed yesterday and today has not started yet.
         if input.missedYesterday > 0 {
-            let rhythm = input.consistency30.map { "Over the last 30 days you completed \($0.completed) of \($0.expected) planned actions. " } ?? ""
+            let rhythm = input.consistency30.map { "Over the last 30 days you completed \($0.completed) of \($0.planned) planned actions. " } ?? ""
             let due = dueAction(input.plan, loggedToday: input.loggedToday)
             let primary: GroundingCard.Action
             if case .completePlanItem = due {
