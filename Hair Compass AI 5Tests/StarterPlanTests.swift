@@ -69,12 +69,20 @@ struct StarterPlanTests {
 
     /// Pregnancy, breastfeeding or trying to conceive: ferritin and TSH lead, added if absent.
     @Test func pregnancyMovesFerritinAndTSHToTheFront() {
+        let nonPregnantEffluvium = LabSuggestion.tests(condition: .telogenEffluvium, sex: .female, pregnancy: .no)
         for status in [PregnancyStatus.pregnant, .breastfeeding, .tryingToConceive] {
             let areata = LabSuggestion.tests(condition: .alopeciaAreata, sex: .female, pregnancy: status)
             #expect(Array(areata.prefix(2)) == [.ferritin, .tsh], "\(status)")
             #expect(areata.filter { $0 == .tsh }.count == 1, "no duplicates for \(status)")
             let traction = LabSuggestion.tests(condition: .traction, sex: .female, pregnancy: status)
             #expect(traction == [.ferritin, .tsh], "\(status)")
+            // Telogen effluvium's base table already holds both ferritin and TSH (just not first),
+            // so this pins the "already present" branch: reordered to the front, never duplicated.
+            let effluvium = LabSuggestion.tests(condition: .telogenEffluvium, sex: .female, pregnancy: status)
+            #expect(Array(effluvium.prefix(2)) == [.ferritin, .tsh], "\(status)")
+            #expect(effluvium.filter { $0 == .ferritin }.count == 1, "no duplicate ferritin for \(status)")
+            #expect(effluvium.filter { $0 == .tsh }.count == 1, "no duplicate tsh for \(status)")
+            #expect(effluvium.count == nonPregnantEffluvium.count, "\(status)")
         }
     }
 

@@ -72,7 +72,7 @@ struct StarterPlanItem: Identifiable, Equatable {
 /// clinician about" — this table never orders a test. A clinician review of the table is a
 /// release-checklist item.
 enum LabSuggestion {
-    static let pregnancyCaution = "Pregnancy and breastfeeding change what's normal — tell your clinician when you ask."
+    static let pregnancyCaution = "Pregnancy, breastfeeding or trying to conceive change what's normal — tell your clinician when you ask."
 
     static func tests(condition: HairCondition, sex: BiologicalSex, pregnancy: PregnancyStatus) -> [LabTest] {
         var base: [LabTest]
@@ -91,17 +91,17 @@ enum LabSuggestion {
         return base
     }
 
+    /// Duplicates `PregnancyStatus.flagsMedicationCaution` in name only — this delegates to it so
+    /// the one clinical judgement (which statuses change what's normal enough to flag) lives in
+    /// one place. Kept as its own function so existing callers and tests are unchanged.
     static func isPregnancyRelated(_ status: PregnancyStatus) -> Bool {
-        switch status {
-        case .pregnant, .breastfeeding, .tryingToConceive: return true
-        case .no, .unspecified: return false
-        }
+        status.flagsMedicationCaution
     }
 
     static func why(_ test: LabTest) -> String {
         switch test {
         case .ferritin: return "Low iron stores are a common, fixable reason for shedding."
-        case .tsh: return "Thyroid changes often show up in hair before anywhere else."
+        case .tsh: return "Thyroid problems are a common, checkable driver of shedding."
         case .freeT4: return "Paired with TSH, it completes the thyroid picture."
         case .vitaminD: return "Low vitamin D is common and easy to correct."
         case .vitaminB12: return "Low B12 can thin hair and is simple to check."
