@@ -265,7 +265,18 @@ struct BodySignalsDashboard: View {
         } else {
             switch healthKit.authorization {
             case .requestedQueryable:
-                requestedEmptyPrompt
+                // Health has answered and nothing can draw yet: the same shaded placeholder as
+                // every other Trends chart, with the most-populated metric's progress, above the
+                // existing explanation of why there is no in-app retry for a denied request.
+                VStack(alignment: .leading, spacing: 12) {
+                    ChartPlaceholder(
+                        required: 2,
+                        have: seriesCache.values.map(\.count).max() ?? 0,
+                        unit: .readings,
+                        height: 110
+                    )
+                    requestedEmptyPrompt
+                }
             case .unavailable:
                 Text("Apple Health isn't available on this device — lifestyle factors stay manual.")
                     .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
