@@ -84,6 +84,9 @@ struct RootView: View {
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @State private var showTutorial = false
     @State private var deepLinks = DeepLinkRouter()
+    /// Set by BaselineFlow's "Erase" confirmation; honoured once the Profile sheet has fully
+    /// closed so no presented view still holds the profile being deleted.
+    @State private var pendingErase = false
 
     // Evening check-in reminder — same AppStorage keys `CareView`'s toggle UI reads/writes.
     // `NotificationService.planEveningCheckIn` only ever schedules 3 non-repeating notifications
@@ -134,6 +137,18 @@ struct RootView: View {
             hasLoggedToday: hasLoggedToday,
             streak: eveningCheckInStreak
         )
+    }
+    /// The wipe, then straight back to the illustrated cover. `hasSeenTutorial` is cleared
+    /// explicitly because @AppStorage caches its value in this view.
+    private func eraseAndStartOver() async {
+        do {
+            try await EraseAndStartOver.perform(context: context)
+        } catch {
+            // Nothing sensible to show mid-wipe; the next launch re-seeds whatever is missing.
+            return
+        }
+        hasSeenTutorial = false
+        showOnboarding = true
     }
     /// Keys the `.task` below — changes whenever the toggle, the chosen time, today's logged
     /// state, or the most recent entry's day change, so a fresh re-plan runs on all of them
@@ -393,12 +408,16 @@ struct RootView: View {
                 RitualView(kind: ritualKind) { self.ritualKind = nil }
             }
         }
-        .sheet(isPresented: $showProfileEdit) {
+        .sheet(isPresented: $showProfileEdit, onDismiss: {
+            guard pendingErase else { return }
+            pendingErase = false
+            Task { await eraseAndStartOver() }
+        }) {
             if let profile {
                 // BaselineFlow can replay onboarding from its own cover; inject here so that
                 // cover's health + paywall steps can read their services (presented content
                 // only inherits the environment of its attachment point).
-                BaselineFlow(profile: profile)
+                BaselineFlow(profile: profile, onEraseRequested: { pendingErase = true })
                     .environment(healthKit)
                     .environment(purchases)
                     .environment(accessWindow)

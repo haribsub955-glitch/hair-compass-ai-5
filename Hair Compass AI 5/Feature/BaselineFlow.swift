@@ -7,6 +7,11 @@ import UniformTypeIdentifiers
 /// Also reused as the editable profile from the Today header.
 struct BaselineFlow: View {
     @Bindable var profile: Profile
+    /// Set by RootView. Called after the person confirms "Erase everything and start over";
+    /// the wipe itself runs in RootView once this sheet has closed, so no view is still
+    /// holding the profile it is about to delete.
+    var onEraseRequested: (() -> Void)? = nil
+    @State private var confirmErase = false
     @Environment(\.dismiss) private var dismiss
     @Environment(AppLockService.self) private var appLock
     /// Owned here rather than injected app-wide: nothing else reads it yet, because nothing acts
@@ -42,6 +47,7 @@ struct BaselineFlow: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {
                     intro
@@ -137,8 +143,11 @@ struct BaselineFlow: View {
                     StrandDivider()
 
                     BackupRestoreSection()
+                        .id("backup")
 
                     FeedbackSection()
+
+                    startOverSection(proxy: proxy)
 
                     aboutFooter
                 }
@@ -160,6 +169,7 @@ struct BaselineFlow: View {
                         Button("Done") { complete() }
                     }
                 }
+            }
             }
         }
     }
@@ -304,6 +314,38 @@ struct BaselineFlow: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("manageSubscription")
+        }
+    }
+
+    /// The one destructive action in the app. Deliberately last, deliberately plain — no
+    /// card, no icon — and it always asks. The subscription and the 3-day window survive it.
+    private func startOverSection(proxy: ScrollViewProxy) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(role: .destructive) { confirmErase = true } label: {
+                Text("Erase everything and start over")
+                    .font(Clinical.body(15, weight: .medium))
+                    .foregroundStyle(Clinical.critical)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("eraseStartOver")
+            Text("Removes every record and photo on this iPhone and returns to the first-run setup. Your subscription is not affected.")
+                .font(Clinical.caption(12))
+                .foregroundStyle(Clinical.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 8)
+        .alert("Erase everything?", isPresented: $confirmErase) {
+            Button("Export first") {
+                withAnimation { proxy.scrollTo("backup", anchor: .top) }
+            }
+            Button("Erase", role: .destructive) {
+                onEraseRequested?()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All records on this iPhone will be erased and the app starts from the beginning. Export a backup first if you want to keep them. Your subscription is not affected.")
         }
     }
 

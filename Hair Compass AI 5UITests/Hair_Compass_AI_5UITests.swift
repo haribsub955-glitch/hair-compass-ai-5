@@ -117,4 +117,24 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["proAvailabilityNotice"].exists,
                        "no availability warning when the model is available")
     }
+
+    /// "Erase everything and start over" wipes the record and returns to the illustrated cover,
+    /// exactly as a first install would — and it survives the confirmation alert.
+    @MainActor
+    func testEraseReturnsToOnboarding() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_PROFILE"]
+        app.launch()
+
+        let erase = app.buttons["eraseStartOver"]
+        XCTAssertTrue(erase.waitForExistence(timeout: 10), "the destructive row must exist on Profile")
+        erase.tap()
+
+        let confirm = app.alerts.buttons["Erase"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 6), "erase must ask first")
+        confirm.tap()
+
+        XCTAssertTrue(app.buttons["onboardIntroPrimary"].waitForExistence(timeout: 12),
+                      "after the wipe the app must open on the illustrated cover")
+    }
 }
