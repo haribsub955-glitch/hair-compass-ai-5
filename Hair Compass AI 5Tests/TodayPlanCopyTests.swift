@@ -14,6 +14,7 @@ struct TodayPlanCopyTests {
     private var everyLine: [String] {
         [
             TodayPlanCopy.eyebrow, TodayPlanCopy.closureTitle, TodayPlanCopy.closureBody,
+            TodayPlanCopy.settledTitle, TodayPlanCopy.settledBody,
             TodayPlanCopy.quietTitle, TodayPlanCopy.quietBody, TodayPlanCopy.skippedLabel,
             TodayPlanCopy.undo, TodayPlanCopy.recordedLine(1), TodayPlanCopy.recordedLine(3),
             TodayPlanCopy.weekEyebrow, TodayPlanCopy.weekLine(completed: 6, expected: 7),
@@ -39,5 +40,10 @@ struct TodayPlanCopyTests {
         #expect(TodayPlanCopy.recordedLine(1) == "1 action recorded")
         #expect(TodayPlanCopy.recordedLine(2) == "2 actions recorded")
         #expect(TodayPlanCopy.weekLine(completed: 6, expected: 7) == "6 of 7 planned actions")
+    }
+
+    @Test func settledDayDoesNotClaimShowingUp() {
+        #expect(!TodayPlanCopy.settledBody.lowercased().contains("showed up"))
+        #expect(!TodayPlanCopy.settledTitle.lowercased().contains("complete"))
     }
 }

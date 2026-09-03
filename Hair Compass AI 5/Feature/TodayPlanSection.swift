@@ -17,6 +17,8 @@ enum TodayPlanCopy {
     static let eyebrow = "Today's plan"
     static let closureTitle = "Your plan is complete for today"
     static let closureBody = "You showed up. Nothing else needs to be checked today."
+    static let settledTitle = "Today's plan is recorded"
+    static let settledBody = "Every action today was skipped with a reason. Tomorrow is a clean place to restart."
     static let quietTitle = "Nothing is scheduled today"
     static let quietBody = "Your plan will list the next action when one is due."
     static let viewPlan = "View plan"
@@ -61,8 +63,15 @@ struct TodayPlanSection: View {
                 .padding(.bottom, 6)
             if plan.nothingExpected {
                 quietLine
-            } else if plan.isComplete && !showsRecorded {
-                closure
+            } else if plan.isComplete && !showsRecorded && undoableID == nil {
+                // Holds back until the last row's five-second Undo has passed — tapping Undo on
+                // the final row must land back on the rows, not on a closure line that already
+                // claimed the day done.
+                if plan.completedCount == 0 {
+                    settled
+                } else {
+                    closure
+                }
             } else {
                 rows
             }
@@ -72,6 +81,9 @@ struct TodayPlanSection: View {
         .onChange(of: plan.isComplete) { _, complete in
             guard complete else { return }
             showsRecorded = false
+            // A day where every action was skipped is recorded, not celebrated — no success
+            // haptic without at least one real completion.
+            guard plan.completedCount > 0 else { return }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
         .onDisappear { undoTimer?.cancel(); undoTimer = nil }
@@ -88,6 +100,7 @@ struct TodayPlanSection: View {
                     occurrence: occurrence,
                     index: index,
                     showsUndo: undoableID == occurrence.id,
+                    settlesPlan: occurrence.isOpen && plan.openCount == 1,
                     onComplete: { complete(occurrence) },
                     onUndo: { undo(occurrence) },
                     onSkip: { onSkip(occurrence) },
@@ -98,6 +111,8 @@ struct TodayPlanSection: View {
                     Divider().overlay(Clinical.hairline)
                 }
             }
+            viewPlanButton
+                .padding(.top, 10)
         }
     }
 
@@ -145,11 +160,47 @@ struct TodayPlanSection: View {
             .buttonStyle(.plain)
             .minimumHitTarget()
             .accessibilityIdentifier("planClosureShow")
+            viewPlanButton
         }
         .padding(.vertical, 8)
         .transition(.opacity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planClosure")
+    }
+
+    /// An all-skipped day: every action was recorded, none completed. Distinct from `closure` —
+    /// a neutral outline instead of the sage check, and no claim that the person "showed up".
+    private var settled: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Circle()
+                    .strokeBorder(Clinical.tertiary, lineWidth: 1.5)
+                    .frame(width: 16, height: 16)
+                    .accessibilityHidden(true)
+                Text(TodayPlanCopy.settledTitle)
+                    .font(Clinical.body(15, weight: .medium))
+                    .foregroundStyle(Clinical.ink)
+            }
+            Text(TodayPlanCopy.settledBody)
+                .font(Clinical.caption(12.5))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { showsRecorded = true }
+            } label: {
+                Text("\(TodayPlanCopy.recordedLine(plan.settledCount)) · Show")
+                    .font(Clinical.body(12, weight: .medium))
+                    .foregroundStyle(Clinical.tertiary)
+            }
+            .buttonStyle(.plain)
+            .minimumHitTarget()
+            .accessibilityIdentifier("planClosureShow")
+            viewPlanButton
+        }
+        .padding(.vertical, 8)
+        .transition(.opacity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("planSettled")
     }
 
     private var quietLine: some View {
@@ -161,17 +212,25 @@ struct TodayPlanSection: View {
                 .font(Clinical.caption(12.5))
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if let onOpenPlan {
-                Button(TodayPlanCopy.viewPlan, action: onOpenPlan)
-                    .font(Clinical.body(12, weight: .medium))
-                    .foregroundStyle(Clinical.accent)
-                    .buttonStyle(.plain)
-                    .minimumHitTarget()
-            }
+            viewPlanButton
         }
         .padding(.vertical, 8)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planQuiet")
+    }
+
+    /// The one quiet way to reach the Plan tab from every day's state — under the closure/settled
+    /// blocks and under the rows. Empty when `onOpenPlan` is nil (e.g. a preview with no owner).
+    @ViewBuilder
+    private var viewPlanButton: some View {
+        if let onOpenPlan {
+            Button(TodayPlanCopy.viewPlan, action: onOpenPlan)
+                .font(Clinical.body(12, weight: .medium))
+                .foregroundStyle(Clinical.accent)
+                .buttonStyle(.plain)
+                .minimumHitTarget()
+                .accessibilityIdentifier("planViewPlan")
+        }
     }
 }
 
@@ -181,6 +240,10 @@ private struct PlanActionRow: View {
     let occurrence: PlanAdherence.Occurrence
     let index: Int
     let showsUndo: Bool
+    /// True for the one row still open when it is the plan's last — the section's own `.success`
+    /// notification (fired from `.onChange(of: plan.isComplete)`) is the single haptic that tap
+    /// gets, so this row skips its own `.soft` impact.
+    let settlesPlan: Bool
     let onComplete: () -> Void
     let onUndo: () -> Void
     let onSkip: () -> Void
@@ -257,7 +320,6 @@ private struct PlanActionRow: View {
                         Text(timeLabel)
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundStyle(Clinical.secondary)
-                            .monospacedDigit()
                     }
                 }
                 .frame(minHeight: 44)
@@ -334,7 +396,9 @@ private struct PlanActionRow: View {
     }
 
     private func complete() {
-        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        if !settlesPlan {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        }
         onComplete()
         inkTrigger = true
         guard !reduceMotion else { return }
