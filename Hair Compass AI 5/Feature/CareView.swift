@@ -121,12 +121,7 @@ struct CareView: View {
                     // it teaches while the screen is empty and retires the moment there's data.
                     planRitualPlate.staggeredEntrance(index: 3)
                 }
-                // The starting plan's "Options with evidence" group already shows this same
-                // three-option set — only surface the standalone card once that section has
-                // retired, so the choices don't appear twice on the page at once.
-                if !showsStarterPlan {
-                    guidanceCard.staggeredEntrance(index: 4)
-                }
+                guidanceCard.staggeredEntrance(index: 4)
                 remindersCard.id("reminders").staggeredEntrance(index: 5)
                 gateExplainer.staggeredEntrance(index: 6)
                 if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
