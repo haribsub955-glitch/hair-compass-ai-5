@@ -5,9 +5,25 @@ Guidance for Claude Code in this repository. Target gate: G3 (Production — shi
 ## What this app is
 
 Hair Compass AI 5 — native iOS hair/scalp tracking app. SwiftUI + SwiftData, iOS 26 deployment
-target, Apple frameworks only (no SPM/CocoaPods). AI features run on-device via FoundationModels
-(Apple Intelligence) — no cloud, no key. Tests use **Swift Testing** (`@Test`/`#expect`), UI tests
-use XCTest. A Home Screen widget shares data through App Group `group.harib.Hair-Compass-AI-5`.
+target, Apple frameworks only (no SPM/CocoaPods). Tests use **Swift Testing** (`@Test`/`#expect`),
+UI tests use XCTest. A Home Screen widget shares data through App Group
+`group.harib.Hair-Compass-AI-5`.
+
+**Which AI answers depends on the branch — check before believing either story:**
+
+- **The live line (`feat/agent-profile-memory`) calls the cloud.** `552a5fa` (2026-08-22) put
+  `Service/CloudAI.swift` on it: **DeepSeek leads whenever a key is configured**, Apple
+  Intelligence FoundationModels is the *fallback*. `CloudAIConsentCard` gates it in chat, deep
+  analysis and ingredients; `CloudAISettingsSection` on Baseline is the standing switch. The key
+  travels `Config/Secrets.local.xcconfig` (gitignored) → `Config/AI.xcconfig` (committed, empty,
+  `#include?`) → Info.plist `HCDeepSeekAPIKey`, so it ships inside the IPA — cost control on this
+  path is a client-side rate limiter in `CloudAI.swift` and nothing else. No key literal exists
+  anywhere in git history _(verified 2026-09-03)_.
+- **This branch (`fix/1.1-polish`) has no `CloudAI.swift`** — it is the on-device-only lineage.
+  A claim true here is false of what ships.
+- `AIOutputValidator` runs post-generation and is engine-agnostic, so the "couldn't safely
+  summarize" fallback fires the same whichever engine answered. ⚠️ "Retest on an AI-capable
+  iPhone" only tests the *fallback* — a cloud-configured build answers on every iPhone.
 
 ## Branch topology (read this before choosing a base)
 
@@ -19,6 +35,20 @@ use XCTest. A Home Screen widget shares data through App Group `group.harib.Hair
 - `fix/appstore-2.1-3.1.2` — rejection-fix wave for 1.0; superseded by 1.1. Its three surviving
   fixes were ported to `fix/1.1-polish` (availability watch, Open Settings removal, periodLabel).
 - `design/monetization-hard-wall` holds the App Review rejection log (both rejections + causes).
+- **`feat/agent-platform-server` carries the Python server as a monorepo subfolder**
+  `agent-platform/` (`4af35de`) — same codebase as the local clone at
+  `Programming/Harib/agent-platform`, but **copied, sharing no git history**, and **last touched
+  2026-08-08**: no `global_daily_spend`, and the plan catalogue still has the un-suffixed product
+  ids that resolve every real receipt to the free tier's zero budget. Syncing it is a content
+  copy plus an explicit publish decision, never a merge.
+- `feat/cloud-ai-on-1.1` — the DeepSeek engine ported onto the 1.1 access model; already carries
+  our Wren-identity merge (`7117dbf`).
+
+**Nothing is deployed anywhere.** No Supabase project is connected (`docs/SUPABASE.md` +
+`docker-compose.supabase.yml` are a prepared migration path; Supabase would host Postgres only —
+never the FastAPI app), no agent container runs, and `AgentBridge` is DEBUG-only behind
+`HC_AGENT`, defaulting to `http://localhost:8100`. The phone's live AI path talks straight to
+`api.deepseek.com`, so none of the server-side ledger work is in it _(verified 2026-09-03)_.
 
 ## Build, run, test
 
@@ -117,10 +147,20 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
 0e. Decide what `X-Access-Key` is in a Release build: the client defaults it to a scheme env var
    and omits the header when empty, while the server refuses to boot live without one, so a
    shipped build would be locked out on day one.
-1. User: re-test the three chat questions on a real AI-capable iPhone at `266a476` — expect
-   real answers (words, not digits) instead of the "couldn't safely summarize" fallback.
-2. Harib (or user says merge): pull `0ea1e55` + `266a476` from `fix/1.1-polish` into
-   `feat/agent-profile-memory` — he already fast-forwarded onto `3a899f1` on 2026-09-02.
+1. User: re-test the three chat questions — expect real answers (words, not digits) instead of
+   the "couldn't safely summarize" fallback. **Do it on the live line, not on this branch**: with
+   a DeepSeek key configured any iPhone will answer, so an AI-capable device is only needed to
+   test the fallback engine.
+1b. User decides: the DeepSeek key ships extractable inside the IPA, and the only spend control
+   on that path is a client-side rate limiter — a pulled key is unlimited spend on the shared
+   account. The server-side ledger fixes nothing here, because the phone never talks to the
+   server. Cheapest real fix is a thin proxy holding the key; second-cheapest is DeepSeek's own
+   account cap, set low.
+2. done 2026-09-03 — Harib merged `0ea1e55` + `266a476` + `d0def34`; live head is now `e0fe9d6`
+   (45 commits past our fork point: starter plan, spotlight tour, erase-and-start-over, chart
+   placeholders, reminder nudge). Still not on his branch, all from `fix/1.1-polish`: `16f280e`
+   (Keychain installation id — his `AgentBridge` still uses UserDefaults) plus five docs commits
+   `8151886`, `77f8273`, `74b0c6e`, `9ef78f1`, `041501a`.
 3. User: final on-device/simulator UX pass of 1.1 before submitting build 5.
 3b. done 2026-09-02 — Wren-identity prompt hardening + gate-contract test, full suite green
    at `266a476` (unit 180s, UITests 91s).
