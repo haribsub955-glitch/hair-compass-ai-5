@@ -24,6 +24,8 @@ struct ConditionsHero: View {
     var levelName: String? = nil
     var onOpenBaseline: () -> Void
     var onLog: () -> Void
+    /// Present only when today is empty and yesterday exists — the one-tap quiet-day log.
+    var onCopyYesterday: (() -> Void)? = nil
     /// Total XP — display only; this view never awards points, it only reflects them.
     var xp: Int
     /// Fraction (0…1) of the way to the next level (`GamificationLevel.progressToNext(xp:).fraction`).
@@ -323,8 +325,39 @@ struct ConditionsHero: View {
     /// `levelProgress` stay on this view's interface — the celebration flow and XP mechanics
     /// that read them elsewhere are untouched — only the duplicate on-hero display is gone. What
     /// remains here is the single control row: the sole action (Log/Edit today).
+    /// `ViewThatFits` picks the existing single-row `HStack` whenever it fits, and only falls
+    /// back to a stacked `VStack` at accessibility text sizes where the log button and the chip
+    /// side by side would otherwise overflow the hero's width. Neither control's own styling
+    /// changes between the two arrangements.
     private var controlsRow: some View {
-        logButton
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                logButton
+                copyYesterdayChip
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                logButton
+                copyYesterdayChip
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var copyYesterdayChip: some View {
+        if let onCopyYesterday, !hasLoggedToday {
+            Button(action: onCopyYesterday) {
+                Label("Same as yesterday", systemImage: "arrow.uturn.backward")
+                    .font(Clinical.body(12, weight: .medium))
+                    .foregroundStyle(Clinical.ink)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 34)
+                    .background(Clinical.surface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+            }
+            .buttonStyle(.clinicalPressable)
+            .accessibilityIdentifier("sameAsYesterday")
+            .accessibilityHint("Logs today with yesterday's ratings; you can edit afterwards")
+        }
     }
 
     private var logButton: some View {

@@ -288,6 +288,14 @@ struct RootView: View {
             let seededDemo = ProcessInfo.processInfo.arguments.contains("HC_SEED_DEMO")
             if seededDemo {
                 Seed.demo(context: context, profiles: profiles, entries: entries)
+                // HC_NOTODAY: the quiet-day demo for the "Same as yesterday" chip. `Seed.demo`
+                // only ever seeds once per install (guarded by `entries.isEmpty`), so a launch
+                // that asks for this scenario on an already-seeded install (e.g. a UI test suite
+                // reusing one app install across launches) must remove any existing today's entry
+                // itself rather than rely on the seed loop, which won't run again.
+                if ProcessInfo.processInfo.arguments.contains("HC_NOTODAY") {
+                    Seed.ensureNoTodayEntry(context: context)
+                }
             }
             #else
             let seededDemo = false

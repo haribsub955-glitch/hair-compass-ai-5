@@ -62,25 +62,41 @@ enum Seed {
             note: "Stinging after the evening application"
         ))
 
+        // HC_NOTODAY (debug): the quiet-day demo — today stays empty so "Same as yesterday" has
+        // something honest to offer. Only today's DailyEntry is withheld below; doses/snapshots
+        // for today are untouched. `demo` is only ever called from a #if DEBUG call site
+        // (RootView), but this function's own body is not itself gated — without this guard the
+        // "HC_NOTODAY" string literal, unreachable or not, would still ship inside the release
+        // binary.
+        #if DEBUG
+        let skipTodayEntry = ProcessInfo.processInfo.arguments.contains("HC_NOTODAY")
+        #else
+        let skipTodayEntry = false
+        #endif
+
         for offset in stride(from: span, through: 0, by: -1) {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
-            if offset % 4 == 1 { continue } // realistic gaps
+            // Realistic gaps — except yesterday (offset 1), which "Same as yesterday" always
+            // needs a real entry to copy from.
+            if offset != 1 && offset % 4 == 1 { continue }
 
             let progress = Double(span - offset) / Double(span) // 0 → 1
             let noise = Double((offset * 7) % 9) - 4
 
             func clampBand(_ v: Double) -> Int { min(3, max(0, Int(v.rounded()))) }
-            _ = try? DailyEntryRepository(context: context, calendar: calendar).upsert(day: day) {
-                $0.shed = ShedLevel(rawValue: clampBand(2.4 - progress * 1.6 + noise * 0.15)) ?? .normal
-                $0.flaking = clampBand(1.6 - progress * 1.0 + noise * 0.1)
-                $0.erythema = clampBand(1.3 - progress * 0.9)
-                $0.itch = clampBand(1.4 - progress * 0.9 + noise * 0.1)
-                $0.sleepQuality = min(5, max(1, Int((3.2 + progress * 1.2 + noise * 0.1).rounded())))
-                $0.stress = min(5, max(1, Int((3.6 - progress * 1.1).rounded())))
-                $0.cigarettes = 0
-                $0.alcoholDrinks = offset % 6 == 0 ? 2 : 0
-                $0.oiliness = clampBand(1.4 - progress * 0.6)
-                $0.note = ""
+            if !(offset == 0 && skipTodayEntry) {
+                _ = try? DailyEntryRepository(context: context, calendar: calendar).upsert(day: day) {
+                    $0.shed = ShedLevel(rawValue: clampBand(2.4 - progress * 1.6 + noise * 0.15)) ?? .normal
+                    $0.flaking = clampBand(1.6 - progress * 1.0 + noise * 0.1)
+                    $0.erythema = clampBand(1.3 - progress * 0.9)
+                    $0.itch = clampBand(1.4 - progress * 0.9 + noise * 0.1)
+                    $0.sleepQuality = min(5, max(1, Int((3.2 + progress * 1.2 + noise * 0.1).rounded())))
+                    $0.stress = min(5, max(1, Int((3.6 - progress * 1.1).rounded())))
+                    $0.cigarettes = 0
+                    $0.alcoholDrinks = offset % 6 == 0 ? 2 : 0
+                    $0.oiliness = clampBand(1.4 - progress * 0.6)
+                    $0.note = ""
+                }
             }
 
             // A weekly HealthKit-style snapshot so Trends/AI have auto data to work with.
@@ -125,4 +141,18 @@ enum Seed {
         let triggerDate = calendar.date(byAdding: .day, value: -70, to: today) ?? today
         context.insert(TriggerEvent(type: .illness, date: triggerDate, note: "Flu, ran a fever for several days"))
     }
+
+    #if DEBUG
+    /// `HC_NOTODAY`'s other half: on an already-seeded install the demo guard makes the seed a
+    /// no-op, so the flag also removes any entry dated today. Only the DailyEntry goes; doses
+    /// and photos for today are left alone.
+    static func ensureNoTodayEntry(context: ModelContext, calendar: Calendar = .current, now: Date = .now) {
+        let bounds = HairAnalytics.dayBounds(for: now, calendar: calendar)
+        let lower = bounds.lowerBound
+        let upper = bounds.upperBound
+        let descriptor = FetchDescriptor<DailyEntry>(predicate: #Predicate { $0.date >= lower && $0.date < upper })
+        for entry in (try? context.fetch(descriptor)) ?? [] { context.delete(entry) }
+        try? context.save()
+    }
+    #endif
 }

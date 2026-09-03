@@ -82,7 +82,7 @@ struct JourneyChart: View {
     /// band on the chart above is meant, without a separate swatch to look between.
     private var echoWindowKey: some View {
         (Text("Amber band").foregroundStyle(Clinical.warning)
-            + Text(" — possible echo window").foregroundStyle(Clinical.secondary))
+            + Text(" — when a trigger's effect may show").foregroundStyle(Clinical.secondary))
             .font(Clinical.caption(12))
     }
 

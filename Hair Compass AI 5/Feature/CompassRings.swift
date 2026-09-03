@@ -162,6 +162,12 @@ struct CompassRingsCard: View {
                     legendRow(.care, label: "Care steps", state: careState)
                     legendRow(.lens, label: "Photo check",
                               state: score.lens >= 1 ? "Done this week" : "Not yet this week")
+                    Text(CompassScore.explanation)
+                        .font(Clinical.caption(12))
+                        .foregroundStyle(Clinical.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 6)
+                        .accessibilityIdentifier("compassScoreExplanation")
                 }
                 .padding(.leading, 2)
                 .transition(reduceMotion

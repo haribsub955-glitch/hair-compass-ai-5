@@ -69,7 +69,8 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
   nothing about submission readiness; only TestFlight sandbox purchases prove ASC config.
   Submission checklist: `ios-appstore-submission` skill.
 - DEBUG launch args for QA: `HC_AI_STATUS <available|notEnabled|modelNotReady|deviceNotEligible>`,
-  `HC_ONBOARD`, `HC_ONBOARD_STEP <n>`, `HC_PAYWALL_BOTTOM`, `HC_NORITUAL`.
+  `HC_ONBOARD`, `HC_ONBOARD_STEP <n>`, `HC_PAYWALL_BOTTOM`, `HC_NORITUAL`, `HC_NOTODAY` (demo seed
+  skips today's `DailyEntry`, for testing the "Same as yesterday" quiet-day chip).
 - Trial copy: hyphenated compound modifiers stay singular — `PurchaseService.periodLabel` ("3-day
   free trial"); regression-tested in `PurchaseCopyTests`.
 - Legal/support URLs live in `Model/AppInfo.swift` and must point at `haircompass-ai.com`

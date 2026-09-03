@@ -18,7 +18,7 @@ struct LifeEventsSheet: View {
     @State private var showAdd = false
     @State private var editing: TriggerEvent?
     /// Non-nil while the delete confirmation dialog is up for a row's context menu — deleting
-    /// takes the event's journey-chart marker and echo window with it, so this confirms first.
+    /// takes the event's journey-chart marker and amber band with it, so this confirms first.
     @State private var deleteCandidate: TriggerEvent?
 
     var body: some View {
@@ -68,7 +68,7 @@ struct LifeEventsSheet: View {
                 }
                 Button("Cancel", role: .cancel) { deleteCandidate = nil }
             } message: {
-                Text("Its journey-chart marker and echo window go with it — this can't be undone.")
+                Text("Its journey-chart marker and amber band go with it — this can't be undone.")
             }
         }
     }
@@ -132,12 +132,12 @@ struct LifeEventsSheet: View {
         .accessibilityHint("Opens this event to edit or delete it")
     }
 
-    /// "Jul 12, 2026 · echo window ~Sep–Oct" — the dated event plus the ~8–12-week window it
+    /// "Jul 12, 2026 · effect may show ~Sep–Oct" — the dated event plus the ~8–12-week window it
     /// teaches, so a mis-remembered date is easy to spot from the list alone, without opening the
     /// journey chart to check it against the amber band.
     private func subtitle(_ event: TriggerEvent) -> String {
         let when = event.date.formatted(date: .abbreviated, time: .omitted)
-        return "\(when) · echo window ~\(echoWindowLabel(event.date))"
+        return "\(when) · effect may show ~\(echoWindowLabel(event.date))"
     }
 
     /// Month range 8–12 weeks after the event's date — matches `JourneyData.EchoBand`'s own
