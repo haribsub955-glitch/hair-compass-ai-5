@@ -74,8 +74,10 @@ struct TodayPlanSection: View {
                 }
             } else {
                 rows
+                    .transition(.opacity)
             }
-            ContinuityStrip(days: week, summary: weekSummary)
+            ContinuityStrip(days: week, summary: weekSummary,
+                            celebrate: plan.isComplete && plan.completedCount > 0)
                 .padding(.top, 14)
         }
         .onChange(of: plan.isComplete) { _, complete in
@@ -123,7 +125,7 @@ struct TodayPlanSection: View {
         undoTimer = Task {
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled else { return }
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { undoableID = nil }
+            withAnimation((reduceMotion || MotionQA.isStatic) ? nil : .easeOut(duration: 0.2)) { undoableID = nil }
         }
     }
 
@@ -151,7 +153,7 @@ struct TodayPlanSection: View {
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { showsRecorded = true }
+                withAnimation((reduceMotion || MotionQA.isStatic) ? nil : .easeOut(duration: 0.2)) { showsRecorded = true }
             } label: {
                 Text("\(TodayPlanCopy.recordedLine(plan.settledCount)) · Show")
                     .font(Clinical.body(12, weight: .medium))
@@ -163,7 +165,7 @@ struct TodayPlanSection: View {
             viewPlanButton
         }
         .padding(.vertical, 8)
-        .transition(.opacity)
+        .transition(.opacity.combined(with: .offset(y: 6)))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planClosure")
     }
@@ -186,7 +188,7 @@ struct TodayPlanSection: View {
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { showsRecorded = true }
+                withAnimation((reduceMotion || MotionQA.isStatic) ? nil : .easeOut(duration: 0.2)) { showsRecorded = true }
             } label: {
                 Text("\(TodayPlanCopy.recordedLine(plan.settledCount)) · Show")
                     .font(Clinical.body(12, weight: .medium))
@@ -198,7 +200,7 @@ struct TodayPlanSection: View {
             viewPlanButton
         }
         .padding(.vertical, 8)
-        .transition(.opacity)
+        .transition(.opacity.combined(with: .offset(y: 6)))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planSettled")
     }
@@ -254,6 +256,12 @@ private struct PlanActionRow: View {
     @Environment(\.calendar) private var calendar
     @State private var wash = false
     @State private var inkTrigger = false
+    /// The check morph (M3): the circle scales 0.85 → 1.1 → 1 on completion while the checkmark
+    /// fades in — the underdamped spring itself produces the overshoot, no phase sequencing
+    /// needed. Both start at their settled values so an already-completed row (a fresh render,
+    /// not a live completion) never morphs.
+    @State private var checkScale: CGFloat = 1
+    @State private var checkOpacity: Double = 1
 
     private var name: String {
         occurrence.treatment.name.isEmpty ? occurrence.treatment.treatmentClass.title : occurrence.treatment.name
@@ -379,12 +387,14 @@ private struct PlanActionRow: View {
                     Image(systemName: "checkmark")
                         .font(Clinical.body(10, weight: .bold))
                         .foregroundStyle(Clinical.surface)
+                        .opacity(checkOpacity)
                 }
                 if occurrence.state == .skipped {
                     Capsule().fill(Clinical.tertiary).frame(width: 8, height: 1.5)
                 }
             }
             .frame(width: 22, height: 22)
+            .scaleEffect(checkScale)
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
         }
@@ -401,11 +411,22 @@ private struct PlanActionRow: View {
         }
         onComplete()
         inkTrigger = true
-        guard !reduceMotion else { return }
+        guard !(reduceMotion || MotionQA.isStatic) else { return }
         withAnimation(.easeOut(duration: 0.18)) { wash = true }
         Task {
-            try? await Task.sleep(for: .milliseconds(650))
+            try? await Task.sleep(for: .seconds(MotionSpec.completion.washDuration))
             withAnimation(.easeIn(duration: 0.4)) { wash = false }
+        }
+        // Check morph: an underdamped spring from 0.85 overshoots past 1 on its own — the
+        // "0.85 → 1.1 → 1" pop — while the checkmark fades in on its own short curve.
+        checkScale = 0.85
+        checkOpacity = 0
+        withAnimation(.spring(response: MotionSpec.completion.popSpring.response,
+                              dampingFraction: MotionSpec.completion.popSpring.damping)) {
+            checkScale = 1
+        }
+        withAnimation(.easeOut(duration: 0.2)) {
+            checkOpacity = 1
         }
     }
 }
@@ -418,12 +439,35 @@ private struct PlanActionRow: View {
 struct ContinuityStrip: View {
     let days: [PlanAdherence.DayState]
     let summary: PlanAdherence.Consistency?
+    /// The section passes `plan.isComplete && plan.completedCount > 0` — rising edge only, and
+    /// only for a day with at least one real completion (an all-skipped day never celebrates).
+    var celebrate: Bool = false
 
     @Environment(\.calendar) private var calendar
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Guards the one-shot constellation (M4) so a reappearance of an already-celebrated strip
+    /// never replays it.
+    @State private var celebrated = false
+    /// Flips once to drive every `.complete` capsule's own delayed pop — each capsule reads this
+    /// single trigger through its own `.animation(_:value:)`, so the per-index delay lives on the
+    /// view, not on a sequence of separate state writes.
+    @State private var pops = false
+    @State private var connectorProgress: CGFloat = 0
+
+    private var isStatic: Bool { reduceMotion || MotionQA.isStatic }
 
     private var summaryLine: String {
         summary.map { TodayPlanCopy.weekLine(completed: $0.completed, planned: $0.planned) }
             ?? TodayPlanCopy.weekEmpty
+    }
+
+    /// Adjacent day-index pairs where both days are `.complete` — the segments the sage
+    /// connector draws between.
+    private var connectorSegments: [(Int, Int)] {
+        guard days.count > 1 else { return [] }
+        return (0..<(days.count - 1)).compactMap { i in
+            days[i].mark == .complete && days[i + 1].mark == .complete ? (i, i + 1) : nil
+        }
     }
 
     var body: some View {
@@ -437,21 +481,34 @@ struct ContinuityStrip: View {
                     .monospacedDigit()
             }
             HStack(spacing: 0) {
-                ForEach(days) { day in
+                ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                     VStack(spacing: 5) {
                         Text(initial(day.day))
                             .font(Clinical.caption(10))
                             .foregroundStyle(Clinical.tertiary)
                         DayCapsule(mark: day.mark)
+                            .scaleEffect(capsuleScale(day: day))
+                            .animation(capsuleAnimation(index: index, day: day), value: pops)
                     }
                     .frame(maxWidth: .infinity)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(label(day))
                 }
             }
+            .background(alignment: .bottom) {
+                GeometryReader { geo in
+                    connectorPath(in: geo.size)
+                        .trim(from: 0, to: connectorProgress)
+                        .stroke(Clinical.sage.opacity(0.4), lineWidth: 1)
+                }
+                .frame(height: 18)
+                .allowsHitTesting(false)
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("continuityStrip")
+        .onAppear { triggerCelebrationIfNeeded() }
+        .onChange(of: celebrate) { _, _ in triggerCelebrationIfNeeded() }
     }
 
     private func initial(_ day: Date) -> String {
@@ -467,6 +524,51 @@ struct ContinuityStrip: View {
         case .notExpected: return "\(name), nothing planned"
         case .today: return "\(name), today, \(day.completed) of \(day.expected) so far"
         case .upcoming: return "\(name), ahead"
+        }
+    }
+
+    // MARK: Constellation (M4)
+
+    /// Missed/partial/etc. days keep their marks and are never animated — only `.complete`
+    /// capsules pop, and only while a celebration is in flight or has already played.
+    private func capsuleScale(day: PlanAdherence.DayState) -> CGFloat {
+        guard day.mark == .complete, celebrate else { return 1 }
+        return pops ? 1 : 0.7
+    }
+
+    private func capsuleAnimation(index: Int, day: PlanAdherence.DayState) -> Animation? {
+        guard day.mark == .complete, celebrate, !isStatic else { return nil }
+        return .spring(response: 0.28, dampingFraction: 0.6)
+            .delay(Double(index) * MotionSpec.closeTheDay.capsuleStep)
+    }
+
+    private func connectorPath(in size: CGSize) -> Path {
+        Path { path in
+            guard !days.isEmpty else { return }
+            let colWidth = size.width / CGFloat(days.count)
+            let y = size.height / 2
+            for (a, b) in connectorSegments {
+                let xa = colWidth * (CGFloat(a) + 0.5)
+                let xb = colWidth * (CGFloat(b) + 0.5)
+                path.move(to: CGPoint(x: xa, y: y))
+                path.addLine(to: CGPoint(x: xb, y: y))
+            }
+        }
+    }
+
+    private func triggerCelebrationIfNeeded() {
+        guard celebrate, !celebrated else { return }
+        celebrated = true
+        guard !isStatic else {
+            pops = true
+            connectorProgress = 1
+            return
+        }
+        pops = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + MotionSpec.closeTheDay.capsuleStep) {
+            withAnimation(.easeInOut(duration: MotionSpec.closeTheDay.connector)) {
+                connectorProgress = 1
+            }
         }
     }
 }

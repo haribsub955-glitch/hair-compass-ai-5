@@ -135,6 +135,8 @@ private struct HorizonPath: View {
             }
             .font(Clinical.caption(10.5))
             .foregroundStyle(Clinical.tertiary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
         }
         .padding(.horizontal, 2)
         .opacity(isStatic ? (staticVisible ? 1 : 0) : 1)

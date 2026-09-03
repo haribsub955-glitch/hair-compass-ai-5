@@ -49,5 +49,26 @@ struct SeedDebugTests {
         #expect(remaining.count == 1)
         #expect(calendar.isDate(remaining.first!.loggedAt, inSameDayAs: yesterday))
     }
+
+    /// `HC_PLANCLOSED`'s counterpart check: two open slots today (one due, one upcoming) both
+    /// get a dose; yesterday, untouched by the seed, stays empty.
+    @Test func ensureDosesTodayClosesEveryOpenSlot() throws {
+        let context = try makeContext()
+        let now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 9, minute: 30))!
+        let start = calendar.date(byAdding: .day, value: -30, to: now)!
+        let treatment = Treatment(
+            name: "Minoxidil 5%", treatmentClass: .minoxidil,
+            scheduleTimes: "08:00,21:00", startDate: start, isActive: true
+        )
+        context.insert(treatment)
+
+        Seed.ensureDosesToday(context: context, treatments: [treatment], now: now, calendar: calendar)
+
+        let doses = try context.fetch(FetchDescriptor<TreatmentDose>())
+        #expect(doses.count == 2)
+        #expect(doses.allSatisfy { calendar.isDate($0.loggedAt, inSameDayAs: now) })
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: now)!
+        #expect(!doses.contains { calendar.isDate($0.loggedAt, inSameDayAs: yesterday) })
+    }
 }
 #endif

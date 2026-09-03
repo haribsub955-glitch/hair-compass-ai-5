@@ -16,6 +16,10 @@ struct ConditionsHero: View {
     var scalpBand: SeverityBand?
     var hasLoggedToday = false
     let greeting: String
+    /// False when `CalmHorizonHeader` (which leads the page now) already carries the
+    /// date/greeting/profile row — the hero then shows only the shedding scene, so it never
+    /// repeats a greeting the person already saw at the top of Today.
+    var showsHeader: Bool = true
     let streak: Int
     /// Streak shields currently held (0–2, Duolingo-style): a single-day logging gap consumes
     /// one instead of breaking the streak. Purely a display badge on the streak chip below.
@@ -216,25 +220,27 @@ struct ConditionsHero: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(Date.now.formatted(.dateTime.weekday(.wide).month().day()).uppercased())
-                        .font(Clinical.eyebrow(10)).tracking(1.4).foregroundStyle(Clinical.secondary)
-                    Text(greeting).font(Clinical.headline(20)).foregroundStyle(Clinical.ink)
+            if showsHeader {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Date.now.formatted(.dateTime.weekday(.wide).month().day()).uppercased())
+                            .font(Clinical.eyebrow(10)).tracking(1.4).foregroundStyle(Clinical.secondary)
+                        Text(greeting).font(Clinical.headline(20)).foregroundStyle(Clinical.ink)
+                    }
+                    Spacer()
+                    Button(action: onOpenBaseline) {
+                        // A plain outline glyph, not a filled coin — the last card-chrome disc on
+                        // Today dissolves back onto the canvas, matching the bare header-action
+                        // voice used everywhere else in the app.
+                        Image(systemName: "person.circle")
+                            .font(Clinical.caption(22))
+                            .foregroundStyle(Clinical.ink)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit profile and baseline")
                 }
-                Spacer()
-                Button(action: onOpenBaseline) {
-                    // A plain outline glyph, not a filled coin — the last card-chrome disc on
-                    // Today dissolves back onto the canvas, matching the bare header-action
-                    // voice used everywhere else in the app.
-                    Image(systemName: "person.circle")
-                        .font(Clinical.caption(22))
-                        .foregroundStyle(Clinical.ink)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Edit profile and baseline")
             }
             Spacer(minLength: 12)
             VStack(alignment: .leading, spacing: 8) {

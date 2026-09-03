@@ -8,6 +8,8 @@ struct TodayView: View {
     var onOpenBaseline: () -> Void
     /// Switches the root tab to Plan — the meds tile is a shortcut to the full routine.
     var onOpenPlan: (() -> Void)? = nil
+    /// Switches the root tab to Photos — the grounding card's "Open photos" action.
+    var onOpenPhotos: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
@@ -15,6 +17,9 @@ struct TodayView: View {
     @Environment(NotificationService.self) private var notifications
     @AppStorage("eveningCheckInEnabled") private var eveningCheckInEnabled = false
     @AppStorage(ReminderNudge.shownKey) private var reminderNudgeShown = false
+    /// Profile's "Daily grounding note" switch — off skips the card entirely; the plan and
+    /// reminders are unaffected either way.
+    @AppStorage("grounding.enabled") private var groundingEnabled = true
     /// True once "Turn on" led to a denied system prompt — the nudge card stays up, but its body
     /// switches to the honest "notifications are off, here's how to fix it" state. View state
     /// only: it is not persisted, so the card never returns in a later session once the shown
@@ -33,10 +38,7 @@ struct TodayView: View {
 
     @State private var showLog = false
     @State private var showBackfill = false
-    /// Reward handed back by LogSheet.save; held until the log sheet finishes dismissing.
-    @State private var pendingReward: CheckInReward?
-    /// Drives the celebration sheet — set only from the log sheets' onDismiss (see below).
-    @State private var celebrationReward: CheckInReward?
+    @State private var showExport = false
     @State private var insight: DailyInsight?
     @State private var showDeepAnalysis = false
     @State private var showLearn = false
@@ -46,6 +48,15 @@ struct TodayView: View {
     @State private var skipCandidate: PlanAdherence.Occurrence?
     @State private var pauseCandidate: PlanAdherence.Occurrence?
     @State private var detailTreatment: Treatment?
+
+    /// The provider seam (G2 task-4 amendment): Today never calls `GroundingCards.select`
+    /// directly. A future validated server card (G5) can sit in front of this deterministic
+    /// fallback without Today changing at all.
+    private let groundingProvider: any GroundingCardProvider = DeterministicGroundingProvider()
+    /// Resolved by `.task(id: groundingInputFingerprint)`; nil only on the very first frame,
+    /// during which `displayedGroundingCard` renders the deterministic card synchronously so the
+    /// page never flashes empty.
+    @State private var groundingCard: GroundingCard?
 
     private var calendar: Calendar { .current }
     private var todayEntry: DailyEntry? {
@@ -64,6 +75,73 @@ struct TodayView: View {
         return PlanAdherence.consistency(treatments: treatments, doses: doses, missed: missedDoses,
                                          from: start, through: today, now: .now, calendar: calendar)
     }
+
+    // MARK: - Calm Horizon / Daily Grounding (G2)
+
+    private var evidencePhase: EvidencePhase? {
+        EvidencePhase.current(treatments: treatments, entries: entries, now: .now, calendar: calendar)
+    }
+    private var photoStatus: PhotoCadence.Status {
+        PhotoCadence.status(photos: photos, now: .now, calendar: calendar)
+    }
+    private var consistency30: PlanAdherence.Consistency? {
+        let today = calendar.startOfDay(for: .now)
+        guard let start = calendar.date(byAdding: .day, value: -29, to: today) else { return nil }
+        return PlanAdherence.consistency(treatments: treatments, doses: doses, missed: missedDoses,
+                                         from: start, through: today, now: .now, calendar: calendar)
+    }
+    private var groundingInput: GroundingInput {
+        GroundingInput(
+            flags: ClinicianReviewFlags.evaluate(
+                progressCheckIns: progressCheckIns, entries: entries, triggers: triggers,
+                sideEffects: sideEffectLogs, now: .now, calendar: calendar
+            ),
+            plan: todayPlan,
+            missedYesterday: GroundingSignals.missedYesterday(
+                treatments: treatments, doses: doses, missed: missedDoses, now: .now, calendar: calendar
+            ),
+            phase: evidencePhase,
+            photo: photoStatus,
+            photoWithinTwoWeeks: PhotoCadence.hasPhoto(withinDays: 14, photos: photos, now: .now, calendar: calendar),
+            consistency30: consistency30,
+            sheddingAboveUsual: GroundingSignals.sheddingAboveUsual(entries: entries, now: .now, calendar: calendar),
+            loggedToday: todayEntry != nil
+        )
+    }
+    /// Keys the provider `.task` — a change of *kind* (a flag firing, the plan settling, a photo
+    /// coming due…) produces a new fingerprint; an unrelated data write that leaves every input
+    /// unchanged does not re-resolve the card.
+    private var groundingInputFingerprint: String {
+        let input = groundingInput
+        return [
+            input.flags.map(\.id).joined(separator: "."),
+            input.plan.occurrences.map { "\($0.id)-\($0.state.rawValue)" }.joined(separator: ","),
+            "\(input.missedYesterday)",
+            "\(input.phase?.dayNumber ?? -1)-\(input.phase?.week ?? -1)",
+            "\(input.photo)",
+            "\(input.photoWithinTwoWeeks)",
+            "\(input.consistency30?.completed ?? -1)/\(input.consistency30?.planned ?? -1)",
+            "\(input.sheddingAboveUsual)",
+            "\(input.loggedToday)",
+        ].joined(separator: "|")
+    }
+    /// The provider's answer once resolved; the deterministic fallback, computed synchronously,
+    /// until then — the page never shows an empty grounding slot on first appearance.
+    private var displayedGroundingCard: GroundingCard {
+        groundingCard ?? GroundingCards.select(groundingInput)
+    }
+    /// Start of today, `yyyy-MM-dd`, in the current calendar — built from components (not a
+    /// locale- or UTC-dependent formatter) so it never drifts a day off local midnight.
+    private var groundingDayKey: String {
+        let c = calendar.dateComponents([.year, .month, .day], from: calendar.startOfDay(for: .now))
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+    /// G2-R10: the entrance fires once per day per card, again on a meaningful change (a new
+    /// kind or headline), never on a reopen.
+    private var groundingEntranceKey: String {
+        "\(groundingDayKey)|\(displayedGroundingCard.kind.rawValue)|\(displayedGroundingCard.headline)"
+    }
+
     private var medsDone: Int { todayPlan.completedCount }
     private var medsTotal: Int { todayPlan.occurrences.count }
     /// Displayed streak with Duolingo-style shields — see `HairAnalytics.shieldedStreak`. Only
@@ -131,12 +209,59 @@ struct TodayView: View {
         let yesterday = YesterdayCopy.yesterdayEntry(in: entries)
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
+                // Today's new order (G2): the horizon says where the person is in the plan, one
+                // deterministic grounding note answers "what should I pay attention to", the plan
+                // is the day's actions, the evidence ribbon is the supporting numbers. The
+                // shedding scene, rings and tile ledger follow as the record's detail.
+                VStack(alignment: .leading, spacing: 16) {
+                    CalmHorizonHeader(greeting: greeting, phase: evidencePhase, onOpenBaseline: onOpenBaseline)
+                        .staggeredEntrance(index: 0)
+                    if groundingEnabled {
+                        GroundingCardView(
+                            card: displayedGroundingCard,
+                            entranceKey: groundingEntranceKey,
+                            celebrates: todayPlan.isComplete && todayPlan.completedCount > 0,
+                            onPrimary: performGroundingAction
+                        )
+                        .staggeredEntrance(index: 1)
+                    }
+                    TodayPlanSection(
+                        plan: todayPlan,
+                        week: weekStates,
+                        weekSummary: weekSummary,
+                        onComplete: { occurrence in
+                            _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
+                        },
+                        onUndo: { occurrence in
+                            switch occurrence.state {
+                            case .completed:
+                                _ = try? DoseRepository(context: context).delete(treatment: occurrence.treatment, slot: occurrence.slot)
+                            case .skipped:
+                                _ = try? MissedDoseRepository(context: context).delete(treatment: occurrence.treatment, slot: occurrence.slot)
+                            default:
+                                break
+                            }
+                        },
+                        onSkip: { skipCandidate = $0 },
+                        onPause: { pauseCandidate = $0 },
+                        onOpenDetail: { detailTreatment = $0.treatment },
+                        onOpenPlan: onOpenPlan
+                    )
+                    .staggeredEntrance(index: 2)
+                    EvidenceRibbon(weekSummary: weekSummary, consistency30: consistency30,
+                                   photo: photoStatus, phase: evidencePhase)
+                        .staggeredEntrance(index: 3)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+
                 ConditionsHero(
                     shed: todayEntry?.shed,
                     scalpTotal: todayEntry?.scalpTotal,
                     scalpBand: todayEntry?.scalpBand,
                     hasLoggedToday: todayEntry != nil,
                     greeting: greeting,
+                    showsHeader: false,
                     streak: shieldedInfo.streak,
                     shields: shieldedInfo.shieldsHeld,
                     levelName: levelName,
@@ -160,7 +285,8 @@ struct TodayView: View {
                         }
                     }
                 )
-                .staggeredEntrance(index: 0)
+                .staggeredEntrance(index: 4)
+                .padding(.top, 20)
                 if showsReminderNudge {
                     reminderNudgeCard
                         .padding(.horizontal, 20)
@@ -168,33 +294,10 @@ struct TodayView: View {
                         .transition(.opacity)
                 }
                 VStack(alignment: .leading, spacing: 16) {
-                    // Entrance sequence: hero 0, plan section 1, compass rings 2 (shares its 50ms
-                    // step with the grid's own tile 1 below — a harmless timing overlap, not a
-                    // functional dependency), tiles 1…6 (inside the grid, indices owned by
-                    // TodayTileGrid), cards continue at 8…11.
-                    TodayPlanSection(
-                        plan: todayPlan,
-                        week: weekStates,
-                        weekSummary: weekSummary,
-                        onComplete: { occurrence in
-                            _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
-                        },
-                        onUndo: { occurrence in
-                            switch occurrence.state {
-                            case .completed:
-                                _ = try? DoseRepository(context: context).delete(treatment: occurrence.treatment, slot: occurrence.slot)
-                            case .skipped:
-                                _ = try? MissedDoseRepository(context: context).delete(treatment: occurrence.treatment, slot: occurrence.slot)
-                            default:
-                                break
-                            }
-                        },
-                        onSkip: { skipCandidate = $0 },
-                        onPause: { pauseCandidate = $0 },
-                        onOpenDetail: { detailTreatment = $0.treatment },
-                        onOpenPlan: onOpenPlan
-                    )
-                    .staggeredEntrance(index: 1)
+                    // Entrance sequence continues from the horizon/note/plan/ribbon group (0…3)
+                    // and the hero (4): rings 5 (shares its 50ms step with the grid's own tile 1
+                    // below — a harmless timing overlap, not a functional dependency), tiles 1…6
+                    // (inside the grid, indices owned by TodayTileGrid), cards continue at 9…11.
                     CompassRingsCard(
                         score: compassScore,
                         medsDone: medsDone,
@@ -202,7 +305,7 @@ struct TodayView: View {
                         isDayOneSeed: isDayOneSeed,
                         onLog: { showLog = true }
                     )
-                    .staggeredEntrance(index: 2)
+                    .staggeredEntrance(index: 5)
                     TodayTileGrid(
                         entry: todayEntry,
                         sleepHours: todaySleepHours,
@@ -240,23 +343,14 @@ struct TodayView: View {
         }
         .clinicalScreen()
         .task(id: insightFingerprint) { await refreshInsight() }
+        .task(id: groundingInputFingerprint) {
+            groundingCard = await groundingProvider.card(input: groundingInput, now: .now)
+        }
         .onAppear {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_LEARN") { showLearn = true }
             if ProcessInfo.processInfo.arguments.contains("HC_LOG") { showLog = true }
             if ProcessInfo.processInfo.arguments.contains("HC_BACKFILL") { showBackfill = true }
-            if ProcessInfo.processInfo.arguments.contains("HC_CELEBRATE") {
-                // Representative fixture for screenshots: +22 XP, 6-day streak, no level-up.
-                celebrationReward = CheckInReward(
-                    xpGained: 22,
-                    totalXP: 240,
-                    level: GamificationLevel.level(for: 240),
-                    progressToNext: GamificationLevel.progressToNext(xp: 240),
-                    leveledUp: false,
-                    streak: 6,
-                    newBadges: []
-                )
-            }
             #endif
         }
         .onChange(of: [deepLinks.openLogRequested, deepLinks.canConsumeRoutes]) { _, _ in
@@ -266,20 +360,17 @@ struct TodayView: View {
             // Covers the cold-start case where the widget's URL arrives before this view exists.
             if deepLinks.consumeLogRequest() { showLog = true }
         }
-        // Celebration presentation uses the same onDismiss chain as the AI-consent →
-        // deep-analysis pair: the log sheet stores the reward, and only its onDismiss
-        // promotes it to the presented sheet — never two sheet presentations racing.
-        .sheet(isPresented: $showLog, onDismiss: presentPendingReward) {
+        .sheet(isPresented: $showLog) {
             LogSheet(existing: todayEntry, condition: profile?.condition ?? .unsure,
-                     onSaved: { pendingReward = $0 })
+                     onSaved: { _ in })
         }
-        .sheet(isPresented: $showBackfill, onDismiss: presentPendingReward) {
+        .sheet(isPresented: $showBackfill) {
             // existing: nil shows the day strip, so any of the last 60 days can be backfilled.
             LogSheet(existing: nil, condition: profile?.condition ?? .unsure,
-                     onSaved: { pendingReward = $0 })
+                     onSaved: { _ in })
         }
-        .sheet(item: $celebrationReward) { reward in
-            CheckInCelebration(reward: reward)
+        .sheet(isPresented: $showExport) {
+            ExportSheet()
         }
         .sheet(isPresented: $showDeepAnalysis) {
             DeepAnalysisSheet()
@@ -321,12 +412,26 @@ struct TodayView: View {
         }
     }
 
-    /// Promotes a saved reward to the presented celebration once the log sheet has fully
-    /// dismissed — presenting from onDismiss avoids racing two sheet presentations.
-    private func presentPendingReward() {
-        guard let reward = pendingReward else { return }
-        pendingReward = nil
-        celebrationReward = reward
+    /// Routes the grounding card's one action to whatever it names — a plan completion, the log
+    /// sheet, Photos, Plan, or the visit-notes export. `.none` (a fully settled, quiet-day card)
+    /// renders no button at all, so this branch never runs.
+    private func performGroundingAction(_ action: GroundingCard.Action) {
+        switch action {
+        case .completePlanItem(let id, _):
+            guard let occurrence = todayPlan.occurrences.first(where: { $0.id == id }) else { return }
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
+        case .logCheckIn:
+            showLog = true
+        case .openPhotos:
+            onOpenPhotos?()
+        case .openPlan:
+            onOpenPlan?()
+        case .prepareVisit:
+            showExport = true
+        case .none:
+            break
+        }
     }
 
     /// One tap, one full entry: today becomes a copy of yesterday's ratings. The hero flips to

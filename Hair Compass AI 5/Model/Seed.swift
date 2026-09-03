@@ -166,5 +166,23 @@ enum Seed {
         for dose in (try? context.fetch(descriptor)) ?? [] { context.delete(dose) }
         try? context.save()
     }
+
+    /// `HC_PLANCLOSED` (G2 motion amendment M8): the counterpart of `HC_PLANOPEN` — logs a dose,
+    /// through `DoseRepository`, for every occurrence `PlanAdherence.today(...)` still reports
+    /// open, so the closure card, the seven-day constellation and Close the Day can be forced on
+    /// a fresh launch. Only today's open slots are touched; yesterday and every other day are
+    /// left exactly as seeded.
+    static func ensureDosesToday(
+        context: ModelContext, treatments: [Treatment], now: Date = .now, calendar: Calendar = .current
+    ) {
+        let doses = (try? context.fetch(FetchDescriptor<TreatmentDose>())) ?? []
+        let missed = (try? context.fetch(FetchDescriptor<MissedDoseRecord>())) ?? []
+        let plan = PlanAdherence.today(treatments: treatments, doses: doses, missed: missed, now: now, calendar: calendar)
+        for occurrence in plan.occurrences where occurrence.isOpen {
+            _ = try? DoseRepository(context: context, calendar: calendar)
+                .log(treatment: occurrence.treatment, day: now, slot: occurrence.slot)
+        }
+        try? context.save()
+    }
     #endif
 }
