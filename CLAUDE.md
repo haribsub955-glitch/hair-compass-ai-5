@@ -86,18 +86,22 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
    verification non-bypassable when live, `uq_principal_subscription`, free plan
    `daily_token_budget: 0`, device binding + access key refused-at-boot when live, rate limiter
    and consent gate on the path. Do not re-derive the threat model from the handover.
-0b. Genuinely open, server side (Harib's repo, on this machine at `../agent-platform`):
-   **no aggregate/global spend ceiling** (per-principal only — total = principals × cap) ·
-   **no kill switch** (no admin endpoint, no spend-disable flag) · image cost not reserved
-   (their audit `agent.py:449`) · four pay-for-nothing bugs from
-   `docs/ENGINE_AUDIT_2026-08-31.md` (`dispatch.py:157` HIGH — every write turn dies after the
-   model call is paid for; `agent.py:344`, `:253`, `:276`).
-0c. This repo, small, not started: move `AgentBridge.installationID` from `UserDefaults` to the
-   Keychain, as `AccessWindow` already does. The server has priced this reinstall cycle as an
-   accepted risk (taster ≈ $0.45), so this closes an accepted risk rather than a hole. Also
-   decide what `X-Access-Key` is in a Release build — it defaults to a scheme env var and the
-   client omits the header when empty, while the server refuses to boot live without one, so a
-   shipped build would be locked out. Both only matter if the cloud path ships.
+0b. done 2026-09-03 — server `70e4815` (repo `../agent-platform`, NOT pushed, awaiting the user's
+   say-so): **live product ids** (the catalogue said `harib.haircompass.pro.monthly`, Apple sends
+   `com.harib.haircompass.pro.monthly2`, so every real receipt resolved to the free tier's zero
+   budget — a paying subscriber got nothing; the tests hard-coded the same wrong value) ·
+   **global daily ceiling** (`global_daily_spend`, same atomic statement, default 7.5M tokens/day
+   ≈ $100/month, refused at live boot if unset) · **`PROVIDER_SPEND_ENABLED` kill switch**
+   enforced in `reserve()` so no endpoint can skip it. 596 passed.
+0c. done 2026-09-03 — `16f280e`: `AgentBridge.installationID` moved to the Keychain.
+0d. Still open, server side, from their own `docs/ENGINE_AUDIT_2026-08-31.md`: image cost is not
+   reserved (`agent.py:449` — the cap does not apply to the expensive class) · four
+   pay-for-nothing bugs (`dispatch.py:157` HIGH, every write turn dies after the model call is
+   paid for; `agent.py:344`, `:253`, `:276`). Also: finer-grained switches (free-cloud-only,
+   images-only, force-cheap-model) — only the master switch was built.
+0e. Decide what `X-Access-Key` is in a Release build: the client defaults it to a scheme env var
+   and omits the header when empty, while the server refuses to boot live without one, so a
+   shipped build would be locked out on day one.
 1. User: re-test the three chat questions on a real AI-capable iPhone at `266a476` — expect
    real answers (words, not digits) instead of the "couldn't safely summarize" fallback.
 2. Harib (or user says merge): pull `0ea1e55` + `266a476` from `fix/1.1-polish` into
