@@ -10,10 +10,17 @@ import Testing
 
 struct ReminderNudgeTests {
     @Test func showsOnlyAfterALogWhileRemindersAreOffAndNeverTwice() {
-        #expect(ReminderNudge.shouldShow(hasLoggedToday: true, eveningReminderOn: false, alreadyShown: false))
-        #expect(!ReminderNudge.shouldShow(hasLoggedToday: false, eveningReminderOn: false, alreadyShown: false))
-        #expect(!ReminderNudge.shouldShow(hasLoggedToday: true, eveningReminderOn: true, alreadyShown: false))
-        #expect(!ReminderNudge.shouldShow(hasLoggedToday: true, eveningReminderOn: false, alreadyShown: true))
+        #expect(ReminderNudge.shouldShow(hasLoggedToday: true, isDayOneSeed: false, eveningReminderOn: false, alreadyShown: false))
+        #expect(!ReminderNudge.shouldShow(hasLoggedToday: false, isDayOneSeed: false, eveningReminderOn: false, alreadyShown: false))
+        #expect(!ReminderNudge.shouldShow(hasLoggedToday: true, isDayOneSeed: false, eveningReminderOn: true, alreadyShown: false))
+        #expect(!ReminderNudge.shouldShow(hasLoggedToday: true, isDayOneSeed: false, eveningReminderOn: false, alreadyShown: true))
+    }
+
+    /// Onboarding seeds today's entry on finish, so `hasLoggedToday` is true on the very first
+    /// Today screen — a log the person never tapped. The nudge must not count that as "the first
+    /// saved log".
+    @Test func seededDayOneDoesNotCount() {
+        #expect(!ReminderNudge.shouldShow(hasLoggedToday: true, isDayOneSeed: true, eveningReminderOn: false, alreadyShown: false))
     }
 
     @Test func storageKeyIsStable() {

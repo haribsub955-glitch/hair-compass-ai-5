@@ -10,10 +10,16 @@ struct TodayView: View {
     var onOpenPlan: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
+    @Environment(\.openURL) private var openURL
     @Environment(DeepLinkRouter.self) private var deepLinks
     @Environment(NotificationService.self) private var notifications
     @AppStorage("eveningCheckInEnabled") private var eveningCheckInEnabled = false
     @AppStorage(ReminderNudge.shownKey) private var reminderNudgeShown = false
+    /// True once "Turn on" led to a denied system prompt — the nudge card stays up, but its body
+    /// switches to the honest "notifications are off, here's how to fix it" state. View state
+    /// only: it is not persisted, so the card never returns in a later session once the shown
+    /// flag above has retired it.
+    @State private var nudgeNeedsSettings = false
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
@@ -105,6 +111,14 @@ struct TodayView: View {
         entries.count == 1 && todayEntry != nil
     }
 
+    /// Whether the reminder nudge card is on screen: the model's own rule, plus the settings
+    /// follow-up state that keeps the card up (in its other body) after a denied system prompt.
+    private var showsReminderNudge: Bool {
+        ReminderNudge.shouldShow(hasLoggedToday: todayEntry != nil, isDayOneSeed: isDayOneSeed,
+                                 eveningReminderOn: eveningCheckInEnabled, alreadyShown: reminderNudgeShown)
+            || nudgeNeedsSettings
+    }
+
     /// Most recent trigger still inside the ~16-week telogen-effluvium watch period.
     private var watchTriggerWeeks: Int? {
         triggers.lazy.map { $0.weeksElapsed() }.first { (0...16).contains($0) }
@@ -146,12 +160,11 @@ struct TodayView: View {
                     }
                 )
                 .staggeredEntrance(index: 0)
-                if ReminderNudge.shouldShow(hasLoggedToday: todayEntry != nil,
-                                            eveningReminderOn: eveningCheckInEnabled,
-                                            alreadyShown: reminderNudgeShown) {
+                if showsReminderNudge {
                     reminderNudgeCard
                         .padding(.horizontal, 20)
                         .padding(.top, 8)
+                        .transition(.opacity)
                 }
                 VStack(alignment: .leading, spacing: 16) {
                     // Entrance sequence: hero 0, compass rings 1 (shares its 50ms step with the
@@ -200,6 +213,12 @@ struct TodayView: View {
                     .staggeredEntrance(index: 11)
             }
             .padding(.bottom, 24)
+            // Round: the reminder-nudge card's own insertion/removal (e.g. the page settling
+            // once the first log lands) used to be unanimated and made the page jump. One
+            // animation on the container it lives in covers every path that flips
+            // `showsReminderNudge` — a button tap inside the card, or an external data change
+            // like saving today's first entry.
+            .animation(.easeOut(duration: 0.25), value: showsReminderNudge)
         }
         .clinicalScreen()
         .task(id: insightFingerprint) { await refreshInsight() }
@@ -282,7 +301,7 @@ struct TodayView: View {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
             // The next tap on "Log today" reaches the same store through the sheet.
-            Logger(subsystem: "harib.Hair-Compass-AI-5", category: "today")
+            Logger(subsystem: "hair-compass", category: "today")
                 .error("copyYesterday failed: \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -455,41 +474,77 @@ struct TodayView: View {
             .frame(maxWidth: .infinity)
     }
 
-    /// Asked once, after the first log, while reminders are off. Both buttons retire it.
+    /// Asked once, after the first real log, while reminders are off. Both buttons retire it —
+    /// unless "Turn on" hits a denied system prompt, in which case the card stays up in its other
+    /// body (`nudgeNeedsSettings`) instead of silently doing nothing.
     private var reminderNudgeCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Want a nudge tomorrow evening?")
-                .font(Clinical.body(15, weight: .medium))
-                .foregroundStyle(Clinical.ink)
-            Text("One quiet reminder at your check-in time. You can change or switch it off on the Plan tab.")
-                .font(Clinical.caption(12))
-                .foregroundStyle(Clinical.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                Button {
-                    reminderNudgeShown = true
-                    Task {
-                        let granted = await notifications.requestAuthorizationIfNeeded()
-                        eveningCheckInEnabled = granted
+            if nudgeNeedsSettings {
+                Text("Notifications are off for Hair Compass")
+                    .font(Clinical.body(15, weight: .medium))
+                    .foregroundStyle(Clinical.ink)
+                Text("Turn them on in Settings › Notifications › Hair Compass, then switch on the evening check-in from the Plan tab.")
+                    .font(Clinical.caption(12))
+                    .foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button("Open Settings") {
+                        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                        openURL(url)
                     }
-                } label: {
-                    Text("Turn on")
-                        .font(Clinical.body(12, weight: .medium))
-                        .foregroundStyle(Clinical.ink)
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 34)
-                        .background(Clinical.surface, in: Capsule())
-                        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
-                }
-                .buttonStyle(.clinicalPressable)
-                .accessibilityIdentifier("reminderNudgeOn")
-                Button("Not now") { reminderNudgeShown = true }
                     .font(Clinical.body(13, weight: .medium))
                     .foregroundStyle(Clinical.tertiary)
                     .buttonStyle(.plain)
                     .minimumHitTarget()
-                    .accessibilityIdentifier("reminderNudgeNotNow")
-                Spacer(minLength: 0)
+                    .accessibilityIdentifier("reminderNudgeSettings")
+                    Button("Got it") { nudgeNeedsSettings = false }
+                        .font(Clinical.body(13, weight: .medium))
+                        .foregroundStyle(Clinical.tertiary)
+                        .buttonStyle(.plain)
+                        .minimumHitTarget()
+                        .accessibilityIdentifier("reminderNudgeGotIt")
+                    Spacer(minLength: 0)
+                }
+            } else {
+                Text("Want a nudge tomorrow evening?")
+                    .font(Clinical.body(15, weight: .medium))
+                    .foregroundStyle(Clinical.ink)
+                Text("One quiet reminder at the evening check-in time. You can change or switch it off on the Plan tab.")
+                    .font(Clinical.caption(12))
+                    .foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button {
+                        // Set before the request: an interrupted prompt must still retire the
+                        // card, and the follow-up (nudgeNeedsSettings) is view state that keeps
+                        // showing it regardless.
+                        reminderNudgeShown = true
+                        Task {
+                            let granted = await notifications.requestAuthorizationIfNeeded()
+                            eveningCheckInEnabled = granted
+                            if !granted && notifications.authorization == .denied {
+                                nudgeNeedsSettings = true
+                            }
+                        }
+                    } label: {
+                        Text("Turn on")
+                            .font(Clinical.body(12, weight: .medium))
+                            .foregroundStyle(Clinical.ink)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 34)
+                            .background(Clinical.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
+                    }
+                    .buttonStyle(.clinicalPressable)
+                    .accessibilityIdentifier("reminderNudgeOn")
+                    Button("Not now") { reminderNudgeShown = true }
+                        .font(Clinical.body(13, weight: .medium))
+                        .foregroundStyle(Clinical.tertiary)
+                        .buttonStyle(.plain)
+                        .minimumHitTarget()
+                        .accessibilityIdentifier("reminderNudgeNotNow")
+                    Spacer(minLength: 0)
+                }
             }
         }
         .padding(.vertical, 12)

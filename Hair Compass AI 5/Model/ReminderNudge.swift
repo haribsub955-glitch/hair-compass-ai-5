@@ -11,7 +11,9 @@ import Foundation
 enum ReminderNudge {
     static let shownKey = "reminders.nudgeShown"
 
-    static func shouldShow(hasLoggedToday: Bool, eveningReminderOn: Bool, alreadyShown: Bool) -> Bool {
-        hasLoggedToday && !eveningReminderOn && !alreadyShown
+    /// `isDayOneSeed` excludes onboarding's day-one seeded entry from counting as "the first
+    /// saved log" — that entry was never tapped by the person, so the nudge waits for a real one.
+    static func shouldShow(hasLoggedToday: Bool, isDayOneSeed: Bool, eveningReminderOn: Bool, alreadyShown: Bool) -> Bool {
+        hasLoggedToday && !isDayOneSeed && !eveningReminderOn && !alreadyShown
     }
 }
