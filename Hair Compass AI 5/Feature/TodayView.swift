@@ -463,20 +463,30 @@ struct TodayView: View {
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
-                Button("Turn on") {
+                Button {
                     reminderNudgeShown = true
                     Task {
                         let granted = await notifications.requestAuthorizationIfNeeded()
                         eveningCheckInEnabled = granted
                     }
+                } label: {
+                    Text("Turn on")
+                        .font(Clinical.body(12, weight: .medium))
+                        .foregroundStyle(Clinical.ink)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 34)
+                        .background(Clinical.surface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
                 }
-                .buttonStyle(ClinicalButtonStyle(filled: false))
+                .buttonStyle(.clinicalPressable)
                 .accessibilityIdentifier("reminderNudgeOn")
                 Button("Not now") { reminderNudgeShown = true }
                     .font(Clinical.body(13, weight: .medium))
                     .foregroundStyle(Clinical.tertiary)
                     .buttonStyle(.plain)
+                    .minimumHitTarget()
                     .accessibilityIdentifier("reminderNudgeNotNow")
+                Spacer(minLength: 0)
             }
         }
         .padding(.vertical, 12)
