@@ -187,4 +187,14 @@ struct StarterPlanTests {
         #expect(!StarterPlan.isComplete(incomplete))
         #expect(StarterPlan.isComplete([]))
     }
+
+    /// Dismissing the last open item completes the plan — and the section must still offer Undo
+    /// for exactly that dismissal (the view renders Undo under the closer whenever canUndo is true).
+    @Test func dismissingTheLastItemCompletesThePlan() {
+        let s = snapshot(condition: .seborrheicDermatitis, sex: .male,
+                         hasAnyTreatment: true, hasAnyLab: true, hasBaselinePhoto: true,
+                         remindersEnabled: true, loggedToday: true,
+                         dismissed: ["treatment.antifungal", "treatment.note-sd"])
+        #expect(StarterPlan.isComplete(StarterPlan.items(for: s)))
+    }
 }

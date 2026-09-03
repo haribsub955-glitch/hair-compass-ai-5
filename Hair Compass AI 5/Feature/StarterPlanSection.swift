@@ -23,6 +23,9 @@ struct StarterPlanSection: View {
         VStack(alignment: .leading, spacing: 12) {
             if showsCloser {
                 closer
+                if canUndo {
+                    undoButton
+                }
             } else {
                 header
                 ForEach(StarterPlanGroup.allCases) { group in
@@ -32,11 +35,7 @@ struct StarterPlanSection: View {
                     }
                 }
                 if canUndo {
-                    Button("Undo \"Not for me\"") { onUndo() }
-                        .font(Clinical.caption(12))
-                        .foregroundStyle(Clinical.accent)
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("starterPlanUndo")
+                    undoButton
                 }
                 Text(TreatmentRecommender.disclaimer)
                     .font(Clinical.caption(11))
@@ -45,6 +44,16 @@ struct StarterPlanSection: View {
             }
         }
         .accessibilityIdentifier("starterPlanSection")
+    }
+
+    /// Dismissing the last open item completes the plan (the closer shows) without losing the
+    /// one Undo that reverses that exact dismissal — so this renders under both branches.
+    private var undoButton: some View {
+        Button("Undo \"Not for me\"") { onUndo() }
+            .font(Clinical.caption(12))
+            .foregroundStyle(Clinical.accent)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("starterPlanUndo")
     }
 
     private var header: some View {
@@ -129,6 +138,8 @@ struct StarterPlanSection: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Starting plan done — your ritual takes it from here.")
         .accessibilityIdentifier("starterPlanCloser")
     }
 }
