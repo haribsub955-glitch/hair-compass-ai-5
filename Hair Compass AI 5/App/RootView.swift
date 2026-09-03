@@ -87,6 +87,7 @@ struct RootView: View {
     /// Set by BaselineFlow's "Erase" confirmation; honoured once the Profile sheet has fully
     /// closed so no presented view still holds the profile being deleted.
     @State private var pendingErase = false
+    @State private var eraseFailed = false
 
     // Evening check-in reminder — same AppStorage keys `CareView`'s toggle UI reads/writes.
     // `NotificationService.planEveningCheckIn` only ever schedules 3 non-repeating notifications
@@ -144,7 +145,9 @@ struct RootView: View {
         do {
             try await EraseAndStartOver.perform(context: context)
         } catch {
-            // Nothing sensible to show mid-wipe; the next launch re-seeds whatever is missing.
+            // The wipe didn't finish; tell the person rather than leaving them staring at
+            // whatever screen happened to be underneath the just-dismissed Profile sheet.
+            eraseFailed = true
             return
         }
         hasSeenTutorial = false
@@ -422,6 +425,11 @@ struct RootView: View {
                     .environment(purchases)
                     .environment(accessWindow)
             }
+        }
+        .alert("Couldn't erase everything", isPresented: $eraseFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Some records may still be on this iPhone. Try again from Profile, or export a backup first and reinstall the app.")
         }
         .onChange(of: scenePhase) { _, phase in
             let decision = ScenePhaseDecision.reduce(

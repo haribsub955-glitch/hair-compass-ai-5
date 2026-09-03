@@ -78,6 +78,42 @@ struct EraseAndStartOverTests {
         #expect(written == .placeholder)
     }
 
+    /// The bug the UI test found: a dose linked to its treatment tripped a cascade constraint when
+    /// children were deleted before the parent. Deterministic guard for the delete order.
+    @Test func eraseHandlesTreatmentWithLinkedChildren() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let profile = Profile()
+        profile.hasOnboarded = true
+        context.insert(profile)
+        let treatment = Treatment()
+        context.insert(treatment)
+        let dose = TreatmentDose(treatment: treatment)
+        let missed = MissedDoseRecord(treatment: treatment)
+        let sideEffect = SideEffectLog(treatment: treatment)
+        context.insert(dose)
+        context.insert(missed)
+        context.insert(sideEffect)
+        try context.save()
+
+        let suite = "EraseAndStartOverTests.linked.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("erase-linked-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        try await EraseAndStartOver.perform(
+            context: context, defaults: defaults, defaultsDomain: suite,
+            photoStore: PhotoStore(directoryOverride: dir),
+            cancelNotifications: {}, writeWidget: { _ in }
+        )
+
+        #expect(try context.fetch(FetchDescriptor<Treatment>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<TreatmentDose>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<MissedDoseRecord>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<SideEffectLog>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<Profile>()).count == 1)
+    }
+
     /// The 3-day window lives in the Keychain and must never restart. The guarantee is
     /// structural — the erase has no path to the anchor at all — so the test is structural too:
     /// the service's source must not name the window or its store.
