@@ -107,6 +107,13 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
 0d-ii. Reviewer availability, 2026-09-03: codex is out of credits until ~Sep 7; the Fable
    reviewer hit a rate limit. agy was the only external reviewer that returned, so anything
    reviewed today has had ONE external pass, not two (U5: agy alone is never sufficient to merge).
+0d-iii. Running the server's Postgres suite locally: `docker run -d --name hc-pgtest -e
+   POSTGRES_PASSWORD=test -e POSTGRES_USER=agent -e POSTGRES_DB=agent_platform -p 55432:5432
+   postgres:17-alpine`, then
+   `AGENT_TEST_DATABASE_URL="postgresql+asyncpg://agent:test@127.0.0.1:55432/agent_platform"
+   .venv/Scripts/python.exe -m pytest tests/test_postgres_regressions.py`. Disposable, off their
+   compose stack and volume. ⚠️ Never point it at the deployment DB now: `global_daily_spend` is
+   keyed by day alone, so a test run would consume that day's real ceiling.
 0e. Decide what `X-Access-Key` is in a Release build: the client defaults it to a scheme env var
    and omits the header when empty, while the server refuses to boot live without one, so a
    shipped build would be locked out on day one.
