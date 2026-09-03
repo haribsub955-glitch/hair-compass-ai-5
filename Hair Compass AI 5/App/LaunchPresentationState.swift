@@ -11,7 +11,6 @@ struct LaunchPresentationState: Equatable {
         case lock
         case onboarding
         case pendingRoute
-        case tutorial
         case ritual
         case normal
     }
@@ -21,7 +20,6 @@ struct LaunchPresentationState: Equatable {
         var isLocked: Bool
         var hasOnboarded: Bool
         var hasPendingRoute: Bool
-        var hasSeenTutorial: Bool
         var ritualDueOrForced: Bool
         var appActive: Bool
     }
@@ -40,8 +38,6 @@ struct LaunchPresentationState: Equatable {
             surface = .onboarding
         } else if input.hasPendingRoute {
             surface = .pendingRoute
-        } else if !input.hasSeenTutorial {
-            surface = .tutorial
         } else if input.ritualDueOrForced {
             surface = .ritual
         } else {

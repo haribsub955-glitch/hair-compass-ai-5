@@ -82,8 +82,6 @@ struct RootView: View {
     @State private var ritualKind: RitualKind?
     @State private var purchases = PurchaseService()
     @State private var accessWindow = AccessWindow()
-    @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
-    @State private var showTutorial = false
     @State private var deepLinks = DeepLinkRouter()
     /// Set by BaselineFlow's "Erase" confirmation; honoured once the Profile sheet has fully
     /// closed so no presented view still holds the profile being deleted.
@@ -108,7 +106,6 @@ struct RootView: View {
             // Keep the established request flags so bootstrap and dismissal timing stay unchanged.
             hasOnboarded: !showOnboarding,
             hasPendingRoute: deepLinks.hasPendingRoute || IntentHandoff.hasPendingLog,
-            hasSeenTutorial: !showTutorial,
             ritualDueOrForced: ritualKind != nil,
             appActive: scenePhase == .active
         ))
@@ -150,8 +147,7 @@ struct RootView: View {
 
     // MARK: - Erase and start over
 
-    /// The wipe, then straight back to the illustrated cover. `hasSeenTutorial` is cleared
-    /// explicitly because @AppStorage caches its value in this view.
+    /// The wipe, then straight back to the illustrated cover.
     private func eraseAndStartOver() async {
         do {
             try await EraseAndStartOver.perform(context: context)
@@ -166,7 +162,6 @@ struct RootView: View {
             eraseFailed = true
             return
         }
-        hasSeenTutorial = false
         // The domain wipe clears UserDefaults (including the App Lock preference), but this live
         // service instance still has the old value cached in memory — without this, a locked
         // profile's Face ID gate would keep guarding the fresh, un-onboarded app.
@@ -194,7 +189,8 @@ struct RootView: View {
                     description: "Log shedding, scalp, and treatments in seconds — part of Hair Compass Pro.") {
                 TodayView(profile: profile,
                           onOpenBaseline: { showProfileEdit = true },
-                          onOpenPlan: { tab = .care })
+                          onOpenPlan: { tab = .care },
+                          onOpenPhotos: { tab = .photos })
             }
         case .trends:
             ProGate(feature: "Trends & Evidence",
@@ -232,21 +228,6 @@ struct RootView: View {
         // spatial continuity. Reduce Motion keeps only the short fade.
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.22), value: tab)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // First-launch tutorial: a card-above-the-tab-bar coach sequence that drives `tab`
-        // itself. Placed BEFORE `.safeAreaInset` below so the tab bar (zIndex 100) composites
-        // above the overlay's scrim and stays interactive-looking while the tour is active.
-        .overlay {
-            if launchPresentation.surface == .tutorial {
-                TutorialOverlay(tab: $tab) {
-                    hasSeenTutorial = true
-                    showTutorial = false
-                    // The finale's promise was "Open my plan" — restore that destination now that
-                    // the tour (which drives `tab` through all five pages, ending on Photos) is done.
-                    tab = .care
-                }
-                .transition(.opacity)
-            }
-        }
         // Reserve real layout space for navigation. The previous overlay obscured the final
         // card on every tab and made users scroll content underneath an active control.
         // Round-13: the canvas fade that used to live here (behind the tab bar's now-retired
@@ -300,6 +281,16 @@ struct RootView: View {
                 if ProcessInfo.processInfo.arguments.contains("HC_PLANOPEN") {
                     Seed.ensureNoDosesToday(context: context)
                 }
+                // HC_PLANCLOSED (G2 motion amendment M8): the counterpart of HC_PLANOPEN — logs
+                // every open occurrence today so a fresh launch can force the closure card, the
+                // seven-day constellation and Close the Day. Fetches fresh rather than reading
+                // the `treatments` @Query, which has not re-run within this same task yet.
+                if ProcessInfo.processInfo.arguments.contains("HC_PLANCLOSED") {
+                    let freshTreatments = (try? context.fetch(
+                        FetchDescriptor<Treatment>(sortBy: [SortDescriptor(\.startDate)])
+                    )) ?? []
+                    Seed.ensureDosesToday(context: context, treatments: freshTreatments)
+                }
             }
             #else
             let seededDemo = false
@@ -320,26 +311,13 @@ struct RootView: View {
                 p.pregnancyStatus = .pregnant
             }
             #endif
-            // Cover the "onboarded but never toured" relaunch — the user killed the app mid-tutorial.
-            // A DEBUG-forced ritual (HC_RITUAL_KIND / HC_RITUAL) is an explicit test/QA hook and
-            // must always win the one-cover slot, or forcing a kind wouldn't reliably show anything
-            // on a fresh install where hasSeenTutorial defaults false.
-            var forcingRitual = false
-            #if DEBUG
-            forcingRitual = ProcessInfo.processInfo.arguments.contains("HC_RITUAL_KIND")
-                || ProcessInfo.processInfo.arguments.contains("HC_RITUAL")
-            #endif
-            if !showOnboarding, profile?.hasOnboarded == true, !hasSeenTutorial, !forcingRitual {
-                showTutorial = true
-            }
             // Launch-ritual roll — only once onboarding is resolved, and never over onboarding.
             var suppressRitual = false
             #if DEBUG
             suppressRitual = ProcessInfo.processInfo.arguments.contains("HC_NORITUAL")
             #endif
             // Lock wins: a locked app never rolls a ritual — the lock screen is the only surface.
-            // A pending tutorial also suppresses the roll so the two covers never contend.
-            if !showOnboarding && !showTutorial && !suppressRitual && !appLock.isLocked {
+            if !showOnboarding && !suppressRitual && !appLock.isLocked {
                 ritualKind = ritualCoordinator.rollOnLaunch(hasOnboarded: profile?.hasOnboarded == true)
             }
             // Re-derive notification permission the same way, for the same reason:
@@ -428,7 +406,6 @@ struct RootView: View {
                 OnboardingFlow(profile: profile, onFinish: {
                     showOnboarding = false
                     tab = .care
-                    if !hasSeenTutorial { showTutorial = true }
                 })
                 .environment(healthKit)
                 .environment(purchases)
@@ -521,7 +498,7 @@ struct RootView: View {
                     // Lock wins: never roll a ritual over the lock screen — go straight to Face ID.
                     lockPresenter.present(appLock)
                     Task { await appLock.unlock() }
-                } else if !wantsLog, !showOnboarding, !showTutorial, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
+                } else if !wantsLog, !showOnboarding, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
                     // Foreground after >4h in the background → re-roll (never over onboarding/another cover).
                     ritualKind = ritualCoordinator.rollOnForeground(hasOnboarded: profile?.hasOnboarded == true)
                     ritualCoordinator.clearBackgrounded()

@@ -151,9 +151,6 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         let open = app.buttons["onboardOpenPlan"]
         XCTAssertTrue(open.waitForExistence(timeout: 10), "the finale must offer Open my plan")
         open.tap()
-        // The card tour may follow; skip it if it appears.
-        let skip = app.buttons["tutorialSkip"]
-        if skip.waitForExistence(timeout: 4) { skip.tap() }
         XCTAssertTrue(app.otherElements["starterPlanSection"].waitForExistence(timeout: 10)
                       || app.staticTexts["Your starting plan"].waitForExistence(timeout: 2),
                       "after Open my plan the Plan tab with the starting plan must be showing")
@@ -204,6 +201,22 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(reason.waitForExistence(timeout: 4), "skipping asks for a reason")
         reason.tap()
         XCTAssertTrue(waitFor(circle, value: "Skipped", timeout: 4), "the row settles as Skipped once the reason is recorded")
+    }
+
+    /// Today opens on the horizon and one grounding card; "Why this?" reveals the reason.
+    @MainActor
+    func testGroundingCardExplainsItself() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL"]
+        app.launch()
+        XCTAssertTrue(app.otherElements["calmHorizon"].waitForExistence(timeout: 10), "the horizon header leads the page")
+        let card = app.otherElements["groundingCard"]
+        XCTAssertTrue(card.waitForExistence(timeout: 4), "one grounding card follows it")
+        XCTAssertTrue(app.otherElements["evidenceRibbon"].exists)
+        app.buttons["groundingWhy"].tap()
+        XCTAssertTrue(app.staticTexts["groundingReason"].waitForExistence(timeout: 4), "Why this? shows the reason")
+        XCTAssertFalse(app.buttons["tutorialSkip"].exists, "the card tour is gone")
+        XCTAssertFalse(app.buttons["Skip the tour"].exists, "the card tour is gone")
     }
 
     /// Polls an element's accessibility `value` rather than sleeping a fixed amount — the write
