@@ -99,6 +99,14 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
    pay-for-nothing bugs (`dispatch.py:157` HIGH, every write turn dies after the model call is
    paid for; `agent.py:344`, `:253`, `:276`). Also: finer-grained switches (free-cloud-only,
    images-only, force-cheap-model) — only the master switch was built.
+0d-i. **`PROVIDER_SPEND_ENABLED` needs a restart to take effect** — `Settings` is `frozen=True`
+   and `get_settings` is `lru_cache`d, so the value is fixed at boot; the ledger's callable is the
+   right seam but nothing behind it can move. To make it a real 3am switch: a flags row in
+   Postgres, flippable from the Supabase console, read OUTSIDE the reserve transaction and cached
+   a few seconds so it adds no lock to the hot path. Found by agy, `ef4106b` documents the truth.
+0d-ii. Reviewer availability, 2026-09-03: codex is out of credits until ~Sep 7; the Fable
+   reviewer hit a rate limit. agy was the only external reviewer that returned, so anything
+   reviewed today has had ONE external pass, not two (U5: agy alone is never sufficient to merge).
 0e. Decide what `X-Access-Key` is in a Release build: the client defaults it to a scheme env var
    and omits the header when empty, while the server refuses to boot live without one, so a
    shipped build would be locked out on day one.
