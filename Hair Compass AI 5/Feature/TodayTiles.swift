@@ -487,19 +487,9 @@ private struct LadderHintRail: View {
 struct TodayTileGrid: View {
     var entry: DailyEntry?
     var sleepHours: Double?
-    var medsDone: Int
-    var medsTotal: Int
     var triggerWeeks: Int?
-    /// Today's due routine steps (treatment + slot), rendered as checkable continuation rows of
-    /// this same ledger — the checklist card they replaced used to sit in its own boxed card
-    /// below the hero, duplicating the "Meds" summary row above with the exact same data.
-    var routineSteps: [(Treatment, String)] = []
-    var isSlotLogged: (Treatment, String) -> Bool = { _, _ in false }
-    var onToggleSlot: (Treatment, String) -> Void = { _, _ in }
     /// The four self-report rows are shortcuts into the daily log sheet.
     var onLogTap: () -> Void = {}
-    /// The meds row jumps to the Plan tab's full routine; nil leaves it a plain readout.
-    var onOpenPlan: (() -> Void)? = nil
     /// Quiet copper footnote at the very end of the ledger — backfills a past day's entry.
     var onBackfill: (() -> Void)? = nil
 
@@ -554,63 +544,9 @@ struct TodayTileGrid: View {
         if stressLogged || expandedUnlogged { add(stressRow) }
         if oilLogged || expandedUnlogged { add(oilRow) }
         if !expandedUnlogged && !unloggedLabels.isEmpty { add(collapsedUnloggedRow) }
-        // Round-7 fix: when the ROUTINE ledger below has rows to show, they already display these
-        // exact doses live (checkable circles) — a "Meds N/M" readout directly above would say the
-        // same fact twice. `medsRow` now only appears as a fallback for meds that exist but for
-        // whatever reason produced no routine rows today (e.g. every dose is off-schedule).
-        if medsTotal > 0 && routineSteps.isEmpty { add(medsRow) }
         if let triggerWeeks { add(triggerRow(weeks: triggerWeeks)) }
-        if !routineSteps.isEmpty {
-            add(routineHeaderRow)
-            for step in routineSteps { add(routineStepRow(step.0, slot: step.1)) }
-        }
         if let onBackfill { add(backfillFootnoteRow(onBackfill)) }
         return rows
-    }
-
-    // MARK: Routine (absorbed from the old boxed checklist card)
-
-    /// One small-caps label row — replaces the boxed "Today's checklist" card's Eyebrow, now a
-    /// continuation of the same hairline-ruled ledger instead of its own heading over its own box.
-    /// Round-7: carries the remaining-dose count that used to be its own "Meds N/M" row above —
-    /// a quiet right-aligned counter that ticks down (with a soft spring) as circles below are
-    /// checked, so the header itself answers "how many left" instead of restating the ledger.
-    private var routineHeaderRow: some View {
-        HStack {
-            Text("ROUTINE")
-                .font(Clinical.eyebrow(10)).tracking(1.2)
-                .foregroundStyle(Clinical.tertiary)
-            Spacer()
-            if medsTotal > 0 {
-                Text(medsRemainingLabel)
-                    .font(Clinical.body(12, weight: .medium))
-                    .foregroundStyle(medsDone >= medsTotal ? Clinical.positive : Clinical.tertiary)
-                    .contentTransition(.numericText())
-                    .animation(.spring(response: 0.4, dampingFraction: 0.78), value: medsTotal - medsDone)
-            }
-        }
-        .padding(.vertical, 13)
-    }
-
-    private var medsRemainingLabel: String {
-        let remaining = medsTotal - medsDone
-        return remaining <= 0 ? "Done" : "\(remaining) left"
-    }
-
-    private func routineStepRow(_ treatment: Treatment, slot: String) -> some View {
-        let done = isSlotLogged(treatment, slot)
-        let cls = treatment.treatmentClass.title
-        return RoutineLedgerRow(
-            name: treatment.name,
-            // Round-8: matches Plan's identical row grammar — a mono time (or "TODAY" for a
-            // slotless periodic care product) in the leading margin, the name once in ink, and
-            // the class repeated underneath only when the name doesn't already say it. The old
-            // subtitle ("21:00 · Finasteride") echoed the row's own name directly above it.
-            timeLabel: slot.isEmpty ? "TODAY" : slot,
-            classSubtitle: treatment.name.localizedCaseInsensitiveContains(cls) ? nil : cls,
-            done: done,
-            action: { onToggleSlot(treatment, slot) }
-        )
     }
 
     /// "Past day" backfill, demoted from a header-row button on the old checklist card to the
@@ -741,20 +677,6 @@ struct TodayTileGrid: View {
         )
     }
 
-    /// Fallback-only readout (see `visibleRows`) — no LevelDots trace alongside the chevron
-    /// anymore, since dots + chevron read as two affordances for one tap target. The chevron
-    /// alone (from `action`) is enough.
-    private var medsRow: some View {
-        AnnotationRow(
-            label: "Meds",
-            value: "\(medsDone)/\(medsTotal) · \(medsDone >= medsTotal ? "done" : "\(medsTotal - medsDone) left")",
-            logged: true,
-            valueColor: medsDone >= medsTotal ? Clinical.positive : Clinical.ink,
-            action: onOpenPlan,
-            actionHint: "Opens today's treatment plan"
-        )
-    }
-
     /// Telogen-effluvium watch: margin ink, not a control — a hairline rule with one copper tick
     /// marking today's week and a faint sage band over the 8–12 week peak-shedding window. Round-7
     /// replaced a dot-on-track trace that read as a draggable slider knob; this has none.
@@ -837,89 +759,6 @@ struct AnnotationRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label): \(value)")
-    }
-}
-
-/// One checkable routine step, styled to continue the ledger's rows: a mono time in the leading
-/// margin, the step name once in ink, and the check circle at the TRAILING edge — no card, no
-/// strikethrough — a current-treatment list reads a struck-through name as "discontinued", which
-/// this app must never imply.
-///
-/// Round-8: the old subtitle ("21:00 · Finasteride") echoed the row's own name directly above it
-/// and spoke a different grammar than the identical row on Plan. This now shares Plan's exact
-/// grammar — mono time in the margin, name once, class only when the name doesn't already say it.
-///
-/// Round-9: the check circle moved from the leading margin (where this row alone put it) to the
-/// trailing edge, matching `RoutineStepRow` in CareView.swift exactly, and completion now fires
-/// the app's one shared ink gesture — a copper underline draws in beneath the name, holds, then
-/// fades — instead of only popping the circle. Same fact, same anatomy, same motion, on both tabs.
-private struct RoutineLedgerRow: View {
-    let name: String
-    let timeLabel: String
-    let classSubtitle: String?
-    let done: Bool
-    let action: () -> Void
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var pop = false
-    @State private var inkTrigger = false
-
-    private var accessibilityDetail: String {
-        [timeLabel, classSubtitle].compactMap { $0 }.joined(separator: ", ")
-    }
-
-    var body: some View {
-        Button {
-            let willCheck = !done
-            action()
-            guard willCheck else { return }
-            if !reduceMotion {
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
-                    pop = true
-                } completion: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pop = false }
-                }
-            }
-            inkTrigger = true
-        } label: {
-            HStack(spacing: 10) {
-                Text(timeLabel.uppercased())
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Clinical.secondary)
-                    .frame(width: 46, alignment: .leading)
-                    .opacity(done ? 0.55 : 1)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(name)
-                        .font(Clinical.body(14, weight: done ? .regular : .medium))
-                        .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
-                        .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: done)
-                        .completionInkUnderline(trigger: $inkTrigger)
-                    if let classSubtitle {
-                        Text(classSubtitle)
-                            .font(Clinical.caption(11.5))
-                            .foregroundStyle(Clinical.tertiary)
-                    }
-                }
-                Spacer(minLength: 8)
-                ZStack {
-                    Circle().fill(done ? Clinical.accent : Clinical.accent.opacity(0.06))
-                    Circle().strokeBorder(done ? Clinical.accent : Clinical.accent.opacity(0.4), lineWidth: 1.5)
-                    if done {
-                        Image(systemName: "checkmark")
-                            .font(Clinical.body(9, weight: .bold))
-                            .foregroundStyle(Clinical.surface)
-                    }
-                }
-                .frame(width: 20, height: 20)
-                .scaleEffect(pop ? 1.15 : 1)
-            }
-            .padding(.vertical, 11)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.clinicalPressable)
-        .accessibilityLabel("\(name), \(accessibilityDetail)")
-        .accessibilityValue(done ? "Logged" : "Not logged")
-        .accessibilityHint("Toggles today's dose as logged")
     }
 }
 

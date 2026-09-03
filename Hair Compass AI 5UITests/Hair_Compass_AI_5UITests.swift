@@ -172,4 +172,46 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(app.buttons["Edit log"].waitForExistence(timeout: 6), "one tap must produce today's log")
         XCTAssertFalse(chip.exists, "the chip retires once today is logged")
     }
+
+    /// A plan action is one tap and one Undo; Skip lives behind a long press and asks for a
+    /// reason; the closure line stays away while rows are open.
+    @MainActor
+    func testPlanRowCompletesUndoesAndSkips() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_PLANOPEN"]
+        app.launch()
+
+        let circle = app.buttons["planRowComplete.0"]
+        XCTAssertTrue(circle.waitForExistence(timeout: 10), "today's plan must list an open action")
+        XCTAssertEqual(circle.value as? String, "Not yet")
+        XCTAssertFalse(app.otherElements["planClosure"].exists, "the closure line waits for every row")
+
+        circle.tap()
+        let undo = app.buttons["planRowUndo.0"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 4), "a completed row offers Undo")
+        XCTAssertTrue((circle.value as? String)?.hasPrefix("Completed") == true)
+
+        undo.tap()
+        XCTAssertTrue(circle.waitForExistence(timeout: 4))
+        XCTAssertEqual(circle.value as? String, "Not yet")
+
+        // Skip lives behind a long press on the row and asks for a reason.
+        app.otherElements["planRow.0"].press(forDuration: 1.2)
+        let skip = app.buttons["Skip today"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 4), "the long-press menu offers Skip today")
+        skip.tap()
+        let reason = app.buttons["Forgot"]
+        XCTAssertTrue(reason.waitForExistence(timeout: 4), "skipping asks for a reason")
+        reason.tap()
+        XCTAssertTrue(waitFor(circle, value: "Skipped", timeout: 4), "the row settles as Skipped once the reason is recorded")
+    }
+
+    /// Polls an element's accessibility `value` rather than sleeping a fixed amount — the write
+    /// behind a confirmation-dialog action lands a beat after the dialog itself dismisses.
+    @MainActor
+    private func waitFor(_ element: XCUIElement, value: String, timeout: TimeInterval) -> Bool {
+        let predicate = NSPredicate { _, _ in (element.value as? String) == value }
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: nil)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
 }

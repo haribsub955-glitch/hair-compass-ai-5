@@ -23,6 +23,7 @@ struct TodayView: View {
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
+    @Query private var missedDoses: [MissedDoseRecord]
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
     @Query(sort: \TriggerEvent.date, order: .reverse) private var triggers: [TriggerEvent]
     @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
@@ -42,19 +43,29 @@ struct TodayView: View {
     @State private var showChat = false
     @State private var chatDetent: PresentationDetent = .large
     @State private var chatContext = ""
+    @State private var skipCandidate: PlanAdherence.Occurrence?
+    @State private var pauseCandidate: PlanAdherence.Occurrence?
+    @State private var detailTreatment: Treatment?
 
     private var calendar: Calendar { .current }
     private var todayEntry: DailyEntry? {
         entries.first { calendar.isDateInToday($0.date) }
     }
-    private var activeDaily: [Treatment] {
-        treatments.filter { $0.isActive && !$0.slots.isEmpty && $0.isDueToday() }
+    /// Today's plan, the week strip and the week-so-far count, all from one engine.
+    private var todayPlan: PlanAdherence.TodayPlan {
+        PlanAdherence.today(treatments: treatments, doses: doses, missed: missedDoses, now: .now, calendar: calendar)
     }
-    /// Periodic care products (a shampoo/oil with no clock time) scheduled for today — shown in
-    /// the routine as an "As scheduled" step so a day-scheduled shampoo appears on its days.
-    private var dueCareProducts: [Treatment] {
-        treatments.filter { $0.isActive && $0.slots.isEmpty && $0.treatmentClass.isCareProduct && $0.isDueToday() }
+    private var weekStates: [PlanAdherence.DayState] {
+        PlanAdherence.week(treatments: treatments, doses: doses, missed: missedDoses, now: .now, calendar: calendar)
     }
+    private var weekSummary: PlanAdherence.Consistency? {
+        let today = calendar.startOfDay(for: .now)
+        guard let start = calendar.dateInterval(of: .weekOfYear, for: today)?.start else { return nil }
+        return PlanAdherence.consistency(treatments: treatments, doses: doses, missed: missedDoses,
+                                         from: start, through: today, now: .now, calendar: calendar)
+    }
+    private var medsDone: Int { todayPlan.completedCount }
+    private var medsTotal: Int { todayPlan.occurrences.count }
     /// Displayed streak with Duolingo-style shields — see `HairAnalytics.shieldedStreak`. Only
     /// what's shown changes; XP/badge math (`CheckInReward`) still runs off the plain,
     /// unshielded streak, so shields never mint extra reward.
@@ -78,16 +89,6 @@ struct TodayView: View {
         snapshots.first { calendar.isDateInToday($0.date) }?.sleepHours
     }
 
-    /// Every routine step due today — clock-timed medication/supplement slots, then periodic
-    /// care products scheduled for today (rendered with an empty "" slot). This is the universe
-    /// the routine list renders and the Compass "care" ring counts.
-    private var dailySlots: [(Treatment, String)] {
-        activeDaily.flatMap { t in t.slots.map { (t, $0) } } + dueCareProducts.map { ($0, "") }
-    }
-    private var medsDone: Int {
-        dailySlots.filter { isLogged($0.0, slot: $0.1) }.count
-    }
-
     /// True when a progress photo exists in the current calendar week — the Lens ring input.
     private var hasPhotoThisWeek: Bool {
         photos.contains { calendar.isDate($0.createdAt, equalTo: .now, toGranularity: .weekOfYear) }
@@ -99,7 +100,7 @@ struct TodayView: View {
         CompassScore(
             hasLoggedToday: todayEntry != nil,
             medsDone: medsDone,
-            medsTotal: dailySlots.count,
+            medsTotal: medsTotal,
             hasPhotoThisWeek: hasPhotoThisWeek
         )
     }
@@ -167,29 +168,46 @@ struct TodayView: View {
                         .transition(.opacity)
                 }
                 VStack(alignment: .leading, spacing: 16) {
-                    // Entrance sequence: hero 0, compass rings 1 (shares its 50ms step with the
-                    // grid's own tile 1 below — a harmless timing overlap, not a functional
-                    // dependency), tiles 1…6 (inside the grid, indices owned by TodayTileGrid),
-                    // cards continue at 8…11.
+                    // Entrance sequence: hero 0, plan section 1, compass rings 2 (shares its 50ms
+                    // step with the grid's own tile 1 below — a harmless timing overlap, not a
+                    // functional dependency), tiles 1…6 (inside the grid, indices owned by
+                    // TodayTileGrid), cards continue at 8…11.
+                    TodayPlanSection(
+                        plan: todayPlan,
+                        week: weekStates,
+                        weekSummary: weekSummary,
+                        onComplete: { occurrence in
+                            _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
+                        },
+                        onUndo: { occurrence in
+                            switch occurrence.state {
+                            case .completed:
+                                _ = try? DoseRepository(context: context).delete(treatment: occurrence.treatment, slot: occurrence.slot)
+                            case .skipped:
+                                _ = try? MissedDoseRepository(context: context).delete(treatment: occurrence.treatment, slot: occurrence.slot)
+                            default:
+                                break
+                            }
+                        },
+                        onSkip: { skipCandidate = $0 },
+                        onPause: { pauseCandidate = $0 },
+                        onOpenDetail: { detailTreatment = $0.treatment },
+                        onOpenPlan: onOpenPlan
+                    )
+                    .staggeredEntrance(index: 1)
                     CompassRingsCard(
                         score: compassScore,
                         medsDone: medsDone,
-                        medsTotal: dailySlots.count,
+                        medsTotal: medsTotal,
                         isDayOneSeed: isDayOneSeed,
                         onLog: { showLog = true }
                     )
-                    .staggeredEntrance(index: 1)
+                    .staggeredEntrance(index: 2)
                     TodayTileGrid(
                         entry: todayEntry,
                         sleepHours: todaySleepHours,
-                        medsDone: medsDone,
-                        medsTotal: dailySlots.count,
                         triggerWeeks: watchTriggerWeeks,
-                        routineSteps: dailySlots,
-                        isSlotLogged: { isLogged($0, slot: $1) },
-                        onToggleSlot: { toggle($0, slot: $1, currentlyDone: isLogged($0, slot: $1)) },
                         onLogTap: { showLog = true },
-                        onOpenPlan: onOpenPlan,
                         onBackfill: { showBackfill = true }
                     )
                     insightCard.staggeredEntrance(index: 9)
@@ -279,6 +297,25 @@ struct TodayView: View {
                 LearnView()
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showLearn = false } } }
             }
+        }
+        .sheet(item: $detailTreatment) { TreatmentDetailSheet(treatment: $0) }
+        .confirmationDialog(TodayPlanCopy.skipTitle, isPresented: Binding(
+            get: { skipCandidate != nil }, set: { if !$0 { skipCandidate = nil } }
+        ), titleVisibility: .visible) {
+            ForEach(MissedDoseReason.allCases) { reason in
+                Button(reason.title) { recordSkip(reason) }
+            }
+            Button("Cancel", role: .cancel) { skipCandidate = nil }
+        } message: {
+            Text(TodayPlanCopy.skipMessage)
+        }
+        .confirmationDialog(TodayPlanCopy.pauseTitle(pauseCandidate?.treatment.name ?? ""), isPresented: Binding(
+            get: { pauseCandidate != nil }, set: { if !$0 { pauseCandidate = nil } }
+        ), titleVisibility: .visible) {
+            Button(TodayPlanCopy.pauseAction) { pauseTreatment() }
+            Button("Cancel", role: .cancel) { pauseCandidate = nil }
+        } message: {
+            Text(TodayPlanCopy.pauseMessage)
         }
     }
 
@@ -553,23 +590,23 @@ struct TodayView: View {
         .accessibilityIdentifier("reminderNudge")
     }
 
-    // MARK: - Dose logging
+    // MARK: - Plan actions
 
-    private func isLogged(_ treatment: Treatment, slot: String) -> Bool {
-        doses.contains {
-            $0.treatment?.persistentModelID == treatment.persistentModelID
-                && $0.slot == slot
-                && calendar.isDateInToday($0.loggedAt)
-        }
+    private func recordSkip(_ reason: MissedDoseReason) {
+        guard let candidate = skipCandidate else { return }
+        _ = try? MissedDoseRepository(context: context).record(
+            treatment: candidate.treatment, slot: candidate.slot, reason: reason
+        )
+        skipCandidate = nil
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
-    private func toggle(_ treatment: Treatment, slot: String, currentlyDone: Bool) {
-        if currentlyDone {
-            _ = try? DoseRepository(context: context).delete(treatment: treatment, slot: slot)
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } else {
-            _ = try? DoseRepository(context: context).log(treatment: treatment, slot: slot)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        }
+    /// Records the person's own decision and its date — never advises it. Resuming lives on the
+    /// Plan tab's treatment card ("Reactivate"), which clears the end date again.
+    private func pauseTreatment() {
+        guard let candidate = pauseCandidate else { return }
+        candidate.treatment.isActive = false
+        candidate.treatment.endDate = .now
+        pauseCandidate = nil
     }
 }

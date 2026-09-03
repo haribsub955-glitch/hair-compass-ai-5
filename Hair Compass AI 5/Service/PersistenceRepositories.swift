@@ -106,6 +106,22 @@ struct MissedDoseRepository {
         context.insert(record)
         return record
     }
+
+    /// Removes today's (or `day`'s) skip record for one slot — the Undo of a skip.
+    @discardableResult
+    func delete(treatment: Treatment, day: Date = .now, slot: String) throws -> Bool {
+        let bounds = HairAnalytics.dayBounds(for: day, calendar: calendar)
+        let lower = bounds.lowerBound
+        let upper = bounds.upperBound
+        let records = try context.fetch(FetchDescriptor<MissedDoseRecord>(predicate: #Predicate {
+            $0.date >= lower && $0.date < upper && $0.slot == slot
+        }))
+        guard let existing = records.first(where: { $0.treatment?.persistentModelID == treatment.persistentModelID }) else {
+            return false
+        }
+        context.delete(existing)
+        return true
+    }
 }
 
 struct PhotoDeletion: Equatable {

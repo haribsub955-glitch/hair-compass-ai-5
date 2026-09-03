@@ -266,6 +266,7 @@ private struct PlanActionRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel("\(name), \(timeLabel)")
             .accessibilityHint("Opens this treatment")
+            .accessibilityIdentifier("planRowDetail.\(index)")
         }
         .padding(.vertical, 4)
         .background {

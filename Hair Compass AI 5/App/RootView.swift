@@ -296,6 +296,9 @@ struct RootView: View {
                 if ProcessInfo.processInfo.arguments.contains("HC_NOTODAY") {
                     Seed.ensureNoTodayEntry(context: context)
                 }
+                if ProcessInfo.processInfo.arguments.contains("HC_PLANOPEN") {
+                    Seed.ensureNoDosesToday(context: context)
+                }
             }
             #else
             let seededDemo = false
