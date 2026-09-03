@@ -20,6 +20,11 @@ struct TodayView: View {
     /// Profile's "Daily grounding note" switch — off skips the card entirely; the plan and
     /// reminders are unaffected either way.
     @AppStorage("grounding.enabled") private var groundingEnabled = true
+    /// The `GroundingKeys.dayKey` Close the Day last celebrated on this install — G2-R14: once
+    /// per day, even if the plan gets undone and redone the same day. Erase and Start Over wipes
+    /// this by removing the whole preferences domain; `HC_PLANCLOSED` clears it explicitly so QA
+    /// can force the sequence to replay on a launch that reuses an already-closed install.
+    @AppStorage("grounding.celebratedDay") private var celebratedDay = ""
     /// True once "Turn on" led to a denied system prompt — the nudge card stays up, but its body
     /// switches to the honest "notifications are off, here's how to fix it" state. View state
     /// only: it is not persisted, so the card never returns in a later session once the shown
@@ -53,10 +58,15 @@ struct TodayView: View {
     /// directly. A future validated server card (G5) can sit in front of this deterministic
     /// fallback without Today changing at all.
     private let groundingProvider: any GroundingCardProvider = DeterministicGroundingProvider()
-    /// Resolved by `.task(id: groundingInputFingerprint)`; nil only on the very first frame,
-    /// during which `displayedGroundingCard` renders the deterministic card synchronously so the
-    /// page never flashes empty.
+    /// Resolved by the `.task(id:)` keyed on `GroundingKeys.fingerprint`; nil only on the very
+    /// first frame, during which the body falls back to `GroundingCards.select` synchronously so
+    /// the page never flashes empty.
     @State private var groundingCard: GroundingCard?
+    /// The one Undo path (Important 9): the grounding card's own completion action sets this so
+    /// `TodayPlanSection` runs the identical row-tap bookkeeping (shows Undo, starts the 5 s
+    /// timer) without a second write. Cleared after the same 5 s window.
+    @State private var externalCompletionID: String?
+    @State private var externalCompletionTask: Task<Void, Never>?
 
     private var calendar: Calendar { .current }
     private var todayEntry: DailyEntry? {
@@ -90,7 +100,10 @@ struct TodayView: View {
         return PlanAdherence.consistency(treatments: treatments, doses: doses, missed: missedDoses,
                                          from: start, through: today, now: .now, calendar: calendar)
     }
-    private var groundingInput: GroundingInput {
+    /// Built once per render (Important 5) from a `consistency30` the caller already computed —
+    /// so the ribbon and the card never disagree from two separate reads of the same 30-day
+    /// window inside one render pass.
+    private func groundingInput(consistency30: PlanAdherence.Consistency?) -> GroundingInput {
         GroundingInput(
             flags: ClinicianReviewFlags.forToday(
                 ClinicianReviewFlags.evaluate(
@@ -111,59 +124,18 @@ struct TodayView: View {
             loggedToday: todayEntry != nil
         )
     }
-    /// Keys the provider `.task` — a change of *kind* (a flag firing, the plan settling, a photo
-    /// coming due…) produces a new fingerprint; an unrelated data write that leaves every input
-    /// unchanged does not re-resolve the card.
-    private var groundingInputFingerprint: String {
-        let input = groundingInput
-        return [
-            input.flags.map(\.id).joined(separator: "."),
-            input.plan.occurrences.map { "\($0.id)-\($0.state.rawValue)" }.joined(separator: ","),
-            "\(input.missedYesterday)",
-            "\(input.phase?.dayNumber ?? -1)-\(input.phase?.week ?? -1)",
-            "\(input.photo)",
-            "\(input.photoWithinTwoWeeks)",
-            "\(input.consistency30?.completed ?? -1)/\(input.consistency30?.planned ?? -1)",
-            "\(input.sheddingAboveUsual)",
-            "\(input.loggedToday)",
-        ].joined(separator: "|")
-    }
-    /// The provider's answer once resolved; the deterministic fallback, computed synchronously,
-    /// until then — the page never shows an empty grounding slot on first appearance.
-    private var displayedGroundingCard: GroundingCard {
-        groundingCard ?? GroundingCards.select(groundingInput)
-    }
-    /// Start of today, `yyyy-MM-dd`, in the current calendar — built from components (not a
-    /// locale- or UTC-dependent formatter) so it never drifts a day off local midnight.
-    private var groundingDayKey: String {
-        let c = calendar.dateComponents([.year, .month, .day], from: calendar.startOfDay(for: .now))
-        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
-    }
-    /// G2-R10: the entrance fires once per day per card, again on a meaningful change (a new
-    /// kind or headline), never on a reopen.
-    private var groundingEntranceKey: String {
-        "\(groundingDayKey)|\(displayedGroundingCard.kind.rawValue)|\(displayedGroundingCard.headline)"
+    /// Start of today via `GroundingKeys` — reused by the entrance key, the fingerprint and the
+    /// Close the Day gate below.
+    private var dayKey: String { GroundingKeys.dayKey(.now, calendar: calendar) }
+    /// True once today's plan is complete with at least one real completion and today has not
+    /// already celebrated (G2-R14) — Close the Day fires exactly once per day, even across an
+    /// Undo-then-redo of the plan's last item the same day.
+    private var shouldCelebrate: Bool {
+        todayPlan.isComplete && todayPlan.completedCount > 0 && celebratedDay != dayKey
     }
 
     private var medsDone: Int { todayPlan.completedCount }
     private var medsTotal: Int { todayPlan.occurrences.count }
-    /// Displayed streak with Duolingo-style shields — see `HairAnalytics.shieldedStreak`. Only
-    /// what's shown changes; XP/badge math (`CheckInReward`) still runs off the plain,
-    /// unshielded streak, so shields never mint extra reward.
-    private var shieldedInfo: (streak: Int, shieldsHeld: Int) {
-        HairAnalytics.shieldedStreak(entryDates: entries.map(\.date))
-    }
-
-    /// Total XP — a pure fold over the tracking data, hoisted so the hero's level name and its
-    /// XP chip (with progress-to-next ring) share one computation.
-    private var xpTotal: Int {
-        XP.total(entries: entries, doses: doses, photos: photos, labs: labs, triggers: triggers)
-    }
-
-    /// Effort-only gamification level ("Sapling") shown in the hero's XP chip.
-    private var levelName: String {
-        GamificationLevel.level(for: xpTotal).name
-    }
 
     /// Today's HealthKit sleep hours, if the sync service has cached a snapshot for today.
     private var todaySleepHours: Double? {
@@ -210,6 +182,15 @@ struct TodayView: View {
         // Computed once per render and fed to both `canOffer` and the tap closure below, rather
         // than looking yesterday's entry up twice (here and again inside `copyYesterday`).
         let yesterday = YesterdayCopy.yesterdayEntry(in: entries)
+        // One input per render (Important 5): `consistency30` is read once and threaded into
+        // both the input and the ribbon below, and `input` itself is built once and threaded
+        // into the fingerprint, the displayed card and the entrance key — never recomputed
+        // separately for each.
+        let consistency30 = self.consistency30
+        let input: GroundingInput? = groundingEnabled ? groundingInput(consistency30: consistency30) : nil
+        let displayedCard = input.map { groundingCard ?? GroundingCards.select($0) }
+        let entranceKey = displayedCard.map { GroundingKeys.entranceKey(dayKey: dayKey, card: $0) } ?? ""
+        let fingerprint = input.map { GroundingKeys.fingerprint($0, dayKey: dayKey) } ?? "off"
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 // Today's new order (G2): the horizon says where the person is in the plan, one
@@ -219,11 +200,11 @@ struct TodayView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     CalmHorizonHeader(greeting: greeting, phase: evidencePhase, onOpenBaseline: onOpenBaseline)
                         .staggeredEntrance(index: 0)
-                    if groundingEnabled {
+                    if let displayedCard {
                         GroundingCardView(
-                            card: displayedGroundingCard,
-                            entranceKey: groundingEntranceKey,
-                            celebrates: todayPlan.isComplete && todayPlan.completedCount > 0,
+                            card: displayedCard,
+                            entranceKey: entranceKey,
+                            celebrates: shouldCelebrate,
                             onPrimary: performGroundingAction
                         )
                         .staggeredEntrance(index: 1)
@@ -232,6 +213,8 @@ struct TodayView: View {
                         plan: todayPlan,
                         week: weekStates,
                         weekSummary: weekSummary,
+                        externalCompletionID: externalCompletionID,
+                        celebrate: shouldCelebrate,
                         onComplete: { occurrence in
                             _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
                         },
@@ -265,17 +248,12 @@ struct TodayView: View {
                     hasLoggedToday: todayEntry != nil,
                     greeting: greeting,
                     showsHeader: false,
-                    streak: shieldedInfo.streak,
-                    shields: shieldedInfo.shieldsHeld,
-                    levelName: levelName,
                     onOpenBaseline: onOpenBaseline,
                     onLog: { showLog = true },
                     onCopyYesterday: YesterdayCopy.canOffer(
                         todayLogged: todayEntry != nil,
                         yesterday: yesterday
                     ) ? { copyYesterday(yesterday: yesterday) } : nil,
-                    xp: xpTotal,
-                    levelProgress: GamificationLevel.progressToNext(xp: xpTotal).fraction,
                     onShedSet: { level in
                         // Quiet by design — a drag-set upserts today's entry directly, with no
                         // celebration sheet. Streak/XP queries refresh naturally from the write.
@@ -346,8 +324,26 @@ struct TodayView: View {
         }
         .clinicalScreen()
         .task(id: insightFingerprint) { await refreshInsight() }
-        .task(id: groundingInputFingerprint) {
-            groundingCard = await groundingProvider.card(input: groundingInput, now: .now)
+        .task(id: fingerprint) {
+            guard let input else { return }
+            let card = await groundingProvider.card(input: input, now: .now)
+            guard !Task.isCancelled else { return }
+            groundingCard = card
+        }
+        .onChange(of: shouldCelebrate) { _, celebrating in
+            guard celebrating else { return }
+            let day = dayKey
+            Task {
+                // A 100 ms delay so both `GroundingCardView` and `TodayPlanSection` receive
+                // `celebrates`/`celebrate: true` on the same render before the gate closes.
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled else { return }
+                celebratedDay = day
+            }
+        }
+        .onDisappear {
+            externalCompletionTask?.cancel()
+            externalCompletionTask = nil
         }
         .onAppear {
             #if DEBUG
@@ -421,9 +417,25 @@ struct TodayView: View {
     private func performGroundingAction(_ action: GroundingCard.Action) {
         switch action {
         case .completePlanItem(let id, _):
-            guard let occurrence = todayPlan.occurrences.first(where: { $0.id == id }) else { return }
+            // One Undo path (Important 9): the write happens here, once; `externalCompletionID`
+            // tells `TodayPlanSection` to run the same Undo bookkeeping a row tap would, without
+            // a second write. A stale id (the plan changed under the card) falls back to opening
+            // the full plan instead of silently doing nothing.
+            guard let occurrence = todayPlan.occurrences.first(where: { $0.id == id }) else {
+                onOpenPlan?()
+                return
+            }
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-            _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
+            withAnimation(.easeOut(duration: 0.25)) {
+                _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
+            }
+            externalCompletionID = id
+            externalCompletionTask?.cancel()
+            externalCompletionTask = Task {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                externalCompletionID = nil
+            }
         case .logCheckIn:
             showLog = true
         case .openPhotos:

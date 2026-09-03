@@ -41,6 +41,8 @@ struct GroundingCardView: View {
     @State private var haloScale2: CGFloat = 0.6
     @State private var haloOpacity2: Double = 0
     @State private var breathScale: CGFloat = 1
+    @State private var halo2Task: Task<Void, Never>?
+    @State private var breathTask: Task<Void, Never>?
 
     private var isStatic: Bool { reduceMotion || MotionQA.isStatic }
     private var showsHalo: Bool { celebrates && card.kind == .closure }
@@ -124,6 +126,10 @@ struct GroundingCardView: View {
                     .buttonStyle(.clinicalPressable)
                     .minimumHitTarget()
                     .accessibilityIdentifier("groundingAction")
+                    // Differs from the plan row's own circle ("Mark <name> complete") — without
+                    // this, VoiceOver reads two identically-labeled controls that do the same
+                    // thing from two different places on the page.
+                    .accessibilityLabel("\(actionLabel) from today's note")
                     .groundingEntrance(id: entranceKey, delay: MotionSpec.note.actionDelay)
                 }
                 Text(card.closure)
@@ -157,6 +163,10 @@ struct GroundingCardView: View {
         .accessibilityIdentifier("groundingCard")
         .onAppear { triggerCelebrationIfNeeded() }
         .onChange(of: entranceKey) { _, _ in triggerCelebrationIfNeeded() }
+        .onDisappear {
+            halo2Task?.cancel(); halo2Task = nil
+            breathTask?.cancel(); breathTask = nil
+        }
     }
 
     /// Plays the halo + breath once per card identity, only for a closure card that just
@@ -172,7 +182,10 @@ struct GroundingCardView: View {
             haloScale1 = 1.5
             haloOpacity1 = 0
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+        halo2Task?.cancel()
+        halo2Task = Task {
+            try? await Task.sleep(for: .seconds(0.12))
+            guard !Task.isCancelled else { return }
             haloScale2 = 0.6
             haloOpacity2 = 0.3
             withAnimation(.easeOut(duration: MotionSpec.closeTheDay.halo)) {
@@ -184,7 +197,10 @@ struct GroundingCardView: View {
         withAnimation(.easeInOut(duration: half)) {
             breathScale = 1.03
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + half) {
+        breathTask?.cancel()
+        breathTask = Task {
+            try? await Task.sleep(for: .seconds(half))
+            guard !Task.isCancelled else { return }
             withAnimation(.easeInOut(duration: half)) {
                 breathScale = 1
             }
@@ -216,6 +232,12 @@ private struct GroundingEntrance: ViewModifier {
 
     private func trigger() {
         guard shownID != id else { return }
+        // `HC_MOTION_STATIC` renders every one-shot in its final state — skip `withAnimation`
+        // entirely rather than animating a motion QA is meant to prove doesn't happen.
+        guard !MotionQA.isStatic else {
+            shownID = id
+            return
+        }
         withAnimation(.easeOut(duration: MotionSpec.note.duration).delay(delay)) {
             shownID = id
         }

@@ -43,6 +43,14 @@ struct TodayPlanSection: View {
     let plan: PlanAdherence.TodayPlan
     let week: [PlanAdherence.DayState]
     let weekSummary: PlanAdherence.Consistency?
+    /// One Undo path (Important 9): set by the owner when the grounding card's own chip completed
+    /// this occurrence (the write already happened there) — this section only shows the same
+    /// Undo affordance a row tap would, on `.onChange`, without writing again.
+    var externalCompletionID: String? = nil
+    /// The owner's Close the Day gate (G2-R14: once per day) — replaces the section's own
+    /// `plan.isComplete && plan.completedCount > 0` so the constellation never replays on a
+    /// view recreation the same day it already celebrated.
+    var celebrate: Bool = false
     var onComplete: (PlanAdherence.Occurrence) -> Void
     var onUndo: (PlanAdherence.Occurrence) -> Void
     var onSkip: (PlanAdherence.Occurrence) -> Void
@@ -76,8 +84,7 @@ struct TodayPlanSection: View {
                 rows
                     .transition(.opacity)
             }
-            ContinuityStrip(days: week, summary: weekSummary,
-                            celebrate: plan.isComplete && plan.completedCount > 0)
+            ContinuityStrip(days: week, summary: weekSummary, celebrate: celebrate)
                 .padding(.top, 14)
         }
         .onChange(of: plan.isComplete) { _, complete in
@@ -87,6 +94,12 @@ struct TodayPlanSection: View {
             // haptic without at least one real completion.
             guard plan.completedCount > 0 else { return }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
+        .onChange(of: externalCompletionID) { _, id in
+            // One Undo path (Important 9): the owner already wrote the dose — this only shows
+            // the same Undo affordance and starts the same 5 s window a row tap would.
+            guard let id else { return }
+            startUndoWindow(for: id)
         }
         .onDisappear { undoTimer?.cancel(); undoTimer = nil }
         .accessibilityElement(children: .contain)
@@ -120,7 +133,14 @@ struct TodayPlanSection: View {
 
     private func complete(_ occurrence: PlanAdherence.Occurrence) {
         onComplete(occurrence)
-        undoableID = occurrence.id
+        startUndoWindow(for: occurrence.id)
+    }
+
+    /// The bookkeeping a completion shows: the inline Undo affordance, live for five seconds.
+    /// Shared by a row tap (`complete(_:)`) and the grounding card's external completion — same
+    /// window, same behavior, only one of the two ever also performs the write.
+    private func startUndoWindow(for id: String) {
+        undoableID = id
         undoTimer?.cancel()
         undoTimer = Task {
             try? await Task.sleep(for: .seconds(5))
@@ -439,8 +459,9 @@ private struct PlanActionRow: View {
 struct ContinuityStrip: View {
     let days: [PlanAdherence.DayState]
     let summary: PlanAdherence.Consistency?
-    /// The section passes `plan.isComplete && plan.completedCount > 0` — rising edge only, and
-    /// only for a day with at least one real completion (an all-skipped day never celebrates).
+    /// The owner passes its Close the Day gate (G2-R14: `plan.isComplete && plan.completedCount
+    /// > 0 && celebratedDay != dayKey`) — rising edge only, and only for a day with at least one
+    /// real completion (an all-skipped day never celebrates) that has not already celebrated.
     var celebrate: Bool = false
 
     @Environment(\.calendar) private var calendar
@@ -453,6 +474,7 @@ struct ContinuityStrip: View {
     /// view, not on a sequence of separate state writes.
     @State private var pops = false
     @State private var connectorProgress: CGFloat = 0
+    @State private var connectorTask: Task<Void, Never>?
 
     private var isStatic: Bool { reduceMotion || MotionQA.isStatic }
 
@@ -509,6 +531,7 @@ struct ContinuityStrip: View {
         .accessibilityIdentifier("continuityStrip")
         .onAppear { triggerCelebrationIfNeeded() }
         .onChange(of: celebrate) { _, _ in triggerCelebrationIfNeeded() }
+        .onDisappear { connectorTask?.cancel(); connectorTask = nil }
     }
 
     private func initial(_ day: Date) -> String {
@@ -530,9 +553,12 @@ struct ContinuityStrip: View {
     // MARK: Constellation (M4)
 
     /// Missed/partial/etc. days keep their marks and are never animated — only `.complete`
-    /// capsules pop, and only while a celebration is in flight or has already played.
+    /// capsules pop, and only while a celebration is in flight or has already played. Reduce
+    /// Motion / static always reads 1 regardless of `pops` — otherwise the very first frame
+    /// (rendered before `onAppear` has a chance to set `pops = true`) would flash the 0.7 shrink
+    /// for one frame even though nothing is meant to animate.
     private func capsuleScale(day: PlanAdherence.DayState) -> CGFloat {
-        guard day.mark == .complete, celebrate else { return 1 }
+        guard day.mark == .complete, celebrate, !isStatic else { return 1 }
         return pops ? 1 : 0.7
     }
 
@@ -565,7 +591,10 @@ struct ContinuityStrip: View {
             return
         }
         pops = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + MotionSpec.closeTheDay.capsuleStep) {
+        connectorTask?.cancel()
+        connectorTask = Task {
+            try? await Task.sleep(for: .seconds(MotionSpec.closeTheDay.capsuleStep))
+            guard !Task.isCancelled else { return }
             withAnimation(.easeInOut(duration: MotionSpec.closeTheDay.connector)) {
                 connectorProgress = 1
             }

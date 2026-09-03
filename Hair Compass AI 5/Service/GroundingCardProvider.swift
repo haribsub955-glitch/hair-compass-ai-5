@@ -8,6 +8,7 @@
 
 import Foundation
 
+@MainActor
 protocol GroundingCardProvider {
     func card(input: GroundingInput, now: Date) async -> GroundingCard?
 }

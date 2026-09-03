@@ -290,6 +290,10 @@ struct RootView: View {
                         FetchDescriptor<Treatment>(sortBy: [SortDescriptor(\.startDate)])
                     )) ?? []
                     Seed.ensureDosesToday(context: context, treatments: freshTreatments)
+                    // So QA can force the Close the Day sequence to replay on a launch that
+                    // reuses an already-closed install, rather than showing the plain closure
+                    // card because today was already celebrated in an earlier launch.
+                    UserDefaults.standard.removeObject(forKey: "grounding.celebratedDay")
                 }
             }
             #else
