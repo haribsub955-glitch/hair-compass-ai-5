@@ -11,6 +11,9 @@ struct TodayView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(DeepLinkRouter.self) private var deepLinks
+    @Environment(NotificationService.self) private var notifications
+    @AppStorage("eveningCheckInEnabled") private var eveningCheckInEnabled = false
+    @AppStorage(ReminderNudge.shownKey) private var reminderNudgeShown = false
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
@@ -140,6 +143,13 @@ struct TodayView: View {
                     }
                 )
                 .staggeredEntrance(index: 0)
+                if ReminderNudge.shouldShow(hasLoggedToday: todayEntry != nil,
+                                            eveningReminderOn: eveningCheckInEnabled,
+                                            alreadyShown: reminderNudgeShown) {
+                    reminderNudgeCard
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                }
                 VStack(alignment: .leading, spacing: 16) {
                     // Entrance sequence: hero 0, compass rings 1 (shares its 50ms step with the
                     // grid's own tile 1 below — a harmless timing overlap, not a functional
@@ -440,6 +450,39 @@ struct TodayView: View {
             .foregroundStyle(Clinical.tertiary)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
+    }
+
+    /// Asked once, after the first log, while reminders are off. Both buttons retire it.
+    private var reminderNudgeCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Want a nudge tomorrow evening?")
+                .font(Clinical.body(15, weight: .medium))
+                .foregroundStyle(Clinical.ink)
+            Text("One quiet reminder at your check-in time. You can change or switch it off on the Plan tab.")
+                .font(Clinical.caption(12))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button("Turn on") {
+                    reminderNudgeShown = true
+                    Task {
+                        let granted = await notifications.requestAuthorizationIfNeeded()
+                        eveningCheckInEnabled = granted
+                    }
+                }
+                .buttonStyle(ClinicalButtonStyle(filled: false))
+                .accessibilityIdentifier("reminderNudgeOn")
+                Button("Not now") { reminderNudgeShown = true }
+                    .font(Clinical.body(13, weight: .medium))
+                    .foregroundStyle(Clinical.tertiary)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("reminderNudgeNotNow")
+            }
+        }
+        .padding(.vertical, 12)
+        .overlay(alignment: .top) { Divider().overlay(Clinical.hairline) }
+        .overlay(alignment: .bottom) { Divider().overlay(Clinical.hairline) }
+        .accessibilityIdentifier("reminderNudge")
     }
 
     // MARK: - Dose logging
