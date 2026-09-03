@@ -68,7 +68,7 @@ struct LifeEventsSheet: View {
                 }
                 Button("Cancel", role: .cancel) { deleteCandidate = nil }
             } message: {
-                Text("Its journey-chart marker and echo window go with it — this can't be undone.")
+                Text("Its journey-chart marker and amber band go with it — this can't be undone.")
             }
         }
     }
@@ -137,7 +137,7 @@ struct LifeEventsSheet: View {
     /// journey chart to check it against the amber band.
     private func subtitle(_ event: TriggerEvent) -> String {
         let when = event.date.formatted(date: .abbreviated, time: .omitted)
-        return "\(when) · echo window ~\(echoWindowLabel(event.date))"
+        return "\(when) · effect may show ~\(echoWindowLabel(event.date))"
     }
 
     /// Month range 8–12 weeks after the event's date — matches `JourneyData.EchoBand`'s own
