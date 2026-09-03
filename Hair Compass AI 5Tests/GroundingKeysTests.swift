@@ -46,11 +46,15 @@ struct GroundingKeysTests {
         )
     }
 
-    private func input(plan: PlanAdherence.TodayPlan, loggedToday: Bool = false) -> GroundingInput {
+    private func input(
+        plan: PlanAdherence.TodayPlan,
+        loggedToday: Bool = false,
+        consistency30: PlanAdherence.Consistency? = nil
+    ) -> GroundingInput {
         GroundingInput(
             flags: [], plan: plan, missedYesterday: 0, phase: nil,
             photo: .upcoming(daysUntil: 12), photoWithinTwoWeeks: true,
-            consistency30: nil, sheddingAboveUsual: false, loggedToday: loggedToday
+            consistency30: consistency30, sheddingAboveUsual: false, loggedToday: loggedToday
         )
     }
 
@@ -77,6 +81,25 @@ struct GroundingKeysTests {
         let dayKey = GroundingKeys.dayKey(now, calendar: calendar)
         let card = makeCard()
         #expect(GroundingKeys.entranceKey(dayKey: dayKey, card: card) == GroundingKeys.entranceKey(dayKey: dayKey, card: card))
+    }
+
+    @Test func aPersistedEntranceDoesNotReplayOnReopen() {
+        let key = GroundingKeys.entranceKey(dayKey: GroundingKeys.dayKey(now, calendar: calendar), card: makeCard())
+        #expect(GroundingKeys.shouldAnimateEntrance(persistedKey: "", currentKey: key))
+        #expect(!GroundingKeys.shouldAnimateEntrance(persistedKey: key, currentKey: key))
+    }
+
+    @Test func closeTheDayIncludesAnInitiallyCompleteColdLaunchOnlyOnce() {
+        let day = GroundingKeys.dayKey(now, calendar: calendar)
+        #expect(GroundingKeys.shouldCelebrate(
+            isComplete: true, completedCount: 2, celebratedDay: "", dayKey: day
+        ))
+        #expect(!GroundingKeys.shouldCelebrate(
+            isComplete: true, completedCount: 2, celebratedDay: day, dayKey: day
+        ))
+        #expect(!GroundingKeys.shouldCelebrate(
+            isComplete: true, completedCount: 0, celebratedDay: "", dayKey: day
+        ))
     }
 
     // MARK: fingerprint
@@ -118,5 +141,20 @@ struct GroundingKeysTests {
         let notLogged = GroundingKeys.fingerprint(input(plan: plan, loggedToday: false), dayKey: dayKey)
         let logged = GroundingKeys.fingerprint(input(plan: plan, loggedToday: true), dayKey: dayKey)
         #expect(notLogged != logged)
+    }
+
+    @Test func fingerprintChangesWhenOnlyTheScoredDenominatorChanges() throws {
+        let context = try makeContext()
+        let t = Treatment(name: "Minoxidil 5%", treatmentClass: .minoxidil, dose: "1 mL",
+                          scheduleTimes: "08:00,21:00", startDate: calendar.date(byAdding: .day, value: -33, to: now)!, isActive: true)
+        context.insert(t)
+        let plan = PlanAdherence.today(treatments: [t], doses: [], missed: [], now: now, calendar: calendar)
+        let dayKey = GroundingKeys.dayKey(now, calendar: calendar)
+        let openWindow = PlanAdherence.Consistency(completed: 8, planned: 11, scored: 10)
+        let settledWindow = PlanAdherence.Consistency(completed: 8, planned: 11, scored: 11)
+
+        let before = GroundingKeys.fingerprint(input(plan: plan, consistency30: openWindow), dayKey: dayKey)
+        let after = GroundingKeys.fingerprint(input(plan: plan, consistency30: settledWindow), dayKey: dayKey)
+        #expect(before != after)
     }
 }

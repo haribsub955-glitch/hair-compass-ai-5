@@ -190,7 +190,8 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
 
         undo.tap()
         XCTAssertTrue(circle.waitForExistence(timeout: 4))
-        XCTAssertEqual(circle.value as? String, "Not yet")
+        XCTAssertTrue(waitFor(circle, value: "Not yet", timeout: 4),
+                      "Undo must restore the open row after SwiftData publishes the deletion")
 
         // Skip lives behind a long press on the row and asks for a reason.
         app.otherElements["planRow.0"].press(forDuration: 1.2)

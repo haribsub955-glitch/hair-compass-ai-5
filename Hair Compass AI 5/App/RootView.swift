@@ -234,12 +234,15 @@ struct RootView: View {
         // ivory capsule) moved onto `FloatingTabBar` itself — the bar owns its own scrim so the
         // frame speaks the same ink grammar wherever it's hosted, not just in RootView.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 8) {
-                // Wren rides directly above the bar, inside the same inset, so she reserves real
-                // layout space instead of floating over the last card on every screen — the same
-                // reason the tab bar itself is an inset rather than an overlay.
+            ZStack(alignment: .bottomTrailing) {
+                // Wren used to occupy a second 44pt row above navigation. Scroll content can
+                // legitimately paint behind a safe-area inset, which put her hit target directly
+                // over trailing plan actions such as Undo. Give her a reserved lane in the bar
+                // itself: still always available, never stealing a care-action tap, and with much
+                // less navigation chrome competing with the journal.
+                FloatingTabBar(selection: $tab, trailingAccessoryWidth: 52)
                 WrenChatButton(tab: tab, profile: profile)
-                FloatingTabBar(selection: $tab)
+                    .padding(.bottom, 8)
             }
             // Charts can establish their own compositing layers. Flatten the complete bar
             // above them so no tab item is painted underneath a scrolling chart card.
@@ -294,6 +297,7 @@ struct RootView: View {
                     // reuses an already-closed install, rather than showing the plain closure
                     // card because today was already celebrated in an earlier launch.
                     UserDefaults.standard.removeObject(forKey: "grounding.celebratedDay")
+                    UserDefaults.standard.removeObject(forKey: "grounding.enteredCardKey")
                 }
             }
             #else

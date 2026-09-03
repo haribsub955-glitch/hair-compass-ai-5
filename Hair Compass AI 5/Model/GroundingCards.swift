@@ -132,7 +132,11 @@ enum GroundingCards {
             headline = "Shedding has outlasted its trigger"
             body = "A trigger from more than six months ago is still followed by rising shedding. Shedding that outlasts its trigger by this long is worth a clinician's read."
         default:
-            headline = flag.title
+            // Unknown future rules are deliberately generic here. Their titles are written for
+            // the clinician-facing record and may contain a condition or diagnostic wording;
+            // the raw title/detail remains available behind "Why this?" instead of leaking into
+            // the supportive surface.
+            headline = "A record pattern is worth a clinician's look"
             body = "A pattern in your record met a clinician-review rule. It is saved for your clinician."
         }
         return GroundingCard(

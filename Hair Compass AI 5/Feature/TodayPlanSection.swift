@@ -59,11 +59,16 @@ struct TodayPlanSection: View {
     var onOpenPlan: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.calendar) private var calendar
     /// True while the person has asked to see the recorded rows under the closure line.
     @State private var showsRecorded = false
     /// The occurrence whose inline Undo is still showing.
     @State private var undoableID: String?
     @State private var undoTimer: Task<Void, Never>?
+    /// SwiftData can publish an insertion before it publishes the matching deletion. Keep Undo
+    /// visibly immediate and deterministic while that query catches up; the occurrence's stable
+    /// natural id lets this projection disappear as soon as the source reports the row open.
+    @State private var optimisticallyOpenIDs: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -71,7 +76,7 @@ struct TodayPlanSection: View {
                 .padding(.bottom, 6)
             if plan.nothingExpected {
                 quietLine
-            } else if plan.isComplete && !showsRecorded && undoableID == nil {
+            } else if plan.isComplete && !showsRecorded && undoableID == nil && optimisticallyOpenIDs.isEmpty {
                 // Holds back until the last row's five-second Undo has passed — tapping Undo on
                 // the final row must land back on the rows, not on a closure line that already
                 // claimed the day done.
@@ -101,6 +106,11 @@ struct TodayPlanSection: View {
             guard let id else { return }
             startUndoWindow(for: id)
         }
+        .onChange(of: plan.occurrences.map { "\($0.id)|\($0.state.rawValue)" }) { _, _ in
+            optimisticallyOpenIDs = optimisticallyOpenIDs.filter { id in
+                plan.occurrences.first(where: { $0.id == id })?.isSettled == true
+            }
+        }
         .onDisappear { undoTimer?.cancel(); undoTimer = nil }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("todayPlan")
@@ -111,8 +121,9 @@ struct TodayPlanSection: View {
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(plan.occurrences.enumerated()), id: \.element.id) { index, occurrence in
+                let displayedOccurrence = displayOccurrence(occurrence)
                 PlanActionRow(
-                    occurrence: occurrence,
+                    occurrence: displayedOccurrence,
                     index: index,
                     showsUndo: undoableID == occurrence.id,
                     settlesPlan: occurrence.isOpen && plan.openCount == 1,
@@ -132,6 +143,7 @@ struct TodayPlanSection: View {
     }
 
     private func complete(_ occurrence: PlanAdherence.Occurrence) {
+        optimisticallyOpenIDs.remove(occurrence.id)
         onComplete(occurrence)
         startUndoWindow(for: occurrence.id)
     }
@@ -152,7 +164,25 @@ struct TodayPlanSection: View {
     private func undo(_ occurrence: PlanAdherence.Occurrence) {
         undoTimer?.cancel()
         undoableID = nil
+        optimisticallyOpenIDs.insert(occurrence.id)
         onUndo(occurrence)
+    }
+
+    /// Returns the row state the person should see while an Undo deletion propagates through the
+    /// SwiftData query. It retains the scheduled time and chooses due/upcoming from the same
+    /// clock rule as the adherence engine; no count is fabricated or persisted here.
+    private func displayOccurrence(_ occurrence: PlanAdherence.Occurrence) -> PlanAdherence.Occurrence {
+        guard optimisticallyOpenIDs.contains(occurrence.id) else { return occurrence }
+        let state: PlanAdherence.OccurrenceState = PlanAdherence.isReached(
+            slot: occurrence.slot, now: .now, calendar: calendar
+        ) ? .due : .upcoming
+        return PlanAdherence.Occurrence(
+            treatment: occurrence.treatment,
+            day: occurrence.day,
+            slot: occurrence.slot,
+            state: state,
+            completedAt: nil
+        )
     }
 
     // MARK: Closure and quiet day
@@ -324,39 +354,36 @@ private struct PlanActionRow: View {
         HStack(spacing: 12) {
             circle
             Button(action: onOpenDetail) {
-                HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(name)
-                            .font(Clinical.body(14, weight: occurrence.isSettled ? .regular : .medium))
-                            .foregroundStyle(occurrence.isSettled ? Clinical.secondary : Clinical.ink)
-                            .completionInkUnderline(trigger: $inkTrigger)
-                        if let classSubtitle {
-                            Text(classSubtitle)
-                                .font(Clinical.caption(11.5))
-                                .foregroundStyle(Clinical.tertiary)
-                        }
-                    }
-                    Spacer(minLength: 8)
-                    if occurrence.state == .completed && showsUndo {
-                        Button(TodayPlanCopy.undo, action: onUndo)
-                            .font(Clinical.body(12, weight: .medium))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(Clinical.body(14, weight: occurrence.isSettled ? .regular : .medium))
+                        .foregroundStyle(occurrence.isSettled ? Clinical.secondary : Clinical.ink)
+                        .completionInkUnderline(trigger: $inkTrigger)
+                    if let classSubtitle {
+                        Text(classSubtitle)
+                            .font(Clinical.caption(11.5))
                             .foregroundStyle(Clinical.tertiary)
-                            .buttonStyle(.plain)
-                            .minimumHitTarget()
-                            .accessibilityIdentifier("planRowUndo.\(index)")
-                    } else {
-                        Text(timeLabel)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(Clinical.secondary)
                     }
                 }
-                .frame(minHeight: 44)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(name), \(timeLabel)")
             .accessibilityHint("Opens this treatment")
             .accessibilityIdentifier("planRowDetail.\(index)")
+            if occurrence.state == .completed && showsUndo {
+                Button(TodayPlanCopy.undo, action: onUndo)
+                    .font(Clinical.body(12, weight: .medium))
+                    .foregroundStyle(Clinical.tertiary)
+                    .buttonStyle(.plain)
+                    .minimumHitTarget()
+                    .accessibilityIdentifier("planRowUndo.\(index)")
+            } else {
+                Text(timeLabel)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Clinical.secondary)
+            }
         }
         .padding(.vertical, 4)
         .background {

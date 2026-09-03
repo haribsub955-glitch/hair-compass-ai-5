@@ -25,14 +25,22 @@ struct GroundingCardView: View {
     /// Owner-computed identity for the entrance animation — see G2-R10. Distinct from
     /// `card.headline` alone so the entrance also resets once per calendar day.
     var entranceKey: String
+    /// False when Today has already persisted this exact day/kind/headline identity. In that
+    /// case every child renders settled on the first frame; local view reconstruction never
+    /// replays the note.
+    var animatesEntrance: Bool = true
     /// True when today's plan just became complete with at least one real completion — the
     /// section passes `plan.isComplete && plan.completedCount > 0`. Only takes effect when
     /// `card.kind == .closure`.
     var celebrates: Bool = false
+    var onEntranceCompleted: (String) -> Void = { _ in }
     var onPrimary: (GroundingCard.Action) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsReason = false
+    @State private var mainVisible = false
+    @State private var followerVisible = false
+    @State private var entranceTask: Task<Void, Never>?
 
     // MARK: Close the Day halo/breath (M4)
     @State private var celebratedKey: String?
@@ -46,6 +54,8 @@ struct GroundingCardView: View {
 
     private var isStatic: Bool { reduceMotion || MotionQA.isStatic }
     private var showsHalo: Bool { celebrates && card.kind == .closure }
+    private var showsMain: Bool { !animatesEntrance || mainVisible || isStatic }
+    private var showsFollower: Bool { !animatesEntrance || followerVisible || isStatic }
 
     private var actionLabel: String? {
         switch card.primary {
@@ -91,25 +101,25 @@ struct GroundingCardView: View {
                     }
                     Eyebrow(text: card.eyebrow, color: card.kind == .safety ? Clinical.warning : Clinical.secondary)
                 }
-                .groundingEntrance(id: entranceKey)
+                .groundingEntrance(isVisible: showsMain, staticState: isStatic)
                 Text(card.headline)
                     .font(Clinical.headline(22, weight: .semibold))
                     .foregroundStyle(Clinical.ink)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("groundingHeadline")
-                    .groundingEntrance(id: entranceKey)
+                    .groundingEntrance(isVisible: showsMain, staticState: isStatic)
                 Text(card.body)
                     .font(Clinical.body(14.5))
                     .foregroundStyle(Clinical.ink.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true)
-                    .groundingEntrance(id: entranceKey)
+                    .groundingEntrance(isVisible: showsMain, staticState: isStatic)
                 if let anchor = card.evidenceAnchor {
                     Text(anchor)
                         .font(Clinical.caption(12))
                         .foregroundStyle(Clinical.tertiary)
                         .monospacedDigit()
-                        .groundingEntrance(id: entranceKey)
+                        .groundingEntrance(isVisible: showsMain, staticState: isStatic)
                 }
                 if let actionLabel {
                     Button { onPrimary(card.primary) } label: {
@@ -130,13 +140,13 @@ struct GroundingCardView: View {
                     // this, VoiceOver reads two identically-labeled controls that do the same
                     // thing from two different places on the page.
                     .accessibilityLabel("\(actionLabel) from today's note")
-                    .groundingEntrance(id: entranceKey, delay: MotionSpec.note.actionDelay)
+                    .groundingEntrance(isVisible: showsFollower, staticState: isStatic)
                 }
                 Text(card.closure)
                     .font(Clinical.caption(12.5))
                     .foregroundStyle(Clinical.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .groundingEntrance(id: entranceKey)
+                    .groundingEntrance(isVisible: showsFollower, staticState: isStatic)
                 HStack {
                     Button(showsReason ? "Hide" : "Why this?") {
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { showsReason.toggle() }
@@ -148,7 +158,7 @@ struct GroundingCardView: View {
                     .accessibilityIdentifier("groundingWhy")
                     Spacer(minLength: 0)
                 }
-                .groundingEntrance(id: entranceKey, delay: MotionSpec.note.actionDelay)
+                .groundingEntrance(isVisible: showsFollower, staticState: isStatic)
                 if showsReason {
                     Text(card.reason)
                         .font(Clinical.caption(12))
@@ -161,11 +171,60 @@ struct GroundingCardView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("groundingCard")
-        .onAppear { triggerCelebrationIfNeeded() }
-        .onChange(of: entranceKey) { _, _ in triggerCelebrationIfNeeded() }
+        .onAppear {
+            triggerEntranceIfNeeded()
+            triggerCelebrationIfNeeded()
+        }
+        .onChange(of: entranceKey) { _, _ in
+            triggerEntranceIfNeeded(reset: true)
+            triggerCelebrationIfNeeded()
+        }
+        .onChange(of: celebrates) { _, _ in triggerCelebrationIfNeeded() }
         .onDisappear {
+            entranceTask?.cancel(); entranceTask = nil
             halo2Task?.cancel(); halo2Task = nil
             breathTask?.cancel(); breathTask = nil
+        }
+    }
+
+    /// One shared entrance state for the whole note. The previous implementation gave every row
+    /// an independent local modifier, so recreating Today replayed several animations and could
+    /// leave a static screenshot with a blank card. The owner persists completion only after the
+    /// follower curve settles.
+    private func triggerEntranceIfNeeded(reset: Bool = false) {
+        entranceTask?.cancel()
+        entranceTask = nil
+        if reset {
+            mainVisible = false
+            followerVisible = false
+        }
+
+        guard animatesEntrance else {
+            mainVisible = true
+            followerVisible = true
+            return
+        }
+        guard !isStatic else {
+            mainVisible = true
+            followerVisible = true
+            onEntranceCompleted(entranceKey)
+            return
+        }
+
+        withAnimation(.easeOut(duration: MotionSpec.note.duration)) {
+            mainVisible = true
+        }
+        let key = entranceKey
+        entranceTask = Task {
+            try? await Task.sleep(for: .seconds(MotionSpec.note.actionDelay))
+            guard !Task.isCancelled, entranceKey == key else { return }
+            withAnimation(.easeOut(duration: MotionSpec.note.duration)) {
+                followerVisible = true
+            }
+            try? await Task.sleep(for: .seconds(MotionSpec.note.duration))
+            guard !Task.isCancelled, entranceKey == key else { return }
+            onEntranceCompleted(key)
+            entranceTask = nil
         }
     }
 
@@ -208,44 +267,9 @@ struct GroundingCardView: View {
     }
 }
 
-/// One-shot entrance for a grounding note: opacity 0 → 1 with a `MotionSpec.note.rise`-point
-/// rise over `MotionSpec.note.duration`, keyed by `id` so a new card (a different identity)
-/// re-enters while a reopen of the same live card does not. `delay` lets the action chip and
-/// the footer row follow the headline group by `MotionSpec.note.actionDelay`. Reduce Motion and
-/// `MotionQA.isStatic` drop the rise and animate opacity alone.
-private struct GroundingEntrance: ViewModifier {
-    let id: AnyHashable
-    var delay: Double = 0
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var shownID: AnyHashable?
-
-    func body(content: Content) -> some View {
-        let shown = shownID == id
-        let staticGate = reduceMotion || MotionQA.isStatic
-        content
-            .opacity(shown ? 1 : 0)
-            .offset(y: (shown || staticGate) ? 0 : MotionSpec.note.rise)
-            .onAppear { trigger() }
-            .onChange(of: id) { _, _ in trigger() }
-    }
-
-    private func trigger() {
-        guard shownID != id else { return }
-        // `HC_MOTION_STATIC` renders every one-shot in its final state — skip `withAnimation`
-        // entirely rather than animating a motion QA is meant to prove doesn't happen.
-        guard !MotionQA.isStatic else {
-            shownID = id
-            return
-        }
-        withAnimation(.easeOut(duration: MotionSpec.note.duration).delay(delay)) {
-            shownID = id
-        }
-    }
-}
-
 private extension View {
-    func groundingEntrance(id: some Hashable, delay: Double = 0) -> some View {
-        modifier(GroundingEntrance(id: AnyHashable(id), delay: delay))
+    func groundingEntrance(isVisible: Bool, staticState: Bool) -> some View {
+        opacity(isVisible ? 1 : 0)
+            .offset(y: (isVisible || staticState) ? 0 : MotionSpec.note.rise)
     }
 }

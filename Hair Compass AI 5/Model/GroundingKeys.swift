@@ -26,6 +26,24 @@ enum GroundingKeys {
         "\(dayKey)|\(card.kind.rawValue)|\(card.headline)"
     }
 
+    /// Whether this card still owes the person its single daily entrance. Keeping this policy
+    /// pure lets Today persist the completed identity across tab teardown and cold launches
+    /// without making the animation modifier itself own product state.
+    static func shouldAnimateEntrance(persistedKey: String, currentKey: String) -> Bool {
+        !currentKey.isEmpty && persistedKey != currentKey
+    }
+
+    /// Close-the-Day is a response to a newly completed plan, not an open-screen reward. This
+    /// includes an initially-complete cold launch and remains false after today's key is saved.
+    static func shouldCelebrate(
+        isComplete: Bool,
+        completedCount: Int,
+        celebratedDay: String,
+        dayKey: String
+    ) -> Bool {
+        isComplete && completedCount > 0 && celebratedDay != dayKey
+    }
+
     /// Keys the provider `.task` — a change of *kind* (a flag firing, the plan settling, a photo
     /// coming due…) produces a new fingerprint; an unrelated data write that leaves every input
     /// unchanged does not re-resolve the card. Each flag's `since` folds in at day granularity
@@ -41,7 +59,7 @@ enum GroundingKeys {
             "\(input.phase?.dayNumber ?? -1)-\(input.phase?.week ?? -1)",
             "\(input.photo)",
             "\(input.photoWithinTwoWeeks)",
-            "\(input.consistency30?.completed ?? -1)/\(input.consistency30?.planned ?? -1)",
+            "\(input.consistency30?.completed ?? -1)/\(input.consistency30?.planned ?? -1)/\(input.consistency30?.scored ?? -1)",
             "\(input.sheddingAboveUsual)",
             "\(input.loggedToday)",
         ].joined(separator: "|")

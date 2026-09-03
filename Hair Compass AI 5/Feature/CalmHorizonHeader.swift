@@ -72,7 +72,7 @@ struct CalmHorizonHeader: View {
 /// spring beginning `MotionSpec.horizon.markerDelay` into the draw, the Review dot fades in as
 /// the line finishes, and — only once the marker has settled — it carries a slow decorative
 /// bob through `MotionTimeline(cadence: .decorative)`. Reduce Motion / `MotionQA.isStatic`
-/// render every mark in its final position with a single 0.28 s opacity fade.
+/// render every mark synchronously in its final position.
 private struct HorizonPath: View {
     let phase: EvidencePhase
 
@@ -83,7 +83,6 @@ private struct HorizonPath: View {
     @State private var markerOpacity: Double = 0
     @State private var reviewDotOpacity: Double = 0
     @State private var settled = false              // gates the decorative drift
-    @State private var staticVisible = false
 
     private var isStatic: Bool { reduceMotion || MotionQA.isStatic }
     private let rowHeight: CGFloat = 36
@@ -97,8 +96,8 @@ private struct HorizonPath: View {
                 let markerStartX = dotRadius
                 let restX = markerRestX(width: width)
                 let travel = max(0, restX - markerStartX)
-                let lineWidth = travel * lineDrawn
-                let markerX = markerStartX + travel * markerProgress
+                let lineWidth = travel * (isStatic ? 1 : lineDrawn)
+                let markerX = markerStartX + travel * (isStatic ? 1 : markerProgress)
                 let midY = rowHeight / 2
 
                 ZStack(alignment: .topLeading) {
@@ -118,38 +117,38 @@ private struct HorizonPath: View {
                         .strokeBorder(Clinical.hairline, lineWidth: 1.5)
                         .background(Circle().fill(Clinical.canvas))
                         .frame(width: dotRadius * 2, height: dotRadius * 2)
-                        .opacity(reviewDotOpacity)
+                        .opacity(isStatic ? 1 : reviewDotOpacity)
                         .position(x: width - dotRadius, y: midY)
                     marker
-                        .opacity(markerOpacity)
+                        .opacity(isStatic ? 1 : markerOpacity)
                         .position(x: markerX, y: midY)
                 }
             }
             .frame(height: rowHeight)
-            // Labels: "Baseline" and "Week N review" stay anchored to the row's ends; "You are
-            // here" centres under the marker's rest position (Important 4) via `.position`,
-            // rather than sitting equidistant between the other two the way a plain three-way
-            // HStack would place it once the marker itself is no longer always centered.
+            // Labels use two vertical lanes. The moving label remains centred under the marker,
+            // while the endpoint labels sit one line lower; a near-review marker can therefore
+            // never collide with "Week N review" (the first screenshot exposed that overlap).
             GeometryReader { geo in
                 let restX = markerRestX(width: geo.size.width)
-                ZStack {
+                ZStack(alignment: .topLeading) {
+                    Text("You are here")
+                        .position(x: restX, y: 7)
                     HStack {
                         Text("Baseline")
                         Spacer()
                         Text("Week \(phase.nextReviewWeek) review")
                     }
-                    Text("You are here")
-                        .position(x: restX, y: geo.size.height / 2)
+                    .frame(height: 14)
+                    .offset(y: 18)
                 }
             }
-            .frame(height: 14)
+            .frame(height: 32)
             .font(Clinical.caption(10.5))
             .foregroundStyle(Clinical.tertiary)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
         }
         .padding(.horizontal, 2)
-        .opacity(isStatic ? (staticVisible ? 1 : 0) : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Baseline behind you, you are here, week \(phase.nextReviewWeek) review ahead")
         .onAppear { animate() }
@@ -190,10 +189,8 @@ private struct HorizonPath: View {
             markerOpacity = 1
             reviewDotOpacity = 1
             settled = true
-            withAnimation(.easeOut(duration: 0.28)) { staticVisible = true }
             return
         }
-        staticVisible = true
         withAnimation(.easeInOut(duration: MotionSpec.horizon.draw)) {
             lineDrawn = 1
         }

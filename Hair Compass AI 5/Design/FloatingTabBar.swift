@@ -15,6 +15,9 @@ import UIKit
 /// dropped. Each item is a real button: label = tab title, `.isSelected` when active.
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
+    /// Width reserved inside the bar for an adjacent control such as Wren. Keeping this padding
+    /// inside the background chain lets the material/scrim continue across the full viewport.
+    var trailingAccessoryWidth: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var pill
     /// Per-tab bounce triggers so only the tapped symbol bounces — a shared trigger would
@@ -28,6 +31,7 @@ struct FloatingTabBar: View {
             }
         }
         .padding(.horizontal, 6)
+        .padding(.trailing, trailingAccessoryWidth)
         // Order matters: `materialBand` is applied first so it paints in front of `scrim` (the
         // fade), directly behind the items — the fade dissolves scrolled content on its way up
         // to the bar, and the material band guarantees the row itself stays legible no matter

@@ -3,6 +3,11 @@ import SwiftUI
 import UIKit
 import os
 
+private struct GroundingResolution {
+    let fingerprint: String
+    let card: GroundingCard
+}
+
 struct TodayView: View {
     let profile: Profile?
     var onOpenBaseline: () -> Void
@@ -25,6 +30,10 @@ struct TodayView: View {
     /// this by removing the whole preferences domain; `HC_PLANCLOSED` clears it explicitly so QA
     /// can force the sequence to replay on a launch that reuses an already-closed install.
     @AppStorage("grounding.celebratedDay") private var celebratedDay = ""
+    /// The last Daily Grounding identity whose entrance reached its settled state. Unlike local
+    /// modifier state, this survives switching tabs and reopening the app, so the note greets the
+    /// person once rather than performing every time Today is reconstructed.
+    @AppStorage("grounding.enteredCardKey") private var enteredCardKey = ""
     /// True once "Turn on" led to a denied system prompt — the nudge card stays up, but its body
     /// switches to the honest "notifications are off, here's how to fix it" state. View state
     /// only: it is not persisted, so the card never returns in a later session once the shown
@@ -61,12 +70,17 @@ struct TodayView: View {
     /// Resolved by the `.task(id:)` keyed on `GroundingKeys.fingerprint`; nil only on the very
     /// first frame, during which the body falls back to `GroundingCards.select` synchronously so
     /// the page never flashes empty.
-    @State private var groundingCard: GroundingCard?
+    @State private var groundingResolution: GroundingResolution?
     /// The one Undo path (Important 9): the grounding card's own completion action sets this so
     /// `TodayPlanSection` runs the identical row-tap bookkeeping (shows Undo, starts the 5 s
     /// timer) without a second write. Cleared after the same 5 s window.
     @State private var externalCompletionID: String?
     @State private var externalCompletionTask: Task<Void, Never>?
+    /// Latches the completion event for the full motion budget even after its once-per-day key is
+    /// persisted. Without this, saving the key after 100 ms removes the halo and connector before
+    /// either animation can finish.
+    @State private var activeCelebrationDay: String?
+    @State private var celebrationTask: Task<Void, Never>?
 
     private var calendar: Calendar { .current }
     private var todayEntry: DailyEntry? {
@@ -130,8 +144,13 @@ struct TodayView: View {
     /// True once today's plan is complete with at least one real completion and today has not
     /// already celebrated (G2-R14) — Close the Day fires exactly once per day, even across an
     /// Undo-then-redo of the plan's last item the same day.
-    private var shouldCelebrate: Bool {
-        todayPlan.isComplete && todayPlan.completedCount > 0 && celebratedDay != dayKey
+    private var shouldStartCelebration: Bool {
+        GroundingKeys.shouldCelebrate(
+            isComplete: todayPlan.isComplete,
+            completedCount: todayPlan.completedCount,
+            celebratedDay: celebratedDay,
+            dayKey: dayKey
+        )
     }
 
     private var medsDone: Int { todayPlan.completedCount }
@@ -188,9 +207,23 @@ struct TodayView: View {
         // separately for each.
         let consistency30 = self.consistency30
         let input: GroundingInput? = groundingEnabled ? groundingInput(consistency30: consistency30) : nil
-        let displayedCard = input.map { groundingCard ?? GroundingCards.select($0) }
-        let entranceKey = displayedCard.map { GroundingKeys.entranceKey(dayKey: dayKey, card: $0) } ?? ""
         let fingerprint = input.map { GroundingKeys.fingerprint($0, dayKey: dayKey) } ?? "off"
+        // An asynchronous answer belongs only to the exact input fingerprint it resolved. A
+        // superseded response can remain in state, but it is never displayed while the current
+        // record has a different identity; the deterministic selector fills that frame instead.
+        let displayedCard = input.map { input in
+            if let groundingResolution, groundingResolution.fingerprint == fingerprint {
+                groundingResolution.card
+            } else {
+                GroundingCards.select(input)
+            }
+        }
+        let entranceKey = displayedCard.map { GroundingKeys.entranceKey(dayKey: dayKey, card: $0) } ?? ""
+        let animatesGroundingEntrance = GroundingKeys.shouldAnimateEntrance(
+            persistedKey: enteredCardKey,
+            currentKey: entranceKey
+        )
+        let celebratesNow = activeCelebrationDay == dayKey
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 // Today's new order (G2): the horizon says where the person is in the plan, one
@@ -204,29 +237,40 @@ struct TodayView: View {
                         GroundingCardView(
                             card: displayedCard,
                             entranceKey: entranceKey,
-                            celebrates: shouldCelebrate,
+                            animatesEntrance: animatesGroundingEntrance,
+                            celebrates: celebratesNow,
+                            onEntranceCompleted: { completedKey in
+                                guard completedKey == entranceKey else { return }
+                                enteredCardKey = completedKey
+                            },
                             onPrimary: performGroundingAction
                         )
-                        .staggeredEntrance(index: 1)
                     }
                     TodayPlanSection(
                         plan: todayPlan,
                         week: weekStates,
                         weekSummary: weekSummary,
                         externalCompletionID: externalCompletionID,
-                        celebrate: shouldCelebrate,
+                        celebrate: celebratesNow,
                         onComplete: { occurrence in
                             _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
                         },
                         onUndo: { occurrence in
-                            switch occurrence.state {
-                            case .completed:
-                                _ = try? DoseRepository(context: context).delete(treatment: occurrence.treatment, slot: occurrence.slot)
-                            case .skipped:
-                                _ = try? MissedDoseRepository(context: context).delete(treatment: occurrence.treatment, slot: occurrence.slot)
-                            default:
-                                break
-                            }
+                            // Undo is keyed by the action's natural identity, not the row's
+                            // captured render state. SwiftUI may preserve a row closure across
+                            // its due → completed transition; relying on that stale enum made the
+                            // visible Undo a no-op. Only one record type should exist, and safely
+                            // attempting both also repairs an inconsistent legacy pair.
+                            _ = try? DoseRepository(context: context).delete(
+                                treatment: occurrence.treatment, day: occurrence.day, slot: occurrence.slot
+                            )
+                            _ = try? MissedDoseRepository(context: context).delete(
+                                treatment: occurrence.treatment, day: occurrence.day, slot: occurrence.slot
+                            )
+                            // Commit the rollback as one transaction. In particular, a deleted
+                            // SwiftData row does not always invalidate an unsorted @Query before
+                            // autosave; saving here makes the row's open state observable now.
+                            try? context.save()
                         },
                         onSkip: { skipCandidate = $0 },
                         onPause: { pauseCandidate = $0 },
@@ -326,24 +370,18 @@ struct TodayView: View {
         .task(id: insightFingerprint) { await refreshInsight() }
         .task(id: fingerprint) {
             guard let input else { return }
-            let card = await groundingProvider.card(input: input, now: .now)
+            guard let card = await groundingProvider.card(input: input, now: .now) else { return }
             guard !Task.isCancelled else { return }
-            groundingCard = card
+            groundingResolution = GroundingResolution(fingerprint: fingerprint, card: card)
         }
-        .onChange(of: shouldCelebrate) { _, celebrating in
-            guard celebrating else { return }
-            let day = dayKey
-            Task {
-                // A 100 ms delay so both `GroundingCardView` and `TodayPlanSection` receive
-                // `celebrates`/`celebrate: true` on the same render before the gate closes.
-                try? await Task.sleep(for: .milliseconds(100))
-                guard !Task.isCancelled else { return }
-                celebratedDay = day
-            }
-        }
+        .onAppear { beginCelebrationIfNeeded() }
+        .onChange(of: shouldStartCelebration) { _, _ in beginCelebrationIfNeeded() }
         .onDisappear {
             externalCompletionTask?.cancel()
             externalCompletionTask = nil
+            celebrationTask?.cancel()
+            celebrationTask = nil
+            activeCelebrationDay = nil
         }
         .onAppear {
             #if DEBUG
@@ -411,6 +449,28 @@ struct TodayView: View {
         }
     }
 
+    /// Starts Close the Day on both child surfaces even when Today first appears with an already
+    /// complete plan (the screenshot/debug seed and a real cold reopen both take that path).
+    /// The persistent gate is written after one render, while `activeCelebrationDay` keeps the
+    /// visual event latched for its full budget so saving the gate cannot cut the motion short.
+    private func beginCelebrationIfNeeded() {
+        guard shouldStartCelebration, activeCelebrationDay != dayKey else { return }
+        let day = dayKey
+        activeCelebrationDay = day
+        celebrationTask?.cancel()
+        celebrationTask = Task {
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled, activeCelebrationDay == day else { return }
+            celebratedDay = day
+
+            let remaining = max(0, MotionSpec.closeTheDay.total - 0.1)
+            try? await Task.sleep(for: .seconds(remaining))
+            guard !Task.isCancelled, activeCelebrationDay == day else { return }
+            activeCelebrationDay = nil
+            celebrationTask = nil
+        }
+    }
+
     /// Routes the grounding card's one action to whatever it names — a plan completion, the log
     /// sheet, Photos, Plan, or the visit-notes export. `.none` (a fully settled, quiet-day card)
     /// renders no button at all, so this branch never runs.
@@ -425,7 +485,12 @@ struct TodayView: View {
                 onOpenPlan?()
                 return
             }
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            // The final item receives TodayPlanSection's single success notification when the
+            // plan closes. Earlier items keep the quiet soft impact; never stack both haptics for
+            // one tap.
+            if !(occurrence.isOpen && todayPlan.openCount == 1) {
+                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            }
             withAnimation(.easeOut(duration: 0.25)) {
                 _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
             }

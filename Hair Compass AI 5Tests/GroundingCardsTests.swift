@@ -97,7 +97,7 @@ struct GroundingCardsTests {
         let ids = ["scalpPain", "severeSideEffect", "heavyShed", "staleTrigger", "other"]
         for id in ids {
             let flag = ClinicianReviewFlag(
-                id: id, title: "Pattern flagged for review",
+                id: id, title: "Alopecia diagnosis recorded for clinician review",
                 detail: "This is a clinician-only sentence about alopecia and telogen effluvium. \(longNote)"
             )
             let card = GroundingCards.select(input(flags: [flag], plan: open))
