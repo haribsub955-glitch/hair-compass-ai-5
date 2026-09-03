@@ -96,30 +96,26 @@ enum WidgetBridge {
 
 /// Builds the widget snapshot from live SwiftData — Compass rings/score, shielded streak,
 /// today's remaining plan steps, and the latest scalp/shedding readout. Runs on the main
-/// actor; the result is a plain Codable value.
+/// actor; the result is a plain Codable value. The due list and its counts come straight from
+/// `PlanAdherence.today` — the same engine Today itself reads — so the widget never disagrees
+/// with the app on a treatment's start date, weekday schedule or pause.
 enum WidgetSnapshotBuilder {
     @MainActor
     static func build(
         entries: [DailyEntry],
         treatments: [Treatment],
         doses: [TreatmentDose],
+        missed: [MissedDoseRecord] = [],
         photos: [PhotoRecord],
         now: Date = .now,
         calendar: Calendar = .current
     ) -> WidgetSnapshot {
-        let active = treatments.filter { $0.isActive && !$0.slots.isEmpty }
-        var due: [String] = []
-        var doneCount = 0, totalCount = 0
-        for t in active {
-            for slot in t.slots {
-                totalCount += 1
-                let logged = doses.contains {
-                    $0.treatment?.persistentModelID == t.persistentModelID
-                        && $0.slot == slot && calendar.isDate($0.loggedAt, inSameDayAs: now)
-                }
-                if logged { doneCount += 1 }
-                else { due.append("\(t.name.isEmpty ? t.treatmentClass.title : t.name) · \(slot)") }
-            }
+        let plan = PlanAdherence.today(treatments: treatments, doses: doses, missed: missed,
+                                       now: now, calendar: calendar)
+        let due = plan.occurrences.filter(\.isOpen).map { occurrence -> String in
+            let name = occurrence.treatment.name.isEmpty
+                ? occurrence.treatment.treatmentClass.title : occurrence.treatment.name
+            return occurrence.slot.isEmpty ? name : "\(name) · \(occurrence.slot)"
         }
 
         let hasLoggedToday = entries.contains { calendar.isDate($0.date, inSameDayAs: now) }
@@ -128,8 +124,8 @@ enum WidgetSnapshotBuilder {
         }
         let compass = CompassScore(
             hasLoggedToday: hasLoggedToday,
-            medsDone: doneCount,
-            medsTotal: totalCount,
+            medsDone: plan.completedCount,
+            medsTotal: plan.occurrences.count,
             hasPhotoThisWeek: hasPhotoThisWeek
         )
 

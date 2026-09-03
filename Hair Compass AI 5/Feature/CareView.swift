@@ -467,6 +467,11 @@ struct CareView: View {
             // their days; medications and un-scheduled items have an empty schedule → always due.
             guard t.isDueToday() else { continue }
             if t.slots.isEmpty {
+                // Same predicate Today reads (PlanAdherence.hasSchedule): a slotless item only
+                // joins the routine when its class has a weekday cadence (care products,
+                // microneedling, LLLT) — PRP and a free-form "other" item stay out, in-clinic or
+                // as-needed rather than a daily plan step.
+                guard PlanAdherence.hasSchedule(t) else { continue }
                 map[.periodic, default: []].append((t, ""))
             } else {
                 for slot in t.slots { map[RoutineBlock.block(for: slot), default: []].append((t, slot)) }

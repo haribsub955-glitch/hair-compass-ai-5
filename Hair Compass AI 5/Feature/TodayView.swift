@@ -302,7 +302,9 @@ struct TodayView: View {
         .confirmationDialog(TodayPlanCopy.skipTitle, isPresented: Binding(
             get: { skipCandidate != nil }, set: { if !$0 { skipCandidate = nil } }
         ), titleVisibility: .visible) {
-            ForEach(MissedDoseReason.allCases) { reason in
+            // A clinician-directed pause is a plan-level state (Pause on the row's long-press
+            // menu, or the Plan tab's own reason list) — this dialog only records a one-day skip.
+            ForEach(MissedDoseReason.allCases.filter { $0 != .clinicianDirectedPause }) { reason in
                 Button(reason.title) { recordSkip(reason) }
             }
             Button("Cancel", role: .cancel) { skipCandidate = nil }

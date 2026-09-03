@@ -63,6 +63,7 @@ struct RootView: View {
     @Query(sort: \DailyEntry.date, order: .reverse) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
+    @Query private var missedDoses: [MissedDoseRecord]
     @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
 
     @Environment(\.scenePhase) private var scenePhase
@@ -116,7 +117,7 @@ struct RootView: View {
         let latestEntry = entries.first.map { "\($0.shedRaw)-\($0.flaking)-\($0.erythema)-\($0.itch)" } ?? "none"
         let activeTreatments = treatments.filter(\.isActive).count
         let photoWeek = photos.first.map { "\($0.createdAt.timeIntervalSince1970)" } ?? "nophoto"
-        return "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)-\(photoWeek)"
+        return "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)-\(photoWeek)-\(missedDoses.count)"
     }
 
     // MARK: Evening check-in reminder
@@ -359,7 +360,9 @@ struct RootView: View {
             }
         }
         .task(id: widgetFingerprint) {
-            WidgetBridge.write(WidgetSnapshotBuilder.build(entries: entries, treatments: treatments, doses: doses, photos: photos))
+            WidgetBridge.write(WidgetSnapshotBuilder.build(
+                entries: entries, treatments: treatments, doses: doses, missed: missedDoses, photos: photos
+            ))
         }
         // Keeps the evening check-in's 3-day rolling horizon alive regardless of which tab is on
         // screen — `CareView` (the Plan tab) only exists while it's the selected tab, so without
