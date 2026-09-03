@@ -294,16 +294,7 @@ struct RootView: View {
                 // reusing one app install across launches) must remove any existing today's entry
                 // itself rather than rely on the seed loop, which won't run again.
                 if ProcessInfo.processInfo.arguments.contains("HC_NOTODAY") {
-                    let bounds = HairAnalytics.dayBounds(for: .now, calendar: .current)
-                    let lower = bounds.lowerBound
-                    let upper = bounds.upperBound
-                    var todayFetch = FetchDescriptor<DailyEntry>(
-                        predicate: #Predicate<DailyEntry> { $0.date >= lower && $0.date < upper }
-                    )
-                    todayFetch.fetchLimit = 1
-                    if let existingToday = try? context.fetch(todayFetch).first {
-                        context.delete(existingToday)
-                    }
+                    Seed.ensureNoTodayEntry(context: context)
                 }
             }
             #else

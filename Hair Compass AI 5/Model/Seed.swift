@@ -134,4 +134,18 @@ enum Seed {
         let triggerDate = calendar.date(byAdding: .day, value: -70, to: today) ?? today
         context.insert(TriggerEvent(type: .illness, date: triggerDate, note: "Flu, ran a fever for several days"))
     }
+
+    #if DEBUG
+    /// `HC_NOTODAY`'s other half: on an already-seeded install the demo guard makes the seed a
+    /// no-op, so the flag also removes any entry dated today. Only the DailyEntry goes; doses
+    /// and photos for today are left alone.
+    static func ensureNoTodayEntry(context: ModelContext, calendar: Calendar = .current, now: Date = .now) {
+        let bounds = HairAnalytics.dayBounds(for: now, calendar: calendar)
+        let lower = bounds.lowerBound
+        let upper = bounds.upperBound
+        let descriptor = FetchDescriptor<DailyEntry>(predicate: #Predicate { $0.date >= lower && $0.date < upper })
+        for entry in (try? context.fetch(descriptor)) ?? [] { context.delete(entry) }
+        try? context.save()
+    }
+    #endif
 }

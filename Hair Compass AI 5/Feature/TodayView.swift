@@ -1,6 +1,7 @@
 import SwiftData
 import SwiftUI
 import UIKit
+import os
 
 struct TodayView: View {
     let profile: Profile?
@@ -268,6 +269,8 @@ struct TodayView: View {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
             // The next tap on "Log today" reaches the same store through the sheet.
+            Logger(subsystem: "harib.Hair-Compass-AI-5", category: "today")
+                .error("copyYesterday failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
