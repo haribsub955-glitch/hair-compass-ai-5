@@ -52,7 +52,7 @@ struct WidgetSnapshotTests {
         let photo = PhotoRecord(region: .frontal, createdAt: now)
 
         let snap = WidgetSnapshotBuilder.build(
-            entries: [entry], treatments: [], doses: [], photos: [photo], now: now
+            entries: [entry], treatments: [], doses: [], missed: [], photos: [photo], now: now
         )
 
         #expect(snap.hasLoggedToday == true)
@@ -72,7 +72,7 @@ struct WidgetSnapshotTests {
     @Test @MainActor func noTreatmentsLeavesCareRingNilAndDueTitlesEmpty() {
         let now = Date.now
         let snap = WidgetSnapshotBuilder.build(
-            entries: [], treatments: [], doses: [], photos: [], now: now
+            entries: [], treatments: [], doses: [], missed: [], photos: [], now: now
         )
 
         #expect(snap.ringCare == nil)
@@ -93,11 +93,65 @@ struct WidgetSnapshotTests {
         let morningDose = TreatmentDose(treatment: minoxidil, loggedAt: now, slot: "08:00")
 
         let snap = WidgetSnapshotBuilder.build(
-            entries: [], treatments: [minoxidil], doses: [morningDose], photos: [], now: now
+            entries: [], treatments: [minoxidil], doses: [morningDose], missed: [], photos: [], now: now
         )
 
         #expect(snap.dueTitles == ["Minoxidil · 21:00"])
         #expect(snap.ringCare == 0.5)   // 1 of 2 slots logged
+    }
+
+    // MARK: - Due list reads PlanAdherence.today (same fixed calendar as PlanAdherenceTests:
+    // Asia/Muscat, Monday-first, Wednesday 2026-09-09 09:30).
+
+    private var fixedCalendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "Asia/Muscat")!
+        c.firstWeekday = 2 // Monday
+        return c
+    }
+
+    /// Wednesday 2026-09-09, 09:30 local.
+    private var fixedNow: Date {
+        fixedCalendar.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 9, minute: 30))!
+    }
+
+    private func fixedDay(_ offset: Int, hour: Int = 12) -> Date {
+        let base = fixedCalendar.date(byAdding: .day, value: offset, to: fixedCalendar.startOfDay(for: fixedNow))!
+        return fixedCalendar.date(byAdding: .hour, value: hour, to: base)!
+    }
+
+    @Test @MainActor func treatmentStartingTomorrowYieldsNoDueTitlesAndNoCareRing() {
+        let t = Treatment(name: "Minoxidil 5%", treatmentClass: .minoxidil, dose: "1 mL",
+                          scheduleTimes: "08:00,21:00", startDate: fixedDay(1), isActive: true)
+        let snap = WidgetSnapshotBuilder.build(
+            entries: [], treatments: [t], doses: [], missed: [], photos: [],
+            now: fixedNow, calendar: fixedCalendar
+        )
+        #expect(snap.dueTitles.isEmpty)
+        #expect(snap.ringCare == nil)
+    }
+
+    @Test @MainActor func weekdayShampooWithNoClockTimeIsNotDueOnAnOffDay() {
+        let shampoo = Treatment(name: "Ketoconazole shampoo", treatmentClass: .shampoo, dose: "",
+                                scheduleTimes: "", startDate: fixedDay(-30), isActive: true)
+        shampoo.scheduledWeekdays = [2, 5] // Monday, Thursday — today is Wednesday.
+        let snap = WidgetSnapshotBuilder.build(
+            entries: [], treatments: [shampoo], doses: [], missed: [], photos: [],
+            now: fixedNow, calendar: fixedCalendar
+        )
+        #expect(snap.dueTitles.isEmpty)
+    }
+
+    @Test @MainActor func minoxidilWithMorningLoggedLeavesEveningDue() {
+        let t = Treatment(name: "Minoxidil 5%", treatmentClass: .minoxidil, dose: "1 mL",
+                          scheduleTimes: "08:00,21:00", startDate: fixedDay(-30), isActive: true)
+        let morningDose = TreatmentDose(treatment: t, loggedAt: fixedDay(0, hour: 8), slot: "08:00")
+        let snap = WidgetSnapshotBuilder.build(
+            entries: [], treatments: [t], doses: [morningDose], missed: [], photos: [],
+            now: fixedNow, calendar: fixedCalendar
+        )
+        #expect(snap.dueTitles == ["Minoxidil 5% · 21:00"])
+        #expect(snap.ringCare == 0.5) // doneCount 1, totalCount 2
     }
 
     // MARK: - Shielded streak passthrough
@@ -112,7 +166,7 @@ struct WidgetSnapshotTests {
         }
 
         let snap = WidgetSnapshotBuilder.build(
-            entries: entries, treatments: [], doses: [], photos: [], now: now, calendar: cal
+            entries: entries, treatments: [], doses: [], missed: [], photos: [], now: now, calendar: cal
         )
 
         let expected = HairAnalytics.shieldedStreak(entryDates: entries.map(\.date), now: now, calendar: cal)

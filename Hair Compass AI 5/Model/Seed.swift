@@ -154,5 +154,17 @@ enum Seed {
         for entry in (try? context.fetch(descriptor)) ?? [] { context.delete(entry) }
         try? context.save()
     }
+
+    /// `HC_PLANOPEN`: removes every dose logged today so Today's plan starts fully open — the
+    /// demo seed logs most of today's doses, which leaves nothing for a completion test to tap.
+    /// Entries, photos and missed-dose records are left alone.
+    static func ensureNoDosesToday(context: ModelContext, calendar: Calendar = .current, now: Date = .now) {
+        let bounds = HairAnalytics.dayBounds(for: now, calendar: calendar)
+        let lower = bounds.lowerBound
+        let upper = bounds.upperBound
+        let descriptor = FetchDescriptor<TreatmentDose>(predicate: #Predicate { $0.loggedAt >= lower && $0.loggedAt < upper })
+        for dose in (try? context.fetch(descriptor)) ?? [] { context.delete(dose) }
+        try? context.save()
+    }
     #endif
 }
