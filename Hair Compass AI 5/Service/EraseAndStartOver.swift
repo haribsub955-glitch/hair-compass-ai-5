@@ -4,9 +4,10 @@
 //
 //  "Erase everything and start over": every record, photo and preference on this iPhone goes,
 //  a fresh un-onboarded profile is seeded, and the app returns to onboarding. Two things are
-//  deliberately left alone — the 3-day AccessWindow in the Keychain (1.1 rule: nothing restarts
-//  it) and the StoreKit entitlement (Apple's, not ours). Side effects are parameters so the
-//  wipe is provable in a unit test without touching the device.
+//  deliberately left alone — the 3-day access window in the Keychain (1.1 rule: nothing restarts
+//  it) and the StoreKit entitlement (Apple's, not ours). This file must never reference the
+//  window's type or its Keychain store — EraseAndStartOverTests checks that structurally. Side
+//  effects are parameters so the wipe is provable in a unit test without touching the device.
 //
 
 import Foundation
@@ -20,7 +21,7 @@ enum EraseAndStartOver {
         context: ModelContext,
         defaults: UserDefaults = .standard,
         defaultsDomain: String = Bundle.main.bundleIdentifier ?? "harib.Hair-Compass-AI-5",
-        photoStore: PhotoStore = PhotoStore(),
+        photoStore: PhotoStore = .shared,
         cancelNotifications: () async -> Void = {
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
         },

@@ -4,7 +4,9 @@
 //
 //  "Erase everything and start over" must leave nothing of the record behind — every model,
 //  every photo file, every preference — and must leave exactly two things alone: the 3-day
-//  access window (1.1 rule: nothing restarts it) and the subscription (Apple's, not ours).
+//  access window (1.1 rule: nothing restarts it) and the subscription (Apple's, not ours). The
+//  access-window guarantee is structural (the service has no path to the Keychain at all), so
+//  it is proved by inspecting the service's source rather than by a counting store.
 //
 
 import Foundation
@@ -28,16 +30,6 @@ struct EraseAndStartOverTests {
         )
     }
 
-    /// An in-memory access-window store that counts writes, so the test can prove the erase
-    /// never wrote a new anchor.
-    private final class MemoryAnchorStore: AccessAnchorStoring {
-        var anchor: Date?
-        var saveCount = 0
-        init(anchor: Date?) { self.anchor = anchor }
-        func loadAnchor() -> Date? { anchor }
-        func saveAnchor(_ date: Date) { anchor = date; saveCount += 1 }
-    }
-
     @Test func eraseLeavesAFreshProfileAndNothingElse() async throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -57,10 +49,6 @@ struct EraseAndStartOverTests {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try Data([1, 2, 3]).write(to: dir.appendingPathComponent("a.jpg"))
         let photos = PhotoStore(directoryOverride: dir)
-
-        let anchorDate = Date(timeIntervalSince1970: 1_700_000_000)
-        let store = MemoryAnchorStore(anchor: anchorDate)
-        _ = AccessWindow(store: store)   // reads the anchor; must not be touched by the erase
 
         var cancelled = false
         var written: WidgetSnapshot?
@@ -88,9 +76,19 @@ struct EraseAndStartOverTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).isEmpty)
         #expect(cancelled)
         #expect(written == .placeholder)
+    }
 
-        // The access window is untouched: same anchor, no new write.
-        #expect(store.anchor == anchorDate)
-        #expect(store.saveCount == 0)
+    /// The 3-day window lives in the Keychain and must never restart. The guarantee is
+    /// structural — the erase has no path to the anchor at all — so the test is structural too:
+    /// the service's source must not name the window or its store.
+    @Test func eraseNeverReferencesTheAccessWindow() throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()          // Hair Compass AI 5Tests
+            .deletingLastPathComponent()          // repo root
+            .appendingPathComponent("Hair Compass AI 5/Service/EraseAndStartOver.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        for forbidden in ["AccessWindow", "KeychainAnchorStore", "AccessAnchorStoring", "SecItem"] {
+            #expect(!text.contains(forbidden), "EraseAndStartOver must never touch the access window (found \(forbidden))")
+        }
     }
 }
