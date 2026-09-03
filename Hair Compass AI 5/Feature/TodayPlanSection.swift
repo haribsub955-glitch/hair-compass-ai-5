@@ -74,6 +74,7 @@ struct TodayPlanSection: View {
             showsRecorded = false
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
+        .onDisappear { undoTimer?.cancel(); undoTimer = nil }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("todayPlan")
     }
@@ -259,13 +260,14 @@ private struct PlanActionRow: View {
                             .monospacedDigit()
                     }
                 }
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(name), \(timeLabel)")
             .accessibilityHint("Opens this treatment")
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
         .background {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Clinical.sage.opacity(wash ? 0.14 : 0))
