@@ -108,15 +108,30 @@ struct PlanAdherenceTests {
         #expect(c.completed == 0 && c.expected == 1)
     }
 
-    @Test func pausedTreatmentEmitsNothingFromItsEndDate() throws {
+    @Test func pausedTreatmentKeepsTheStopDayUpToTheStopTime() throws {
         let context = try makeContext()
         let t = minoxidil(in: context)
         t.isActive = false
         t.endDate = day(-1, hour: 10)
         let occ = PlanAdherence.occurrences(treatment: t, doses: [], missed: [],
                                             from: day(-3), through: day(0), now: now, calendar: calendar)
-        #expect(occ.count == 4) // -3 and -2 only
-        #expect(occ.allSatisfy { $0.day < calendar.startOfDay(for: day(-1)) })
+        // -3 and -2: both slots. -1 (the stop day, paused at 10:00): only the 08:00 slot, which
+        // fell before the stop time. 0: nothing — after the stop day.
+        #expect(occ.count == 5)
+        #expect(!occ.contains { $0.day == calendar.startOfDay(for: day(0)) })
+    }
+
+    @Test func pausedTreatmentKeepsACompletedDoseOnTheStopDay() throws {
+        let context = try makeContext()
+        let t = minoxidil(in: context)
+        log(t, dayOffset: -1, slot: "08:00", in: context)
+        t.isActive = false
+        t.endDate = day(-1, hour: 10)
+        let all = try fetchAll(context)
+        let occ = PlanAdherence.occurrences(treatment: t, doses: all.doses, missed: all.missed,
+                                            from: day(-1), through: day(-1), now: now, calendar: calendar)
+        #expect(occ.count == 1)
+        #expect(occ[0].state == .completed)
     }
 
     @Test func startDateClampsTheWindow() throws {
@@ -133,6 +148,22 @@ struct PlanAdherenceTests {
         #expect(c.percent == 75)
     }
 
+    @Test func consistencyAcrossTreatmentsClampsEachStart() throws {
+        let context = try makeContext()
+        let minox = minoxidil(in: context) // 30 days ago, two slots
+        let fin = Treatment(name: "Finasteride 1mg", treatmentClass: .finasteride, dose: "1 mg",
+                            scheduleTimes: "21:00", startDate: day(-2), isActive: true)
+        context.insert(fin)
+        let c = try #require(PlanAdherence.consistency(
+            treatments: [minox, fin], doses: [], missed: [],
+            from: day(-6), through: day(0), now: now, calendar: calendar
+        ))
+        // Six past days × minoxidil's two slots, plus two past days × finasteride's one slot
+        // (it started 2 days ago); today's open slots don't count for either.
+        #expect(c.expected == 12 + 2)
+        #expect(c.completed == 0)
+    }
+
     @Test func asNeededTreatmentHasNoConsistency() throws {
         let context = try makeContext()
         let prp = Treatment(name: "PRP session", treatmentClass: .prp, dose: "",
@@ -141,6 +172,20 @@ struct PlanAdherenceTests {
         #expect(!PlanAdherence.hasSchedule(prp))
         #expect(PlanAdherence.consistency(treatment: prp, doses: [], missed: [],
                                           windowDays: 30, now: now, calendar: calendar) == nil)
+    }
+
+    @Test func weekdayDevicesHaveASchedule() throws {
+        let context = try makeContext()
+        let device = Treatment(name: "Dermaroller", treatmentClass: .microneedling, dose: "",
+                               scheduleTimes: "", startDate: day(-30), isActive: true)
+        device.scheduledWeekdays = [2, 5] // Monday, Thursday
+        context.insert(device)
+        #expect(PlanAdherence.hasSchedule(device))
+        let occ = PlanAdherence.occurrences(treatment: device, doses: [], missed: [],
+                                            from: day(-6), through: day(0), now: now, calendar: calendar)
+        // Wed 9 Sep back to Thu 3 Sep: Thu 3 and Mon 7 are scheduled.
+        #expect(occ.count == 2)
+        #expect(occ.allSatisfy { $0.slot == "" })
     }
 
     @Test func periodicCareProductCountsOnlyItsWeekdays() throws {
@@ -224,7 +269,9 @@ struct PlanAdherenceTests {
         shampoo.scheduledWeekdays = [2] // Monday only
         context.insert(shampoo)
         let week = PlanAdherence.week(treatments: [shampoo], doses: [], missed: [], now: now, calendar: calendar)
-        #expect(week.map(\.mark) == [.missed, .notExpected, .notExpected, .upcoming, .upcoming, .upcoming, .upcoming])
+        // Today (Wed) has nothing scheduled (Monday-only shampoo), but it still gets `.today`,
+        // not `.notExpected` — the "you are here" outline never disappears on a quiet day.
+        #expect(week.map(\.mark) == [.missed, .notExpected, .today, .upcoming, .upcoming, .upcoming, .upcoming])
     }
 
     // MARK: Slots

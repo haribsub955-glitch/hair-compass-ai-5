@@ -83,24 +83,37 @@ enum PlanAdherence {
 
     // MARK: Schedule
 
-    /// Whether the engine can score this item: clock slots, or a care product on its weekdays.
-    /// Anything else (a procedure, an as-needed item) is recorded as usage and never given a
-    /// percentage.
+    /// Whether the engine can score this item: clock slots, or a periodic item done on a weekday
+    /// cadence (the care products, plus microneedling and LLLT — see
+    /// `TreatmentClass.supportsWeekdaySchedule`). Anything else (PRP, a free-form "other" item
+    /// with no times) is recorded as usage and never given a percentage.
     static func hasSchedule(_ treatment: Treatment) -> Bool {
-        !treatment.slots.isEmpty || treatment.treatmentClass.isCareProduct
+        !treatment.slots.isEmpty || treatment.treatmentClass.supportsWeekdaySchedule
     }
 
-    /// The slots expected on `day` — empty when the item is not scheduled that weekday, has not
-    /// started, or has been paused (an inactive treatment with no end date is never expected).
+    /// The slots expected on `day` — empty when the item is not scheduled that weekday or has not
+    /// started yet. An inactive treatment with no end date was never expected at all. With an end
+    /// date: every day before the stop day keeps every slot; the stop day itself keeps only the
+    /// slots whose clock time is at or before the stop time (a slotless occurrence always
+    /// counts), so a dose logged earlier on the day a treatment was paused stays countable; days
+    /// after the stop day return nothing.
     static func expectedSlots(_ treatment: Treatment, on day: Date, calendar: Calendar) -> [String] {
         guard hasSchedule(treatment) else { return [] }
         let start = calendar.startOfDay(for: treatment.startDate)
         guard day >= start else { return [] }
-        if !treatment.isActive {
-            guard let end = treatment.endDate, day < calendar.startOfDay(for: end) else { return [] }
-        }
         guard treatment.isDueToday(now: day, calendar: calendar) else { return [] }
-        return treatment.slots.isEmpty ? [""] : treatment.slots
+        let allSlots = treatment.slots.isEmpty ? [""] : treatment.slots
+        guard !treatment.isActive else { return allSlots }
+        guard let end = treatment.endDate else { return [] }
+        let stopDay = calendar.startOfDay(for: end)
+        if day < stopDay {
+            return allSlots
+        }
+        guard day == stopDay else { return [] }
+        return allSlots.filter { slot in
+            guard let slotTime = slotDate(slot, on: day, calendar: calendar) else { return true }
+            return slotTime <= end
+        }
     }
 
     // MARK: Occurrences
@@ -115,7 +128,11 @@ enum PlanAdherence {
         calendar: Calendar
     ) -> [Occurrence] {
         let id = treatment.persistentModelID
+        // Ascending by loggedAt so a slot with more than one dose agrees with
+        // `DoseRepository.matchingDose`, which fetches `sortBy: loggedAt` and returns the first —
+        // the same dose Undo deletes.
         let ownDoses = doses.filter { $0.treatment?.persistentModelID == id }
+            .sorted { $0.loggedAt < $1.loggedAt }
         let ownMissed = missed.filter { $0.treatment?.persistentModelID == id }
         let today = calendar.startOfDay(for: now)
         let last = calendar.startOfDay(for: lastDay)
@@ -240,6 +257,10 @@ enum PlanAdherence {
             let mark: DayMark
             if day > today {
                 mark = .upcoming
+            } else if day == today && expected == 0 {
+                // A quiet today still needs its "you are here" outline — decided before the
+                // generic expected == 0 → notExpected branch below, or it would disappear.
+                mark = .today
             } else if expected == 0 {
                 mark = .notExpected
             } else if completed == expected {
