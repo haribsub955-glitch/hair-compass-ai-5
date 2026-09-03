@@ -25,8 +25,9 @@ struct CompassScore: Equatable {
         static let lens = 20.0
     }
 
-    /// 0–100. Weights Log 50 / Care 30 / Lens 20; an unavailable ring's weight is
-    /// redistributed proportionally across the rings that exist.
+    /// 0–100. Weights: see `Weights` — care only counts on a day something is scheduled; the
+    /// rest renormalise proportionally across the rings that exist, so a weight change has one
+    /// home.
     var score: Int {
         var pairs: [(value: Double, weight: Double)] = [(log, Weights.log), (lens, Weights.lens)]
         if let care { pairs.append((care, Weights.care)) }
@@ -39,6 +40,6 @@ struct CompassScore: Equatable {
 
     /// Shown under the rings when the detail is expanded. Consistency, never hair health.
     static var explanation: String {
-        "Today's check-in counts \(Int(Weights.log)), your routine doses \(Int(Weights.care)) (only on days something is scheduled), and a photo this week \(Int(Weights.lens)). It resets every day and measures showing up — never your hair."
+        "Today's check-in counts \(Int(Weights.log)), your routine doses \(Int(Weights.care)) (only on days something is scheduled), and a photo this week \(Int(Weights.lens)). It resets every day and measures showing up — never your hair. On days with nothing scheduled, the check-in and the photo share the whole 100."
     }
 }

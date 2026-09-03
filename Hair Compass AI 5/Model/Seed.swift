@@ -64,8 +64,15 @@ enum Seed {
 
         // HC_NOTODAY (debug): the quiet-day demo — today stays empty so "Same as yesterday" has
         // something honest to offer. Only today's DailyEntry is withheld below; doses/snapshots
-        // for today are untouched.
+        // for today are untouched. `demo` is only ever called from a #if DEBUG call site
+        // (RootView), but this function's own body is not itself gated — without this guard the
+        // "HC_NOTODAY" string literal, unreachable or not, would still ship inside the release
+        // binary.
+        #if DEBUG
         let skipTodayEntry = ProcessInfo.processInfo.arguments.contains("HC_NOTODAY")
+        #else
+        let skipTodayEntry = false
+        #endif
 
         for offset in stride(from: span, through: 0, by: -1) {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }

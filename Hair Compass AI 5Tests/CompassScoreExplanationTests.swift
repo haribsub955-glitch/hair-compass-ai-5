@@ -19,6 +19,8 @@ struct CompassScoreExplanationTests {
         #expect(text.contains("\(Int(CompassScore.Weights.care))"))
         #expect(text.contains("\(Int(CompassScore.Weights.lens))"))
         #expect(text.lowercased().contains("never") && text.lowercased().contains("hair"), "it must say the score is not about hair health")
+        #expect(text.contains("On days with nothing scheduled, the check-in and the photo share the whole 100."),
+                "it must say what happens on a day with nothing scheduled")
     }
 
     @Test func weightsStillProduceTheKnownScores() {
