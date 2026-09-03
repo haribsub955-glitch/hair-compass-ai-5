@@ -43,13 +43,25 @@ struct FloatingTabBar: View {
         .padding(.bottom, 8)
     }
 
-    /// Directly behind the labels, clipped to the bar's own height (it takes no padding of its
-    /// own, so it is proposed exactly the item row's size) — a blurred, canvas-tinted ground the
-    /// items always read against, independent of how far the fade above has faded in yet.
+    /// Directly behind the labels, clipped to the bar's own height at the top (it takes no top
+    /// padding, so its top edge is proposed exactly the item row's own top) but extended past the
+    /// home indicator at the bottom — a blurred, canvas-tinted ground the items always read
+    /// against, independent of how far the fade above has faded in yet, that reaches all the way
+    /// to the physical bottom edge so nothing between the row and the edge reads through either.
+    /// `.ignoresSafeArea(edges: .bottom)` alone does not reach: this view sits inside
+    /// `RootView`'s `.safeAreaInset(edge: .bottom)` content, which has already claimed the
+    /// device's bottom safe area for itself by the time this renders, leaving nothing further
+    /// for a nested `ignoresSafeArea` call to ignore (confirmed empirically — a debug fill with
+    /// only `.ignoresSafeArea(edges: .bottom)` stopped exactly at the item row's own bottom edge).
+    /// `.padding(.bottom, -60)` is what actually does the work, the same negative-padding bleed
+    /// `scrim` already uses on its top edge; kept alongside `ignoresSafeArea` for parity with
+    /// `scrim`'s own modifier order.
     private var materialBand: some View {
         Rectangle()
             .fill(.ultraThinMaterial)
             .overlay(Clinical.canvas.opacity(0.55))
+            .padding(.bottom, -60)
+            .ignoresSafeArea(edges: .bottom)
             .allowsHitTesting(false)
     }
 

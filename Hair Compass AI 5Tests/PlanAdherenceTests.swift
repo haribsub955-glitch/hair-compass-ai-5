@@ -270,6 +270,17 @@ struct PlanAdherenceTests {
         #expect(unclamped == clamped)
     }
 
+    @Test func openOnlyWindowIsPlannedButUnscored() throws {
+        let context = try makeContext()
+        let t = minoxidil(in: context, startedDaysAgo: 0)
+        let c = try #require(PlanAdherence.consistency(treatment: t, doses: [], missed: [],
+                                                       windowDays: 1, now: now, calendar: calendar))
+        // Started today: 08:00 is due, 21:00 is upcoming, nothing logged — both planned, neither
+        // settled yet, so scoring nothing does not read as 0%.
+        #expect(c == PlanAdherence.Consistency(completed: 0, planned: 2, scored: 0))
+        #expect(c.percent == 0)
+    }
+
     // MARK: Today
 
     @Test func todayPlanSortsBySlotAndKnowsWhenItIsComplete() throws {
