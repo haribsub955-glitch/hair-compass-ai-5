@@ -1141,10 +1141,13 @@ struct CareView: View {
         let weeks = HairAnalytics.weeksElapsed(since: t.startDate)
         let progress = HairAnalytics.outcomeProgress(weeksElapsed: weeks)
         let ready = HairAnalytics.outcomeReady(weeksElapsed: weeks)
-        let dates = doses.filter { $0.treatment?.persistentModelID == t.persistentModelID }.map(\.loggedAt)
-        // Expected-per-day comes from the actual schedule, so `.other`-class daily items
-        // (e.g. products added from the science list) accrue adherence like any medication.
-        let adherence = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.slots.count)
+        // One adherence engine (Important 10 → G2-R16): the same PlanAdherence occurrence math
+        // Today and the week strip already use, not a second doseDates/expectedPerDay read that
+        // can silently disagree with it.
+        let consistency = PlanAdherence.consistency(
+            treatment: t, doses: doses, missed: missedDoseRecords,
+            windowDays: 14, now: .now, calendar: calendar
+        )
 
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 14) {
@@ -1188,13 +1191,22 @@ struct CareView: View {
                     ProgressBar(value: progress, tint: ready ? Clinical.positive : Clinical.accent).frame(height: 8)
                 }
 
-                if let adherence {
+                if let consistency {
                     HStack {
                         Text("14-day adherence").font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                         Spacer()
-                        Text("\(Int((adherence * 100).rounded()))%")
-                            .font(Clinical.number(13))
-                            .foregroundStyle(adherence >= 0.8 ? Clinical.positive : Clinical.warning)
+                        if consistency.scored > 0 {
+                            // One reading everywhere the user can see it: a plain ink percentage,
+                            // never tinted by a threshold — G2-R16 dropped the ≥80%-is-good
+                            // color read as an unearned judgment this screen shouldn't make.
+                            Text("\(consistency.percent)%")
+                                .font(Clinical.number(13))
+                                .foregroundStyle(Clinical.ink)
+                        } else {
+                            Text("Not enough due actions yet")
+                                .font(Clinical.caption(12))
+                                .foregroundStyle(Clinical.tertiary)
+                        }
                     }
                 } else {
                     Text("Periodic treatment · logged per session")

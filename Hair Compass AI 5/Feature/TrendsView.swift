@@ -550,16 +550,30 @@ struct TrendsView: View {
                 AnnotationRow(label: "Adherence", value: "Add a daily treatment in Care", logged: false)
             } else {
                 ForEach(daily) { t in
-                    let dates = doses.filter { $0.treatment?.persistentModelID == t.persistentModelID }.map(\.loggedAt)
-                    let pct = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.slots.count) ?? 0
-                    let tint = pct >= 0.8 ? Clinical.positive : Clinical.warning
-                    AnnotationRow(
-                        label: t.treatmentClass.title,
-                        value: "\(Int((pct * 100).rounded()))% · 14d",
-                        logged: true,
-                        valueColor: tint,
-                        trace: AnyView(MiniTrace(fraction: CGFloat(pct), color: tint))
+                    // One adherence engine (Important 10 → G2-R16): the same PlanAdherence
+                    // occurrence math Today and Care already read, not a second
+                    // doseDates/expectedPerDay computation that can silently disagree with it.
+                    let consistency = PlanAdherence.consistency(
+                        treatment: t, doses: doses, missed: missedDoseRecords,
+                        windowDays: 14, now: .now, calendar: .current
                     )
+                    if let consistency, consistency.scored > 0 {
+                        // A plain ink percentage everywhere the user can see it — never tinted
+                        // by an ≥80%-is-good threshold, which reads as an unearned judgment.
+                        AnnotationRow(
+                            label: t.treatmentClass.title,
+                            value: "\(consistency.percent)% · 14d",
+                            logged: true,
+                            valueColor: Clinical.ink,
+                            trace: AnyView(MiniTrace(fraction: CGFloat(consistency.fraction), color: Clinical.ink))
+                        )
+                    } else {
+                        AnnotationRow(
+                            label: t.treatmentClass.title,
+                            value: "Not enough due actions yet",
+                            logged: false
+                        )
+                    }
                 }
             }
             Divider().overlay(Clinical.hairline)
