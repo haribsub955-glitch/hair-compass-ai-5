@@ -180,16 +180,19 @@ struct BrandArtCoverageTests {
         }
     }
 
-    /// Guards the two deliberate retirements, so neither comes back by reflex.
+    /// Guards the deliberate retirements, so none comes back by reflex.
     ///
     /// `hero-today` was dropped because Today's hero is an edgeless elliptical glow built
     /// specifically so the screen would not break into sections — a banner behind it puts back the
     /// edge that change removed. `comb-tool` was dropped with the interaction it belonged to:
     /// `CombRitual` is an automatic smoothing pass now, so there is nothing to drag a comb across.
     /// `hero-photos-empty` was dropped on shape: a centered square composition cannot be cropped
-    /// into a header band without landing its subject on the region-picker chips.
+    /// into a header band without landing its subject on the region-picker chips. `trends-journey-empty`
+    /// was dropped when the Trends journey chart's two-log gate switched to the shared
+    /// `ChartPlaceholder` pill every other locked chart uses — the bespoke illustration had no
+    /// other user once that landed.
     @Test func retiredArtStaysRetired() throws {
-        for retired in ["hero-today", "comb-tool", "hero-photos-empty"] {
+        for retired in ["hero-today", "comb-tool", "hero-photos-empty", "trends-journey-empty"] {
             let imageset = Self.catalog.appendingPathComponent("\(retired).imageset")
             #expect(
                 !FileManager.default.fileExists(atPath: imageset.path),

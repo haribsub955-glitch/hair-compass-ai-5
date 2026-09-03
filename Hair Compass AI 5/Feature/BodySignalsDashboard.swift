@@ -252,7 +252,11 @@ struct BodySignalsDashboard: View {
 
     @ViewBuilder
     private var signalContent: some View {
-        let visible = visibleSignals
+        // Built once per body pass and reused below — `seriesCache` walks every `BodySignal`
+        // through `BodySignalsMath.windowedSeries`, so calling it more than once here would
+        // redo that work for no reason.
+        let cache = seriesCache
+        let visible = BodySignal.allCases.filter { (cache[$0]?.count ?? 0) >= 2 }
         if !visible.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 Divider().overlay(Clinical.hairline)
@@ -271,7 +275,7 @@ struct BodySignalsDashboard: View {
                 VStack(alignment: .leading, spacing: 12) {
                     ChartPlaceholder(
                         required: 2,
-                        have: seriesCache.values.map(\.count).max() ?? 0,
+                        have: cache.values.map(\.count).max() ?? 0,
                         unit: .readings,
                         height: 110
                     )

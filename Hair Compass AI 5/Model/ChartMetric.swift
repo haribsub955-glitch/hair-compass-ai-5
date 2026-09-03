@@ -151,6 +151,9 @@ enum ChartMath {
         let when = lagDays == 0 ? "the same day" : "about \(lagLabel(lagDays)) later"
         switch association {
         case .insufficient:
+            // Unreachable from Compare today: `CompareView.readCard` checks `.insufficient`
+            // itself and renders `ChartPlaceholderPill` before ever calling `phrasing`. Retained
+            // (not deleted) for any future caller that wants the sentence form of this state.
             return "Not enough overlapping days yet to see a pattern. Keep logging."
         case .unclear:
             return "No clear pattern between \(lifestyleTitle.lowercased()) and \(hairTitle.lowercased()) in this window."

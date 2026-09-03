@@ -18,8 +18,14 @@ final class PhotoStore {
     /// Tests point the store at a temporary folder; the app never passes this.
     nonisolated private let directoryOverride: URL?
 
-    init(directoryOverride: URL? = nil) {
-        self.directoryOverride = directoryOverride
+    private init() {
+        directoryOverride = nil
+    }
+
+    /// Tests only — a second store over the same directory a production instance already owns
+    /// would race its cache, so this is the only door open to callers other than `.shared`.
+    init(testDirectory: URL) {
+        directoryOverride = testDirectory
     }
 
     nonisolated private var directory: URL {

@@ -48,7 +48,7 @@ struct EraseAndStartOverTests {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("erase-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try Data([1, 2, 3]).write(to: dir.appendingPathComponent("a.jpg"))
-        let photos = PhotoStore(directoryOverride: dir)
+        let photos = PhotoStore(testDirectory: dir)
 
         var cancelled = false
         var written: WidgetSnapshot?
@@ -103,7 +103,7 @@ struct EraseAndStartOverTests {
 
         try await EraseAndStartOver.perform(
             context: context, defaults: defaults, defaultsDomain: suite,
-            photoStore: PhotoStore(directoryOverride: dir),
+            photoStore: PhotoStore(testDirectory: dir),
             cancelNotifications: {}, writeWidget: { _ in }
         )
 

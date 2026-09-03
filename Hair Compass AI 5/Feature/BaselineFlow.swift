@@ -48,128 +48,128 @@ struct BaselineFlow: View {
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
-                    intro
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        intro
 
-                    replayRow
+                        replayRow
 
-                    field("Your name") {
-                        TextField("Name", text: $profile.name)
-                            .textFieldStyle(.plain)
-                            .font(Clinical.caption(16))
-                            .padding(12)
-                            .background(Clinical.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
-                            .accessibilityIdentifier("baselineName")
-                    }
+                        field("Your name") {
+                            TextField("Name", text: $profile.name)
+                                .textFieldStyle(.plain)
+                                .font(Clinical.caption(16))
+                                .padding(12)
+                                .background(Clinical.surface)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                                .accessibilityIdentifier("baselineName")
+                        }
 
-                    field("Biological sex") {
-                        ClinicalSegmented(options: BiologicalSex.allCases, label: { $0.title }, selection: $profile.sex)
-                        Text("Sets the staging scale: \(profile.sex.stagingScaleName).")
-                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                    }
-
-                    field("Age") {
-                        chips(ageBands, selected: profile.ageBand) { profile.ageBand = $0 }
-                    }
-
-                    if profile.sex == .female {
-                        field("Pregnancy") {
-                            let opts: [PregnancyStatus] = [.no, .pregnant, .tryingToConceive, .breastfeeding, .unspecified]
-                            chips(opts.map(\.title), selected: profile.pregnancyStatus.title) { title in
-                                if let match = opts.first(where: { $0.title == title }) { profile.pregnancyStatus = match }
-                            }
-                            Text("Lets the plan flag medications usually avoided in or around pregnancy. Stays private to your device.")
+                        field("Biological sex") {
+                            ClinicalSegmented(options: BiologicalSex.allCases, label: { $0.title }, selection: $profile.sex)
+                            Text("Sets the staging scale: \(profile.sex.stagingScaleName).")
                                 .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
-                    }
 
-                    field("What are you tracking?") {
-                        VStack(spacing: 8) {
-                            ForEach(HairCondition.allCases) { c in
-                                conditionRow(c)
+                        field("Age") {
+                            chips(ageBands, selected: profile.ageBand) { profile.ageBand = $0 }
+                        }
+
+                        if profile.sex == .female {
+                            field("Pregnancy") {
+                                let opts: [PregnancyStatus] = [.no, .pregnant, .tryingToConceive, .breastfeeding, .unspecified]
+                                chips(opts.map(\.title), selected: profile.pregnancyStatus.title) { title in
+                                    if let match = opts.first(where: { $0.title == title }) { profile.pregnancyStatus = match }
+                                }
+                                Text("Lets the plan flag medications usually avoided in or around pregnancy. Stays private to your device.")
+                                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                             }
                         }
-                    }
 
-                    field("Family history of hair loss") {
-                        chips(FamilyHistory.allCases.map(\.title), selected: profile.familyHistory.title) { title in
-                            if let match = FamilyHistory.allCases.first(where: { $0.title == title }) {
-                                profile.familyHistory = match
+                        field("What are you tracking?") {
+                            VStack(spacing: 8) {
+                                ForEach(HairCondition.allCases) { c in
+                                    conditionRow(c)
+                                }
                             }
                         }
-                        Text("The single strongest measured risk factor for pattern loss.")
-                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                    }
 
-                    field("Hair-care practices") {
-                        VStack(spacing: 10) {
-                            practiceToggle("Tight styles (braids, ponytails, extensions)", isOn: $profile.wearsTightStyles)
-                            practiceToggle("Regular heat styling", isOn: $profile.usesHeat)
-                            practiceToggle("Chemical treatments (relaxers, dyes, perms)", isOn: $profile.usesChemicalTreatments)
+                        field("Family history of hair loss") {
+                            chips(FamilyHistory.allCases.map(\.title), selected: profile.familyHistory.title) { title in
+                                if let match = FamilyHistory.allCases.first(where: { $0.title == title }) {
+                                    profile.familyHistory = match
+                                }
+                            }
+                            Text("The single strongest measured risk factor for pattern loss.")
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
-                        Text("Sustained tension, heat and chemicals cause traction alopecia — preventable and reversible early.")
-                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+
+                        field("Hair-care practices") {
+                            VStack(spacing: 10) {
+                                practiceToggle("Tight styles (braids, ponytails, extensions)", isOn: $profile.wearsTightStyles)
+                                practiceToggle("Regular heat styling", isOn: $profile.usesHeat)
+                                practiceToggle("Chemical treatments (relaxers, dyes, perms)", isOn: $profile.usesChemicalTreatments)
+                            }
+                            Text("Sustained tension, heat and chemicals cause traction alopecia — preventable and reversible early.")
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                        }
+
+                        field("Baseline stage (optional)") {
+                            TextField("e.g. \(profile.sex.stagingScaleName) III", text: $profile.baselineStage)
+                                .textFieldStyle(.plain)
+                                .font(Clinical.caption(16))
+                                .padding(12)
+                                .background(Clinical.surface)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                        }
+
+                        Button("Save baseline", action: complete)
+                            .buttonStyle(ClinicalButtonStyle())
+                            .disabled(profile.name.trimmingCharacters(in: .whitespaces).count < 2)
+                            .opacity(profile.name.trimmingCharacters(in: .whitespaces).count < 2 ? 0.5 : 1)
+                            .accessibilityIdentifier("baselineSave")
+
+                        privacySection
+
+                        CloudAISettingsSection()
+
+                        ResearchConsentSection(consent: researchConsent, payload: researchPayload)
+
+                        if purchases.hasPro {
+                            subscriptionSection
+                        }
+
+                        StrandDivider()
+
+                        BackupRestoreSection()
+                            .id("backup")
+
+                        FeedbackSection()
+
+                        startOverSection(proxy: proxy)
+
+                        aboutFooter
                     }
-
-                    field("Baseline stage (optional)") {
-                        TextField("e.g. \(profile.sex.stagingScaleName) III", text: $profile.baselineStage)
-                            .textFieldStyle(.plain)
-                            .font(Clinical.caption(16))
-                            .padding(12)
-                            .background(Clinical.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
-                    }
-
-                    Button("Save baseline", action: complete)
-                        .buttonStyle(ClinicalButtonStyle())
-                        .disabled(profile.name.trimmingCharacters(in: .whitespaces).count < 2)
-                        .opacity(profile.name.trimmingCharacters(in: .whitespaces).count < 2 ? 0.5 : 1)
-                        .accessibilityIdentifier("baselineSave")
-
-                    privacySection
-
-                    CloudAISettingsSection()
-
-                    ResearchConsentSection(consent: researchConsent, payload: researchPayload)
-
-                    if purchases.hasPro {
-                        subscriptionSection
-                    }
-
-                    StrandDivider()
-
-                    BackupRestoreSection()
-                        .id("backup")
-
-                    FeedbackSection()
-
-                    startOverSection(proxy: proxy)
-
-                    aboutFooter
+                    .padding(20)
+                    .padding(.bottom, 24)
                 }
-                .padding(20)
-                .padding(.bottom, 24)
-            }
-            .clinicalScreen()
-            .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
-            .navigationTitle("Baseline")
-            .navigationBarTitleDisplayMode(.inline)
-            .fullScreenCover(isPresented: $replayOnboarding) {
-                OnboardingFlow(profile: profile,
-                               onFinish: { replayOnboarding = false },
-                               onDismiss: { replayOnboarding = false })
-            }
-            .toolbar {
-                if profile.hasOnboarded {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { complete() }
+                .clinicalScreen()
+                .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
+                .navigationTitle("Baseline")
+                .navigationBarTitleDisplayMode(.inline)
+                .fullScreenCover(isPresented: $replayOnboarding) {
+                    OnboardingFlow(profile: profile,
+                                   onFinish: { replayOnboarding = false },
+                                   onDismiss: { replayOnboarding = false })
+                }
+                .toolbar {
+                    if profile.hasOnboarded {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { complete() }
+                        }
                     }
                 }
-            }
             }
         }
     }
