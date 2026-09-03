@@ -158,4 +158,18 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
                       || app.staticTexts["Your starting plan"].waitForExistence(timeout: 2),
                       "after Open my plan the Plan tab with the starting plan must be showing")
     }
+
+    /// A quiet day is one tap: with yesterday logged and today empty, "Same as yesterday" exists
+    /// and turns into "Edit log" once tapped.
+    @MainActor
+    func testSameAsYesterdayLogsToday() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_NOTODAY"]
+        app.launch()
+        let chip = app.buttons["sameAsYesterday"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 10), "today is empty and yesterday exists — the chip must show")
+        chip.tap()
+        XCTAssertTrue(app.buttons["Edit log"].waitForExistence(timeout: 6), "one tap must produce today's log")
+        XCTAssertFalse(chip.exists, "the chip retires once today is logged")
+    }
 }

@@ -62,25 +62,34 @@ enum Seed {
             note: "Stinging after the evening application"
         ))
 
+        // HC_NOTODAY (debug): the quiet-day demo — today stays empty so "Same as yesterday" has
+        // something honest to offer. Only today's DailyEntry is withheld below; doses/snapshots
+        // for today are untouched.
+        let skipTodayEntry = ProcessInfo.processInfo.arguments.contains("HC_NOTODAY")
+
         for offset in stride(from: span, through: 0, by: -1) {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
-            if offset % 4 == 1 { continue } // realistic gaps
+            // Realistic gaps — except yesterday (offset 1), which "Same as yesterday" always
+            // needs a real entry to copy from.
+            if offset != 1 && offset % 4 == 1 { continue }
 
             let progress = Double(span - offset) / Double(span) // 0 → 1
             let noise = Double((offset * 7) % 9) - 4
 
             func clampBand(_ v: Double) -> Int { min(3, max(0, Int(v.rounded()))) }
-            _ = try? DailyEntryRepository(context: context, calendar: calendar).upsert(day: day) {
-                $0.shed = ShedLevel(rawValue: clampBand(2.4 - progress * 1.6 + noise * 0.15)) ?? .normal
-                $0.flaking = clampBand(1.6 - progress * 1.0 + noise * 0.1)
-                $0.erythema = clampBand(1.3 - progress * 0.9)
-                $0.itch = clampBand(1.4 - progress * 0.9 + noise * 0.1)
-                $0.sleepQuality = min(5, max(1, Int((3.2 + progress * 1.2 + noise * 0.1).rounded())))
-                $0.stress = min(5, max(1, Int((3.6 - progress * 1.1).rounded())))
-                $0.cigarettes = 0
-                $0.alcoholDrinks = offset % 6 == 0 ? 2 : 0
-                $0.oiliness = clampBand(1.4 - progress * 0.6)
-                $0.note = ""
+            if !(offset == 0 && skipTodayEntry) {
+                _ = try? DailyEntryRepository(context: context, calendar: calendar).upsert(day: day) {
+                    $0.shed = ShedLevel(rawValue: clampBand(2.4 - progress * 1.6 + noise * 0.15)) ?? .normal
+                    $0.flaking = clampBand(1.6 - progress * 1.0 + noise * 0.1)
+                    $0.erythema = clampBand(1.3 - progress * 0.9)
+                    $0.itch = clampBand(1.4 - progress * 0.9 + noise * 0.1)
+                    $0.sleepQuality = min(5, max(1, Int((3.2 + progress * 1.2 + noise * 0.1).rounded())))
+                    $0.stress = min(5, max(1, Int((3.6 - progress * 1.1).rounded())))
+                    $0.cigarettes = 0
+                    $0.alcoholDrinks = offset % 6 == 0 ? 2 : 0
+                    $0.oiliness = clampBand(1.4 - progress * 0.6)
+                    $0.note = ""
+                }
             }
 
             // A weekly HealthKit-style snapshot so Trends/AI have auto data to work with.
