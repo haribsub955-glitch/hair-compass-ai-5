@@ -2,9 +2,13 @@
 //  YesterdayCopy.swift
 //  Hair Compass AI 5
 //
-//  One tap on a quiet day: today's log becomes a copy of yesterday's self-reported values.
-//  Pure rules here — what may be offered, what is copied, which entry counts as yesterday — so
-//  TodayView only performs the write.
+//  One tap on a quiet day: today's log becomes a copy of yesterday's ratings. Pure rules here —
+//  what may be offered, what is copied, which entry counts as yesterday — so TodayView only
+//  performs the write. Only the seven self-reported ratings copy (shedRaw, flaking, erythema,
+//  itch, sleepQuality, stress, oiliness); the three event fields (cigarettes, alcoholDrinks,
+//  washedHair) never do, because they are counts of things that may not have happened today —
+//  and washedHair also feeds the clinician export, the research payload, and Wren's grounding
+//  facts.
 //
 
 import Foundation
@@ -15,7 +19,10 @@ enum YesterdayCopy {
         !todayLogged && yesterday != nil
     }
 
-    /// Every self-reported value; never the note, never the date.
+    /// The seven self-reported ratings; never the three event fields (cigarettes, alcoholDrinks,
+    /// washedHair — left at today's own defaults, since they're counts of things that may not
+    /// have happened today and washedHair also feeds the clinician export, the research payload,
+    /// and Wren's grounding facts), never the note, never the date.
     static func apply(from yesterday: DailyEntry, to today: DailyEntry) {
         today.shedRaw = yesterday.shedRaw
         today.flaking = yesterday.flaking
@@ -23,10 +30,7 @@ enum YesterdayCopy {
         today.itch = yesterday.itch
         today.sleepQuality = yesterday.sleepQuality
         today.stress = yesterday.stress
-        today.cigarettes = yesterday.cigarettes
-        today.alcoholDrinks = yesterday.alcoholDrinks
         today.oiliness = yesterday.oiliness
-        today.washedHair = yesterday.washedHair
     }
 
     /// The entry dated on the calendar day before `now`, whatever order the list arrives in.

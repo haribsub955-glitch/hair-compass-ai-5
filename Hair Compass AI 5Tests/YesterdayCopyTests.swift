@@ -25,22 +25,30 @@ struct YesterdayCopyTests {
         #expect(!YesterdayCopy.canOffer(todayLogged: false, yesterday: nil))
     }
 
-    @Test func copiesEverySelfReportedValueAndNoNote() {
+    @Test func copiesRatingsOnlyNeverEventsNoteOrDate() {
         let y = DailyEntry()
         y.shedRaw = ShedLevel.elevated.rawValue
         y.flaking = 2; y.erythema = 1; y.itch = 3
         y.sleepQuality = 4; y.stress = 2
-        y.cigarettes = 3; y.alcoholDrinks = 1; y.oiliness = 2
+        y.cigarettes = 7; y.alcoholDrinks = 2; y.oiliness = 2
         y.washedHair = true
         y.note = "private"
         let t = DailyEntry()
+        let originalDate = t.date
         YesterdayCopy.apply(from: y, to: t)
+        // The seven ratings copy.
         #expect(t.shedRaw == ShedLevel.elevated.rawValue)
         #expect(t.flaking == 2 && t.erythema == 1 && t.itch == 3)
         #expect(t.sleepQuality == 4 && t.stress == 2)
-        #expect(t.cigarettes == 3 && t.alcoholDrinks == 1 && t.oiliness == 2)
-        #expect(t.washedHair == true)
+        #expect(t.oiliness == 2)
+        // The three event fields are counts of things that may not have happened today (and
+        // washedHair feeds the clinician export, the research payload, and Wren's grounding
+        // facts) — they stay at DailyEntry's own defaults, never yesterday's.
+        #expect(t.cigarettes == 0, "cigarettes is an event count, never copied")
+        #expect(t.alcoholDrinks == 0, "alcoholDrinks is an event count, never copied")
+        #expect(t.washedHair == false, "washedHair is an event flag, never copied")
         #expect(t.note.isEmpty, "a note is personal and never copied")
+        #expect(t.date == originalDate, "the date is never copied")
     }
 
     @Test func yesterdayIsFoundByCalendarDayNotRecency() {

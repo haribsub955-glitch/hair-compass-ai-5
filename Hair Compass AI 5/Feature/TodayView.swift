@@ -111,6 +111,9 @@ struct TodayView: View {
     }
 
     var body: some View {
+        // Computed once per render and fed to both `canOffer` and the tap closure below, rather
+        // than looking yesterday's entry up twice (here and again inside `copyYesterday`).
+        let yesterday = YesterdayCopy.yesterdayEntry(in: entries)
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 ConditionsHero(
@@ -126,8 +129,8 @@ struct TodayView: View {
                     onLog: { showLog = true },
                     onCopyYesterday: YesterdayCopy.canOffer(
                         todayLogged: todayEntry != nil,
-                        yesterday: YesterdayCopy.yesterdayEntry(in: entries)
-                    ) ? { copyYesterday() } : nil,
+                        yesterday: yesterday
+                    ) ? { copyYesterday(yesterday: yesterday) } : nil,
                     xp: xpTotal,
                     levelProgress: GamificationLevel.progressToNext(xp: xpTotal).fraction,
                     onShedSet: { level in
@@ -268,10 +271,10 @@ struct TodayView: View {
         celebrationReward = reward
     }
 
-    /// One tap, one full entry: today becomes a copy of yesterday's self-reported values. The
-    /// hero flips to "Edit log" the moment the write lands, so a wrong tap is a one-tap fix.
-    private func copyYesterday() {
-        guard let yesterday = YesterdayCopy.yesterdayEntry(in: entries) else { return }
+    /// One tap, one full entry: today becomes a copy of yesterday's ratings. The hero flips to
+    /// "Edit log" the moment the write lands, so a wrong tap is a one-tap fix.
+    private func copyYesterday(yesterday: DailyEntry?) {
+        guard let yesterday else { return }
         do {
             try DailyEntryRepository(context: context).upsert(day: .now, updateExisting: false) { today in
                 YesterdayCopy.apply(from: yesterday, to: today)
