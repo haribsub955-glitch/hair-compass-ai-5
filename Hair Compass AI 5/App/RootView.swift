@@ -84,6 +84,10 @@ struct RootView: View {
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @State private var showTutorial = false
     @State private var deepLinks = DeepLinkRouter()
+    /// Set by BaselineFlow's "Erase" confirmation; honoured once the Profile sheet has fully
+    /// closed so no presented view still holds the profile being deleted.
+    @State private var pendingErase = false
+    @State private var eraseFailed = false
 
     // Evening check-in reminder — same AppStorage keys `CareView`'s toggle UI reads/writes.
     // `NotificationService.planEveningCheckIn` only ever schedules 3 non-repeating notifications
@@ -141,6 +145,32 @@ struct RootView: View {
     private var eveningCheckInPlanKey: String {
         let lastEntryDay = entries.first.map { "\(Calendar.current.startOfDay(for: $0.date).timeIntervalSince1970)" } ?? "none"
         return "\(eveningCheckInEnabled)|\(eveningCheckInMinutes)|\(hasLoggedToday)|\(lastEntryDay)"
+    }
+
+    // MARK: - Erase and start over
+
+    /// The wipe, then straight back to the illustrated cover. `hasSeenTutorial` is cleared
+    /// explicitly because @AppStorage caches its value in this view.
+    private func eraseAndStartOver() async {
+        do {
+            try await EraseAndStartOver.perform(context: context)
+        } catch {
+            // The wipe failed part-way. Roll back what has not been saved, make sure a profile
+            // exists again so the app is usable, and say so — a confirmed destructive action
+            // must never fail silently or leave the shell empty.
+            context.rollback()
+            let existing = (try? context.fetch(FetchDescriptor<Profile>())) ?? []
+            Seed.bootstrapIfNeeded(context: context, profiles: existing)
+            try? context.save()
+            eraseFailed = true
+            return
+        }
+        hasSeenTutorial = false
+        // The domain wipe clears UserDefaults (including the App Lock preference), but this live
+        // service instance still has the old value cached in memory — without this, a locked
+        // profile's Face ID gate would keep guarding the fresh, un-onboarded app.
+        appLock.isEnabled = false
+        showOnboarding = true
     }
 
     private static var initialTab: AppTab {
@@ -360,7 +390,11 @@ struct RootView: View {
         // while RemoteConfig.catalogURLString is unset; failures are silent (bundled links serve).
         .task { await affiliates.refresh() }
         .fullScreenCover(isPresented: Binding(
-            get: { launchPresentation.surface == .onboarding },
+            // `&& profile != nil` — after "Erase and start over" re-seeds a fresh Profile, the
+            // `@Query` that delivers it hasn't necessarily fired yet on this same run loop turn.
+            // Without the guard the cover could present before `profile` arrives, and the `if let
+            // profile` below would render nothing over a blank cover.
+            get: { launchPresentation.surface == .onboarding && profile != nil },
             // Preserve the request when a higher-precedence privacy/lock surface temporarily wins.
             set: { presented in
                 if !presented, launchPresentation.surface == .onboarding { showOnboarding = false }
@@ -393,16 +427,25 @@ struct RootView: View {
                 RitualView(kind: ritualKind) { self.ritualKind = nil }
             }
         }
-        .sheet(isPresented: $showProfileEdit) {
+        .sheet(isPresented: $showProfileEdit, onDismiss: {
+            guard pendingErase else { return }
+            pendingErase = false
+            Task { await eraseAndStartOver() }
+        }) {
             if let profile {
                 // BaselineFlow can replay onboarding from its own cover; inject here so that
                 // cover's health + paywall steps can read their services (presented content
                 // only inherits the environment of its attachment point).
-                BaselineFlow(profile: profile)
+                BaselineFlow(profile: profile, onEraseRequested: { pendingErase = true })
                     .environment(healthKit)
                     .environment(purchases)
                     .environment(accessWindow)
             }
+        }
+        .alert("Couldn't erase everything", isPresented: $eraseFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Some records may still be on this iPhone. Try again from Profile, or export a backup first and reinstall the app.")
         }
         .onChange(of: scenePhase) { _, phase in
             let decision = ScenePhaseDecision.reduce(

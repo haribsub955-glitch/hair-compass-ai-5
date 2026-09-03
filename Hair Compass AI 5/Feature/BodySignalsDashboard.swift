@@ -252,7 +252,11 @@ struct BodySignalsDashboard: View {
 
     @ViewBuilder
     private var signalContent: some View {
-        let visible = visibleSignals
+        // Built once per body pass and reused below — `seriesCache` walks every `BodySignal`
+        // through `BodySignalsMath.windowedSeries`, so calling it more than once here would
+        // redo that work for no reason.
+        let cache = seriesCache
+        let visible = BodySignal.allCases.filter { (cache[$0]?.count ?? 0) >= 2 }
         if !visible.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 Divider().overlay(Clinical.hairline)
@@ -265,7 +269,18 @@ struct BodySignalsDashboard: View {
         } else {
             switch healthKit.authorization {
             case .requestedQueryable:
-                requestedEmptyPrompt
+                // Health has answered and nothing can draw yet: the same shaded placeholder as
+                // every other Trends chart, with the most-populated metric's progress, above the
+                // existing explanation of why there is no in-app retry for a denied request.
+                VStack(alignment: .leading, spacing: 12) {
+                    ChartPlaceholder(
+                        required: 2,
+                        have: cache.values.map(\.count).max() ?? 0,
+                        unit: .readings,
+                        height: 110
+                    )
+                    requestedEmptyPrompt
+                }
             case .unavailable:
                 Text("Apple Health isn't available on this device — lifestyle factors stay manual.")
                     .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)

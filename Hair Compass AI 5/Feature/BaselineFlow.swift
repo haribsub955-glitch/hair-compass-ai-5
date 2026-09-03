@@ -7,6 +7,11 @@ import UniformTypeIdentifiers
 /// Also reused as the editable profile from the Today header.
 struct BaselineFlow: View {
     @Bindable var profile: Profile
+    /// Set by RootView. Called after the person confirms "Erase everything and start over";
+    /// the wipe itself runs in RootView once this sheet has closed, so no view is still
+    /// holding the profile it is about to delete.
+    var onEraseRequested: (() -> Void)? = nil
+    @State private var confirmErase = false
     @Environment(\.dismiss) private var dismiss
     @Environment(AppLockService.self) private var appLock
     /// Owned here rather than injected app-wide: nothing else reads it yet, because nothing acts
@@ -42,122 +47,127 @@ struct BaselineFlow: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
-                    intro
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        intro
 
-                    replayRow
+                        replayRow
 
-                    field("Your name") {
-                        TextField("Name", text: $profile.name)
-                            .textFieldStyle(.plain)
-                            .font(Clinical.caption(16))
-                            .padding(12)
-                            .background(Clinical.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
-                            .accessibilityIdentifier("baselineName")
-                    }
+                        field("Your name") {
+                            TextField("Name", text: $profile.name)
+                                .textFieldStyle(.plain)
+                                .font(Clinical.caption(16))
+                                .padding(12)
+                                .background(Clinical.surface)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                                .accessibilityIdentifier("baselineName")
+                        }
 
-                    field("Biological sex") {
-                        ClinicalSegmented(options: BiologicalSex.allCases, label: { $0.title }, selection: $profile.sex)
-                        Text("Sets the staging scale: \(profile.sex.stagingScaleName).")
-                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                    }
-
-                    field("Age") {
-                        chips(ageBands, selected: profile.ageBand) { profile.ageBand = $0 }
-                    }
-
-                    if profile.sex == .female {
-                        field("Pregnancy") {
-                            let opts: [PregnancyStatus] = [.no, .pregnant, .tryingToConceive, .breastfeeding, .unspecified]
-                            chips(opts.map(\.title), selected: profile.pregnancyStatus.title) { title in
-                                if let match = opts.first(where: { $0.title == title }) { profile.pregnancyStatus = match }
-                            }
-                            Text("Lets the plan flag medications usually avoided in or around pregnancy. Stays private to your device.")
+                        field("Biological sex") {
+                            ClinicalSegmented(options: BiologicalSex.allCases, label: { $0.title }, selection: $profile.sex)
+                            Text("Sets the staging scale: \(profile.sex.stagingScaleName).")
                                 .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
-                    }
 
-                    field("What are you tracking?") {
-                        VStack(spacing: 8) {
-                            ForEach(HairCondition.allCases) { c in
-                                conditionRow(c)
+                        field("Age") {
+                            chips(ageBands, selected: profile.ageBand) { profile.ageBand = $0 }
+                        }
+
+                        if profile.sex == .female {
+                            field("Pregnancy") {
+                                let opts: [PregnancyStatus] = [.no, .pregnant, .tryingToConceive, .breastfeeding, .unspecified]
+                                chips(opts.map(\.title), selected: profile.pregnancyStatus.title) { title in
+                                    if let match = opts.first(where: { $0.title == title }) { profile.pregnancyStatus = match }
+                                }
+                                Text("Lets the plan flag medications usually avoided in or around pregnancy. Stays private to your device.")
+                                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                             }
                         }
-                    }
 
-                    field("Family history of hair loss") {
-                        chips(FamilyHistory.allCases.map(\.title), selected: profile.familyHistory.title) { title in
-                            if let match = FamilyHistory.allCases.first(where: { $0.title == title }) {
-                                profile.familyHistory = match
+                        field("What are you tracking?") {
+                            VStack(spacing: 8) {
+                                ForEach(HairCondition.allCases) { c in
+                                    conditionRow(c)
+                                }
                             }
                         }
-                        Text("The single strongest measured risk factor for pattern loss.")
-                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                    }
 
-                    field("Hair-care practices") {
-                        VStack(spacing: 10) {
-                            practiceToggle("Tight styles (braids, ponytails, extensions)", isOn: $profile.wearsTightStyles)
-                            practiceToggle("Regular heat styling", isOn: $profile.usesHeat)
-                            practiceToggle("Chemical treatments (relaxers, dyes, perms)", isOn: $profile.usesChemicalTreatments)
+                        field("Family history of hair loss") {
+                            chips(FamilyHistory.allCases.map(\.title), selected: profile.familyHistory.title) { title in
+                                if let match = FamilyHistory.allCases.first(where: { $0.title == title }) {
+                                    profile.familyHistory = match
+                                }
+                            }
+                            Text("The single strongest measured risk factor for pattern loss.")
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                         }
-                        Text("Sustained tension, heat and chemicals cause traction alopecia — preventable and reversible early.")
-                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+
+                        field("Hair-care practices") {
+                            VStack(spacing: 10) {
+                                practiceToggle("Tight styles (braids, ponytails, extensions)", isOn: $profile.wearsTightStyles)
+                                practiceToggle("Regular heat styling", isOn: $profile.usesHeat)
+                                practiceToggle("Chemical treatments (relaxers, dyes, perms)", isOn: $profile.usesChemicalTreatments)
+                            }
+                            Text("Sustained tension, heat and chemicals cause traction alopecia — preventable and reversible early.")
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                        }
+
+                        field("Baseline stage (optional)") {
+                            TextField("e.g. \(profile.sex.stagingScaleName) III", text: $profile.baselineStage)
+                                .textFieldStyle(.plain)
+                                .font(Clinical.caption(16))
+                                .padding(12)
+                                .background(Clinical.surface)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+                        }
+
+                        Button("Save baseline", action: complete)
+                            .buttonStyle(ClinicalButtonStyle())
+                            .disabled(profile.name.trimmingCharacters(in: .whitespaces).count < 2)
+                            .opacity(profile.name.trimmingCharacters(in: .whitespaces).count < 2 ? 0.5 : 1)
+                            .accessibilityIdentifier("baselineSave")
+
+                        privacySection
+
+                        CloudAISettingsSection()
+
+                        ResearchConsentSection(consent: researchConsent, payload: researchPayload)
+
+                        if purchases.hasPro {
+                            subscriptionSection
+                        }
+
+                        StrandDivider()
+
+                        BackupRestoreSection()
+                            .id("backup")
+
+                        FeedbackSection()
+
+                        startOverSection(proxy: proxy)
+
+                        aboutFooter
                     }
-
-                    field("Baseline stage (optional)") {
-                        TextField("e.g. \(profile.sex.stagingScaleName) III", text: $profile.baselineStage)
-                            .textFieldStyle(.plain)
-                            .font(Clinical.caption(16))
-                            .padding(12)
-                            .background(Clinical.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
-                    }
-
-                    Button("Save baseline", action: complete)
-                        .buttonStyle(ClinicalButtonStyle())
-                        .disabled(profile.name.trimmingCharacters(in: .whitespaces).count < 2)
-                        .opacity(profile.name.trimmingCharacters(in: .whitespaces).count < 2 ? 0.5 : 1)
-                        .accessibilityIdentifier("baselineSave")
-
-                    privacySection
-
-                    CloudAISettingsSection()
-
-                    ResearchConsentSection(consent: researchConsent, payload: researchPayload)
-
-                    if purchases.hasPro {
-                        subscriptionSection
-                    }
-
-                    StrandDivider()
-
-                    BackupRestoreSection()
-
-                    FeedbackSection()
-
-                    aboutFooter
+                    .padding(20)
+                    .padding(.bottom, 24)
                 }
-                .padding(20)
-                .padding(.bottom, 24)
-            }
-            .clinicalScreen()
-            .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
-            .navigationTitle("Baseline")
-            .navigationBarTitleDisplayMode(.inline)
-            .fullScreenCover(isPresented: $replayOnboarding) {
-                OnboardingFlow(profile: profile,
-                               onFinish: { replayOnboarding = false },
-                               onDismiss: { replayOnboarding = false })
-            }
-            .toolbar {
-                if profile.hasOnboarded {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { complete() }
+                .clinicalScreen()
+                .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
+                .navigationTitle("Baseline")
+                .navigationBarTitleDisplayMode(.inline)
+                .fullScreenCover(isPresented: $replayOnboarding) {
+                    OnboardingFlow(profile: profile,
+                                   onFinish: { replayOnboarding = false },
+                                   onDismiss: { replayOnboarding = false })
+                }
+                .toolbar {
+                    if profile.hasOnboarded {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { complete() }
+                        }
                     }
                 }
             }
@@ -304,6 +314,38 @@ struct BaselineFlow: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("manageSubscription")
+        }
+    }
+
+    /// The one destructive action in the app. Deliberately last, deliberately plain — no
+    /// card, no icon — and it always asks. The subscription and the 3-day window survive it.
+    private func startOverSection(proxy: ScrollViewProxy) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(role: .destructive) { confirmErase = true } label: {
+                Text("Erase everything and start over")
+                    .font(Clinical.body(15, weight: .medium))
+                    .foregroundStyle(Clinical.critical)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("eraseStartOver")
+            Text("Removes every record and photo on this iPhone and returns to the first-run setup. Your subscription is not affected.")
+                .font(Clinical.caption(12))
+                .foregroundStyle(Clinical.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 8)
+        .alert("Erase everything?", isPresented: $confirmErase) {
+            Button("Export first") {
+                withAnimation { proxy.scrollTo("backup", anchor: .top) }
+            }
+            Button("Erase", role: .destructive) {
+                onEraseRequested?()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All records on this iPhone will be erased and the app starts from the beginning. Export a backup first if you want to keep them. Your subscription is not affected.")
         }
     }
 

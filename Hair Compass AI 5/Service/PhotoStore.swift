@@ -9,20 +9,45 @@ final class PhotoStore {
     // plain file I/O with no actor-isolated state, and background exporters (backup, the visit
     // PDF) need to call them from a detached task without hopping back to the main actor.
     nonisolated static let shared = PhotoStore()
-    private init() {}
 
     // `nonisolated(unsafe)`, not just `nonisolated`: `NSCache` isn't `Sendable`-annotated in the
     // SDK even though it's documented thread-safe, so this opts out of that check rather than
     // the actor-isolation one (already handled by `nonisolated` on the methods that use it).
     nonisolated(unsafe) private let cache = NSCache<NSString, UIImage>()
 
+    /// Tests point the store at a temporary folder; the app never passes this.
+    nonisolated private let directoryOverride: URL?
+
+    private init() {
+        directoryOverride = nil
+    }
+
+    /// Tests only — a second store over the same directory a production instance already owns
+    /// would race its cache, so this is the only door open to callers other than `.shared`.
+    init(testDirectory: URL) {
+        directoryOverride = testDirectory
+    }
+
     nonisolated private var directory: URL {
-        let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dir = base.appendingPathComponent("ScalpPhotos", isDirectory: true)
+        let dir: URL
+        if let directoryOverride {
+            dir = directoryOverride
+        } else {
+            let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            dir = base.appendingPathComponent("ScalpPhotos", isDirectory: true)
+        }
         if !FileManager.default.fileExists(atPath: dir.path) {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         return dir
+    }
+
+    /// Removes every stored photo file and clears the thumbnail cache. Only "Erase everything
+    /// and start over" calls this.
+    func deleteAll() {
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        for url in files { try? FileManager.default.removeItem(at: url) }
+        cache.removeAllObjects()
     }
 
     /// Returns the stored file name (relative path) on success.

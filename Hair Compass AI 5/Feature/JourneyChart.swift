@@ -54,7 +54,7 @@ struct JourneyChart: View {
         // pushed the chart itself below the fold's midline.
         VStack(alignment: .leading, spacing: 12) {
             if data.shedPoints.count < 2 {
-                thinDataPlaceholder
+                thinDataPlaceholder(data)
             } else {
                 // Round-9: one `RevealOnce` now drives both halves of the instrument — the shed
                 // line inks across the top chart AND the dose rug rises left-to-right beneath it
@@ -417,18 +417,10 @@ struct JourneyChart: View {
 
     // MARK: Thin-data placeholder
 
-    private var thinDataPlaceholder: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Image(systemName: "chart.xyaxis.line")
-                    .font(Clinical.caption(16)).foregroundStyle(Clinical.tertiary)
-                Text("Keep logging to see your journey")
-                    .font(Clinical.body(14, weight: .medium)).foregroundStyle(Clinical.secondary)
-            }
-            Text("Two or more daily logs in this window unlock the timeline.")
-                .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
-        }
-        .padding(.vertical, 8)
+    /// Same height as the live shed chart (`.frame(height: 180)` below), so nothing jumps the
+    /// moment the second log lands and the real timeline takes its place.
+    private func thinDataPlaceholder(_ data: JourneyData) -> some View {
+        ChartPlaceholder(required: 2, have: data.shedPoints.count, unit: .dailyLogs, height: 180)
     }
 }
 
