@@ -116,6 +116,8 @@ struct ConditionsHero: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: showsHeader ? Self.heroHeight : Self.headerlessHeroHeight, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("conditionsHero")
     }
 
     // MARK: - Scene (backdrop + drag-to-set)

@@ -253,29 +253,29 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(waitFor(circle, value: "Skipped", timeout: 4), "the row settles as Skipped once the reason is recorded")
     }
 
-    /// Today opens on the horizon and one grounding card; "Why this?" reveals the reason.
+    /// Today opens on its signature conditions scene, followed by one grounding note; "Why
+    /// this?" reveals the reason without turning the first screen into a dashboard stack.
     @MainActor
     func testGroundingCardExplainsItself() throws {
         let app = XCUIApplication()
         app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL"]
         app.launch()
-        XCTAssertTrue(app.otherElements["calmHorizon"].waitForExistence(timeout: 10), "the horizon header leads the page")
+        XCTAssertTrue(app.otherElements["conditionsHero"].waitForExistence(timeout: 10),
+                      "the full-bleed conditions hero leads the page")
         let card = app.otherElements["groundingCard"]
-        XCTAssertTrue(card.waitForExistence(timeout: 4), "one grounding card follows it")
+        XCTAssertTrue(card.waitForExistence(timeout: 4), "one grounding note follows it")
         XCTAssertTrue(app.otherElements["evidenceRibbon"].exists)
         app.buttons["groundingWhy"].tap()
         XCTAssertTrue(app.staticTexts["groundingReason"].waitForExistence(timeout: 4), "Why this? shows the reason")
         XCTAssertFalse(app.buttons["tutorialSkip"].exists, "the card tour is gone")
         XCTAssertFalse(app.buttons["Skip the tour"].exists, "the card tour is gone")
 
-        // Important 8: the headerless shedding scene should close its gap — a scrolled
-        // screenshot for a human look, since "no blank band above TODAY'S SHEDDING" is a
-        // visual claim no assertion can make on its own.
+        // Keep a scrolled screenshot for a human look at the note → plan transition.
         app.swipeUp()
         let screenshot = app.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.lifetime = .keepAlways
-        attachment.name = "g2-shedding-scene"
+        attachment.name = "minimal-today-note"
         add(attachment)
         try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/private/tmp/claude-501/-Users-haribazri-Hair-Compass-AI-5/ff0a543b-cd29-4e99-83c4-0d3dc9b8f4cb/scratchpad/g2-shedding-scene.png"))
     }

@@ -290,13 +290,46 @@ struct TodayView: View {
         let celebratesNow = activeCelebrationDay == dayKey
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                // Today's new order (G2): the horizon says where the person is in the plan, one
-                // deterministic grounding note answers "what should I pay attention to", the plan
-                // is the day's actions, the evidence ribbon is the supporting numbers. The
-                // shedding scene, rings and tile ledger follow as the record's detail.
+                // Restore Today's signature: the full-bleed shedding scene is the first read,
+                // with date, greeting and profile exactly where returning users expect them.
+                // Plan timing already has a richer home in Plan's Living Evidence Path; repeating
+                // a large horizon above this scene made Today feel like a new, busier product.
+                ConditionsHero(
+                    shed: todayEntry?.shed,
+                    scalpTotal: todayEntry?.scalpTotal,
+                    scalpBand: todayEntry?.scalpBand,
+                    hasLoggedToday: todayEntry != nil,
+                    greeting: greeting,
+                    showsHeader: true,
+                    onOpenBaseline: onOpenBaseline,
+                    onLog: { showLog = true },
+                    onCopyYesterday: YesterdayCopy.canOffer(
+                        todayLogged: todayEntry != nil,
+                        yesterday: yesterday
+                    ) ? { copyYesterday(yesterday: yesterday) } : nil,
+                    onShedSet: { level in
+                        // Quiet by design — a drag-set upserts today's entry directly, with no
+                        // celebration sheet. Streak/XP queries refresh naturally from the write.
+                        if let entry = todayEntry {
+                            entry.shed = level
+                        } else {
+                            try? DailyEntryRepository(context: context).upsert(day: .now) {
+                                $0.shed = level
+                            }
+                        }
+                    }
+                )
+                .staggeredEntrance(index: 0)
+                if showsReminderNudge {
+                    reminderNudgeCard
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                        .transition(.opacity)
+                }
                 VStack(alignment: .leading, spacing: 16) {
-                    CalmHorizonHeader(greeting: greeting, phase: evidencePhase, onOpenBaseline: onOpenBaseline)
-                        .staggeredEntrance(index: 0)
+                    // The new intelligence sits inside the earlier hierarchy: one quiet editorial
+                    // note, today's tappable plan, then supporting evidence. It informs the page
+                    // without replacing the beautiful at-a-glance conditions view.
                     if let displayedCard {
                         GroundingCardView(
                             card: displayedCard,
@@ -322,19 +355,14 @@ struct TodayView: View {
                         },
                         onUndo: { occurrence in
                             // Undo is keyed by the action's natural identity, not the row's
-                            // captured render state. SwiftUI may preserve a row closure across
-                            // its due → completed transition; relying on that stale enum made the
-                            // visible Undo a no-op. Only one record type should exist, and safely
-                            // attempting both also repairs an inconsistent legacy pair.
+                            // captured render state. Safely attempting both record types also
+                            // repairs an inconsistent legacy pair.
                             _ = try? DoseRepository(context: context).delete(
                                 treatment: occurrence.treatment, day: occurrence.day, slot: occurrence.slot
                             )
                             _ = try? MissedDoseRepository(context: context).delete(
                                 treatment: occurrence.treatment, day: occurrence.day, slot: occurrence.slot
                             )
-                            // Commit the rollback as one transaction. In particular, a deleted
-                            // SwiftData row does not always invalidate an unsorted @Query before
-                            // autosave; saving here makes the row's open state observable now.
                             try? context.save()
                         },
                         onSkip: { skipCandidate = $0 },
@@ -346,48 +374,6 @@ struct TodayView: View {
                     EvidenceRibbon(weekSummary: weekSummary, consistency30: consistency30,
                                    photo: photoStatus, phase: evidencePhase)
                         .staggeredEntrance(index: 3)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-
-                ConditionsHero(
-                    shed: todayEntry?.shed,
-                    scalpTotal: todayEntry?.scalpTotal,
-                    scalpBand: todayEntry?.scalpBand,
-                    hasLoggedToday: todayEntry != nil,
-                    greeting: greeting,
-                    showsHeader: false,
-                    onOpenBaseline: onOpenBaseline,
-                    onLog: { showLog = true },
-                    onCopyYesterday: YesterdayCopy.canOffer(
-                        todayLogged: todayEntry != nil,
-                        yesterday: yesterday
-                    ) ? { copyYesterday(yesterday: yesterday) } : nil,
-                    onShedSet: { level in
-                        // Quiet by design — a drag-set upserts today's entry directly, with no
-                        // celebration sheet. Streak/XP queries refresh naturally from the write.
-                        if let entry = todayEntry {
-                            entry.shed = level
-                        } else {
-                            try? DailyEntryRepository(context: context).upsert(day: .now) {
-                                $0.shed = level
-                            }
-                        }
-                    }
-                )
-                .staggeredEntrance(index: 4)
-                .padding(.top, 20)
-                if showsReminderNudge {
-                    reminderNudgeCard
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
-                        .transition(.opacity)
-                }
-                VStack(alignment: .leading, spacing: 16) {
-                    // Entrance sequence continues from the horizon/note/plan/ribbon group (0…3)
-                    // and the hero (4): rings 5 (shares its 50ms step with the grid's own tile 1
-                    // below — a harmless timing overlap, not a functional dependency), tiles 1…6
-                    // (inside the grid, indices owned by TodayTileGrid), cards continue at 9…11.
                     CompassRingsCard(
                         score: compassScore,
                         medsDone: medsDone,
@@ -395,7 +381,7 @@ struct TodayView: View {
                         isDayOneSeed: isDayOneSeed,
                         onLog: { showLog = true }
                     )
-                    .staggeredEntrance(index: 5)
+                    .staggeredEntrance(index: 4)
                     TodayTileGrid(
                         entry: todayEntry,
                         sleepHours: todaySleepHours,
