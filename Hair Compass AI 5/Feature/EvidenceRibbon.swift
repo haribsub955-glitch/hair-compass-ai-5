@@ -2,7 +2,7 @@
 //  EvidenceRibbon.swift
 //  Hair Compass AI 5
 //
-//  Four quiet lines of supporting evidence — this week, the last thirty days, the next photo,
+//  Four journal tiles of supporting evidence — this week, the last thirty days, the next photo,
 //  the next review. Numbers here are subordinate to the decision above them; none is a score.
 //
 
@@ -45,18 +45,20 @@ struct EvidenceRibbon: View {
     let consistency30: PlanAdherence.Consistency?
     let photo: PhotoCadence.Status
     let phase: EvidencePhase?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Eyebrow(text: "Your evidence")
-            VStack(spacing: 0) {
-                row("This week", EvidenceRibbonCopy.weekLine(weekSummary))
-                Divider().overlay(Clinical.hairline)
-                row("Last 30 days", EvidenceRibbonCopy.monthLine(consistency30))
-                Divider().overlay(Clinical.hairline)
-                row("Next photo", EvidenceRibbonCopy.photoLine(photo))
-                Divider().overlay(Clinical.hairline)
-                row("Next review", EvidenceRibbonCopy.reviewLine(phase))
+        VStack(alignment: .leading, spacing: 12) {
+            Text("The longer view").font(Clinical.headline(24)).foregroundStyle(Clinical.ink)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .top), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2), spacing: 12) {
+                JournalMetricTile(title: "This week", value: EvidenceRibbonCopy.weekLine(weekSummary),
+                                  caption: "Scheduled care", symbol: "leaf", tint: Clinical.positive)
+                JournalMetricTile(title: "Last 30 days", value: EvidenceRibbonCopy.monthLine(consistency30),
+                                  caption: "Your recorded consistency", symbol: "calendar", tint: Clinical.positive)
+                JournalMetricTile(title: "Next photo", value: EvidenceRibbonCopy.photoLine(photo),
+                                  caption: "Match your previous setup", symbol: "camera", tint: Clinical.accent)
+                JournalMetricTile(title: "Next review", value: EvidenceRibbonCopy.reviewLine(phase),
+                                  caption: "Time to consider the record", symbol: "safari", tint: Clinical.gold)
             }
         }
         .accessibilityElement(children: .contain)

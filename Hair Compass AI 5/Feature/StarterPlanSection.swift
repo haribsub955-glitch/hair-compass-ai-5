@@ -18,18 +18,29 @@ struct StarterPlanSection: View {
     let onTap: (StarterPlanItem) -> Void
     let onDismiss: (StarterPlanItem) -> Void
     let onUndo: () -> Void
+    @State private var showOptional = false
+    @State private var showRecorded = false
+
+    private func isOptional(_ item: StarterPlanItem) -> Bool {
+        switch item.kind {
+        case .setup(.addTreatments), .setup(.enterLabs), .setup(.reminders): return true
+        default: return false
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if showsCloser {
+            if showsCloser && !showRecorded {
                 closer
+                Button("Review starting steps") { showRecorded = true }
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.accent).minimumHitTarget()
                 if canUndo {
                     undoButton
                 }
             } else {
                 header
                 ForEach(StarterPlanGroup.allCases) { group in
-                    let inGroup = items.filter { $0.group == group }
+                    let inGroup = items.filter { $0.group == group && !$0.isDone && !isOptional($0) }
                     if !inGroup.isEmpty {
                         groupBlock(group, inGroup)
                     }
@@ -37,12 +48,28 @@ struct StarterPlanSection: View {
                 if canUndo {
                     undoButton
                 }
-                Text(TreatmentRecommender.disclaimer)
+                let optional = items.filter { isOptional($0) && !$0.isDone }
+                if !optional.isEmpty {
+                    DisclosureGroup("Optional setup · \(optional.count)", isExpanded: $showOptional) {
+                        ForEach(optional) { row($0) }
+                    }
+                    .font(Clinical.caption(13)).tint(Clinical.accent)
+                }
+                let recorded = items.filter(\.isDone)
+                if !recorded.isEmpty {
+                    DisclosureGroup("Already recorded · \(recorded.count)", isExpanded: $showRecorded) {
+                        ForEach(recorded) { row($0) }
+                    }
+                    .font(Clinical.caption(13)).tint(Clinical.accent)
+                }
+                Text(StarterPlan.disclaimer)
                     .font(Clinical.caption(11))
                     .foregroundStyle(Clinical.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
+                StarterPlanSources()
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("starterPlanSection")
     }
 
@@ -59,11 +86,11 @@ struct StarterPlanSection: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Eyebrow(text: "Set up your plan")
+            Eyebrow(text: "One step at a time")
             Text("Your starting plan")
                 .font(Clinical.headline(22))
                 .foregroundStyle(Clinical.ink)
-            Text("What's worth asking about, what the evidence supports, and the few things that make the record useful. Tick them off, or say not for me.")
+            Text("Start with a photo and a clinician conversation. Then record the care you agree on. You do not have to do everything today.")
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -97,7 +124,6 @@ struct StarterPlanSection: View {
                     Text(item.title)
                         .font(Clinical.body(15, weight: .medium))
                         .foregroundStyle(item.isDone ? Clinical.secondary : Clinical.ink)
-                        .strikethrough(item.isDone, color: Clinical.tertiary)
                     Text(item.why)
                         .font(Clinical.caption(12))
                         .foregroundStyle(Clinical.secondary)
@@ -137,14 +163,14 @@ struct StarterPlanSection: View {
             Image(systemName: "checkmark.seal.fill")
                 .font(Clinical.body(16))
                 .foregroundStyle(Clinical.accent)
-            Text("Starting plan done — your ritual takes it from here.")
+            Text("Your starting steps are recorded or set aside. Keep the review date you agreed with your clinician.")
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Starting plan done — your ritual takes it from here.")
+        .accessibilityLabel("Your starting steps are recorded or set aside. Keep the review date you agreed with your clinician.")
         .accessibilityIdentifier("starterPlanCloser")
     }
 }

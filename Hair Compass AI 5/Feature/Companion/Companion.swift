@@ -23,6 +23,17 @@ enum CompanionMoment: CaseIterable {
     case celebrating   // milestone / streak celebration
 }
 
+/// Whole-pose motion only: Wren's painted expression remains the source of personality while
+/// this profile adds a little breath and attention. Values are intentionally tiny and bounded;
+/// there is no lateral drift, bounce, spin, or comic anticipation.
+struct CompanionMotionProfile: Equatable {
+    let breath: Double
+    let verticalTravel: Double
+    let tiltDegrees: Double
+    let period: Double
+    let phase: Double
+}
+
 /// The three pieces of the app Wren teaches during the first week. These are navigation
 /// destinations, not treatment recommendations: Wren asks the person to record what is already
 /// true, then gives slow-moving hair data enough time to become useful.
@@ -110,7 +121,28 @@ enum Companion {
         case .listening:   return CompanionArt.listening
         case .thinking:    return CompanionArt.thinking
         case .searching:   return CompanionArt.searching
-        case .celebrating: return CompanionArt.celebrating
+        // Milestones stay warm but composed. The old open-wing pose remains in the catalog for
+        // compatibility, but a folded-wing attentive pose better matches Wren's quieter role.
+        case .celebrating: return CompanionArt.listening
+        }
+    }
+
+    /// Subtle expression rhythm for each semantic state. The longest, smallest movements belong
+    /// to listening/thinking; greeting and a completed milestone lift only slightly more.
+    static func motion(for moment: CompanionMoment) -> CompanionMotionProfile {
+        switch moment {
+        case .resting:
+            return .init(breath: 0.003, verticalTravel: 0.45, tiltDegrees: 0.18, period: 12.0, phase: 1.2)
+        case .greeting:
+            return .init(breath: 0.004, verticalTravel: 0.65, tiltDegrees: 0.42, period: 10.5, phase: 0.2)
+        case .listening:
+            return .init(breath: 0.0025, verticalTravel: 0.30, tiltDegrees: 0.30, period: 13.0, phase: 2.1)
+        case .thinking:
+            return .init(breath: 0.0025, verticalTravel: 0.35, tiltDegrees: 0.62, period: 14.0, phase: 3.0)
+        case .searching:
+            return .init(breath: 0.003, verticalTravel: 0.40, tiltDegrees: 0.48, period: 12.5, phase: 4.1)
+        case .celebrating:
+            return .init(breath: 0.0045, verticalTravel: 0.75, tiltDegrees: 0.38, period: 9.5, phase: 0.8)
         }
     }
 
@@ -188,7 +220,7 @@ enum Companion {
         case .searching:
             return "Nothing here yet. Add something and I'll help you see what changes."
         case .celebrating:
-            return "You showed up. That consistency is the part that actually moves hair."
+            return "You showed up. That consistency makes the record easier to interpret."
         case .resting, .listening, .thinking:
             return nil
         }

@@ -70,6 +70,7 @@ struct RootView: View {
     @State private var tab: AppTab = RootView.initialTab
     @State private var didBootstrap = false
     @State private var showOnboarding = false
+    @State private var onboardingPlanHandoff = false
     @State private var showProfileEdit = false
     @State private var healthKit = HealthKitService()
     @State private var notifications = NotificationService()
@@ -213,7 +214,14 @@ struct RootView: View {
             ProGate(feature: "Trends & Evidence",
                     symbol: "chart.xyaxis.line",
                     description: "Deterministic charts of your record over time — part of Hair Compass Pro.") {
-                TrendsView()
+                TrendsView(
+                    onLogToday: {
+                        tab = .today
+                        deepLinks.openLogRequested = true
+                    },
+                    onOpenPlan: { tab = .care },
+                    onOpenPhotos: { tab = .photos }
+                )
             }
         case .care:
             CareView(
@@ -222,8 +230,10 @@ struct RootView: View {
                     deepLinks.openLogRequested = true
                 },
                 onOpenLabs: { tab = .labs },
-                onOpenPhotos: { tab = .photos }
+                onOpenPhotos: { tab = .photos },
+                startsWithRoadmap: onboardingPlanHandoff
             )
+            .id(onboardingPlanHandoff)
         case .labs:
             ProGate(feature: "Lab Results",
                     symbol: "testtube.2",
@@ -249,6 +259,9 @@ struct RootView: View {
         // Design V2: a quiet crossfade connects destinations while the matched tab pill carries
         // spatial continuity. Reduce Motion keeps only the short fade.
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.22), value: tab)
+        .onChange(of: tab) { _, destination in
+            if destination != .care { onboardingPlanHandoff = false }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Reserve real layout space for navigation. The previous overlay obscured the final
         // card on every tab and made users scroll content underneath an active control.
@@ -459,7 +472,9 @@ struct RootView: View {
             // `@Query` that delivers it hasn't necessarily fired yet on this same run loop turn.
             // Without the guard the cover could present before `profile` arrives, and the `if let
             // profile` below would render nothing over a blank cover.
-            get: { launchPresentation.surface == .onboarding && profile != nil },
+            // Privacy remains the top window during system permission/purchase sheets, but the
+            // underlying flow must stay mounted so its state and StoreKit presenter survive.
+            get: { launchPresentation.keepsOnboardingMounted && profile != nil },
             // Preserve the request when a higher-precedence privacy/lock surface temporarily wins.
             set: { presented in
                 if !presented, launchPresentation.surface == .onboarding { showOnboarding = false }
@@ -471,6 +486,7 @@ struct RootView: View {
                 // modifiers below. Without re-injecting directly on the cover's content, onboarding's
                 // health step and paywall step would crash reading their `@Environment(...)`.
                 OnboardingFlow(profile: profile, onFinish: {
+                    onboardingPlanHandoff = true
                     showOnboarding = false
                     tab = .care
                 })

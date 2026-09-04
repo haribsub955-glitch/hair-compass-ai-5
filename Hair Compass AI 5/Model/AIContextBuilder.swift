@@ -64,7 +64,7 @@ struct AIContext: Codable, Equatable, Sendable {
         struct Day: Codable, Equatable, Sendable {
             var date: String         // "yyyy-MM-dd"
             var shed: Int?           // 0–3 (ShedLevel)
-            var scalpTotal: Int?     // 0–16 validated SD score
+            var scalpTotal: Int?     // 0–16 self-reported score adapted from Zhang 2023
             var sleepQuality: Int?   // 1–5 subjective
             var stress: Int?         // 1–5
             var oiliness: Int?       // 0–3
@@ -221,23 +221,27 @@ struct AIContext: Codable, Equatable, Sendable {
                 .filter { $0.date >= horizonStart }
                 .suffix(dailyWindowDays)
         )
-        let shedValues = windowed.map { Double($0.shed.rawValue) }
-        let scalpValues = windowed.map { Double($0.scalpTotal) }
+        let shedPoints = windowed.filter { $0.hasRecorded(.shedding) }
+            .map { (day: $0.date, value: Double($0.shed.rawValue)) }
+        let scalpPoints = windowed.filter(\.hasCompleteScalpRecording)
+            .map { (day: $0.date, value: Double($0.scalpTotal)) }
+        let shedValues = shedPoints.map(\.value)
+        let scalpValues = scalpPoints.map(\.value)
         let dailySeries = DailySeries(
             days: windowed.map { e in
                 DailySeries.Day(
                     date: dayString(e.date, calendar: calendar),
-                    shed: e.shed.rawValue,
-                    scalpTotal: e.scalpTotal,
-                    sleepQuality: e.sleepQuality,
-                    stress: e.stress,
-                    oiliness: e.oiliness
+                    shed: e.hasRecorded(.shedding) ? e.shed.rawValue : nil,
+                    scalpTotal: e.hasCompleteScalpRecording ? e.scalpTotal : nil,
+                    sleepQuality: e.hasRecorded(.sleepQuality) ? e.sleepQuality : nil,
+                    stress: e.hasRecorded(.stress) ? e.stress : nil,
+                    oiliness: e.hasRecorded(.oiliness) ? e.oiliness : nil
                 )
             },
-            shed7d: ChartMath.rollingMean(shedValues, window: 7).last.map(round1),
-            shedDirection: windowed.count >= 3 ? round2(HairAnalytics.direction(shedValues)) : nil,
-            scalp7d: ChartMath.rollingMean(scalpValues, window: 7).last.map(round1),
-            scalpDirection: windowed.count >= 3 ? round2(HairAnalytics.direction(scalpValues)) : nil
+            shed7d: ChartMath.trailingCalendarMean(shedPoints, windowDays: 7, calendar: calendar).last.map { round1($0.value) },
+            shedDirection: shedValues.count >= 5 ? round2(HairAnalytics.direction(shedValues)) : nil,
+            scalp7d: ChartMath.trailingCalendarMean(scalpPoints, windowDays: 7, calendar: calendar).last.map { round1($0.value) },
+            scalpDirection: scalpValues.count >= 5 ? round2(HairAnalytics.direction(scalpValues)) : nil
         )
 
         // Treatments — all of them (isActive tells the model which are current), with the
@@ -346,6 +350,8 @@ struct AIContext: Codable, Equatable, Sendable {
 
         // Meta — logging volume plus photo METADATA (regions and dates, never pixels).
         let photoDates = photos.map(\.createdAt)
+        let allShedValues = entries.filter { $0.hasRecorded(.shedding) }.map { Double($0.shed.rawValue) }
+        let allScalpValues = entries.filter(\.hasCompleteScalpRecording).map { Double($0.scalpTotal) }
         let meta = Meta(
             entryCount: entries.count,
             streak: HairAnalytics.loggingStreak(
@@ -359,10 +365,8 @@ struct AIContext: Codable, Equatable, Sendable {
             longTerm: Meta.LongTermAggregates(
                 firstEntryDate: entries.map(\.date).min().map { dayString($0, calendar: calendar) },
                 lastEntryDate: entries.map(\.date).max().map { dayString($0, calendar: calendar) },
-                averageShed: entries.isEmpty ? nil : round2(
-                    entries.map { Double($0.shed.rawValue) }.reduce(0, +) / Double(entries.count)),
-                averageScalpTotal: entries.isEmpty ? nil : round2(
-                    entries.map { Double($0.scalpTotal) }.reduce(0, +) / Double(entries.count))
+                averageShed: allShedValues.isEmpty ? nil : round2(HairAnalytics.mean(allShedValues)),
+                averageScalpTotal: allScalpValues.isEmpty ? nil : round2(HairAnalytics.mean(allScalpValues))
             ),
             omitted: Meta.OmittedCounts(
                 dailyEntries: max(0, entries.count - windowed.count),

@@ -363,7 +363,7 @@ struct ConditionsHero: View {
                     .font(Clinical.body(12, weight: .medium))
                     .foregroundStyle(Clinical.ink)
                     .padding(.horizontal, 12)
-                    .frame(minHeight: 34)
+                    .frame(minHeight: 44)
                     .background(Clinical.surface, in: Capsule())
                     .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
             }
@@ -377,14 +377,15 @@ struct ConditionsHero: View {
         Button(action: onLog) {
             Label(hasLoggedToday ? "Edit log" : "Log today",
                   systemImage: hasLoggedToday ? "pencil" : "plus")
-                .font(Clinical.body(12, weight: .semibold))
+                .font(Clinical.body(14, weight: .semibold))
                 .foregroundStyle(Clinical.surface)
                 .padding(.horizontal, 12)
-                .frame(minHeight: 34)
+                .frame(minHeight: 44)
                 .background(Clinical.accent, in: Capsule())
                 .shadow(color: Clinical.accent.opacity(0.24), radius: 8, y: 3)
         }
         .buttonStyle(.clinicalPressable)
+        .accessibilityIdentifier("dailyCheckInAction")
         .accessibilityHint(logButtonAccessibilityHint)
     }
 

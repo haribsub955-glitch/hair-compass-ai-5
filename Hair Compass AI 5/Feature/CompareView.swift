@@ -2,10 +2,17 @@ import Charts
 import SwiftData
 import SwiftUI
 
-/// The Compare builder: overlay one hair-fall variable against one lifestyle statistic, with a lag
-/// control (shedding follows lifestyle by weeks) and an honest, hedged read — never a coefficient,
-/// never a causal claim. Ephemeral: pick and view, nothing saved.
+/// Explore an outcome against recorded context or around a dated event. Comparisons remain
+/// descriptive, and missing observations never become symptom-free or missed-dose days.
 struct CompareView: View {
+    var initialEventID: String? = nil
+    enum Mode: String, CaseIterable { case signals = "Signals", event = "Around a change" }
+    @State private var mode: Mode = .signals
+    @State private var selectedEventID: String?
+    @State private var eventDays = 28
+    @State private var sideEffectType: SideEffectType?
+    @Query private var procedures: [ProcedureAppointment]
+    @Query private var missedDoses: [MissedDoseRecord]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
     @Query(sort: \HealthSnapshot.date) private var snapshots: [HealthSnapshot]
@@ -30,56 +37,65 @@ struct CompareView: View {
     @State private var chatDetent: PresentationDetent = .large
     @State private var chatContext = ""
 
-    enum Window: String, CaseIterable { case m1 = "1M", m3 = "3M", m6 = "6M"
-        var days: Int { self == .m1 ? 30 : (self == .m3 ? 90 : 180) }
+    enum Window: String, CaseIterable { case m1 = "1M", m3 = "3M", m6 = "6M", y1 = "1Y", all = "All"
+        var days: Int { switch self { case .m1: return 30; case .m3: return 90; case .m6: return 180; case .y1: return 365; case .all: return 3650 } }
     }
     enum Lag: String, CaseIterable { case none = "0", w2 = "2wk", w6 = "6wk", m3 = "3mo"
         var days: Int { switch self { case .none: return 0; case .w2: return 14; case .w6: return 42; case .m3: return 90 } }
     }
 
-    private var hair: ChartMetric { ChartMetric[hairID] ?? ChartMetric.hairFall[0] }
+    private var outcomes: [ChartMetric] {
+        ChartMetric.hairFall + [ChartMetric(id: "sideEffects", title: "Side effects", group: .hairFall, unit: "severity 1–3")]
+    }
+    private var hair: ChartMetric { outcomes.first { $0.id == hairID } ?? ChartMetric.hairFall[0] }
     private var overlay: ChartMetric { ChartMetric[overlayID] ?? treatmentMetrics.first { $0.id == overlayID } ?? ChartMetric.lifestyle[0] }
 
-    // MARK: Dynamic treatment metrics (not in ChartMetric.catalog — one per active treatment)
-
-    private var activeTreatments: [Treatment] {
-        treatments.filter { $0.isActive }.sorted { $0.startDate < $1.startDate }
-    }
-
-    /// One synthetic `ChartMetric` per active treatment — id `"tx.<index>"`, index into
-    /// `activeTreatments`. Stable within a render; the view is ephemeral so that's enough.
+    // Keep archived items available and use persistent identity, so renaming or adding an item
+    // cannot silently select a different medication. Every plan item has an event comparison.
+    private var trackedTreatments: [Treatment] { treatments.sorted { $0.startDate < $1.startDate } }
+    private func metricID(_ treatment: Treatment) -> String { "tx.\(TrendContext.recordKey(treatment))" }
     private var treatmentMetrics: [ChartMetric] {
-        activeTreatments.enumerated().map { i, t in
-            ChartMetric(id: "tx.\(i)", title: t.name.isEmpty ? t.treatmentClass.title : t.name, group: .treatment, unit: "14-day avg")
+        trackedTreatments.map { treatment in
+            ChartMetric(id: metricID(treatment), title: treatment.name.isEmpty ? treatment.treatmentClass.title : treatment.name,
+                        group: .treatment, unit: "logged doses/day")
         }
     }
-
     private func treatment(forMetricID id: String) -> Treatment? {
-        guard id.hasPrefix("tx."), let i = Int(id.dropFirst(3)), activeTreatments.indices.contains(i) else { return nil }
-        return activeTreatments[i]
+        trackedTreatments.first { metricID($0) == id }
+    }
+
+    private var highlights: [TrendHighlight] {
+        TrendContext.highlights(treatments: treatments, procedures: procedures, photos: photos,
+                                progress: progressCheckIns, sideEffects: sideEffects,
+                                triggers: triggers, entries: entries, start: .distantPast, end: .now)
+    }
+    private var selectedEvent: TrendHighlight? {
+        highlights.first { $0.id == selectedEventID } ?? highlights.first { $0.kind == .start } ?? highlights.first
     }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
-                ScreenHeader(eyebrow: "Build a chart", title: "Compare").padding(.top, 8)
-
-                presets
-                    .staggeredEntrance(index: 0)
-                medicationMenu
-                    .staggeredEntrance(index: 1)
-                pickers
-                    .staggeredEntrance(index: 2)
-
-                ClinicalSegmented(options: Window.allCases, label: { $0.rawValue }, selection: $window)
-                    .staggeredEntrance(index: 3)
-
-                chartCard
-                    .staggeredEntrance(index: 4)
-                lagCard
-                    .staggeredEntrance(index: 5)
-                readCard
-                    .staggeredEntrance(index: 6)
+                ScreenHeader(eyebrow: "Explore relationships", title: "Compare").padding(.top, 8)
+                Text("Choose an outcome, then compare daily signals or look around a dated change.")
+                    .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                ClinicalSegmented(options: Mode.allCases, label: { $0.rawValue }, selection: $mode)
+                outcomePicker
+                if mode == .signals {
+                    presets
+                    medicationMenu
+                    pickers
+                    ClinicalSegmented(options: Window.allCases, label: { $0.rawValue }, selection: $window)
+                    chartCard
+                    lagCard
+                    readCard
+                } else {
+                    eventComparison
+                }
+                TrendHighlightsCard(highlights: visibleHighlights) { item in
+                    selectedEventID = item.id
+                    mode = .event
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -91,9 +107,97 @@ struct CompareView: View {
                 .presentationDetents([.medium, .large], selection: $chatDetent)
         }
         .onAppear {
+            if let initialEventID { selectedEventID = initialEventID; mode = .event }
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_CHAT") { openChat() }
             #endif
+        }
+    }
+
+    private var outcomePicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(text: "Outcome")
+            Picker("Outcome", selection: $hairID) {
+                ForEach(outcomes) { outcome in Text(outcome.title).tag(outcome.id) }
+            }
+            .pickerStyle(.menu).tint(Clinical.accent)
+            .accessibilityIdentifier("comparisonOutcome")
+            if hairID == "sideEffects" {
+                Picker("Side-effect type", selection: $sideEffectType) {
+                    Text("All reported types").tag(Optional<SideEffectType>.none)
+                    ForEach(SideEffectType.allCases) { type in Text(type.title).tag(Optional(type)) }
+                }
+                .pickerStyle(.menu).tint(Clinical.accent)
+                .accessibilityIdentifier("comparisonSideEffectType")
+            }
+        }
+    }
+
+    private var recordingNote: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if hairID == "sideEffects" {
+                Text("Only days with a side-effect report are compared. Blank days are unknown, so this cannot show how often you were symptom-free.")
+            }
+            if treatment(forMetricID: overlayID) != nil && mode == .signals {
+                Text("Plan points use recorded doses and explicitly missed doses. Unlogged days stay unknown. Use Around a change to explore when you added or stopped an item.")
+            }
+            if overlay.group == .body && mode == .signals {
+                Text("Apple Health values come from your synced record. Missing Health readings are left blank.")
+            }
+        }
+        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+    }
+
+    @ViewBuilder
+    private var eventComparison: some View {
+        if let event = selectedEvent {
+            ClinicalCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Eyebrow(text: "Plan change or highlight")
+                    Menu {
+                        ForEach(TrendHighlight.Kind.allCases) { kind in
+                            let items = highlights.filter { $0.kind == kind }
+                            if !items.isEmpty {
+                                Section(kind.rawValue) {
+                                    ForEach(items) { item in
+                                        Button("\(item.title) · \(item.date.formatted(date: .abbreviated, time: .omitted))") {
+                                            selectedEventID = item.id
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(event.title).font(Clinical.body(16, weight: .semibold))
+                                Text(event.date.formatted(date: .abbreviated, time: .omitted)).font(Clinical.caption(12))
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                        }
+                        .foregroundStyle(Clinical.accent)
+                    }
+                    .accessibilityIdentifier("comparisonEvent")
+                    ClinicalSegmented(options: [14, 28, 56], label: { "\($0) days" }, selection: $eventDays)
+                    Text("The selected number of days on each side of this date.")
+                        .font(Clinical.caption(11)).foregroundStyle(Clinical.secondary)
+                }
+            }
+            EventObservationCard(event: event, points: series(for: hairID), title: hair.title,
+                                 unit: hair.unit, days: eventDays, isSideEffect: hairID == "sideEffects")
+            recordingNote
+            let otherChanges = visibleHighlights.filter { $0.id != event.id && [.start, .stop, .procedure, .trigger].contains($0.kind) }
+            if !otherChanges.isEmpty {
+                Text("\(otherChanges.count) other plan or life event\(otherChanges.count == 1 ? "" : "s") occurred in this period. You can inspect them in Highlights below.")
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+            }
+            askWrenChip
+        } else {
+            ClinicalCard {
+                Text("Add a medication or care item to your plan, record a procedure, or save a photo. Its date will appear here for a before-and-after comparison.")
+                    .font(Clinical.body(14)).foregroundStyle(Clinical.secondary)
+            }
         }
     }
 
@@ -104,12 +208,12 @@ struct CompareView: View {
             HStack(spacing: 8) {
                 presetChip("Shedding vs Sleep", "shed", "sleepQuality")
                 presetChip("Shedding vs Stress", "shed", "stress")
-                presetChip("Scalp vs Sleep", "scalp", "sleepHours")
+                presetChip("Side effects vs Sleep", "sideEffects", "sleepHours")
                 presetChip("Shedding vs Weight", "shed", "bodyMass")
-                if !activeTreatments.isEmpty {
+                if !trackedTreatments.isEmpty {
                     presetChip(
-                        "Shedding vs \(activeTreatments[0].name.isEmpty ? activeTreatments[0].treatmentClass.title : activeTreatments[0].name)",
-                        "shed", "tx.0"
+                        "Shedding vs \(trackedTreatments[0].name.isEmpty ? trackedTreatments[0].treatmentClass.title : trackedTreatments[0].name)",
+                        "shed", metricID(trackedTreatments[0])
                     )
                 }
             }
@@ -132,30 +236,25 @@ struct CompareView: View {
         .buttonStyle(.clinicalPressable)
     }
 
-    /// Proposes the user's own tracked treatments as an overlay — they're otherwise only reachable
-    /// buried inside the "Lifestyle & plan" scrubber below. Selecting one sets `overlayID` to that
-    /// treatment's synthetic metric id and nudges `hairID` to a hair-fall metric if it wasn't
-    /// already one, so the comparison reads sensibly. Hidden entirely when there's nothing to
-    /// propose — no empty affordance.
+    /// Direct access to all recorded plan items, including those the user has stopped.
     @ViewBuilder
     private var medicationMenu: some View {
-        if !activeTreatments.isEmpty {
+        if !trackedTreatments.isEmpty {
             Menu {
-                ForEach(Array(activeTreatments.enumerated()), id: \.element.persistentModelID) { i, t in
+                ForEach(trackedTreatments, id: \.persistentModelID) { t in
                     Button {
-                        overlayID = "tx.\(i)"
-                        if !ChartMetric.hairFall.contains(where: { $0.id == hairID }) { hairID = "shed" }
+                        overlayID = metricID(t)
                     } label: {
                         Label(
                             t.name.isEmpty ? t.treatmentClass.title : t.name,
-                            systemImage: overlayID == "tx.\(i)" ? "checkmark" : t.treatmentClass.symbol
+                            systemImage: overlayID == metricID(t) ? "checkmark" : t.treatmentClass.symbol
                         )
                     }
                 }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "pills.fill").font(Clinical.caption(11))
-                    Text(selectedTreatmentTitle ?? "Compare a medication")
+                    Text(selectedTreatmentTitle ?? "Compare a plan item")
                         .font(Clinical.body(12, weight: selectedTreatmentTitle == nil ? .regular : .semibold))
                         .lineLimit(1)
                     Image(systemName: "chevron.down").font(Clinical.body(9, weight: .semibold))
@@ -172,28 +271,28 @@ struct CompareView: View {
         }
     }
 
-    /// The active treatment's display name when `overlayID` currently points at one of the
-    /// synthetic `"tx.N"` metrics — keeps the dropdown label showing the live selection.
+    /// Keep the plan picker label in sync with the selected persistent treatment.
     private var selectedTreatmentTitle: String? {
         guard let t = treatment(forMetricID: overlayID) else { return nil }
         return t.name.isEmpty ? t.treatmentClass.title : t.name
     }
 
-    /// Two stacked scrub-strips — drag across a strip and the sparkline preview (and the chart
-    /// behind) re-draws live with the metric under your finger; lifting/tapping selects it.
     private var pickers: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            MetricScrubber(title: "Hair fall", options: ChartMetric.hairFall, selectionID: $hairID,
-                           tint: Clinical.ink,
-                           normalizedSeries: { ChartMath.normalize(series(for: $0.id).map(\.value)) })
-            HStack(spacing: 10) {
-                Rectangle().fill(Clinical.hairline).frame(height: 1)
-                Image(systemName: "arrow.up.arrow.down").font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
-                Rectangle().fill(Clinical.hairline).frame(height: 1)
+        ClinicalCard(padding: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Eyebrow(text: "Compare with")
+                Picker("Compare with", selection: $overlayID) {
+                    ForEach([MetricGroup.lifestyle, .body, .treatment]) { group in
+                        Section(group == .body ? "Apple Health" : group.rawValue) {
+                            ForEach((ChartMetric.lifestyle + treatmentMetrics).filter { $0.group == group }) { metric in
+                                Text(metric.title).tag(metric.id)
+                            }
+                        }
+                    }
+                }
+                .pickerStyle(.menu).tint(Clinical.sage)
+                .accessibilityIdentifier("comparisonContext")
             }
-            MetricScrubber(title: "Lifestyle & plan", options: ChartMetric.lifestyle + treatmentMetrics, selectionID: $overlayID,
-                           tint: Clinical.sage,
-                           normalizedSeries: { ChartMath.normalize(series(for: $0.id).map(\.value)) })
         }
     }
 
@@ -206,8 +305,10 @@ struct CompareView: View {
 
     private var chartCard: some View {
         let hairPts = series(for: hairID)
-        let overlayPts = series(for: overlayID)
-        let overlapDays = min(hairPts.count, overlayPts.count)
+        let overlayPts = alignedOverlay
+        let overlapDays = ChartMath.pairWithLag(
+            hair: hairPts, lifestyle: overlayPts, lagDays: 0, tolerance: 0
+        ).hair.count
         let ready = overlapDays >= Self.readyThreshold
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 12) {
@@ -216,11 +317,19 @@ struct CompareView: View {
                     previewLocked(daysLogged: overlapDays)
                 } else {
                     Chart {
-                        // Faint daily reality behind the trend — kept visible for honesty.
-                        ForEach(normalizedMarks(hairPts, name: hair.title + " (daily)"), id: \.0) { date, v, name in
-                            LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
-                                .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 1))
-                                .foregroundStyle(Clinical.ink.opacity(0.22))
+                        // Side-effect reports are discrete observations; gaps remain unscored.
+                        if hairID == "sideEffects" {
+                            ForEach(normalizedMarks(hairPts, name: hair.title), id: \.0) { date, value, _ in
+                                PointMark(x: .value("Date", date), y: .value("Level", value))
+                                    .foregroundStyle(Clinical.ink).symbolSize(36)
+                            }
+                        } else {
+                            // Faint daily reality behind the trend — kept visible for honesty.
+                            ForEach(normalizedMarks(hairPts, name: hair.title + " (daily)"), id: \.0) { date, v, name in
+                                LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
+                                    .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 1))
+                                    .foregroundStyle(Clinical.ink.opacity(0.22))
+                            }
                         }
                         ForEach(normalizedMarks(overlayPts, name: overlay.title + " (daily)"), id: \.0) { date, v, name in
                             LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
@@ -228,10 +337,12 @@ struct CompareView: View {
                                 .foregroundStyle(Clinical.sage.opacity(0.22))
                         }
                         // Smoothed rolling-mean trend on top — this is the line to read.
-                        ForEach(smoothedMarks(hairPts, name: hair.title), id: \.0) { date, v, name in
-                            LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
-                                .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 2.5))
-                                .foregroundStyle(Clinical.ink)
+                        if hairID != "sideEffects" {
+                            ForEach(smoothedMarks(hairPts, name: hair.title), id: \.0) { date, v, name in
+                                LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
+                                    .interpolationMethod(.monotone).lineStyle(.init(lineWidth: 2.5))
+                                    .foregroundStyle(Clinical.ink)
+                            }
                         }
                         ForEach(smoothedMarks(overlayPts, name: overlay.title), id: \.0) { date, v, name in
                             LineMark(x: .value("Date", date), y: .value("Level", v), series: .value("s", name))
@@ -241,18 +352,19 @@ struct CompareView: View {
                     }
                     .frame(height: 170)
                     .chartYScale(domain: 0...1)
+                    .chartXScale(domain: cutoff...Date.now)
                     .chartYAxis(.hidden)
                     .chartXAxis {
-                        AxisMarks(values: .stride(by: window == .m1 ? .weekOfYear : .month)) { value in
+                        AxisMarks(values: .stride(by: window == .m1 ? .weekOfYear : (window == .all ? .year : .month))) { value in
                             AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
                             AxisValueLabel {
                                 if let d = value.as(Date.self) {
-                                    Text(d.formatted(.dateTime.month(.abbreviated))).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                                    Text(d.formatted(window == .m1 ? .dateTime.month(.abbreviated).day() : (window == .all ? .dateTime.year() : .dateTime.month(.abbreviated)))).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                                 }
                             }
                         }
                     }
-                    Text("Bold lines are a \(smoothWindow)-day smoothed trend over the faint daily values. Each signal is scaled to its own range, so this shows shape and timing — not absolute levels.")
+                    Text("Each signal uses its own range. Lines show a trailing \(smoothWindow)-day average; side-effect dots show the highest severity reported that day. \(lag.days == 0 ? "Dates align on the same day." : "Context is shifted forward \(lag.days) days to align with the later outcome.")")
                         .font(Clinical.caption(11)).foregroundStyle(Clinical.tertiary)
                 }
             }
@@ -293,7 +405,7 @@ struct CompareView: View {
         ClinicalCard(padding: 14) {
             VStack(alignment: .leading, spacing: 8) {
                 Eyebrow(text: "Time lag")
-                Text("Lifestyle affects shedding weeks later — shift the comparison to line them up.")
+                Text("Explore whether the two patterns line up on the same day or after a delay. This cannot establish cause and effect.")
                     .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                 ClinicalSegmented(options: Lag.allCases, label: { $0.rawValue }, selection: $lag)
                     // Spring the copper pill between lag options; Reduce Motion keeps the
@@ -308,13 +420,14 @@ struct CompareView: View {
 
     @ViewBuilder
     private var readCard: some View {
-        let paired = ChartMath.pairWithLag(hair: series(for: hairID), lifestyle: series(for: overlayID), lagDays: lag.days)
+        let paired = ChartMath.pairWithLag(hair: series(for: hairID), lifestyle: alignedOverlay, lagDays: 0, tolerance: 0)
         let assoc = ChartMath.association(hair: paired.hair, lifestyle: paired.lifestyle)
         if case .insufficient(let need) = assoc {
             // Short of pairs: the same pill every locked chart shows, on the bare canvas — the
             // pill already carries its own chrome, so a card around it would be a box in a box.
             VStack(alignment: .leading, spacing: 12) {
                 ChartPlaceholderPill(required: need, have: paired.hair.count, unit: .pairedDays)
+                recordingNote
                 askWrenChip
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -326,6 +439,7 @@ struct CompareView: View {
                         Text(ChartMath.phrasing(assoc, hairTitle: hair.title, lifestyleTitle: overlay.title, lagDays: lag.days))
                             .font(Clinical.caption(14)).foregroundStyle(Clinical.ink)
                     }
+                    recordingNote
                     askWrenChip
                 }
             }
@@ -351,8 +465,11 @@ struct CompareView: View {
 
     /// One line telling the chat what's on screen, so answers land on it.
     private var focusLine: String {
-        let lagText = lag == .none ? "no time lag" : "lifestyle shifted \(lag.rawValue) earlier"
-        return "User is currently comparing: \(hair.title) (hair fall) vs \(overlay.title) (lifestyle), \(window.rawValue) window, \(lagText)."
+        let lagText = lag == .none ? "no time lag" : "context from \(lag.days) days earlier"
+        if mode == .event, let selectedEvent {
+            return "User is viewing recorded \(hair.title) before and after \(selectedEvent.title) on \(selectedEvent.date), \(eventDays)-day windows. Descriptive observations only; no causal or efficacy inference."
+        }
+        return "User is comparing recorded \(hair.title) vs \(overlay.title), \(window.rawValue) window, \(lagText). Missing reports are unknown. Association is not causation."
     }
 
     /// Snapshot the canonical AIContext at open time — the chat consumes the same versioned
@@ -369,28 +486,37 @@ struct CompareView: View {
 
     // MARK: Data
 
-    private var cutoff: Date { Calendar.current.date(byAdding: .day, value: -window.days, to: .now) ?? .now }
-
-    private var windowedEntries: [DailyEntry] {
-        entries.filter { $0.date >= cutoff }
+    private var cutoff: Date {
+        let today = Calendar.current.startOfDay(for: .now)
+        return Calendar.current.date(byAdding: .day, value: -(window.days - 1), to: today) ?? today
     }
-
-    private var windowedSnapshots: [HealthSnapshot] {
-        snapshots.filter { $0.date >= cutoff }
+    private var visibleHighlights: [TrendHighlight] {
+        if mode == .event, let event = selectedEvent {
+            let comparison = TrendContext.compare(points: [], event: event.date, days: eventDays)
+            return highlights.filter { $0.date >= comparison.beforeStart && $0.date < comparison.afterEnd }
+        }
+        return highlights.filter { $0.date >= cutoff }
+    }
+    private var alignedOverlay: [(day: Date, value: Double)] {
+        TrendContext.aligned(series(for: overlayID), lagDays: lag.days, start: cutoff, end: .now)
     }
 
     private func series(for id: String) -> [(day: Date, value: Double)] {
-        let e = windowedEntries
-        let s = windowedSnapshots
+        let start: Date = mode == .event ? .distantPast :
+            (id == overlayID ? Calendar.current.date(byAdding: .day, value: -lag.days, to: cutoff) ?? cutoff : cutoff)
+        let e = entries.filter { $0.date >= start && $0.date <= .now }
+        let s = snapshots.filter { $0.date >= start && $0.date <= .now }
         let pairs: [(Date, Double)]
         switch id {
-        case "shed": pairs = e.map { ($0.date, Double($0.shed.rawValue)) }
-        case "scalp": pairs = e.map { ($0.date, Double($0.scalpTotal)) }
-        case "oiliness": pairs = e.map { ($0.date, Double($0.oiliness)) }
-        case "sleepQuality": pairs = e.map { ($0.date, Double($0.sleepQuality)) }
-        case "stress": pairs = e.map { ($0.date, Double($0.stress)) }
-        case "cigarettes": pairs = e.map { ($0.date, Double($0.cigarettes)) }
-        case "alcohol": pairs = e.map { ($0.date, Double($0.alcoholDrinks)) }
+        case "sideEffects":
+            return TrendContext.sideEffectSeries(sideEffects, type: sideEffectType, start: start, end: .now)
+        case "shed": pairs = e.filter { $0.hasRecorded(.shedding) }.map { ($0.date, Double($0.shed.rawValue)) }
+        case "scalp": pairs = e.filter(\.hasCompleteScalpRecording).map { ($0.date, Double($0.scalpTotal)) }
+        case "oiliness": pairs = e.filter { $0.hasRecorded(.oiliness) }.map { ($0.date, Double($0.oiliness)) }
+        case "sleepQuality": pairs = e.filter { $0.hasRecorded(.sleepQuality) }.map { ($0.date, Double($0.sleepQuality)) }
+        case "stress": pairs = e.filter { $0.hasRecorded(.stress) }.map { ($0.date, Double($0.stress)) }
+        case "cigarettes": pairs = e.filter { $0.hasRecorded(.cigarettes) }.map { ($0.date, Double($0.cigarettes)) }
+        case "alcohol": pairs = e.filter { $0.hasRecorded(.alcohol) }.map { ($0.date, Double($0.alcoholDrinks)) }
         case "sleepHours": pairs = s.compactMap { snap in snap.sleepHours.map { (snap.date, $0) } }
         case "hrv": pairs = s.compactMap { snap in snap.hrvSDNN.map { (snap.date, $0) } }
         case "restingHR": pairs = s.compactMap { snap in snap.restingHR.map { (snap.date, $0) } }
@@ -398,13 +524,13 @@ struct CompareView: View {
         case "protein": pairs = s.compactMap { snap in snap.dietaryProteinG.map { (snap.date, $0) } }
         case let id where id.hasPrefix("tx."):
             if let t = treatment(forMetricID: id) {
-                pairs = TreatmentAdherence.dailyAverage(treatment: t, doses: doses, window: window.days).map { ($0.day, $0.value) }
+                pairs = TrendContext.doseSeries(treatment: t, doses: doses, missed: missedDoses, start: start, end: .now).map { ($0.day, $0.value) }
             } else {
                 pairs = []
             }
         default: pairs = []
         }
-        return pairs.sorted { $0.0 < $1.0 }.map { (day: $0.0, value: $0.1) }
+        return ChartMath.dailyAverages(pairs.map { (day: $0.0, value: $0.1) })
     }
 
     private func normalizedMarks(_ pts: [(day: Date, value: Double)], name: String) -> [(Date, Double, String)] {
@@ -415,11 +541,14 @@ struct CompareView: View {
     /// Rolling-mean window for the smoothed trend — wider for the longer chart windows.
     private var smoothWindow: Int { window == .m1 ? 5 : 7 }
 
-    /// The smoothed display series: centered rolling mean of the RAW values, then normalized to
-    /// 0…1 by its own range. Smoothing only — no invented data.
+    /// The smoothed display series: trailing calendar mean of daily values, then normalized to
+    /// 0…1 by its own range. Missing days stay missing and no future value leaks backward.
     private func smoothedMarks(_ pts: [(day: Date, value: Double)], name: String) -> [(Date, Double, String)] {
-        let smooth = ChartMath.normalize(ChartMath.rollingMean(pts.map(\.value), window: smoothWindow))
-        return zip(pts, smooth).map { ($0.0.day, $0.1, name) }
+        let trailing = ChartMath.trailingCalendarMean(pts, windowDays: smoothWindow)
+        let lo = pts.map(\.value).min() ?? 0
+        let hi = pts.map(\.value).max() ?? 0
+        let smooth = trailing.map { hi > lo ? ($0.value - lo) / (hi - lo) : 0.5 }
+        return zip(trailing, smooth).map { ($0.0.day, $0.1, name) }
     }
 
     private func fmt(_ v: Double) -> String {

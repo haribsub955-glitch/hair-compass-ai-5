@@ -32,6 +32,7 @@ extension StarterPlan.Snapshot {
         entries: [DailyEntry],
         remindersEnabled: Bool,
         dismissed: Set<String>,
+        discussed: Set<String> = [],
         today: Date = .now,
         calendar: Calendar = .current
     ) -> StarterPlan.Snapshot {
@@ -45,7 +46,9 @@ extension StarterPlan.Snapshot {
             procedureTypes: Set(procedures.map(\.type)),
             remindersEnabled: remindersEnabled,
             loggedToday: entries.contains { calendar.isDate($0.date, inSameDayAs: today) },
-            dismissed: dismissed
+            dismissed: dismissed,
+            hasCompletedConsultation: procedures.contains { $0.type == .consultation && $0.isCompleted && $0.date <= today },
+            discussed: discussed
         )
     }
 }
@@ -54,6 +57,7 @@ extension StarterPlan.Snapshot {
 /// `UserDefaults`, read and written through `@AppStorage(StarterPlanDismissals.key)`.
 enum StarterPlanDismissals {
     static let key = "starterPlan.dismissed"
+    static let discussedKey = "starterPlan.discussed"
 
     static func decode(_ json: String) -> Set<String> {
         guard let data = json.data(using: .utf8),

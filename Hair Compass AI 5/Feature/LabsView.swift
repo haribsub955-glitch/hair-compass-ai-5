@@ -4,8 +4,10 @@ import SwiftUI
 struct LabsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Query(sort: \LabResult.collectedAt, order: .reverse) private var labs: [LabResult]
     @State private var showAdd = false
+    @State private var showVisitPrep = false
     @State private var showProposalDetail = false
     /// Sprung open by tapping the "Tests derms order for hair loss" footnote row — collapsed on
     /// every fresh appearance of the screen, same as the routine's own collapsed footnote rows.
@@ -83,25 +85,25 @@ struct LabsView: View {
                     CornerSprig(corner: .topLeading, width: 148, opacity: 0.26)
                 }
 
-                // The full illustrated disclaimer only earns its space on a first visit, before
-                // there's any data to compete with it.
+                labJournalHero
                 if labs.isEmpty {
                     labContextCard
                         .staggeredEntrance(index: 0)
                     reference
                         .staggeredEntrance(index: 1)
                 } else {
-                    // Data leads now — no disclaimer banner and no standalone "what this may
-                    // mean" card occupying the prime viewport before any result, and no stacked
-                    // per-test boxes either: one continuous hairline-ruled ledger instead of
-                    // three near-identical cards. The flagged lab's own row still carries the
-                    // "what this may mean" disclosure inline, and the "context, not a diagnosis"
-                    // line stays a footnote at the very bottom.
-                    if let sharedDrawDate {
-                        Text("Drawn \(sharedDrawDate.formatted(.dateTime.day().month(.abbreviated).year()))")
-                            .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
-                    }
+                    // The owner-approved concept uses one card per test. Each retains its
+                    // history, saved ranges, proposal disclosure and deletion confirmation.
+                    latestResultsHeader
                     labLedger
+                    BotanicalActionCard(
+                        title: "Prepare for a visit",
+                        subtitle: "Bring your results and the wider record.",
+                        symbol: "calendar.badge.clock"
+                    ) { showVisitPrep = true }
+                    .accessibilityIdentifier("labsVisitPrep")
+                    WrenJournalNote(moment: .listening, title: "A result is one part of the picture.",
+                                    message: "Keep dates, units, and the ranges from your own report together.")
                     referenceFootnote
                         .staggeredEntrance(index: min(groupedLabs.count, 9))
                     contextFootnote
@@ -118,6 +120,7 @@ struct LabsView: View {
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddLabSheet() }
+        .sheet(isPresented: $showVisitPrep) { ExportSheet() }
         // Persists the honest proposal beyond the one-shot pop-up in AddLabSheet — tapping the
         // banner reopens the same card any time, not just right after logging the value.
         .sheet(isPresented: $showProposalDetail) {
@@ -150,6 +153,33 @@ struct LabsView: View {
         }
     }
 
+    private var labJournalHero: some View {
+        ClinicalCard(padding: 0) {
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 9) {
+                    Eyebrow(text: "The lab journal")
+                    Text("Context,\nnot diagnosis")
+                        .font(Clinical.headline(24)).foregroundStyle(Clinical.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Read each result in its own range.")
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                }
+                .padding(.leading, 20).padding(.vertical, 20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !dynamicTypeSize.isAccessibilitySize {
+                Image(BrandArt.labsContextV2)
+                    .resizable().scaledToFill()
+                    .frame(width: 135, height: 180, alignment: .trailing)
+                    .clipped().blendMode(.multiply)
+                    .mask(LinearGradient(colors: [.clear, .black, .black], startPoint: .leading, endPoint: .trailing))
+                    .accessibilityHidden(true)
+                }
+            }
+            .padding(.trailing, dynamicTypeSize.isAccessibilitySize ? 20 : 0)
+        }
+        .accessibilityIdentifier("labsJournalHero")
+    }
+
     /// First-visit-only illustrated disclaimer — full focal-plate treatment, shown while the
     /// list is still empty and there's nothing else competing for the top of the screen.
     /// Construction now comes from the shared `TeachingPlate`, which Plan and Photos use too.
@@ -174,17 +204,59 @@ struct LabsView: View {
         Colophon(text: "Context, not a diagnosis — choose tests with a clinician rather than a blanket panel.")
     }
 
-    /// One continuous ledger instead of three near-identical card boxes: every lab is a row on
-    /// the ivory, separated by full-width hairlines top and between entries.
-    private var labLedger: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Divider().overlay(Clinical.hairline)
-            ForEach(Array(groupedLabs.enumerated()), id: \.element.test) { index, group in
-                labLedgerRow(test: group.test, results: group.results, index: index)
-                    .staggeredEntrance(index: min(index, 8))
-                Divider().overlay(Clinical.hairline)
+    /// One unboxed orientation line before the ledger. It summarizes only whether each latest
+    /// value sits inside its saved range; it does not infer cause, deficiency, or diagnosis.
+    private var latestResultsHeader: some View {
+        let latest = groupedLabs.compactMap { $0.results.last }
+        let outsideCount = latest.filter { $0.flag != .normal }.count
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Your latest results").font(Clinical.headline(24)).foregroundStyle(Clinical.ink)
+                Text(latestResultsSummary(total: latest.count, outside: outsideCount))
+                    .font(Clinical.caption(12))
+                    .foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let sharedDrawDate {
+                    Text("Drawn \(sharedDrawDate.formatted(.dateTime.day().month(.abbreviated).year()))")
+                        .font(Clinical.caption(12))
+                        .foregroundStyle(Clinical.tertiary)
+                }
             }
+            Spacer(minLength: 8)
+            ZStack {
+                Circle().fill(Clinical.sage.opacity(0.10))
+                Circle().strokeBorder(Clinical.sage.opacity(0.24), lineWidth: 1)
+                Image(systemName: "testtube.2")
+                    .font(Clinical.body(17, weight: .medium))
+                    .foregroundStyle(outsideCount == 0 ? Clinical.sage : Clinical.gold)
+            }
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
         }
+        .padding(.horizontal, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("labLatestSummary")
+    }
+
+    private func latestResultsSummary(total: Int, outside: Int) -> String {
+        if outside == 0 {
+            return "\(total) latest result\(total == 1 ? "" : "s") within saved lab ranges"
+        }
+        return "\(outside) of \(total) latest results outside saved lab ranges"
+    }
+
+    /// One journal card per test, preserving the latest-draw grouping and flagged-first order.
+    private var labLedger: some View {
+            VStack(alignment: .leading, spacing: 14) {
+            ForEach(Array(groupedLabs.enumerated()), id: \.element.test) { index, group in
+                ClinicalCard(padding: 18) {
+                    labLedgerRow(test: group.test, results: group.results, index: index)
+                }
+                    .staggeredEntrance(index: min(index, 8))
+                    .accessibilityIdentifier("labResult.\(group.test.rawValue)")
+                }
+            }
+        .accessibilityIdentifier("labResultsLedger")
     }
 
     /// One ledger row per test: the latest draw's name/value share a baseline, the gauge line +
@@ -212,9 +284,18 @@ struct LabsView: View {
         let isFlagged = test == latestFlaggedResult?.test
 
         return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .top, spacing: 12) {
+                BotanicalEmblem(symbol: labSymbol(test), tint: Clinical.flagColor(latest.flag), size: 48)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(test.title).font(Clinical.body(15.5, weight: .semibold)).foregroundStyle(Clinical.ink)
+                    Text(test.title).font(Clinical.headline(22)).foregroundStyle(Clinical.ink)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 5) {
+                            Text(oneDecimal(latest.value)).font(Clinical.headline(30, weight: .medium))
+                            Text(test.unit).font(Clinical.body(13))
+                        }
+                        Text("\(oneDecimal(latest.value)) \(test.unit)").font(Clinical.headline(24))
+                    }
+                    .foregroundStyle(Clinical.ink)
                     if let previous {
                         Text("\(oneDecimal(previous.value)) → \(oneDecimal(latest.value)) \(test.unit) since \(previous.collectedAt.formatted(.dateTime.month(.abbreviated).day()))")
                             .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
@@ -229,19 +310,22 @@ struct LabsView: View {
                         Text(latest.note).font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                     }
                 }
-                Spacer()
-                Text("\(oneDecimal(latest.value)) \(test.unit)")
-                    .font(Clinical.number(17)).foregroundStyle(Clinical.ink)
+                Spacer(minLength: 0)
             }
+            ClinicalStatusPill(
+                text: labStatusText(latest.flag),
+                symbol: labStatusSymbol(latest.flag),
+                tint: Clinical.flagColor(latest.flag)
+            )
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     // Hairline vow: the gauge is a read-only annotation, not a slider — its track
                     // and in-range band now draw at the same 2pt weight every other margin rule
                     // in the ledger uses. The in-range band still says "range" by tint (sage),
                     // never by extra stroke weight.
-                    Capsule().fill(Clinical.hairline.opacity(0.5)).frame(height: 2).offset(y: 6)
+                    Capsule().fill(Clinical.hairline.opacity(0.7)).frame(height: 6).offset(y: 6)
                     Capsule().fill(Clinical.positive.opacity(0.32))
-                        .frame(width: geo.size.width * bandWidth, height: 2)
+                        .frame(width: geo.size.width * bandWidth, height: 6)
                         .offset(x: geo.size.width * bandStart, y: 6)
                     // The dot slides in from the range's own start to its actual reading —
                     // draws once with a soft spring on appear, staggered per row so the ledger
@@ -254,6 +338,7 @@ struct LabsView: View {
                         pulseBelowRange: latest.flag == .low,
                         delay: Double(index) * 0.08
                     )
+                    .offset(y: 4)
                 }
             }
             .frame(height: 14)
@@ -264,9 +349,7 @@ struct LabsView: View {
                 // three-test ledger. The endpoint numbers either side already say what the band
                 // is; the word itself now appears once, on the first row, as the one-time key
                 // that teaches what the two numbers mean.
-                if index == 0 {
-                    Text("RANGE").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.secondary)
-                }
+                Text("SAVED RANGE").font(Clinical.eyebrow(8)).foregroundStyle(Clinical.secondary)
                 Spacer()
                 Text(hi.formatted()).font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
             }
@@ -322,6 +405,32 @@ struct LabsView: View {
 
     private func oneDecimal(_ v: Double) -> String {
         v.formatted(.number.precision(.fractionLength(0...1)))
+    }
+
+    private func labSymbol(_ test: LabTest) -> String {
+        switch test {
+        case .ferritin, .hemoglobin: return "drop"
+        case .vitaminD: return "sun.max"
+        case .tsh, .freeT4: return "waveform.path"
+        case .vitaminB12, .zinc: return "leaf"
+        case .totalTestosterone, .dheaS: return "circle.hexagongrid"
+        }
+    }
+
+    private func labStatusText(_ flag: LabFlag) -> String {
+        switch flag {
+        case .low: return "Below saved range"
+        case .normal: return "Within saved range"
+        case .high: return "Above saved range"
+        }
+    }
+
+    private func labStatusSymbol(_ flag: LabFlag) -> String {
+        switch flag {
+        case .low: return "arrow.down"
+        case .normal: return "checkmark"
+        case .high: return "arrow.up"
+        }
     }
 
     private var reference: some View {

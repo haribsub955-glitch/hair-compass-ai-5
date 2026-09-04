@@ -169,31 +169,38 @@ struct ProgressReport {
             .filter { $0.isActive && !$0.slots.isEmpty }   // schedule-driven, so `.other` daily items count
         let primary = focus ?? dailyTreatments.min { $0.startDate < $1.startDate }
         let sorted = entries.sorted { $0.date < $1.date }
-        let entryWeeks = sorted.first.map {
+        let trendEntries = sorted.filter {
+            $0.hasRecorded(.shedding) || $0.hasCompleteScalpRecording
+        }
+        let entryWeeks = trendEntries.first.map {
             HairAnalytics.weeksElapsed(since: $0.date, now: now, calendar: calendar)
         } ?? 0
         // Nothing to report on: no active daily treatment AND under 8 weeks of entries.
         guard primary != nil || entryWeeks >= minimumEntryWeeks else { return nil }
 
-        let periodStart = primary?.startDate ?? sorted.first?.date ?? now
+        let periodStart = primary?.startDate ?? trendEntries.first?.date ?? now
         let weekNumber = HairAnalytics.weeksElapsed(since: periodStart, now: now, calendar: calendar)
-        let inPeriod = sorted.filter { $0.date >= periodStart && $0.date <= now }
+        let shedEntries = sorted.filter { $0.hasRecorded(.shedding) }
+        let scalpEntries = sorted.filter(\.hasCompleteScalpRecording)
+        let inPeriod = trendEntries.filter { $0.date >= periodStart && $0.date <= now }
+        let inPeriodShed = shedEntries.filter { $0.date >= periodStart && $0.date <= now }
+        let inPeriodScalp = scalpEntries.filter { $0.date >= periodStart && $0.date <= now }
 
         let shedTrend = trend(
-            dates: inPeriod.map(\.date),
-            values: inPeriod.map { Double($0.shed.rawValue) },
+            dates: inPeriodShed.map(\.date),
+            values: inPeriodShed.map { Double($0.shed.rawValue) },
             deadband: shedDeadband, scaleMax: 3, calendar: calendar,
             preStartMean: preStartBaseline(
-                dates: sorted.map(\.date), values: sorted.map { Double($0.shed.rawValue) },
+                dates: shedEntries.map(\.date), values: shedEntries.map { Double($0.shed.rawValue) },
                 periodStart: periodStart, calendar: calendar
             )
         )
         let scalpTrend = trend(
-            dates: inPeriod.map(\.date),
-            values: inPeriod.map { Double($0.scalpTotal) },
+            dates: inPeriodScalp.map(\.date),
+            values: inPeriodScalp.map { Double($0.scalpTotal) },
             deadband: scalpDeadband, scaleMax: 16, calendar: calendar,
             preStartMean: preStartBaseline(
-                dates: sorted.map(\.date), values: sorted.map { Double($0.scalpTotal) },
+                dates: scalpEntries.map(\.date), values: scalpEntries.map { Double($0.scalpTotal) },
                 periodStart: periodStart, calendar: calendar
             )
         )
@@ -303,8 +310,8 @@ struct ProgressReport {
 
     // MARK: - Trend building
 
-    /// First-4-weeks vs last-4-weeks means of the 7-day rolling-smoothed series. The windows
-    /// are anchored to the observed entry dates, so each window always contains data.
+    /// First-4-weeks vs last-4-weeks means of a trailing seven-calendar-day series. A verdict
+    /// requires non-overlapping windows and at least five recorded days in each one.
     private static func trend(
         dates: [Date],
         values: [Double],
@@ -313,16 +320,18 @@ struct ProgressReport {
         calendar: Calendar,
         preStartMean: Double? = nil
     ) -> Trend? {
-        guard dates.count >= 2, dates.count == values.count,
+        guard dates.count >= 10, dates.count == values.count,
               let firstDate = dates.first, let lastDate = dates.last,
               let firstCut = calendar.date(byAdding: .day, value: 28, to: firstDate),
               let lastCut = calendar.date(byAdding: .day, value: -28, to: lastDate)
         else { return nil }
 
-        let smoothedValues = ChartMath.rollingMean(values, window: 7)
-        let pairs = Array(zip(dates, smoothedValues))
-        let firstWindow = pairs.filter { $0.0 < firstCut }.map(\.1)
-        let lastWindow = pairs.filter { $0.0 >= lastCut }.map(\.1)
+        guard lastCut >= firstCut else { return nil }
+        let daily = ChartMath.dailyAverages(Array(zip(dates, values)).map { (day: $0.0, value: $0.1) }, calendar: calendar)
+        let smoothed = ChartMath.trailingCalendarMean(daily, windowDays: 7, calendar: calendar)
+        let firstWindow = smoothed.filter { $0.day < firstCut }.map(\.value)
+        let lastWindow = smoothed.filter { $0.day >= lastCut }.map(\.value)
+        guard firstWindow.count >= 5, lastWindow.count >= 5 else { return nil }
         let firstMean = HairAnalytics.mean(firstWindow)
         let lastMean = HairAnalytics.mean(lastWindow)
         let delta = lastMean - firstMean
@@ -333,8 +342,8 @@ struct ProgressReport {
             delta: delta,
             verdict: verdict(delta: delta, deadband: deadband),
             scaleMax: scaleMax,
-            raw: pairs.indices.map { MetricPoint(date: dates[$0], value: values[$0]) },
-            smoothed: pairs.map { MetricPoint(date: $0.0, value: $0.1) },
+            raw: daily.map { MetricPoint(date: $0.day, value: $0.value) },
+            smoothed: smoothed.map { MetricPoint(date: $0.day, value: $0.value) },
             preStartMean: preStartMean
         )
     }

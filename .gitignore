@@ -20,3 +20,4 @@ Secrets.swift
 
 # Native worktrees created by the harness
 .claude/worktrees/
+.codex/worktrees/

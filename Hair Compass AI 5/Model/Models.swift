@@ -87,6 +87,14 @@ final class Profile {
     }
 }
 
+/// Signals that can be explicitly answered in a daily check-in. Values still live in the
+/// primitive SwiftData columns below; this set records whether each value was actually supplied.
+/// That distinction keeps an untouched default from becoming a false "normal" observation.
+enum DailySignal: String, CaseIterable, Codable, Hashable {
+    case shedding, washDay, flaking, erythema, itch, oiliness
+    case sleepQuality, stress, cigarettes, alcohol
+}
+
 @Model
 final class DailyEntry {
     var date: Date = Date.now
@@ -100,6 +108,11 @@ final class DailyEntry {
     var alcoholDrinks: Int = 0 // WEAK tier — possible modest association, not proven
     var oiliness: Int = 0      // 0–3 self-report; an observation, not a risk driver (WEAK)
     var note: String = ""
+    /// Comma-separated `DailySignal` raw values. `nil` means a legacy record created before
+    /// answer-presence was tracked; those rows retain their historical all-fields interpretation.
+    /// An empty string is an explicitly saved entry with no answered trend signal (for example,
+    /// a note-only entry). Optional storage keeps the schema addition lightweight-migration safe.
+    var recordedSignalsRaw: String?
     /// Self-reported: hair was washed today. Shed hair is far more visible on wash days, so
     /// this is the confound that lets Trends/ProgressReport/Compare tell an honest "wash days
     /// show more shed" story instead of reading a heavier wash day as a real change. Schema-
@@ -118,7 +131,8 @@ final class DailyEntry {
         alcoholDrinks: Int = 0,
         oiliness: Int = 0,
         note: String = "",
-        washedHair: Bool = false
+        washedHair: Bool = false,
+        recordedSignals: Set<DailySignal> = Set(DailySignal.allCases)
     ) {
         self.date = date
         self.shedRaw = shed.rawValue
@@ -132,6 +146,7 @@ final class DailyEntry {
         self.oiliness = oiliness
         self.note = note
         self.washedHair = washedHair
+        self.recordedSignalsRaw = Self.encode(recordedSignals)
     }
 
     var shed: ShedLevel {
@@ -139,8 +154,30 @@ final class DailyEntry {
         set { shedRaw = newValue.rawValue }
     }
 
-    /// 16-point scalp seborrheic-dermatitis total (Zhang 2023). Flaking band 0–3 maps to
-    /// the validated 0–10 flaking item; erythema and itch are 0–3 each.
+    /// Legacy rows (`nil`) are intentionally treated as answered so an app update does not erase
+    /// an existing user's history. Every newly saved check-in writes an explicit set.
+    var recordedSignals: Set<DailySignal> {
+        get {
+            guard let recordedSignalsRaw else { return Set(DailySignal.allCases) }
+            return Set(recordedSignalsRaw.split(separator: ",").compactMap {
+                DailySignal(rawValue: String($0))
+            })
+        }
+        set { recordedSignalsRaw = Self.encode(newValue) }
+    }
+
+    func hasRecorded(_ signal: DailySignal) -> Bool { recordedSignals.contains(signal) }
+
+    var hasCompleteScalpRecording: Bool {
+        hasRecorded(.flaking) && hasRecorded(.erythema) && hasRecorded(.itch)
+    }
+
+    private static func encode(_ signals: Set<DailySignal>) -> String {
+        signals.map(\.rawValue).sorted().joined(separator: ",")
+    }
+
+    /// Self-reported 16-point scalp symptom total, adapted from Zhang 2023. Flaking band 0–3
+    /// is mapped to 0–10; this is not the clinician-administered validated instrument itself.
     var scalpTotal: Int { HairAnalytics.scalpTotal(flaking: flaking, erythema: erythema, itch: itch) }
     var scalpBand: SeverityBand { HairAnalytics.scalpBand(total: scalpTotal) }
 }
@@ -601,6 +638,8 @@ final class PhotoRecord {
     var isWet: Bool = false
     var note: String = ""
     var patchSeriesLabel: String = ""
+    /// User-observed milestone, dated to this photo; never inferred from image analysis.
+    var babyHairsNoticed: Bool = false
 
     init(
         region: PhotoRegion = .frontal,
@@ -611,7 +650,8 @@ final class PhotoRecord {
         parting: String = "",
         isWet: Bool = false,
         note: String = "",
-        patchSeriesLabel: String = ""
+        patchSeriesLabel: String = "",
+        babyHairsNoticed: Bool = false
     ) {
         self.regionRaw = region.rawValue
         self.imagePath = imagePath
@@ -622,6 +662,7 @@ final class PhotoRecord {
         self.isWet = isWet
         self.note = note
         self.patchSeriesLabel = patchSeriesLabel
+        self.babyHairsNoticed = babyHairsNoticed
     }
 
     var region: PhotoRegion {

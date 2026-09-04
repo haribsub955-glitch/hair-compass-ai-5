@@ -120,8 +120,20 @@ enum ResearchAggregator {
         let rawAdherence = Double(entries.count) / Double(span) * 100
         let adherence = min(100, Int((rawAdherence / 5).rounded()) * 5)
 
-        let washDay = entries.filter(\.washedHair)
-        let otherDay = entries.filter { !$0.washedHair }
+        let shedEntries = entries.filter { $0.hasRecorded(.shedding) }
+        let flakingEntries = entries.filter { $0.hasRecorded(.flaking) }
+        let itchEntries = entries.filter { $0.hasRecorded(.itch) }
+        let stressEntries = entries.filter { $0.hasRecorded(.stress) }
+        let sleepEntries = entries.filter { $0.hasRecorded(.sleepQuality) }
+        // The aggregate schema carries no per-signal sample sizes. Requiring the privacy floor
+        // for every exported mean avoids presenting a handful of answers as a 30-day cohort.
+        guard [shedEntries, flakingEntries, itchEntries, stressEntries, sleepEntries]
+            .allSatisfy({ $0.count >= ResearchPayload.minimumLoggedDays })
+        else { return nil }
+
+        let washAwareShed = shedEntries.filter { $0.hasRecorded(.washDay) }
+        let washDay = washAwareShed.filter(\.washedHair)
+        let otherDay = washAwareShed.filter { !$0.washedHair }
 
         return ResearchPayload(
             condition: profile.condition.rawValue,
@@ -131,11 +143,11 @@ enum ResearchAggregator {
             weeksTracked: weeks,
             loggedDaysBucket: bucket(entries.count),
             adherencePercent: adherence,
-            meanShed: mean(entries.map { Double($0.shedRaw) }),
-            meanFlaking: mean(entries.map { Double($0.flaking) }),
-            meanItch: mean(entries.map { Double($0.itch) }),
-            meanStress: mean(entries.map { Double($0.stress) }),
-            meanSleepQuality: mean(entries.map { Double($0.sleepQuality) }),
+            meanShed: mean(shedEntries.map { Double($0.shedRaw) }),
+            meanFlaking: mean(flakingEntries.map { Double($0.flaking) }),
+            meanItch: mean(itchEntries.map { Double($0.itch) }),
+            meanStress: mean(stressEntries.map { Double($0.stress) }),
+            meanSleepQuality: mean(sleepEntries.map { Double($0.sleepQuality) }),
             logsWashDays: !washDay.isEmpty,
             // Suppressed unless both arms are big enough to be a statistic rather than a
             // description of a handful of specific days.

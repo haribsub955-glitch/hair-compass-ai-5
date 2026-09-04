@@ -105,6 +105,35 @@ struct BackupServiceTests {
         #expect(restored.patchSeriesLabel == "Back patch")
     }
 
+    @Test func babyHairHighlightSurvivesBackupRestoreAndLegacyBackups() throws {
+        let source = try makeContainer()
+        let context = ModelContext(source)
+        let photo = PhotoRecord(createdAt: Date.now.addingTimeInterval(-86400), babyHairsNoticed: true)
+        context.insert(photo)
+        try context.save()
+        let envelope = BackupService.makeEnvelope(
+            profile: nil, entries: [], treatments: [], doses: [], sideEffects: [], labs: [],
+            photos: [photo], snapshots: [], triggers: [], procedures: [], progressCheckIns: [],
+            photoData: { _ in nil }
+        )
+        let decoded = try BackupService.decode(BackupService.encode(envelope))
+        #expect(decoded.photos.first?.babyHairsNoticed == true)
+        let destination = try makeContainer()
+        let restoredContext = ModelContext(destination)
+        _ = try BackupService.restore(decoded, into: restoredContext, photoWriter: { _ in nil })
+        let restored = try #require(restoredContext.fetch(FetchDescriptor<PhotoRecord>()).first)
+        #expect(restored.babyHairsNoticed)
+        #expect(BackupService.secondKey(restored.createdAt) == BackupService.secondKey(photo.createdAt))
+
+        var legacy = envelope
+        legacy.photos[0].babyHairsNoticed = nil
+        let oldDecoded = try BackupService.decode(BackupService.encode(legacy))
+        let oldDestination = try makeContainer()
+        let oldContext = ModelContext(oldDestination)
+        _ = try BackupService.restore(oldDecoded, into: oldContext, photoWriter: { _ in nil })
+        #expect(try oldContext.fetch(FetchDescriptor<PhotoRecord>()).first?.babyHairsNoticed == false)
+    }
+
     // MARK: - Round trip
 
     @Test func roundTripPreservesCountsValuesAndDates() throws {

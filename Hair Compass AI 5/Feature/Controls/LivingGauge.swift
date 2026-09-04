@@ -29,6 +29,7 @@ struct LivingGauge<Motif: View>: View {
     let ends: (String, String)?              // ("POOR","DEEP") etc. for 5-level gauges
     let caption: (CGFloat) -> (String, String)   // live (title, subtitle)
     @ViewBuilder let motif: (CGFloat) -> Motif   // the animated preview, fed intensity
+    var onInteraction: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -169,6 +170,7 @@ struct LivingGauge<Motif: View>: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { v in
+                        onInteraction?()
                         let previousBand = GaugeBand.index(intensity, count: bandCount)
                         let ni = min(1, max(0, (v.location.x - inset - thumb / 2) / usable))
                         intensity = ni
@@ -191,6 +193,7 @@ struct LivingGauge<Motif: View>: View {
     // MARK: Band mutation (zone taps + VoiceOver adjustable)
 
     private func setBand(_ newBand: Int) {
+        onInteraction?()
         let clamped = min(bandCount - 1, max(0, newBand))
         let changed = clamped != band
         let target = CGFloat(clamped) / CGFloat(bandCount - 1)

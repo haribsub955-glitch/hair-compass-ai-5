@@ -60,9 +60,12 @@ struct InsightContext: Sendable {
         sideEffects: [SideEffectLog] = []
     ) -> InsightContext {
         let sortedEntries = entries.sorted { $0.date < $1.date }
-        let shedValues = sortedEntries.map { Double($0.shed.rawValue) }
-        let scalpValues = sortedEntries.map { Double($0.scalpTotal) }
-        let latest = sortedEntries.last
+        let shedEntries = sortedEntries.filter { $0.hasRecorded(.shedding) }
+        let scalpEntries = sortedEntries.filter(\.hasCompleteScalpRecording)
+        let shedValues = shedEntries.map { Double($0.shed.rawValue) }
+        let scalpValues = scalpEntries.map { Double($0.scalpTotal) }
+        let latestShed = shedEntries.last
+        let latestScalp = scalpEntries.last
         let latestSnapshot = snapshots.max { $0.date < $1.date }
 
         let massSamples = snapshots.compactMap { s -> (date: Date, massKg: Double)? in
@@ -128,10 +131,10 @@ struct InsightContext: Sendable {
             entryCount: entries.count,
             streak: HairAnalytics.loggingStreak(entryDates: entries.map(\.date)),
             shedDirection: HairAnalytics.direction(shedValues),
-            latestShed: latest?.shed.title,
+            latestShed: latestShed?.shed.title,
             scalpDirection: HairAnalytics.direction(scalpValues),
-            latestScalpTotal: latest.map(\.scalpTotal),
-            latestScalpBand: latest.map(\.scalpBand.title),
+            latestScalpTotal: latestScalp.map(\.scalpTotal),
+            latestScalpBand: latestScalp.map(\.scalpBand.title),
             sleepHours: latestSnapshot?.sleepHours,
             hrvSDNN: latestSnapshot?.hrvSDNN,
             rapidWeightLossPercent: HairAnalytics.rapidWeightLossPercent(samples: massSamples),

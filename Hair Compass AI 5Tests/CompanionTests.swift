@@ -30,7 +30,17 @@ struct CompanionTests {
         #expect(Companion.pose(for: .listening) == CompanionArt.listening)
         #expect(Companion.pose(for: .thinking) == CompanionArt.thinking)
         #expect(Companion.pose(for: .searching) == CompanionArt.searching)
-        #expect(Companion.pose(for: .celebrating) == CompanionArt.celebrating)
+        #expect(Companion.pose(for: .celebrating) == CompanionArt.listening)
+    }
+
+    @Test func motionProfilesStaySubtleAndNeverDriftSideways() {
+        for moment in CompanionMoment.allCases {
+            let motion = Companion.motion(for: moment)
+            #expect(motion.breath <= 0.005)
+            #expect(motion.verticalTravel <= 0.8)
+            #expect(motion.tiltDegrees <= 0.7)
+            #expect(motion.period >= 9)
+        }
     }
 
     @Test func warmMomentsCarryCopyAmbientMomentsDoNot() {
@@ -43,7 +53,7 @@ struct CompanionTests {
     }
 
     @Test func copyNeverSoundsDiagnostic() {
-        let banned = ["diagnos", "cure", "you have", "condition", "prescrib"]
+        let banned = ["diagnos", "cure", "you have", "condition", "prescrib", "moves hair"]
         for moment in CompanionMoment.allCases {
             guard let line = Companion.line(for: moment)?.lowercased() else { continue }
             for word in banned {

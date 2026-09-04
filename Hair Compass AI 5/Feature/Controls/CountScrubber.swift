@@ -13,6 +13,7 @@ struct CountScrubber: View {
     let range: ClosedRange<Int>
     var tint: Color = Clinical.accent
     var motif: Motif
+    var onInteraction: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isDragging = false
@@ -94,6 +95,7 @@ struct CountScrubber: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { g in
+                        onInteraction?()
                         if !isDragging {
                             withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.8)) {
                                 isDragging = true
@@ -115,6 +117,7 @@ struct CountScrubber: View {
     /// Clamp, haptic only when the integer actually changes, animate the readout + fill together.
     /// Shared by the drag gesture and the VoiceOver adjustable action.
     private func setValue(_ newValue: Int) {
+        onInteraction?()
         let clamped = min(range.upperBound, max(range.lowerBound, newValue))
         guard clamped != value else { return }
         Haptics.shared.detentTick()

@@ -117,6 +117,9 @@ enum BackupService {
         var note = ""
         // Defaulted so older backups (without the field) still decode to "not a wash day".
         var washedHair = false
+        /// Optional by design: nil keeps the legacy all-fields interpretation when importing an
+        /// older backup; a present empty string preserves a note-only/explicitly skipped log.
+        var recordedSignalsRaw: String?
     }
 
     nonisolated struct TreatmentDTO: Codable, Sendable {
@@ -176,6 +179,7 @@ enum BackupService {
         var isWet = false
         var note = ""
         var patchSeriesLabel: String?
+        var babyHairsNoticed: Bool?
         /// The JPEG bytes, base64. nil when the original file was already missing on disk.
         var imageBase64: String?
     }
@@ -275,7 +279,7 @@ enum BackupService {
                      erythema: $0.erythema, itch: $0.itch, sleepQuality: $0.sleepQuality,
                      stress: $0.stress, cigarettes: $0.cigarettes,
                      alcoholDrinks: $0.alcoholDrinks, oiliness: $0.oiliness, note: $0.note,
-                     washedHair: $0.washedHair)
+                     washedHair: $0.washedHair, recordedSignalsRaw: $0.recordedSignalsRaw)
         }
 
         envelope.treatments = treatments.map { t in
@@ -320,6 +324,7 @@ enum BackupService {
                     lighting: record.lighting, distance: record.distance,
                     parting: record.parting, isWet: record.isWet, note: record.note,
                     patchSeriesLabel: record.region == .patch ? record.normalizedPatchSeriesLabel : nil,
+                    babyHairsNoticed: record.babyHairsNoticed,
                     imageBase64: record.imagePath.isEmpty
                         ? nil
                         : photoData(record.imagePath)?.base64EncodedString()
@@ -676,6 +681,7 @@ enum BackupService {
             e.oiliness = dto.oiliness
             e.note = dto.note
             e.washedHair = dto.washedHair
+            e.recordedSignalsRaw = dto.recordedSignalsRaw
             context.insert(e)
             summary.inserted += 1
         }
@@ -812,7 +818,8 @@ enum BackupService {
             let record = PhotoRecord(imagePath: path, createdAt: dto.createdAt,
                                      lighting: dto.lighting, distance: dto.distance,
                                      parting: dto.parting, isWet: dto.isWet, note: dto.note,
-                                     patchSeriesLabel: dto.patchSeriesLabel ?? "")
+                                     patchSeriesLabel: dto.patchSeriesLabel ?? "",
+                                     babyHairsNoticed: dto.babyHairsNoticed ?? false)
             record.regionRaw = dto.regionRaw
             context.insert(record)
             summary.inserted += 1

@@ -6,6 +6,7 @@ import SwiftUI
 /// `SheddingDial`, whose band/caption mapping is reused so the two stay in lockstep.
 struct ShedDialField: View {
     @Binding var shed: ShedLevel
+    var onInteraction: (() -> Void)? = nil
 
     @State private var intensity: CGFloat = 1.0 / 3.0
     @State private var dragging = false
@@ -154,6 +155,7 @@ struct ShedDialField: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { v in
+                        onInteraction?()
                         if !dragging {
                             dragging = true
                             Haptics.shared.startTexture()
@@ -185,6 +187,7 @@ struct ShedDialField: View {
     // MARK: Band mutation (zone taps + VoiceOver adjustable)
 
     private func setBand(_ band: Int) {
+        onInteraction?()
         let clamped = min(3, max(0, band))
         let target = CGFloat(clamped) / 3
         if reduceMotion {

@@ -1,11 +1,9 @@
 import Foundation
 
-/// App-level info + the legal strings needed before App Store submission. The privacy/support URLs
-/// are intentionally empty placeholders — fill them (the docs/ GitHub Pages site) before submitting;
-/// empty means the link is simply hidden in-app rather than showing a broken button.
+/// App-level info and public legal/support destinations. Release checks must verify these
+/// pages remain reachable and match the build's actual data flows, not just that URLs parse.
 nonisolated enum AppInfo {
-    /// The docs/ GitHub Pages site. Requires GitHub Pages to be enabled for the repo
-    /// (Settings → Pages → source: /docs on the default branch) so these resolve.
+    /// Production custom domain; HTTPS reachability verified in the September release audit.
     static let privacyPolicyURLString = "https://haircompass-ai.com/privacy-policy.html"
     static let supportURLString = "https://haircompass-ai.com/"
 

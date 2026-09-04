@@ -119,21 +119,23 @@ struct AgentToolExecutor: AgentClient.ToolExecutor {
 
         // Shed is a self-reported BAND (`ShedLevel`), not a hair count. Reporting it as a number
         // would invite the model to say "42 hairs a day", which this app never claims to measure.
-        if let band = modalShed(recent) { facts["shed_band_recent"] = band }
-        if let band = modalShed(previous) { facts["shed_band_previous"] = band }
+        let recentShed = recent.filter { $0.hasRecorded(.shedding) }
+        let previousShed = previous.filter { $0.hasRecorded(.shedding) }
+        if let band = modalShed(recentShed) { facts["shed_band_recent"] = band }
+        if let band = modalShed(previousShed) { facts["shed_band_previous"] = band }
 
-        // `scalpTotal` is HairAnalytics' 16-point scale, computed by the app.
-        if let average = mean(recent.map { Double($0.scalpTotal) }) {
+        // Self-reported scalp score adapted from the 16-point Zhang instrument.
+        if let average = mean(recent.filter(\.hasCompleteScalpRecording).map { Double($0.scalpTotal) }) {
             facts["scalp_score_16pt_recent"] = Int(average.rounded())
         }
-        if let average = mean(previous.map { Double($0.scalpTotal) }) {
+        if let average = mean(previous.filter(\.hasCompleteScalpRecording).map { Double($0.scalpTotal) }) {
             facts["scalp_score_16pt_previous"] = Int(average.rounded())
         }
         facts["scalp_scale_max"] = 16
 
         // Wash days show more shed. Handing the model the count without the confound is how it
         // reads a heavy wash week as a real change.
-        facts["wash_days_recent"] = recent.filter(\.washedHair).count
+        facts["wash_days_recent"] = recentShed.filter { $0.hasRecorded(.washDay) && $0.washedHair }.count
         return facts
     }
 
@@ -481,6 +483,7 @@ struct AgentToolExecutor: AgentClient.ToolExecutor {
             // Shed arrives as a band name, never a count — the app does not measure hair counts.
             if let name = arguments["shed_band"] as? String, let level = Self.shedLevel(named: name) {
                 entry.shed = level
+                entry.recordedSignals.formUnion([.shedding, .washDay])
             }
             if let note = arguments["note"] as? String, !note.isEmpty { entry.note = note }
         }

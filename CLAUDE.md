@@ -88,6 +88,20 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
 - FoundationModels generations cannot run on the Intel Mac's simulators (host lacks Apple
   Intelligence) — prompt/gate behavior with a LIVE model is verifiable only on a real
   AI-capable iPhone.
+- **Today = Daily Grounding (spec `docs/superpowers/specs/2026-09-03-daily-grounding-adherence-design.md`).**
+  Order: `CalmHorizonHeader` → `GroundingCardView` → `TodayPlanSection` → `EvidenceRibbon` →
+  shedding scene → rings → ledger. The card is a pure function of the record
+  (`GroundingCards.select`, hierarchy safety → concern → shedding grounding → continuation (due
+  only) → recovery → preparation → settled/closure → no-baseline → recognition → education →
+  quiet); a completion CTA exists only for a `.due` occurrence; the safety card never names a
+  condition and Today consumes only flags ≤30 days old (`ClinicianReviewFlags.forToday`).
+  `PlanAdherence.Consistency { completed, planned, scored }`: `planned` never moves when an
+  action is completed, percent reads `scored`, nothing is graded when `scored == 0`. Close the
+  Day fires once per day (`grounding.celebratedDay`); the card can be switched off
+  (`grounding.enabled`) without touching the plan. A server card (`/v1/grounding`, contract in
+  `docs/agent-platform/daily-grounding-card.md`) is DEBUG-only until the session advertises
+  `daily_grounding`; the deterministic card is always the fallback. Motion is native one-shots
+  inside `MotionSpec` budgets — no Lottie on this line.
 
 ## QUEUE
 
@@ -104,3 +118,15 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
    branch) + agy icon-severity fixed in `d0def34`; agy's step-13 and DCE findings discarded
    with verified reasons (see commit message).
 6. dropped — resubmission ASC lane for 1.0: app already approved and live.
+7. done 2026-09-04 — Daily Grounding + Plan Adherence series landed on the live line and main:
+   A (quick wins) `42aff26`, B (starter plan) `a081473`, E (fresh eyes) `e0fe9d6`, G1 (adherence
+   engine + Today's plan) `72d7687`, G2 (Calm Horizon + grounding card) `3c94ddb`, then the
+   owner's Codex session implemented G3 (evidence path) `eabec6f`, G4 (I'm worried) `49ef157`,
+   G5 (server card contract) `4e4c743`, G6 (notification action + widget completion) `43f3f83`,
+   `ee4a1d7`. Plans in `docs/superpowers/plans/2026-09-0{2,3}-*`; sub-project C (spotlight
+   tour) dropped per spec §8; sub-project D (design refinement + gouache art) still open.
+8. Open from the spec: tone preferences (§4.7, Phase 4), "Helpful / Not for me" feedback,
+   Lock Screen widget completion (accessory families are not interactive), appearance-checking
+   protections (§5, "I keep checking" repeats), and the server side of `/v1/grounding`
+   (`docs/agent-platform/daily-grounding-card.md`). User: device QA of Today's motion and the
+   three-Wren density (marker, card avatar, chat lane).

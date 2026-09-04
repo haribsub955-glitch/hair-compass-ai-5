@@ -5,6 +5,7 @@ import SwiftUI
 struct PhotosView: View {
     @Environment(\.modelContext) private var context
     @Environment(DeepLinkRouter.self) private var deepLinks
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Query(sort: \PhotoRecord.createdAt, order: .reverse) private var photos: [PhotoRecord]
 
     @State private var region: PhotoRegion = .frontal
@@ -76,6 +77,7 @@ struct PhotosView: View {
                 ScreenHeader(
                     eyebrow: "Documentation",
                     title: "Photos",
+                    trailing: AnyView(HeaderActionButton(systemName: "camera", accessibilityLabel: "Capture progress photo") { showAdd = true }),
                     condensed: headerCondense
                 ).padding(.top, 8)
                 // The sprig Round 5 removed can come back: it was pulled because it collided with
@@ -99,23 +101,7 @@ struct PhotosView: View {
                 // Lighting/trichoscopy guidance is only actionable once matched lighting is
                 // something to actually match against — demoted to appear after the first
                 // capture instead of competing with the empty-state instruction on day one.
-                if !photos.isEmpty {
-                    // `v2-photo-capture` was drawn for exactly this lesson — a phone framing the
-                    // back of a head beside a mirror — so the card that teaches repeatable capture
-                    // now shows it instead of only describing it. Deliberately *not* moved to the
-                    // empty state: Round 5 demoted this guidance past the first capture so it
-                    // wouldn't compete on day one, and an illustrated version would compete harder.
-                    TeachingPlate(art: BrandArt.photoCaptureV2, minHeight: 132, phase: 0.6) {
-                        Label("Repeatable capture", systemImage: "camera.metering.center.weighted")
-                            .font(Clinical.body(14, weight: .semibold))
-                            .foregroundStyle(Clinical.ink)
-                        Text("Compare only same-region shots taken under matched lighting, distance and parting. A phone can't do trichoscopy — that needs a clip-on dermatoscope.")
-                            .font(Clinical.caption(13))
-                            .foregroundStyle(Clinical.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .staggeredEntrance(index: 1)
-                }
+                photoJournalHero.staggeredEntrance(index: 1)
 
                 regionPicker
                     .staggeredEntrance(index: 2)
@@ -195,6 +181,49 @@ struct PhotosView: View {
             guard deepLinks.consumeGuidedCaptureRequest() else { return }
             showAdd = true
         }
+    }
+
+    private var photoJournalHero: some View {
+        ClinicalCard(padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Eyebrow(text: "The visual record")
+                        Text("Same view.\nA little more time.")
+                            .font(Clinical.headline(25)).foregroundStyle(Clinical.ink)
+                        Text("Progress deserves a fair comparison.")
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if !dynamicTypeSize.isAccessibilitySize {
+                    Image(BrandArt.photoCaptureV2).resizable().scaledToFill()
+                        .frame(width: 106, height: 140).clipped().blendMode(.multiply)
+                        .mask(RoundedRectangle(cornerRadius: 18))
+                        .accessibilityHidden(true)
+                    }
+                }
+                Divider().overlay(Clinical.hairline)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 16) {
+                        capturePrinciple("Light", symbol: "sun.max")
+                        capturePrinciple("Distance", symbol: "arrow.left.and.right")
+                        capturePrinciple("Parting", symbol: "line.3.horizontal")
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        capturePrinciple("Light", symbol: "sun.max")
+                        capturePrinciple("Distance", symbol: "arrow.left.and.right")
+                        capturePrinciple("Parting", symbol: "line.3.horizontal")
+                    }
+                }
+                Text("Match the region, lighting, distance and parting. A phone photo is not trichoscopy.")
+                    .font(Clinical.caption(11)).foregroundStyle(Clinical.secondary)
+            }
+        }
+        .accessibilityIdentifier("photosJournalHero")
+    }
+
+    private func capturePrinciple(_ title: String, symbol: String) -> some View {
+        Label(title, systemImage: symbol).font(Clinical.caption(12)).foregroundStyle(Clinical.positive)
     }
 
     private var patchSeriesPicker: some View {
@@ -279,7 +308,7 @@ struct PhotosView: View {
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Eyebrow(text: "First vs latest")
+                    Text("Then & now").font(Clinical.headline(23)).foregroundStyle(Clinical.ink)
                     Spacer()
                     Text("DRAG TO COMPARE").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.accent)
                 }
@@ -353,8 +382,11 @@ struct PhotosView: View {
     /// of the region — that's already the selected tab above), one sentence, one primary Capture
     /// action, and the two secondary links merged onto a single line.
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            ViewfinderFrame(size: 140)
+        ClinicalCard {
+        VStack(spacing: 14) {
+            ViewfinderFrame(size: 95)
+            Text("Your \(region.title.lowercased()) baseline")
+                .font(Clinical.headline(23)).foregroundStyle(Clinical.ink)
             Text("No photos yet — capture to start a comparable series.")
                 .font(Clinical.caption(14)).foregroundStyle(Clinical.secondary)
                 .multilineTextAlignment(.center)
@@ -365,7 +397,7 @@ struct PhotosView: View {
                     .font(Clinical.body(12, weight: .semibold))
                     .foregroundStyle(Clinical.surface)
                     .padding(.horizontal, 16)
-                    .frame(minHeight: 34)
+                    .frame(minHeight: 44)
                     .background(Clinical.accent, in: Capsule())
                     .shadow(color: Clinical.accent.opacity(0.24), radius: 8, y: 3)
             }
@@ -389,6 +421,7 @@ struct PhotosView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
+        }
     }
 
     /// Invites playing the region's photos as a scrubbable timelapse — the real series once
@@ -423,28 +456,11 @@ struct PhotosView: View {
     /// cards above, and pairs the button with how long it's been since this region's last shot so
     /// the same row doubles as the due-ness cue for the monthly follow-up.
     private var captureRow: some View {
-        HStack(spacing: 10) {
-            Button {
-                showAdd = true
-            } label: {
-                Label("Capture \(region.title)", systemImage: "camera")
-                    .font(Clinical.body(12, weight: .semibold))
-                    .foregroundStyle(Clinical.surface)
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 34)
-                    .background(Clinical.accent, in: Capsule())
-                    .shadow(color: Clinical.accent.opacity(0.24), radius: 8, y: 3)
-            }
-            .buttonStyle(.clinicalPressable)
-            .minimumHitTarget()
-            .accessibilityLabel("Capture \(region.title.lowercased()) photo")
-            Spacer(minLength: 8)
-            if let lastCaptureRecency {
-                Text(lastCaptureRecency)
-                    .font(Clinical.caption(11)).foregroundStyle(Clinical.secondary)
-                    .multilineTextAlignment(.trailing)
-            }
+        BotanicalActionCard(title: "Capture \(region.title)",
+                            subtitle: lastCaptureRecency ?? "Keep the same setup for the next view.", symbol: "camera") {
+            showAdd = true
         }
+        .accessibilityLabel("Capture \(region.title.lowercased()) photo")
     }
 
     /// "last frontal photo 34 days ago" — the current region's most recent capture, relative-

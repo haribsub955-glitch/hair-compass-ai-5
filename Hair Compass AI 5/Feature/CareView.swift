@@ -34,10 +34,12 @@ private enum PlanJumpDestination: String, CaseIterable, Identifiable {
 /// visible on every iPhone width without making the person horizontally scroll to discover it.
 private struct PlanJumpBar: View {
     let destinations: [PlanJumpDestination]
+    let selected: PlanJumpDestination
     let onSelect: (PlanJumpDestination) -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 8) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: dynamicTypeSize.isAccessibilitySize ? 2 : destinations.count), spacing: 8) {
             ForEach(destinations) { destination in
                 Button { onSelect(destination) } label: {
                     HStack(spacing: 5) {
@@ -48,17 +50,17 @@ private struct PlanJumpBar: View {
                             .minimumScaleFactor(0.82)
                     }
                     .font(Clinical.body(10.5, weight: .semibold))
-                    .foregroundStyle(destination == .products ? Clinical.accent : Clinical.ink)
+                    .foregroundStyle(destination == selected ? Clinical.accent : Clinical.ink)
                     .frame(maxWidth: .infinity, minHeight: 40)
                     .background(
-                        destination == .products
+                        destination == selected
                             ? Clinical.accent.opacity(0.11)
                             : Clinical.surface.opacity(0.86),
                         in: Capsule()
                     )
                     .overlay {
                         Capsule().strokeBorder(
-                            destination == .products
+                            destination == selected
                                 ? Clinical.accent.opacity(0.36)
                                 : Clinical.hairline,
                             lineWidth: 1
@@ -69,11 +71,29 @@ private struct PlanJumpBar: View {
                 .buttonStyle(.clinicalPressable)
                 .minimumHitTarget()
                 .accessibilityIdentifier("planJump.\(destination.rawValue)")
+                .accessibilityValue(destination == selected ? "Selected" : "Not selected")
+                .accessibilityAddTraits(destination == selected ? .isSelected : [])
                 .accessibilityHint("Jumps to the \(destination.title.lowercased()) section")
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planJumpBar")
+    }
+}
+
+private struct PlanSectionPositions: PreferenceKey {
+    static var defaultValue: [String: CGFloat] { [:] }
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private extension View {
+    func planMarker(_ destination: PlanJumpDestination) -> some View {
+        background(GeometryReader { geometry in
+            Color.clear.preference(key: PlanSectionPositions.self,
+                                   value: [destination.rawValue: geometry.frame(in: .named("planViewport")).minY])
+        })
     }
 }
 
@@ -86,6 +106,8 @@ struct CareView: View {
     /// Evidence lens hand-offs that belong to another primary destination.
     var onOpenLabs: (() -> Void)? = nil
     var onOpenPhotos: (() -> Void)? = nil
+    /// The onboarding handoff should reveal the roadmap even when replaying with an old record.
+    var startsWithRoadmap = false
 
     @Environment(\.modelContext) private var context
     @Environment(NotificationService.self) private var notifications
@@ -129,6 +151,10 @@ struct CareView: View {
     /// 0…1 fraction driving the header's scroll-condense (see `ScreenHeader.condensed`) — set
     /// directly from the ScrollView's own content offset.
     @State private var headerCondense: CGFloat = 0
+    @State private var selectedPlanSection: PlanJumpDestination = .today
+    @State private var planNavigatorHeight: CGFloat = 54
+    @State private var planViewportHeight: CGFloat = 700
+    @State private var requestedPlanSection: PlanJumpDestination?
     /// Non-nil while the "Delete" confirmation dialog is up for a treatment card's ellipsis
     /// menu — deleting cascades away every logged dose and side-effect entry (`Models.swift`'s
     /// `.cascade` delete rules), so this is a confirm-first path with "Mark inactive instead"
@@ -140,6 +166,7 @@ struct CareView: View {
     @State private var showRecommendedTrigger = false
     @State private var showRecommendedPhoto = false
     @State private var missedDoseCandidate: MissedDoseCandidate?
+    @State private var starterAdvice: StarterPlanItem?
 
     /// Evening check-in reminder — independent of the routine "Reminders" toggle above, off
     /// until the user turns it on. Time is stored as minutes-since-midnight (default 20:30).
@@ -147,7 +174,7 @@ struct CareView: View {
     @AppStorage("eveningCheckInMinutes") private var eveningCheckInMinutes = 20 * 60 + 30
     @AppStorage(NotificationService.genericWordingKey) private var genericNotificationWording = false
     @AppStorage(StarterPlanDismissals.key) private var starterPlanDismissedJSON = "[]"
-    @AppStorage("starterPlan.closerSeen") private var starterPlanCloserSeen = false
+    @AppStorage(StarterPlanDismissals.discussedKey) private var starterPlanDiscussedJSON = "[]"
     /// The last dismissal, so one Undo can bring it back until the next launch.
     @State private var lastStarterDismissal: String?
 
@@ -161,7 +188,7 @@ struct CareView: View {
             LazyVStack(alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
                 ScreenHeader(
                     eyebrow: "Ritual",
-                    title: "Plan",
+                    title: "Care plan",
                     trailing: AnyView(
                         HeaderActionButton(systemName: "plus", accessibilityLabel: "Add treatment") {
                             showAdd = true
@@ -179,11 +206,15 @@ struct CareView: View {
                     }
 
                 Section {
+                // One measured content stack keeps every section anchor alive. This avoids
+                // stale selection and inaccurate long jumps caused by lazy height estimates.
+                VStack(alignment: .leading, spacing: 16) {
                 // A stable zero-content landing point keeps "Today" useful even when the
                 // conditional starter plan or safety banner changes between visits.
                 Color.clear
                     .frame(height: 1)
                     .id(PlanJumpDestination.today.anchor)
+                    .planMarker(.today)
 
                 // One entrance sequence down the card stack; indices are fixed positions, so a
                 // missing conditional card just leaves an invisible 50ms gap. The coach card —
@@ -192,23 +223,37 @@ struct CareView: View {
                 // circles of the list below, so the header now flows straight into the routine
                 // section itself, the page's uncontested focal object.
                 if hasRecentSevereSideEffect { severeSideEffectBanner.staggeredEntrance(index: 2) }
-                // The starting plan leads the page until every item is done or dismissed; the
-                // one-line closer shows once, then the section retires on the next visit.
-                if showsStarterPlan {
+                // A compact orientation point from the existing evidence clock. It reports when
+                // the next honest review is due; it does not interpret response or replace the
+                // detailed path below. Safety continues to lead whenever its banner is present.
+                if (routine.isEmpty || startsWithRoadmap) && showsStarterPlan {
                     starterPlanSection(proxy: proxy).staggeredEntrance(index: 2)
                 }
+                if let phase = evidencePhase {
+                    EvidenceHorizonCard(phase: phase)
+                        .staggeredEntrance(index: 2)
+                }
+                // The actual scheduled routine leads the illustrated journal. Setup remains
+                // available immediately after it, with all completion and dismissal actions.
                 if !routine.isEmpty {
                     routineSection.staggeredEntrance(index: 3)
-                } else {
+                } else if !showsStarterPlan {
                     // `v2-plan-ritual` — dropper bottles, a comb and a notepad — was drawn to
                     // explain what a routine *is*, so it stands in for the routine section on the
                     // one visit where there isn't one yet. Same contract as Labs' context plate:
                     // it teaches while the screen is empty and retires the moment there's data.
                     planRitualPlate.staggeredEntrance(index: 3)
                 }
+                if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 4) }
+                if !routine.isEmpty && !startsWithRoadmap && showsStarterPlan {
+                    starterPlanSection(proxy: proxy).staggeredEntrance(index: 4)
+                }
                 guidanceCard.staggeredEntrance(index: 4)
                 remindersCard.id("reminders").staggeredEntrance(index: 5)
                 if let phase = evidencePhase {
+                    Color.clear.frame(height: 1)
+                        .id(PlanJumpDestination.evidence.anchor)
+                        .planMarker(.evidence)
                     EvidencePathSection(
                         phase: phase,
                         milestones: evidenceMilestones,
@@ -217,16 +262,15 @@ struct CareView: View {
                         overall: overallRhythm,
                         onAction: { openEvidenceAction($0, proxy: proxy) }
                     )
-                    .id(PlanJumpDestination.evidence.anchor)
                     .staggeredEntrance(index: 6)
                 }
-                if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
 
                 // The page changes subject here: everything above is what you do today, everything
                 // below is the longer record of what you're on and what you've had done.
                 Color.clear
                     .frame(height: 1)
                     .id(PlanJumpDestination.treatments.anchor)
+                    .planMarker(.treatments)
                 StrandDivider()
 
                 if treatments.isEmpty {
@@ -255,21 +299,29 @@ struct CareView: View {
 
                 // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
                 // straight to it and must never catch a mid-fade frame.
-                ScienceProductsSection()
+                Color.clear.frame(height: 1)
                     .id(PlanJumpDestination.products.anchor)
+                    .planMarker(.products)
+                ScienceProductsSection()
 
                 // Closes the app's longest scroll. Deliberately after the science section rather
                 // than before it: a garland placed above would read as decoration *for* the
                 // product rows, and this page needs an ending more than it needs another seam.
                 PageCloser(opacity: 0.8)
+                }
                 } header: {
-                    PlanJumpBar(destinations: planJumpDestinations) { destination in
+                    PlanJumpBar(destinations: planJumpDestinations, selected: selectedPlanSection) { destination in
                         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.38)) {
-                            proxy.scrollTo(destination.anchor, anchor: .top)
+                        selectedPlanSection = destination
+                        requestedPlanSection = destination
+                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.38), completionCriteria: .removed) {
+                            proxy.scrollTo(destination.anchor, anchor: UnitPoint(x: 0.5, y: (planNavigatorHeight + 12) / max(1, planViewportHeight)))
+                        } completion: {
+                            if requestedPlanSection == destination { requestedPlanSection = nil }
                         }
                     }
                     .padding(.vertical, 5)
+                    .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { planNavigatorHeight = $0 }
                     // A pinned navigator must fully erase content moving beneath it. The material
                     // keeps the journal texture while the canvas wash preserves label contrast.
                     .background {
@@ -286,12 +338,34 @@ struct CareView: View {
             .padding(.top, 8)
             .padding(.bottom, 24)
         }
+        .coordinateSpace(name: "planViewport")
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { planViewportHeight = $0 }
+        .onPreferenceChange(PlanSectionPositions.self) { positions in
+            guard requestedPlanSection == nil else { return }
+            let section = PlanSectionSelection.active(
+                orderedIDs: planJumpDestinations.map(\.rawValue), positions: positions,
+                readingLine: planNavigatorHeight + 28
+            )
+            if let section, let destination = PlanJumpDestination(rawValue: section) {
+                selectedPlanSection = destination
+            }
+        }
+        .onScrollPhaseChange { _, phase in
+            if phase == .interacting { requestedPlanSection = nil }
+        }
         // Condenses the header's serif title as the page scrolls — direct 1:1 offset tracking.
         .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, newY in
             headerCondense = Clinical.headerCondenseFraction(newY)
         }
         .clinicalScreen()
         .sheet(isPresented: $showAdd) { AddTreatmentSheet() }
+        .sheet(item: $starterAdvice) { item in
+            StarterPlanAdviceSheet(item: item, condition: profile?.condition ?? .unsure) { guidance, discussed in
+                var values = StarterPlanDismissals.decode(starterPlanDiscussedJSON)
+                if discussed { values.insert(guidance.rawValue) } else { values.remove(guidance.rawValue) }
+                starterPlanDiscussedJSON = StarterPlanDismissals.encode(values)
+            }
+        }
         .sheet(item: $recommendedTreatmentClass) { AddTreatmentSheet(initialClass: $0) }
         .sheet(isPresented: $showRecommendedLab) { AddLabSheet(initialTest: recommendedLabTest) }
         .sheet(isPresented: $showRecommendedTrigger) { AddTriggerSheet() }
@@ -698,21 +772,18 @@ struct CareView: View {
             profile: profile, labs: labs, treatments: treatments, photos: photoRecords,
             procedures: procedureAppointments, entries: entries,
             remindersEnabled: notifications.isEnabled,
-            dismissed: StarterPlanDismissals.decode(starterPlanDismissedJSON)
+            dismissed: StarterPlanDismissals.decode(starterPlanDismissedJSON),
+            discussed: StarterPlanDismissals.decode(starterPlanDiscussedJSON)
         )
         return StarterPlan.items(for: snapshot)
     }
 
     private var starterPlanIsComplete: Bool { StarterPlan.isComplete(starterPlanItems) }
 
-    /// Whether the starting-plan section is the one showing (and, by extension, whether the
-    /// standalone `guidanceCard` footnote below it should stay hidden to avoid repeating the same
-    /// three evidence options). `!starterPlanCloserSeen` is checked first — it's a stored flag, so
-    /// once the closer has been seen this short-circuits past recomputing `starterPlanItems` for
-    /// most visits, only falling through to `starterPlanIsComplete` for someone past the starting
-    /// phase whose plan has since gone incomplete again (a new item became due).
+    /// Keep a compact, reopenable summary after completion so discussion checkmarks can be
+    /// corrected. It must not vanish permanently after the last action.
     private var showsStarterPlan: Bool {
-        profiles.first != nil && (!starterPlanCloserSeen || !starterPlanIsComplete)
+        profiles.first != nil
     }
 
     private func starterPlanSection(proxy: ScrollViewProxy) -> some View {
@@ -724,9 +795,6 @@ struct CareView: View {
             onDismiss: dismissStarterItem,
             onUndo: undoStarterDismissal
         )
-        // The closer shows once the plan completes; leaving the tab marks it seen so the section
-        // is gone on the next visit.
-        .onDisappear { if starterPlanIsComplete { starterPlanCloserSeen = true } }
     }
 
     private func dismissStarterItem(_ item: StarterPlanItem) {
@@ -752,8 +820,8 @@ struct CareView: View {
             showRecommendedLab = true
         case .treatment(_, let action):
             if let action { presentRecommendedAction(action) } else { showRecommender = true }
-        case .procedure:
-            showInClinicOptions = true
+        case .procedure, .guidance:
+            starterAdvice = item
         case .setup(let step):
             switch step {
             case .logToday: onLogToday?()
@@ -777,36 +845,48 @@ struct CareView: View {
             Label("Your ritual", systemImage: "drop.fill")
                 .font(Clinical.body(14, weight: .semibold))
                 .foregroundStyle(Clinical.ink)
-            Text("Each treatment you add becomes a daily step here, so a month of tracking can be compared with the next. Start with the checklist above; the ritual is what makes the record honest.")
+            Text("If you use a treatment or scalp-care product, add the schedule you were given and log it here. You can still keep photos and check-ins without starting a treatment.")
                 .font(Clinical.caption(13))
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    /// No enclosing card — MORNING/EVENING/PERIODIC blocks sit on the ivory under hairline
-    /// section rules, and the gold milestone (formerly its own separate card in the stack) closes
-    /// the list as a one-line footnote instead of a fourth competing widget.
+    /// A botanical timeline of the existing scheduled occurrences. Completed rows compact;
+    /// pending rows retain a prominent action, with the same logging and missed-dose handlers.
     private var routineSection: some View {
         let milestone = Milestones.achieved(treatments: treatmentWeeks).first
-        return VStack(alignment: .leading, spacing: 0) {
+        let steps = routine.flatMap(\.steps)
+        let completed = steps.filter { isLogged($0.treatment, slot: $0.slot) }.count
+        return VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Your daily ritual").font(Clinical.headline(23)).foregroundStyle(Clinical.ink)
+                Spacer(minLength: 8)
+                Text("\(completed) / \(steps.count) logged")
+                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+            }
             ForEach(Array(routine.enumerated()), id: \.element.block.id) { index, entry in
                 VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow(text: entry.block.title)
+                    Label(entry.block.title.uppercased(), systemImage: entry.block.symbol)
+                        .font(Clinical.eyebrow(11)).tracking(1.5).foregroundStyle(Clinical.secondary)
                     ForEach(Array(entry.steps.enumerated()), id: \.offset) { _, step in
                         routineRow(step.treatment, slot: step.slot, periodic: entry.block == .periodic)
                     }
                 }
-                .padding(.bottom, 14)
-                if index != routine.count - 1 {
-                    Divider().overlay(Clinical.hairline).padding(.bottom, 14)
-                }
             }
+            WrenJournalNote(
+                moment: completed == steps.count ? .celebrating : .listening,
+                title: completed == steps.count ? "Today is in the record." : "One step at a time.",
+                message: completed == steps.count
+                    ? "Your scheduled care is logged. Let the longer record do the talking."
+                    : "Log what you actually do. An honest record is more useful than a perfect streak."
+            )
             if let milestone {
-                Divider().overlay(Clinical.hairline).padding(.bottom, 10)
                 milestoneFootnote(milestone)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("planRitualTimeline")
     }
 
     /// The gold milestone bar, demoted from its own card to the one-line annotation that closes
@@ -1106,16 +1186,11 @@ struct CareView: View {
                 }
                 Button { showReport = true } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .font(Clinical.caption(16))
-                            .foregroundStyle(milestone ? Clinical.surface : Clinical.accent)
-                            .frame(width: 38, height: 38)
-                            .background(milestone ? Clinical.accent : Clinical.accentSoft,
-                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        BotanicalEmblem(symbol: "doc.text.magnifyingglass", tint: Clinical.accent, size: 48)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 6) {
                                 Text("Progress report")
-                                    .font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                                    .font(Clinical.headline(22)).foregroundStyle(Clinical.ink)
                                 if milestone {
                                     Text("MILESTONE")
                                         .font(Clinical.eyebrow(8)).tracking(0.8)
@@ -1131,12 +1206,11 @@ struct CareView: View {
                         }
                         Spacer()
                         HStack(spacing: 4) {
-                            Text("View report")
-                                .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.accent)
                             Image(systemName: "chevron.right")
                                 .font(Clinical.body(11, weight: .semibold)).foregroundStyle(Clinical.accent)
                         }
                     }
+                    .background(alignment: .trailing) { BotanicalCardSprig(width: 95, opacity: 0.15) }
                 }
                 .buttonStyle(.plain)
             }
@@ -1506,9 +1580,6 @@ private struct RoutineStepRow: View {
     /// with the exact same ink gesture — this just flips `inkTrigger` on a genuine check-off
     /// (never on uncheck).
     @State private var inkTrigger = false
-    /// The check circle's diameter, scaled with Dynamic Type so the actual tap target grows
-    /// alongside the surrounding row text instead of staying a fixed 24pt dot.
-    @ScaledMetric(relativeTo: .body) private var checkDiameter: CGFloat = 24
 
     private var name: String {
         treatment.name.isEmpty ? treatment.treatmentClass.title : treatment.name
@@ -1534,53 +1605,106 @@ private struct RoutineStepRow: View {
     /// column on the left (matching Today's signal ledger), the treatment name in ink, and its
     /// class as a secondary line only when it isn't already implied by the name.
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Button(action: onInfo) {
-                    HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
+            RitualLeafSeal(done: done, periodic: periodic)
+                .padding(.top, 12)
+            ClinicalCard(padding: 16) {
+                if done {
+                    completedContent
+                } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
                         Text(timeLabel.uppercased())
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(Clinical.secondary)
-                            .frame(width: 46, alignment: .leading)
-                            .opacity(done ? 0.55 : 1)
-                        VStack(alignment: .leading, spacing: 2) {
-                            // No strikethrough: this is a current-medication list, and a
-                            // struck-through drug name reads clinically as "discontinued" —
-                            // precisely what this app must never imply. Done-ness is conveyed by
-                            // the filled check + dimmed text, animated so the settle itself reads
-                            // as purposeful, plus the transient copper underline flourish below
-                            // (never permanent, so it can't be misread as a strike).
+                            .font(Clinical.eyebrow(11))
+                            .foregroundStyle(done ? Clinical.positive : Clinical.accent)
+                        Spacer(minLength: 6)
+                        Text(done ? "Logged" : "Scheduled")
+                            .font(Clinical.caption(11))
+                            .foregroundStyle(done ? Clinical.positive : Clinical.secondary)
+                    }
+                    Button(action: onInfo) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            // A completed application is not a discontinued medication.
                             Text(name)
-                                .font(Clinical.body(15, weight: .medium))
-                                .foregroundStyle(done ? Clinical.secondary : Clinical.ink)
-                                .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: done)
+                                .font(Clinical.headline(done ? 19 : 23))
+                                .foregroundStyle(Clinical.ink)
                                 .completionInkUnderline(trigger: $inkTrigger)
                             if let classSubtitle {
-                                Text(classSubtitle)
-                                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                                Text(classSubtitle).font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(accessibilityLabel)
+                    .accessibilityHint("Shows dosing instructions")
+                    if expanded {
+                        Text(TreatmentGuide.instruction(for: treatment.treatmentClass))
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                    }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 14) { checkButton; detailsButton }
+                        VStack(alignment: .leading, spacing: 8) { checkButton; detailsButton }
+                    }
+                    if overdue && !done {
+                        Button("Couldn't do it", action: onMissed)
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                            .buttonStyle(.plain).minimumHitTarget()
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(alignment: .bottomTrailing) {
+                    BotanicalCardSprig(width: done ? 68 : 110, opacity: done ? 0.13 : 0.22)
+                        .offset(x: 12, y: 12)
+                }
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(
+                done ? Clinical.sage.opacity(0.25) : Clinical.accent.opacity(0.27), lineWidth: 1))
+        }
+        .background(alignment: .leading) {
+            Rectangle().fill(Clinical.gold.opacity(0.30)).frame(width: 1)
+                .padding(.leading, 19).padding(.top, 57)
+        }
+    }
+
+    private var completedContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Button(action: onInfo) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(timeLabel.uppercased()).font(Clinical.eyebrow(10)).foregroundStyle(Clinical.positive)
+                        Text(name).font(Clinical.headline(18)).foregroundStyle(Clinical.ink)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(accessibilityLabel)
                 .accessibilityHint("Shows dosing instructions")
-                Spacer()
-                checkButton
+                Button(action: onToggle) {
+                    Label("Undo", systemImage: "checkmark.circle.fill")
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.positive)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(name)
+                .accessibilityValue("Logged")
+                .accessibilityIdentifier("routineComplete.\(treatment.persistentModelID.hashValue).\(slot)")
             }
             if expanded {
                 Text(TreatmentGuide.instruction(for: treatment.treatmentClass))
                     .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                    .padding(.leading, 58)   // aligns under the text column (46pt time column + 12 gap)
-            }
-            if overdue && !done {
-                Button("Couldn't do it", action: onMissed)
-                    .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
-                    .buttonStyle(.plain)
-                    .padding(.leading, 58)
             }
         }
+        .background(alignment: .trailing) { BotanicalCardSprig(width: 66, opacity: 0.12) }
+    }
+
+    private var detailsButton: some View {
+        Button(expanded ? "Hide details" : "Details", action: onInfo)
+            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+            .buttonStyle(.plain).minimumHitTarget()
     }
 
     /// Spoken form of what the row now shows visually — the time/"as scheduled" lead plus the
@@ -1605,28 +1729,19 @@ private struct RoutineStepRow: View {
             }
             inkTrigger = true
         } label: {
-            ZStack {
-                // Unchecked reads as an actionable empty checkbox — a faint copper fill plus a
-                // stronger copper stroke — rather than the old near-invisible hairline dot that
-                // lost to the (i) info glyph for visual weight on the row.
-                Circle().fill(done ? Clinical.sage : Clinical.accent.opacity(0.06))
-                Circle().strokeBorder(done ? Clinical.sage : Clinical.accent.opacity(0.45), lineWidth: 2)
-                if done {
-                    Image(systemName: "checkmark")
-                        .font(Clinical.body(11, weight: .bold))
-                        .foregroundStyle(Clinical.surface)
-                }
-            }
-            .frame(width: checkDiameter, height: checkDiameter)
-            .scaleEffect(pop ? 1.15 : 1)
-            // Reduce Motion: the fill lands instantly and the pop above never fires.
-            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: done)
-            .frame(width: max(44, checkDiameter + 20), height: max(44, checkDiameter + 20))   // >=44pt hit target
-            .contentShape(Rectangle())
+            Label(done ? "Logged · undo" : "Complete", systemImage: done ? "checkmark.circle.fill" : "checkmark")
+                .font(Clinical.body(13, weight: .semibold))
+                .foregroundStyle(done ? Clinical.positive : Clinical.surface)
+                .padding(.horizontal, 18)
+                .frame(minHeight: 44)
+                .background(done ? Clinical.sage.opacity(0.12) : Clinical.accent, in: Capsule())
+                .scaleEffect(pop ? 1.03 : 1)
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(name)
         .accessibilityValue(done ? "Logged" : "Not logged")
+        .accessibilityIdentifier("routineComplete.\(treatment.persistentModelID.hashValue).\(slot)")
     }
 }
 

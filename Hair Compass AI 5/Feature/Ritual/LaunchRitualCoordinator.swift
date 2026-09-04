@@ -2,15 +2,9 @@ import Combine
 import Foundation
 import os
 
-/// Owns the launch-ritual trigger decision: the every-5th-open cadence, the never-repeat rule,
-/// the first-launch guard, and the >4h-background re-roll bookkeeping. There is no analytics
-/// service in this app, so the `ritual_shown / _completed / _skipped` events are stubbed as
-/// `os.Logger` debug lines.
+/// Normal launches go directly to the record. Unrelated every-fifth-open games no longer
+/// interrupt check-ins. Artwork remains previewable through explicit DEBUG arguments only.
 @MainActor final class LaunchRitualCoordinator: ObservableObject {
-
-    /// Show a ritual every Nth eligible open (deterministic counter, not a probability roll).
-    /// `static var` so it stays tweakable (a remote-config hook could set it).
-    static var showEveryNOpens = 5
 
     private let defaults: UserDefaults
     private let logger = Logger(subsystem: "hair-compass", category: "ritual")
@@ -19,50 +13,27 @@ import os
 
     private enum Key {
         static let lastKind = "lastRitualKind"
-        static let launchedBefore = "hasLaunchedBefore"
         static let backgroundedAt = "ritualBackgroundedAt"
-        static let openCount = "ritualOpenCount"
     }
 
     // MARK: Rolls
 
-    /// Increments the persisted open counter for this eligible open and returns true exactly on
-    /// every Nth call (the 5th, 10th, …). Only called once the first-launch/onboarding gates have
-    /// already passed, so the count only tracks opens where a ritual was actually eligible to show.
-    private func shouldShowOnOpen() -> Bool {
-        let n = defaults.integer(forKey: Key.openCount) + 1
-        defaults.set(n, forKey: Key.openCount)
-        return n % Self.showEveryNOpens == 0
-    }
-
-    /// Decide whether to show a ritual on this cold launch. Returns nil on first-ever launch, when
-    /// not onboarded, or when this isn't the Nth eligible open. DEBUG overrides bypass all of that.
+    /// Old cadence preferences are deliberately ignored, including on existing installs.
     func rollOnLaunch(hasOnboarded: Bool) -> RitualKind? {
         #if DEBUG
         if let forced = debugForcedKind() { return forced }
         if debugAlwaysShow() { return pick() }
         #endif
 
-        // First-ever launch: mark it and never show (onboarding owns the first run). Returns
-        // before touching the open counter, so the very first launch doesn't consume a count.
-        if !defaults.bool(forKey: Key.launchedBefore) {
-            defaults.set(true, forKey: Key.launchedBefore)
-            return nil
-        }
-        guard hasOnboarded else { return nil }
-        guard shouldShowOnOpen() else { return nil }
-        return pick()
+        return nil
     }
 
-    /// Re-roll when returning to the foreground after a long background. Same cadence rules,
-    /// but the first-launch guard is moot (we've obviously launched before).
+    /// Returning to the app never inserts an unrelated task ahead of the intended destination.
     func rollOnForeground(hasOnboarded: Bool) -> RitualKind? {
         #if DEBUG
         if let forced = debugForcedKind() { return forced }
         #endif
-        guard hasOnboarded else { return nil }
-        guard shouldShowOnOpen() else { return nil }
-        return pick()
+        return nil
     }
 
     /// Pick a random implemented kind that isn't the last one shown; persist and log it.

@@ -279,17 +279,25 @@ enum VisitReportPDF {
     /// `ImageRenderer` — SwiftUI/Charts drawing, not new math; same series TrendsView plots.
     @MainActor
     private static func chartsPageImage(entries: [DailyEntry]) -> UIImage? {
+        let shed = ChartMath.trailingCalendarMean(
+            entries.filter { $0.hasRecorded(.shedding) }
+                .map { (day: $0.date, value: Double($0.shed.rawValue)) },
+            windowDays: 7
+        )
+        let scalp = ChartMath.trailingCalendarMean(
+            entries.filter(\.hasCompleteScalpRecording)
+                .map { (day: $0.date, value: Double($0.scalpTotal)) },
+            windowDays: 7
+        )
         let view = VStack(alignment: .leading, spacing: 18) {
             PDFTrendChart(
                 caption: "Shedding (0 Low – 3 Heavy)",
-                points: ChartMath.rollingMean(entries.map { Double($0.shed.rawValue) }, window: 7)
-                    .enumerated().map { (entries[$0.offset].date, $0.element) },
+                points: shed.map { ($0.day, $0.value) },
                 domain: 0...3, color: Clinical.accent
             )
             PDFTrendChart(
-                caption: "Scalp severity (0–16)",
-                points: ChartMath.rollingMean(entries.map { Double($0.scalpTotal) }, window: 7)
-                    .enumerated().map { (entries[$0.offset].date, $0.element) },
+                caption: "Self-reported scalp symptom score (0–16)",
+                points: scalp.map { ($0.day, $0.value) },
                 domain: 0...16, color: Clinical.ink
             )
         }

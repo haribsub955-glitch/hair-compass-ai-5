@@ -96,6 +96,7 @@ enum Seed {
                     $0.alcoholDrinks = offset % 6 == 0 ? 2 : 0
                     $0.oiliness = clampBand(1.4 - progress * 0.6)
                     $0.note = ""
+                    $0.recordedSignals = Set(DailySignal.allCases)
                 }
             }
 

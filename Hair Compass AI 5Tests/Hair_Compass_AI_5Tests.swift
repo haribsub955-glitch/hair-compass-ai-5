@@ -13,7 +13,7 @@ struct Hair_Compass_AI_5Tests {
 
     // MARK: - Seborrheic-dermatitis 16-point scale (Zhang 2023)
 
-    @Test func scalpTotalMapsFlakingBandOntoValidatedScale() {
+    @Test func scalpTotalMapsFlakingBandOntoAdaptedScale() {
         // Flaking band 0..3 → 0/3/6/10; plus erythema + itch (0..3 each), total /16.
         #expect(HairAnalytics.scalpTotal(flaking: 0, erythema: 0, itch: 0) == 0)
         #expect(HairAnalytics.scalpTotal(flaking: 3, erythema: 3, itch: 3) == 16)
@@ -189,7 +189,7 @@ struct Hair_Compass_AI_5Tests {
         let entry = DailyEntry(alcoholDrinks: 2, oiliness: 3)
         #expect(entry.alcoholDrinks == 2)
         #expect(entry.oiliness == 3)
-        // Oiliness must not feed the validated scalp score.
+        // Oiliness must not feed the adapted scalp score.
         #expect(entry.scalpTotal == 0)
     }
 
@@ -533,6 +533,46 @@ struct Hair_Compass_AI_5Tests {
         #expect(paired.lifestyle == [9.0])
         // With no lag, they wouldn't line up.
         #expect(ChartMath.pairWithLag(hair: hair, lifestyle: life, lagDays: 0).hair.isEmpty)
+    }
+
+    @Test func calendarMeanDoesNotTreatOldSparseLogsAsRecentDays() {
+        let cal = Calendar.current
+        let day0 = cal.startOfDay(for: .now)
+        func d(_ offset: Int) -> Date { cal.date(byAdding: .day, value: offset, to: day0)! }
+        let smoothed = ChartMath.trailingCalendarMean([
+            (day: d(-14), value: 0),
+            (day: d(-1), value: 2),
+            (day: d(0), value: 2)
+        ], windowDays: 7, calendar: cal)
+        #expect(smoothed.last?.value == 2)
+    }
+
+    @Test func lagPairingCannotReuseOneContextDay() {
+        let cal = Calendar.current
+        let day0 = cal.startOfDay(for: .now)
+        let tomorrow = cal.date(byAdding: .day, value: 1, to: day0)!
+        let paired = ChartMath.pairWithLag(
+            hair: [(day: day0, value: 1), (day: tomorrow, value: 2)],
+            lifestyle: [(day: day0, value: 4)],
+            lagDays: 0,
+            tolerance: 3,
+            calendar: cal
+        )
+        #expect(paired.hair.count == 1)
+        #expect(paired.lifestyle.count == 1)
+    }
+
+    @Test func dailyEntryDistinguishesSkippedSignalsFromLegacyRows() {
+        let explicit = DailyEntry(recordedSignals: [])
+        #expect(!explicit.hasRecorded(.shedding))
+        explicit.recordedSignals.insert(.stress)
+        #expect(explicit.hasRecorded(.stress))
+        #expect(!explicit.hasRecorded(.sleepQuality))
+
+        let legacy = DailyEntry()
+        legacy.recordedSignalsRaw = nil
+        #expect(legacy.hasRecorded(.shedding))
+        #expect(legacy.hasRecorded(.sleepQuality))
     }
 
     // MARK: - Treatment recommender (gentle educator)

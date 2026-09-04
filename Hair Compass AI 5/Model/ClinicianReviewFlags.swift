@@ -87,7 +87,9 @@ enum ClinicianReviewFlags {
         let shedWindowStart = calendar.date(
             byAdding: .day, value: -(heavyShedWindowDays - 1), to: calendar.startOfDay(for: now)
         ) ?? now
-        let heavyDays = entries.filter { $0.date >= shedWindowStart && $0.shed == .heavy }.count
+        let heavyDays = entries.filter {
+            $0.date >= shedWindowStart && $0.hasRecorded(.shedding) && $0.shed == .heavy
+        }.count
         if heavyDays >= heavyShedThreshold {
             flags.append(ClinicianReviewFlag(
                 id: "heavyShed",
@@ -102,11 +104,11 @@ enum ClinicianReviewFlags {
         //    shedding persisting beyond ~6 months warrants a review.
         let directionStart = calendar.date(byAdding: .day, value: -recentDirectionWindowDays, to: now) ?? now
         let recentShedValues = entries
-            .filter { $0.date >= directionStart }
+            .filter { $0.date >= directionStart && $0.hasRecorded(.shedding) }
             .sorted { $0.date < $1.date }
             .map { Double($0.shed.rawValue) }
         let direction = HairAnalytics.direction(recentShedValues)
-        if direction > 0.05,
+        if recentShedValues.count >= 10, direction > 0.05,
            let stale = triggers
                .filter({ $0.weeksElapsed(now: now, calendar: calendar) > staleTriggerWeeks })
                .max(by: { $0.date < $1.date }) {

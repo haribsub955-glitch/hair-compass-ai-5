@@ -78,15 +78,24 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         )
 
         let products = app.buttons["planJump.products"]
+        XCTAssertEqual(app.buttons["planJump.today"].value as? String, "Selected")
+        XCTAssertEqual(products.value as? String, "Not selected")
         XCTAssertTrue(products.isHittable, "Products must be visible without horizontal discovery")
         products.tap()
         XCTAssertTrue(app.descendants(matching: .any)["scienceProductsSection"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Rosemary oil"].isHittable, "one tap should land on the first product")
         XCTAssertTrue(app.buttons["planJump.today"].isHittable, "the navigator should remain pinned at depth")
+        XCTAssertEqual(products.value as? String, "Selected")
+        // Drag content rather than tapping another shortcut: selection must follow the section.
+        app.swipeDown()
+        let treatments = app.buttons["planJump.treatments"]
+        let followsScroll = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Selected"), object: treatments)
+        XCTAssertEqual(XCTWaiter.wait(for: [followsScroll], timeout: 5), .completed)
 
         app.buttons["planJump.today"].tap()
-        XCTAssertTrue(app.staticTexts["Your starting plan"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Your starting plan"].isHittable, "Today should return to the actionable plan")
+        XCTAssertTrue(app.staticTexts["Your daily ritual"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your daily ritual"].isHittable, "Today should return to the scheduled routine")
+        XCTAssertEqual(app.buttons["planJump.today"].value as? String, "Selected")
     }
 
     /// During the first week Wren introduces a small, record-backed guide instead of dropping a
@@ -295,6 +304,26 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
                       "after Open my plan the Plan tab with the starting plan must be showing")
     }
 
+    @MainActor
+    func testStarterPlanVisitOpensAppointmentNotProcedureShopping() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_ONBOARD", "HC_ONBOARD_STEP", "14", "HC_NORITUAL", "HC_MOTION_STATIC"]
+        app.launch()
+        let open = app.buttons["onboardOpenPlan"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        open.tap()
+        let visit = app.buttons["starterPlanRow.procedure.consultation"]
+        XCTAssertTrue(visit.waitForExistence(timeout: 5), app.debugDescription)
+        for _ in 0..<10 where !visit.isHittable { app.swipeUp() }
+        XCTAssertTrue(visit.isHittable)
+        visit.tap()
+        let book = app.buttons["starterBookVisit"]
+        XCTAssertTrue(book.waitForExistence(timeout: 5))
+        book.tap()
+        XCTAssertTrue(app.navigationBars["Clinician visit"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Save appointment"].exists)
+    }
+
     /// A quiet day is one tap: with yesterday logged and today empty, "Same as yesterday" exists
     /// and turns into "Edit log" once tapped.
     @MainActor
@@ -319,6 +348,13 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
 
         let circle = app.buttons["planRowComplete.0"]
         XCTAssertTrue(circle.waitForExistence(timeout: 10), "today's plan must list an open action")
+        let row = app.otherElements["planRow.0"]
+        // Daily check-in now leads Today. Reveal the full row before interacting, especially
+        // for a long press: XCTest does not reliably scroll an off-screen container into view.
+        for _ in 0..<5 where !row.isHittable || row.frame.maxY > app.buttons["tab.today"].frame.minY {
+            app.swipeUp()
+        }
+        XCTAssertTrue(row.isHittable)
         XCTAssertEqual(circle.value as? String, "Not yet")
         XCTAssertFalse(app.otherElements["planClosure"].exists, "the closure line waits for every row")
 
@@ -333,7 +369,7 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
                       "Undo must restore the open row after SwiftData publishes the deletion")
 
         // Skip lives behind a long press on the row and asks for a reason.
-        app.otherElements["planRow.0"].press(forDuration: 1.2)
+        row.press(forDuration: 1.2)
         let skip = app.buttons["Skip today"]
         XCTAssertTrue(skip.waitForExistence(timeout: 4), "the long-press menu offers Skip today")
         skip.tap()

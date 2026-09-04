@@ -226,7 +226,7 @@ struct EvidencePathTests {
         #expect(result.summary.contains("days of separation"))
     }
 
-    @Test func scalpUsesTheValidatedScoreAndASeparateFourteenDayWindow() throws {
+    @Test func scalpUsesTheAdaptedScoreAndASeparateFourteenDayWindow() throws {
         let compressed = (0..<7).map { offset in
             DailyEntry(date: daysAgo(offset), flaking: 3, erythema: 2, itch: 2)
         }

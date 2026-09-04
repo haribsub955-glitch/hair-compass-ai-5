@@ -655,7 +655,7 @@ struct TrackedVariable: Identifiable {
         .init(id: "shedding", title: "Shedding", tier: .moderate, capture: .manual,
               why: "The core patient-tracked signal for telogen effluvium and pattern loss. Trended over time."),
         .init(id: "scalp", title: "Scalp severity", tier: .strong, capture: .manual,
-              why: "Flaking, redness and itch form a validated 16-point seborrheic-dermatitis score (Zhang 2023)."),
+              why: "Flaking, redness and itch form a consistent self-reported symptom score adapted from Zhang 2023."),
         .init(id: "oiliness", title: "Scalp oiliness", tier: .weak, capture: .manual,
               why: "An observation, not a risk driver. Sebum tracks with hormones but isn't independently actionable."),
         .init(id: "sleep", title: "Sleep", tier: .moderate, capture: .auto,

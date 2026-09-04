@@ -328,8 +328,13 @@ enum EvidenceSignals {
                 treatments: treatments, doses: doses, missed: missed,
                 sideEffects: sideEffects, now: now, calendar: calendar
             ),
-            sheddingSignal(entries: recentEntries, calendar: calendar),
-            scalpSignal(entries: recentEntries, calendar: calendar),
+            sheddingSignal(
+                entries: recentEntries.filter {
+                    $0.hasRecorded(.shedding) && $0.hasRecorded(.washDay)
+                },
+                calendar: calendar
+            ),
+            scalpSignal(entries: recentEntries.filter(\.hasCompleteScalpRecording), calendar: calendar),
             photoSignal(photos: photos, now: now, calendar: calendar),
             labSignal(labs: labs),
             eventSignal(triggers: triggers, now: now, calendar: calendar),
@@ -495,10 +500,10 @@ enum EvidenceSignals {
         )
     }
 
-    // MARK: Scalp: validated component score + a separate symptom window
+    // MARK: Scalp: self-reported adapted component score + a symptom window
 
     private static func scalpSignal(entries: [DailyEntry], calendar: Calendar) -> EvidenceSignal {
-        let rule = "Maps flaking 0–3 to 0/3/6/10, then adds redness 0–3 and itch 0–3 for a 0–16 scalp score. It reads symptom direction, never hair growth."
+        let rule = "Maps self-reported flaking 0–3 to 0/3/6/10, then adds redness 0–3 and itch 0–3 for a consistent 0–16 personal symptom score adapted from Zhang 2023. It reads symptom direction, never hair growth."
         guard let latest = entries.last else {
             return EvidenceSignal(
                 kind: .scalp, state: .standby, status: "No symptom record yet",

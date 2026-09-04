@@ -58,6 +58,9 @@ struct LogSheet: View {
     @State private var cigarettes = 0
     @State private var alcoholDrinks = 0
     @State private var note = ""
+    /// Presence is tracked independently from the controls' preview defaults. A value only
+    /// enters analytics after the user touches that control (or explicitly prefills a prior log).
+    @State private var recordedSignals: Set<DailySignal> = []
 
     // The stored values stay the source of truth in save(): each is the band of the live
     // intensity, so the severity readout below updates as you drag.
@@ -101,26 +104,42 @@ struct LogSheet: View {
                     }
 
                     section(variable: "shedding") {
-                        ShedDialField(shed: $shed)
+                        signalRecordingHint(
+                            recordedSignals.contains(.shedding),
+                            prompt: "Choose a level to add shedding to today's trend."
+                        )
+                        ShedDialField(shed: $shed) {
+                            recordedSignals.formUnion([.shedding, .washDay])
+                        }
                         washDayToggle
                     }
                     .id("checkInHair")
 
                     section(variable: "scalp", trailing: AnyView(severityReadout)) {
+                        signalRecordingHint(
+                            !recordedSignals.intersection([.flaking, .erythema, .itch, .oiliness]).isEmpty,
+                            prompt: "Touch only the symptoms you want recorded today."
+                        )
                         VStack(spacing: 16) {
                             LivingGauge(title: "Flaking", intensity: $flakeI, bandCount: 4,
                                         tint: Clinical.secondary,
                                         zones: ["NONE", "POWDERY", "VISIBLE", "ADHERENT"], ends: nil,
-                                        caption: flakeCaption) { i in FlakeMotif(intensity: i) }
+                                        caption: flakeCaption,
+                                        motif: { i in FlakeMotif(intensity: i) },
+                                        onInteraction: { recordedSignals.insert(.flaking) })
                             LivingGauge(title: "Redness", intensity: $redI, bandCount: 4,
                                         tint: Clinical.critical,
                                         panelBackground: Clinical.canvas,  // a hair warmer, so the flush reads
                                         zones: ["NONE", "MILD", "MODERATE", "MARKED"], ends: nil,
-                                        caption: rednessCaption) { i in RednessMotif(intensity: i) }
+                                        caption: rednessCaption,
+                                        motif: { i in RednessMotif(intensity: i) },
+                                        onInteraction: { recordedSignals.insert(.erythema) })
                             LivingGauge(title: "Itch", intensity: $itchI, bandCount: 4,
                                         tint: Clinical.warning,
                                         zones: ["NONE", "MILD", "MODERATE", "MARKED"], ends: nil,
-                                        caption: itchCaption) { i in ItchMotif(intensity: i) }
+                                        caption: itchCaption,
+                                        motif: { i in ItchMotif(intensity: i) },
+                                        onInteraction: { recordedSignals.insert(.itch) })
                         }
 
                         Divider().overlay(Clinical.hairline).padding(.vertical, 2)
@@ -128,7 +147,9 @@ struct LogSheet: View {
                         LivingGauge(title: "Oiliness", intensity: $oilI, bandCount: 4,
                                     tint: Clinical.gold,
                                     zones: ["NORMAL", "SLIGHT", "OILY", "VERY"], ends: nil,
-                                    caption: oilinessCaption) { i in OilMotif(intensity: i) }
+                                    caption: oilinessCaption,
+                                    motif: { i in OilMotif(intensity: i) },
+                                    onInteraction: { recordedSignals.insert(.oiliness) })
                         Text("An observation, not a risk driver — it doesn't feed the severity score.")
                             .font(Clinical.caption(11))
                             .foregroundStyle(Clinical.tertiary)
@@ -136,18 +157,30 @@ struct LogSheet: View {
                     .id("checkInScalp")
 
                     section("Wellbeing") {
+                        signalRecordingHint(
+                            !recordedSignals.intersection([.sleepQuality, .stress, .cigarettes, .alcohol]).isEmpty,
+                            prompt: "Optional context — touch a signal only when you want it compared."
+                        )
                         VStack(spacing: 16) {
                             LivingGauge(title: "Sleep quality", intensity: $sleepI, bandCount: 5,
                                         tint: Clinical.ink,
                                         zones: nil, ends: ("POOR", "DEEP"),
-                                        caption: sleepCaption) { i in SleepMotif(intensity: i) }
+                                        caption: sleepCaption,
+                                        motif: { i in SleepMotif(intensity: i) },
+                                        onInteraction: { recordedSignals.insert(.sleepQuality) })
                             LivingGauge(title: "Stress", intensity: $stressI, bandCount: 5,
                                         tint: Clinical.critical,
                                         zones: nil, ends: ("CALM", "HIGH"),
-                                        caption: stressCaption) { i in StressMotif(intensity: i) }
+                                        caption: stressCaption,
+                                        motif: { i in StressMotif(intensity: i) },
+                                        onInteraction: { recordedSignals.insert(.stress) })
                         }
-                        CountScrubber(title: "Cigarettes today", value: $cigarettes, range: 0...60, tint: Clinical.warning, motif: .smoke)
-                        CountScrubber(title: "Alcoholic drinks", value: $alcoholDrinks, range: 0...30, tint: Clinical.secondary, motif: .drops)
+                        CountScrubber(title: "Cigarettes today", value: $cigarettes, range: 0...60,
+                                      tint: Clinical.warning, motif: .smoke,
+                                      onInteraction: { recordedSignals.insert(.cigarettes) })
+                        CountScrubber(title: "Alcoholic drinks", value: $alcoholDrinks, range: 0...30,
+                                      tint: Clinical.secondary, motif: .drops,
+                                      onInteraction: { recordedSignals.insert(.alcohol) })
                         Text("Smoking is a strong, quantified risk factor. Sleep and stress are context; alcohol is a weak signal.")
                             .font(Clinical.caption(11))
                             .foregroundStyle(Clinical.tertiary)
@@ -217,6 +250,7 @@ struct LogSheet: View {
 
                     Button(saveButtonTitle, action: save)
                         .buttonStyle(ClinicalButtonStyle())
+                        .disabled(!canSave)
                 }
                 .padding(20)
                 .padding(.bottom, 20)
@@ -235,6 +269,7 @@ struct LogSheet: View {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Save", action: save)
                             .fontWeight(.semibold)
+                            .disabled(!canSave)
                             .accessibilityHint("Saves these changes without scrolling to the end")
                     }
                 }
@@ -280,6 +315,10 @@ struct LogSheet: View {
         return matchedEntry == nil ? "Save \(dayLabel)" : "Update \(dayLabel)"
     }
 
+    private var canSave: Bool {
+        !recordedSignals.isEmpty || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var navigationTitle: String {
         if existing != nil { return "Edit today" }
         return Calendar.current.isDateInToday(logDate) ? "Log today" : "Log \(dayLabel)"
@@ -295,7 +334,13 @@ struct LogSheet: View {
     /// a self-reported shed read. Kept to one explainer line so it doesn't compete with the
     /// dial for attention; Trends/ProgressReport/Compare use it to hedge, never to hide data.
     private var washDayToggle: some View {
-        Toggle(isOn: $washedHair) {
+        Toggle(isOn: Binding(
+            get: { washedHair },
+            set: {
+                washedHair = $0
+                recordedSignals.insert(.washDay)
+            }
+        )) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Washed hair today").font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.ink)
                 Text("Shed hairs are far more visible on wash days.")
@@ -303,6 +348,15 @@ struct LogSheet: View {
             }
         }
         .tint(Clinical.accent)
+    }
+
+    private func signalRecordingHint(_ recorded: Bool, prompt: String) -> some View {
+        Label(recorded ? "Included in today's record" : prompt,
+              systemImage: recorded ? "checkmark.circle.fill" : "circle.dashed")
+            .font(Clinical.caption(11))
+            .foregroundStyle(recorded ? Clinical.positive : Clinical.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel(recorded ? "Included in today's record" : prompt)
     }
 
     private func scrollToChapter(_ id: String) {
@@ -462,6 +516,7 @@ struct LogSheet: View {
         cigarettes = e.cigarettes
         alcoholDrinks = e.alcoholDrinks
         note = e.note
+        recordedSignals = e.recordedSignals
     }
 
     /// Live-load when the scrubbed day already has an entry, so the sheet becomes an edit of
@@ -484,6 +539,7 @@ struct LogSheet: View {
         sleepI = 0.5; stressI = 0.5
         cigarettes = 0; alcoholDrinks = 0
         note = ""
+        recordedSignals = []
     }
 
     /// The one-entry-per-day guard: the first `DailyEntry` whose date falls inside the
@@ -509,6 +565,10 @@ struct LogSheet: View {
 
         // `existing` remains a presentation hint; the repository re-resolves by calendar day
         // so every entry path shares the same one-row invariant without replacing richer data.
+        var savedSignals = recordedSignals
+        // A shedding answer always carries an explicit no/yes wash-day answer from the adjacent
+        // toggle; the default false therefore means "not a wash day", not missing context.
+        if savedSignals.contains(.shedding) { savedSignals.insert(.washDay) }
         _ = try? DailyEntryRepository(context: context).upsert(day: logDate) { target in
             target.shed = shed
             target.washedHair = washedHair
@@ -521,6 +581,7 @@ struct LogSheet: View {
             target.alcoholDrinks = alcoholDrinks
             target.oiliness = oiliness
             target.note = note
+            target.recordedSignals = savedSignals
         }
 
         let after = CheckInReward.Snapshot(context: context)

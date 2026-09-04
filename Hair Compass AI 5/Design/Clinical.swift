@@ -838,7 +838,9 @@ struct ScreenHeader: View {
     }
 }
 
-/// A consistent 44pt header action — a bare copper glyph, no disc behind it. Every card in the
+/// A consistent 44pt header action on a warm ceramic disc. The symbol stays within its fixed
+/// hit target at accessibility text sizes. This owner-approved journal treatment supersedes
+/// the earlier bare-glyph style described in the historical notes below. Every card in the
 /// app dissolved its chrome rounds ago; this is the one-header-action-voice that keeps the
 /// screen's top-right corner on canvas instead of wearing the last white coin in the app. The
 /// glyph sits inside the full 44pt tappable frame so it still meets the platform's comfortable
@@ -851,9 +853,12 @@ struct HeaderActionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(Clinical.body(20, weight: .semibold))
+                .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(Clinical.accent)
                 .frame(width: 44, height: 44)
+                .background(Clinical.surfaceWash, in: Circle())
+                .overlay(Circle().strokeBorder(Clinical.hairline, lineWidth: 1))
+                .shadow(color: Clinical.cardShadow, radius: 4, y: 2)
                 .contentShape(Circle())
         }
         .buttonStyle(.clinicalPressable)

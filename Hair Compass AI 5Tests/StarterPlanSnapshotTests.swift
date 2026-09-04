@@ -76,4 +76,19 @@ struct StarterPlanSnapshotTests {
         #expect(StarterPlanDismissals.decode("not json").isEmpty)
         #expect(StarterPlanDismissals.encode([]) == "[]")
     }
+
+    @Test func consultationCompletionRequiresAttendanceAndAPastDate() {
+        let p = profile(condition: .unsure, sex: .male)
+        let now = Date()
+        let visit = ProcedureAppointment(type: .consultation, date: now.addingTimeInterval(-3600))
+        func snapshot() -> StarterPlan.Snapshot {
+            .make(profile: p, labs: [], treatments: [], photos: [], procedures: [visit], entries: [],
+                  remindersEnabled: false, dismissed: [], today: now)
+        }
+        #expect(!snapshot().hasCompletedConsultation)
+        visit.isCompleted = true
+        #expect(snapshot().hasCompletedConsultation)
+        visit.date = now.addingTimeInterval(3600)
+        #expect(!snapshot().hasCompletedConsultation)
+    }
 }

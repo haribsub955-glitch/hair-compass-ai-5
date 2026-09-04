@@ -2,6 +2,10 @@ import SwiftData
 import SwiftUI
 
 struct TrendsView: View {
+    var onLogToday: (() -> Void)? = nil
+    var onOpenPlan: (() -> Void)? = nil
+    var onOpenPhotos: (() -> Void)? = nil
+
     @Query(sort: \DailyEntry.date) private var entries: [DailyEntry]
     @Query(sort: \Treatment.startDate) private var treatments: [Treatment]
     @Query private var doses: [TreatmentDose]
@@ -16,9 +20,14 @@ struct TrendsView: View {
     @Query(sort: \SideEffectLog.date) private var sideEffectLogs: [SideEffectLog]
 
     @State private var showCompare = false
+    @State private var comparisonEventID: String?
     @State private var showExport = false
     @State private var showBadges = false
     @State private var showReport = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(StarterPlanDismissals.key) private var starterPlanDismissedJSON = "[]"
+    @AppStorage(StarterPlanDismissals.discussedKey) private var starterPlanDiscussedJSON = "[]"
+    @AppStorage("eveningCheckInEnabled") private var eveningCheckInEnabled = false
 
     // Round-5 addition: 1Y and All. The app's central teaching is "judge at 24 weeks" and
     // treatment journeys run multi-year — a 180-day cap meant the moment someone passed ~week
@@ -87,72 +96,19 @@ struct TrendsView: View {
                         .offset(y: -8)
                 }
 
-                // A quiet text-tab row instead of a bordered 5-segment capsule — the active
-                // range reads by weight + a sliding copper underline, not a filled pill.
-                InkTabs(
-                    options: Range.allCases,
-                    selection: $range,
-                    namespace: rangeNamespace,
-                    spacing: 22,
-                    accessibilityLabel: { $0.rawValue }
-                ) { option, isOn in
-                    Text(option.rawValue)
-                        .font(Clinical.body(13, weight: isOn ? .semibold : .regular))
-                        .foregroundStyle(isOn ? Clinical.ink : Clinical.secondary)
+                if showsRangePicker {
+                    rangePicker
                 }
 
-                trajectoryAnnotation
+                relationshipCard
 
                 currentReadCard
 
-                JourneyChart(
-                    entries: entries,
-                    treatments: treatments,
-                    doses: doses,
-                    triggers: triggers,
-                    procedures: procedureAppointments,
-                    windowDays: range.days
-                )
-
-                clinicianReviewCard
-
-                progressCheckInsCard
-
-                // The page turns here: everything above reads the hair, everything below reads
-                // the tracking. A painted seam says that more quietly than a heading would.
-                StrandDivider()
-
-                ConsistencyCard(
-                    entries: entries,
-                    treatments: treatments,
-                    doses: doses,
-                    photos: photos,
-                    labs: labs,
-                    triggers: triggers,
-                    showAllBadges: $showBadges
-                )
-
-                BodySignalsDashboard(
-                    snapshots: snapshots,
-                    windowDays: range.days,
-                    hasTractionRisk: profile?.hasTractionRisk == true,
-                    recentTrigger: triggers.first
-                )
-                .id("body-signals")
-                compareFootnoteRow
-
-                if windowEntries.count < 2 {
-                    emptyState
+                if isBuildingPrimaryTrend {
+                    sparseTrendExperience
                 } else {
-                    // The hero JourneyChart above already IS the shedding chart — a second
-                    // shedding card here used to re-plot the exact same fact. Scalp and
-                    // adherence continue as quiet ledger rows instead of their own boxed charts,
-                    // in the same margin-note language as Today's signal ledger.
-                    scalpRow
-                    adherenceRows
+                    establishedTrendExperience
                 }
-
-                excludedFootnote
 
                 // Ends the scroll the way Today does, so the app's two longest reference pages
                 // close in one voice. Inset rather than full-bleed on purpose — see `PageCloser`.
@@ -177,7 +133,7 @@ struct TrendsView: View {
         .clinicalScreen()
         .sheet(isPresented: $showCompare) {
             NavigationStack {
-                CompareView()
+                CompareView(initialEventID: comparisonEventID)
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showCompare = false } } }
             }
         }
@@ -207,30 +163,505 @@ struct TrendsView: View {
         }
     }
 
-    /// A plain ink footnote row — replaces the boxed icon-tile card. Same destination
-    /// (`showCompare`), same overlay feature, just said once in the margin instead of inside a
-    /// card with its own 38pt tinted icon square.
-    private var compareFootnoteRow: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Divider().overlay(Clinical.hairline)
-            Button { showCompare = true } label: {
-                HStack(spacing: 10) {
-                    Text("Compare signals")
-                        .font(Clinical.body(14, weight: .medium))
-                        .foregroundStyle(Clinical.accent)
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
-                        .font(Clinical.body(11, weight: .semibold))
-                        .foregroundStyle(Clinical.accent.opacity(0.6))
-                }
-                .padding(.vertical, 13)
-                .contentShape(Rectangle())
+    // MARK: - Progressive trend experience
+
+    private enum TrendFocus: Equatable {
+        case shedding, scalpSymptoms, photos
+
+        var title: String {
+            switch self {
+            case .shedding: return "shedding baseline"
+            case .scalpSymptoms: return "scalp-symptom baseline"
+            case .photos: return "visual baseline"
             }
-            .buttonStyle(.clinicalPressable)
-            .accessibilityLabel("Compare signals")
-            .accessibilityHint("Overlays a hair-fall variable against a lifestyle statistic")
-            Divider().overlay(Clinical.hairline)
         }
+
+        var baselineTarget: Int { self == .photos ? 2 : 5 }
+        var directionTarget: Int { self == .photos ? 2 : 10 }
+        var journeyMetric: JourneyMetric? {
+            switch self {
+            case .shedding: return .shedding
+            case .scalpSymptoms: return .scalpSymptoms
+            case .photos: return nil
+            }
+        }
+    }
+
+    private var trendFocus: TrendFocus {
+        switch profile?.condition ?? .unsure {
+        case .seborrheicDermatitis: return .scalpSymptoms
+        case .androgenetic, .alopeciaAreata, .traction: return .photos
+        case .telogenEffluvium, .unsure: return .shedding
+        }
+    }
+
+    private var primaryEvidenceCount: Int {
+        switch trendFocus {
+        case .shedding:
+            return entries.filter { $0.hasRecorded(.shedding) }.count
+        case .scalpSymptoms:
+            return entries.filter { JourneyMetric.scalpSymptoms.value(for: $0) != nil }.count
+        case .photos:
+            let sameRegion = Dictionary(grouping: photos, by: \.regionRaw).values.map(\.count).max() ?? 0
+            return max(sameRegion, progressCheckIns.count)
+        }
+    }
+
+    private var isBuildingPrimaryTrend: Bool {
+        primaryEvidenceCount < trendFocus.directionTarget
+    }
+
+    private var showsRangePicker: Bool {
+        let dailyCount: Int
+        if let metric = trendFocus.journeyMetric {
+            dailyCount = entries.filter { metric.value(for: $0) != nil }.count
+        } else {
+            dailyCount = entries.filter { $0.hasRecorded(.shedding) }.count
+        }
+        // Keep the range reachable even when every saved highlight is outside the current window.
+        let hasHighlights = !photos.isEmpty || !treatments.isEmpty || !progressCheckIns.isEmpty
+            || !sideEffectLogs.isEmpty || !triggers.isEmpty || procedureAppointments.contains(where: \.isCompleted)
+        if trendFocus == .photos && isBuildingPrimaryTrend { return hasHighlights }
+        return dailyCount >= 5 || hasHighlights
+    }
+
+    private var rangePicker: some View {
+        InkTabs(
+            options: Range.allCases,
+            selection: $range,
+            namespace: rangeNamespace,
+            spacing: 22,
+            accessibilityLabel: { $0.rawValue }
+        ) { option, isOn in
+            Text(option.rawValue)
+                .font(Clinical.body(13, weight: isOn ? .semibold : .regular))
+                .foregroundStyle(isOn ? Clinical.ink : Clinical.secondary)
+        }
+    }
+
+    /// A small, unboxed treatment-clock cue that remains useful while a photo-led baseline is
+    /// still sparse. It separates "not enough comparison evidence" from "nothing is happening"
+    /// without making an outcome claim or competing with the primary card below.
+    @ViewBuilder
+    private var trendsEvidenceHorizon: some View {
+        if let phase = evidencePhase {
+            let columns = dynamicTypeSize.isAccessibilitySize ? 1 : 2
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .top), count: columns), spacing: 12) {
+                JournalMetricTile(title: "Next review", value: phase.daysToReview == 0 ? "Ready" : "\(phase.daysToReview) days",
+                                  caption: phase.nextReviewDate.formatted(.dateTime.day().month(.abbreviated)),
+                                  symbol: "calendar", tint: Clinical.accent)
+                JournalMetricTile(title: "Evidence horizon", value: "Week \(phase.week)",
+                                  caption: phase.label, symbol: "safari", tint: Clinical.positive)
+            }
+            .accessibilityIdentifier("trendsEvidenceHorizon")
+        }
+    }
+
+    @ViewBuilder
+    private var sparseTrendExperience: some View {
+        trendFoundationCard
+        trendsEvidenceHorizon
+
+        if let metric = trendFocus.journeyMetric {
+            focusAnnotation
+            journalChart(metric: metric)
+        } else if entries.filter({ $0.hasRecorded(.shedding) }).count >= 5 {
+            // The primary photo baseline remains unmet. Existing daily measurements can still
+            // be inspected as supporting context, never substituted for visual evidence.
+            journalChart(metric: .shedding, supporting: true)
+        }
+
+        highlightsCard
+        sparsePlanCard
+        whatWillTrendCard
+    }
+
+    @ViewBuilder
+    private var establishedTrendExperience: some View {
+        if let metric = trendFocus.journeyMetric {
+            focusAnnotation
+            journalChart(metric: metric)
+        } else {
+            conditionEvidenceCard
+            if entries.contains(where: { $0.hasRecorded(.shedding) }) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Eyebrow(text: "Daily shedding context")
+                    trajectoryAnnotation
+                }
+                journalChart(metric: .shedding, supporting: true)
+            }
+        }
+
+        highlightsCard
+        trendsEvidenceHorizon
+
+        clinicianReviewCard
+        progressCheckInsCard
+        StrandDivider()
+
+        ConsistencyCard(
+            entries: entries,
+            treatments: treatments,
+            doses: doses,
+            photos: photos,
+            labs: labs,
+            triggers: triggers,
+            showAllBadges: $showBadges
+        )
+
+        BodySignalsDashboard(
+            snapshots: snapshots,
+            windowDays: range.days,
+            hasTractionRisk: profile?.hasTractionRisk == true,
+            recentTrigger: triggers.first
+        )
+        .id("body-signals")
+
+        if windowEntries.filter({ $0.hasRecorded(.shedding) || $0.hasCompleteScalpRecording }).count < 2 {
+            emptyState
+        } else {
+            scalpRow
+            adherenceRows
+        }
+
+        excludedFootnote
+    }
+
+    private var trendFoundationCard: some View {
+        let count = primaryEvidenceCount
+        let target = trendFocus.directionTarget
+        let progress = min(1, Double(count) / Double(max(1, target)))
+        return ClinicalCard {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(spacing: 12) {
+                    CompanionView(moment: count == 0 ? .searching : .listening, size: 68)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Eyebrow(text: "Building your trend")
+                        Text("The long view").font(Clinical.headline(26)).foregroundStyle(Clinical.ink)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text(foundationHeadline(count: count))
+                    .font(Clinical.headline(21))
+                    .foregroundStyle(Clinical.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(foundationDetail(count: count))
+                    .font(Clinical.caption(13))
+                    .foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Clinical.hairline)
+                        Capsule().fill(Clinical.accent)
+                            .frame(width: geometry.size.width * progress)
+                    }
+                }
+                .frame(height: 7)
+                .accessibilityLabel("\(count) of \(target) observations toward a directional read")
+
+                HStack {
+                    Text("\(count) recorded")
+                    Spacer()
+                    Text(trendFocus == .photos ? "2 matching views" : "5 per week")
+                }
+                .font(Clinical.eyebrow(9))
+                .foregroundStyle(Clinical.tertiary)
+
+                Button(action: primaryAction) {
+                    Label(primaryActionTitle, systemImage: trendFocus == .photos ? "camera" : "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ClinicalButtonStyle())
+            }
+        }
+        .accessibilityIdentifier("trendsFoundation")
+    }
+
+    private func journalChart(metric: JourneyMetric, supporting: Bool = false) -> some View {
+        ClinicalCard(padding: 16) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 10) {
+                    BotanicalEmblem(symbol: "chart.xyaxis.line", tint: Clinical.accent, size: 36)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(metric.title).font(Clinical.headline(23)).foregroundStyle(Clinical.ink)
+                        Text(supporting ? "Supporting context · not a density assessment" : "Your observations over time")
+                            .font(Clinical.caption(11)).foregroundStyle(Clinical.secondary)
+                    }
+                }
+                if supporting && !showsRangePicker { rangePicker }
+                JourneyChart(entries: entries, treatments: treatments, doses: doses, triggers: triggers,
+                             procedures: procedureAppointments, photos: photos, progressCheckIns: progressCheckIns,
+                             sideEffects: sideEffectLogs, windowDays: range.days, metric: metric)
+            }
+        }
+        .accessibilityIdentifier("trendsJournalChart")
+    }
+
+    private func foundationHeadline(count: Int) -> String {
+        if count == 0 { return "Your \(trendFocus.title) starts here" }
+        if count < trendFocus.baselineTarget { return "A useful baseline is taking shape" }
+        return "Your baseline is ready — direction comes next"
+    }
+
+    private func foundationDetail(count: Int) -> String {
+        switch trendFocus {
+        case .photos:
+            return count == 0
+                ? "Take a standardized baseline photo. A second photo of the same region creates the first honest comparison."
+                : "Keep the same region, angle, lighting, and wet-or-dry state for the comparison photo."
+        case .shedding, .scalpSymptoms:
+            if count == 0 { return "Log one honest observation today. Empty fields stay empty and will not be treated as normal values." }
+            if count < 5 { return "These points preserve what happened. The app waits for five observations before drawing a baseline trace." }
+            return "A week-to-week direction opens after at least five logged days in each adjacent week."
+        }
+    }
+
+    private var primaryActionTitle: String {
+        trendFocus == .photos ? "Open progress photos" : "Log today's observation"
+    }
+
+    private func primaryAction() {
+        if trendFocus == .photos { onOpenPhotos?() } else { onLogToday?() }
+    }
+
+    private var focusAnnotation: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(Clinical.body(12, weight: .semibold))
+                .foregroundStyle(Clinical.accent)
+            Text(trendFocus == .shedding ? TrajectorySummary(entries: windowEntries).oneLiner : scalpFocusOneLiner)
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 2)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var scalpFocusOneLiner: String {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? .now
+        let currentStart = calendar.date(byAdding: .day, value: -6, to: today) ?? today
+        let previousStart = calendar.date(byAdding: .day, value: -13, to: today) ?? today
+        let points = entries.compactMap { entry in
+            JourneyMetric.scalpSymptoms.value(for: entry).map { (date: entry.date, value: $0) }
+        }
+        let current = points.filter { $0.date >= currentStart && $0.date < tomorrow }
+        let previous = points.filter { $0.date >= previousStart && $0.date < currentStart }
+        guard current.count >= 5, previous.count >= 5 else {
+            return "Scalp-symptom baseline forming · \(min(current.count, 7)) of 7 days logged."
+        }
+        let delta = ChartMath.mean(current.map(\.value)) - ChartMath.mean(previous.map(\.value))
+        if abs(delta) < 0.3 { return "Scalp symptoms steady this week · \(current.count) of 7 days logged." }
+        return "Scalp symptoms possibly \(delta < 0 ? "calmer" : "higher") this week · \(current.count) of 7 days logged."
+    }
+
+    private var conditionEvidenceCard: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 11) {
+                Eyebrow(text: conditionEvidenceEyebrow)
+                Text(conditionEvidenceTitle)
+                    .font(Clinical.headline(20))
+                    .foregroundStyle(Clinical.ink)
+                Text(conditionEvidenceDetail)
+                    .font(Clinical.caption(13))
+                    .foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 18) {
+                    evidenceStat(value: sameRegionPhotoCount, label: "SAME-REGION PHOTOS")
+                    evidenceStat(value: progressCheckIns.count, label: "MONTHLY CHECK-INS")
+                }
+                Button("Open progress photos") { onOpenPhotos?() }
+                    .font(Clinical.body(13, weight: .semibold))
+                    .foregroundStyle(Clinical.accent)
+                    .buttonStyle(.plain)
+                    .minimumHitTarget()
+            }
+        }
+    }
+
+    private var sameRegionPhotoCount: Int {
+        Dictionary(grouping: photos, by: \.regionRaw).values.map(\.count).max() ?? 0
+    }
+
+    private var conditionEvidenceEyebrow: String {
+        switch profile?.condition ?? .unsure {
+        case .alopeciaAreata: return "Patch and regrowth record"
+        case .traction: return "Hairline and tension record"
+        default: return "Monthly visual record"
+        }
+    }
+
+    private var conditionEvidenceTitle: String {
+        sameRegionPhotoCount >= 2 ? "Your visual comparison is ready" : "Match the same view over time"
+    }
+
+    private var conditionEvidenceDetail: String {
+        switch profile?.condition ?? .unsure {
+        case .alopeciaAreata:
+            return "Same-region photos and monthly patch/regrowth answers are the primary progress record. Daily shedding stays secondary context."
+        case .traction:
+            return "Repeat the same hairline or affected-region view and record changes in tension exposure. Daily shedding stays secondary context."
+        default:
+            return "For gradual pattern thinning, standardized monthly photos and density or hairline check-ins carry more meaning than daily shedding alone."
+        }
+    }
+
+    private func evidenceStat(value: Int, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(value)").font(Clinical.number(21)).foregroundStyle(Clinical.ink)
+            Text(label).font(Clinical.eyebrow(8)).foregroundStyle(Clinical.tertiary)
+        }
+    }
+
+    private var starterPlanItems: [StarterPlanItem] {
+        guard let profile else { return [] }
+        return StarterPlan.items(for: .make(
+            profile: profile,
+            labs: labs,
+            treatments: treatments,
+            photos: photos,
+            procedures: procedureAppointments,
+            entries: entries,
+            remindersEnabled: eveningCheckInEnabled,
+            dismissed: StarterPlanDismissals.decode(starterPlanDismissedJSON),
+            discussed: StarterPlanDismissals.decode(starterPlanDiscussedJSON)
+        ))
+    }
+
+    @ViewBuilder
+    private var sparsePlanCard: some View {
+        let visible = Array(starterPlanItems.filter { !$0.isDone }.prefix(3))
+        if !visible.isEmpty {
+            ClinicalCard {
+                VStack(alignment: .leading, spacing: 4) {
+                    Eyebrow(text: "From your plan")
+                    Text("Small actions make the trend useful")
+                        .font(Clinical.headline(19))
+                        .foregroundStyle(Clinical.ink)
+                    Text("Complete one today; the trend will keep the context beside your results.")
+                        .font(Clinical.caption(12))
+                        .foregroundStyle(Clinical.secondary)
+                        .padding(.bottom, 4)
+                    ForEach(visible) { item in
+                        Divider().overlay(Clinical.hairline)
+                        Button { openPlanItem(item) } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: planIcon(item))
+                                    .foregroundStyle(Clinical.accent)
+                                    .frame(width: 22)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.title)
+                                        .font(Clinical.body(14, weight: .medium))
+                                        .foregroundStyle(Clinical.ink)
+                                    Text(item.why)
+                                        .font(Clinical.caption(11))
+                                        .foregroundStyle(Clinical.secondary)
+                                        .lineLimit(2)
+                                }
+                                Spacer(minLength: 4)
+                                Image(systemName: "chevron.right")
+                                    .font(Clinical.caption(10))
+                                    .foregroundStyle(Clinical.tertiary)
+                            }
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.clinicalPressable)
+                    }
+                }
+            }
+        }
+    }
+
+    private func openPlanItem(_ item: StarterPlanItem) {
+        switch item.kind {
+        case .setup(.logToday): onLogToday?()
+        case .setup(.baselinePhoto): onOpenPhotos?()
+        default: onOpenPlan?()
+        }
+    }
+
+    private func planIcon(_ item: StarterPlanItem) -> String {
+        switch item.kind {
+        case .setup(.logToday): return "checkmark.circle"
+        case .setup(.baselinePhoto): return "camera"
+        case .setup(.reminders): return "bell"
+        case .setup(.enterLabs), .lab: return "testtube.2"
+        case .setup(.addTreatments), .treatment: return "pills"
+        case .procedure: return "cross.case"
+        case .guidance(.labs): return "testtube.2"
+        case .guidance(.care): return "person.crop.rectangle"
+        }
+    }
+
+    private var whatWillTrendCard: some View {
+        ClinicalCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow(text: "What will appear here")
+                futureTrendRow("Your primary outcome", detail: primaryOutcomeDescription)
+                futureTrendRow("Plan consistency", detail: "Doses and scheduled care, shown as context rather than proof.")
+                futureTrendRow("Events worth remembering", detail: "Photos, baby hairs you notice, plan changes, procedures, side effects, and life events.")
+            }
+        }
+    }
+
+    private var primaryOutcomeDescription: String {
+        switch trendFocus {
+        case .shedding: return "Wash-aware daily shedding and cautious week-to-week direction."
+        case .scalpSymptoms: return "Flaking, redness, and itch from the symptoms you answer."
+        case .photos: return "Same-region photos plus monthly density, hairline, patch, or regrowth answers."
+        }
+    }
+
+    private func futureTrendRow(_ title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Circle().fill(Clinical.accent).frame(width: 6, height: 6).padding(.top, 6)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(Clinical.body(13, weight: .medium)).foregroundStyle(Clinical.ink)
+                Text(detail).font(Clinical.caption(11)).foregroundStyle(Clinical.secondary)
+            }
+        }
+    }
+
+    private var highlightsCard: some View {
+        TrendHighlightsCard(highlights: trendHighlights) { highlight in
+            comparisonEventID = highlight.id
+            showCompare = true
+        }
+    }
+
+    private var trendHighlights: [TrendHighlight] {
+        let start = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: -range.days, to: .now) ?? .now)
+        return TrendContext.highlights(treatments: treatments, procedures: procedureAppointments,
+                                       photos: photos, progress: progressCheckIns, sideEffects: sideEffectLogs,
+                                       triggers: triggers, entries: entries, start: start, end: .now)
+    }
+
+    private var relationshipCard: some View {
+        Button {
+            comparisonEventID = nil
+            showCompare = true
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                BotanicalEmblem(symbol: "point.3.connected.trianglepath.dotted", tint: Clinical.accent, size: 38)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Explore relationships").font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.ink)
+                    Text("Compare shedding or side effects with your plan, new medications, and Apple Health. See what changed around a highlight.")
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(Clinical.caption(12)).foregroundStyle(Clinical.accent).padding(.top, 12)
+            }
+            .padding(16)
+            .background(Clinical.surface, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Clinical.hairline))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("exploreRelationships")
     }
 
     // MARK: - Clinician-review flags (consolidated red-flag surface)
@@ -408,10 +839,13 @@ struct TrendsView: View {
     /// section is a chart that hasn't opened — the same shaded placeholder every Trends chart
     /// uses — with the rule and the progress toward it in one pill.
     private var emptyState: some View {
-        ClinicalCard {
+        let answeredCount = windowEntries.filter {
+            $0.hasRecorded(.shedding) || $0.hasCompleteScalpRecording
+        }.count
+        return ClinicalCard {
             VStack(alignment: .leading, spacing: 10) {
                 Eyebrow(text: "Scalp and adherence")
-                ChartPlaceholder(required: 2, have: windowEntries.count, unit: .dailyLogs)
+                ChartPlaceholder(required: 2, have: answeredCount, unit: .dailyLogs)
             }
         }
     }
@@ -425,7 +859,22 @@ struct TrendsView: View {
                              sideEffects: sideEffectLogs, triggers: triggers, missedDoses: missedDoseRecords)
     }
 
+    /// The fixed treatment horizon is only shown for gradual pattern loss, matching the scope of
+    /// `currentRead`; other concerns keep their own symptom/photo cadence.
+    private var evidencePhase: EvidencePhase? {
+        guard profile?.condition == .androgenetic else { return nil }
+        return EvidencePhase.current(
+            treatments: treatments,
+            entries: entries,
+            now: .now,
+            calendar: .current
+        )
+    }
+
     private var currentRead: CurrentProgressRead? {
+        // The existing 24-week assessment clock is specific to gradual pattern-loss treatment
+        // outcomes; other concerns keep their own symptom/photo cadence.
+        guard profile?.condition == .androgenetic else { return nil }
         guard let report = progressReport else { return nil }
         let elapsedDays = max(1, report.weekNumber * 7)
         let coverage = Double(report.entryCount) / Double(elapsedDays)
@@ -447,21 +896,36 @@ struct TrendsView: View {
                 if read.opensPhotos { showCompare = true } else { showReport = true }
             } label: {
                 ClinicalCard(padding: 14) {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Eyebrow(text: "Your current read")
-                            Text(read.title)
-                                .font(Clinical.body(15, weight: .semibold)).foregroundStyle(Clinical.ink)
-                                .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 12) {
+                            Image(BrandArt.medallion)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 58, height: 58)
+                                .blendMode(.multiply)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Eyebrow(text: "Your current read")
+                                Text(read.title)
+                                    .font(Clinical.headline(20)).foregroundStyle(Clinical.ink)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.accent)
                         }
-                        Spacer(minLength: 8)
-                        Image(systemName: "chevron.right")
-                            .font(Clinical.caption(12)).foregroundStyle(Clinical.accent)
+
                     }
                 }
             }
             .buttonStyle(.clinicalPressable)
+            .accessibilityIdentifier("trendsCurrentRead")
         }
+    }
+
+    private func trendReviewLine(_ phase: EvidencePhase) -> String {
+        if phase.daysToReview == 0 { return "Review window reached" }
+        return "Next review · \(phase.nextReviewDate.formatted(.dateTime.day().month(.abbreviated)))"
     }
 
     // MARK: At-a-glance trajectory
@@ -519,10 +983,11 @@ struct TrendsView: View {
     /// margin-note ledger language as Today's signal ledger — one row, a current reading, a tiny
     /// inline trace, no card.
     private var scalpRow: some View {
-        let raw = windowEntries.map { Double($0.scalpTotal) }
+        let recorded = windowEntries.filter(\.hasCompleteScalpRecording)
+        let raw = recorded.map { Double($0.scalpTotal) }
         let dir = HairAnalytics.direction(raw)
         let (trend, tint) = trendWord(dir, invert: true)
-        let latest = windowEntries.last
+        let latest = recorded.last
         let value = latest.map { "\($0.scalpTotal)/16 · \(trend)" } ?? "Not enough data"
         return VStack(alignment: .leading, spacing: 0) {
             Divider().overlay(Clinical.hairline)
@@ -610,8 +1075,9 @@ struct TrajectorySummary {
         let currentStart = calendar.date(byAdding: .day, value: -6, to: today) ?? today
         let previousStart = calendar.date(byAdding: .day, value: -13, to: today) ?? today
 
-        let current = entries.filter { $0.date >= currentStart && $0.date < tomorrow }
-        let previous = entries.filter { $0.date >= previousStart && $0.date < currentStart }
+        let answered = entries.filter { $0.hasRecorded(.shedding) }
+        let current = answered.filter { $0.date >= currentStart && $0.date < tomorrow }
+        let previous = answered.filter { $0.date >= previousStart && $0.date < currentStart }
 
         currentCount = current.count
         previousCount = previous.count
@@ -629,18 +1095,18 @@ struct TrajectorySummary {
     /// wash-day counts genuinely differ — never new data, just an honest caveat on the claim
     /// already being made.
     var washDayHedge: String? {
-        guard let delta, currentCount >= 2, previousCount >= 2, abs(delta) >= 0.15 else { return nil }
+        guard let delta, hasComparableWindows, abs(delta) >= 0.25 else { return nil }
         guard currentWashDays != previousWashDays else { return nil }
         return " This week had \(currentWashDays) wash day\(currentWashDays == 1 ? "" : "s") vs \(previousWashDays) last week — wash days show more shed."
     }
 
     var headline: String {
         guard currentAverage != nil else { return "No recent check-ins yet" }
-        guard let delta, currentCount >= 2, previousCount >= 2 else {
+        guard let delta, hasComparableWindows else {
             return "Your recent baseline is forming"
         }
-        if delta <= -0.15 { return "Shedding has been lower this week" }
-        if delta >= 0.15 { return "Shedding has been higher this week" }
+        if delta <= -0.25 { return "Shedding may be lower this week" }
+        if delta >= 0.25 { return "Shedding may be higher this week" }
         return "Shedding has been steady this week"
     }
 
@@ -648,29 +1114,29 @@ struct TrajectorySummary {
         guard currentAverage != nil else {
             return "Log today to start a seven-day view of your pattern."
         }
-        guard let delta, currentCount >= 2, previousCount >= 2 else {
-            return "Keep logging to compare this week with the seven days before it."
+        guard let delta, hasComparableWindows else {
+            return "A week-to-week read opens after five logged days in each adjacent week."
         }
         let magnitude = abs(delta).formatted(.number.precision(.fractionLength(1)))
-        if abs(delta) < 0.15 {
+        if abs(delta) < 0.25 {
             return "The seven-day average is very close to the prior week."
         }
         return "A \(magnitude)-band change versus the previous seven-day average." + (washDayHedge ?? "")
     }
 
     var symbol: String {
-        guard let delta, currentCount >= 2, previousCount >= 2 else {
+        guard let delta, hasComparableWindows else {
             return "chart.line.uptrend.xyaxis"
         }
-        if delta <= -0.15 { return "arrow.down.right" }
-        if delta >= 0.15 { return "arrow.up.right" }
+        if delta <= -0.25 { return "arrow.down.right" }
+        if delta >= 0.25 { return "arrow.up.right" }
         return "arrow.right"
     }
 
     var tint: Color {
-        guard let delta, currentCount >= 2, previousCount >= 2 else { return Clinical.accent }
-        if delta <= -0.15 { return Clinical.positive }
-        if delta >= 0.15 { return Clinical.warning }
+        guard let delta, hasComparableWindows else { return Clinical.accent }
+        if delta <= -0.25 { return Clinical.positive }
+        if delta >= 0.25 { return Clinical.warning }
         return Clinical.sage
     }
 
@@ -692,7 +1158,7 @@ struct TrajectorySummary {
     /// (baseline still forming), there's no delta to show, so it falls back to the plain current
     /// average captioned for exactly what it is.
     var heroStat: (value: String, caption: String, isDelta: Bool)? {
-        if let delta, currentCount >= 2, previousCount >= 2 {
+        if let delta, hasComparableWindows {
             let text = delta.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1)))
             return (text, "BANDS VS LAST WK", true)
         }
@@ -713,13 +1179,13 @@ struct TrajectorySummary {
         guard currentAverage != nil else {
             return "Log today to start your seven-day view."
         }
-        guard let delta, currentCount >= 2, previousCount >= 2 else {
+        guard let delta, hasComparableWindows else {
             return "Your baseline is forming · \(coverageLabel)."
         }
-        if abs(delta) < 0.15 {
+        if abs(delta) < 0.25 {
             return "Shedding steady this week · \(coverageLabel)."
         }
-        let direction = delta <= -0.15 ? "lower" : "higher"
+        let direction = delta <= -0.25 ? "possibly lower" : "possibly higher"
         let magnitude = delta.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1)))
         return "Shedding \(direction) this week · \(magnitude) vs last wk · \(coverageLabel)."
     }
@@ -728,4 +1194,6 @@ struct TrajectorySummary {
         guard !entries.isEmpty else { return nil }
         return entries.reduce(0) { $0 + Double($1.shed.rawValue) } / Double(entries.count)
     }
+
+    private var hasComparableWindows: Bool { currentCount >= 5 && previousCount >= 5 }
 }

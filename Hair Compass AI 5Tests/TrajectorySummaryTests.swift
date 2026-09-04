@@ -38,7 +38,7 @@ struct TrajectorySummaryTests {
         }
 
         let summary = TrajectorySummary(entries: entries, now: now, calendar: calendar)
-        #expect(summary.headline == "Shedding has been higher this week")
+        #expect(summary.headline == "Shedding may be higher this week")
         #expect(summary.currentWashDays == 3)
         #expect(summary.previousWashDays == 1)
         let hedge = try! #require(summary.washDayHedge)
@@ -131,5 +131,19 @@ struct TrajectorySummaryTests {
         let summary = TrajectorySummary(entries: entries, now: now, calendar: calendar)
         #expect(summary.currentCount == 3)
         #expect(summary.confidenceLabel == "Log 2 more days to firm this up")
+    }
+
+    @Test func fourDaysInEachWindowStillDoesNotClaimDirection() {
+        let now = Date.now
+        var entries: [DailyEntry] = []
+        for offset in -10...(-7) {
+            entries.append(DailyEntry(date: day(offset, from: now), shed: .minimal))
+        }
+        for offset in -3...0 {
+            entries.append(DailyEntry(date: day(offset, from: now), shed: .heavy))
+        }
+        let summary = TrajectorySummary(entries: entries, now: now, calendar: calendar)
+        #expect(summary.headline == "Your recent baseline is forming")
+        #expect(!summary.heroStat!.isDelta)
     }
 }

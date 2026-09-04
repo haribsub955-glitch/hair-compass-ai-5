@@ -6,7 +6,8 @@ enum HairAnalytics {
 
     // MARK: - Seborrheic-dermatitis 16-point scale (Zhang 2023)
 
-    /// Maps the 0–3 self-report flaking band onto the validated 0–10 flaking item.
+    /// Maps the app's 0–3 self-report flaking band onto the source instrument's 0–10 range.
+    /// This adaptation is useful for a consistent personal record but is not itself validated.
     static func flakingContribution(_ band: Int) -> Int {
         let clamped = min(max(band, 0), 3)
         return [0, 3, 6, 10][clamped]

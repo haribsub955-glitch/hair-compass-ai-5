@@ -19,7 +19,10 @@ enum OnboardingSeed {
             itch: min(max(itch, 0), 3),
             sleepQuality: min(max(sleepQuality, 1), 5),
             stress: min(max(stress, 1), 5),
-            oiliness: min(max(oiliness, 0), 3)
+            oiliness: min(max(oiliness, 0), 3),
+            recordedSignals: [
+                .shedding, .flaking, .itch, .oiliness, .sleepQuality, .stress
+            ]
         )
     }
 
