@@ -69,7 +69,7 @@ struct LabProposalCard: View {
                 Button {
                     openURL(url)
                 } label: {
-                    Label("View on iHerb", systemImage: "arrow.up.right.square")
+                    Label("View buying options", systemImage: "arrow.up.right.square")
                         .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.accent)
                 }
                 .buttonStyle(.plain)

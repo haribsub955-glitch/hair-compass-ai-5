@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "host": "go.haircompass-ai.com",
+  "generated": "2026-09-04",
+  "note": "Portable record of the permanent app links. 'destination' is null until the owner supplies an approved affiliate URL. 'mode' decides how the path is served: 'redirect' = Cloudflare Bulk Redirect straight to the merchant; 'page' = redirect to an interstitial product page (required where the programme forbids automatic redirects through an intermediate site, e.g. Amazon Associates).",
+  "routes": [
+    {
+      "productID": "rosemary",
+      "path": "/rosemary",
+      "appURL": "https://go.haircompass-ai.com/rosemary",
+      "name": "Rosemary oil",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "ketoconazole",
+      "path": "/ketoconazole-shampoo",
+      "appURL": "https://go.haircompass-ai.com/ketoconazole-shampoo",
+      "name": "Ketoconazole shampoo",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "sawpalmetto",
+      "path": "/saw-palmetto",
+      "appURL": "https://go.haircompass-ai.com/saw-palmetto",
+      "name": "Saw palmetto",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "pumpkin",
+      "path": "/pumpkin-seed-oil",
+      "appURL": "https://go.haircompass-ai.com/pumpkin-seed-oil",
+      "name": "Pumpkin seed oil",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "melatonin",
+      "path": "/melatonin-topical",
+      "appURL": "https://go.haircompass-ai.com/melatonin-topical",
+      "name": "Melatonin (topical)",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "marineprotein",
+      "path": "/marine-protein",
+      "appURL": "https://go.haircompass-ai.com/marine-protein",
+      "name": "Marine protein complex",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "caffeine",
+      "path": "/caffeine-topical",
+      "appURL": "https://go.haircompass-ai.com/caffeine-topical",
+      "name": "Caffeine (topical)",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "procapil",
+      "path": "/procapil-redensyl",
+      "appURL": "https://go.haircompass-ai.com/procapil-redensyl",
+      "name": "Procapil / Redensyl",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "greentea",
+      "path": "/green-tea-egcg",
+      "appURL": "https://go.haircompass-ai.com/green-tea-egcg",
+      "name": "Green tea / EGCG",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "peppermint",
+      "path": "/peppermint-oil",
+      "appURL": "https://go.haircompass-ai.com/peppermint-oil",
+      "name": "Peppermint oil",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "onion",
+      "path": "/onion-juice",
+      "appURL": "https://go.haircompass-ai.com/onion-juice",
+      "name": "Onion juice",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "omega3",
+      "path": "/omega-3",
+      "appURL": "https://go.haircompass-ai.com/omega-3",
+      "name": "Omega-3 (fish oil)",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "ashwagandha",
+      "path": "/ashwagandha",
+      "appURL": "https://go.haircompass-ai.com/ashwagandha",
+      "name": "Ashwagandha",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "iron",
+      "path": "/iron",
+      "appURL": "https://go.haircompass-ai.com/iron",
+      "name": "Iron (ferritin support)",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "vitamind",
+      "path": "/vitamin-d",
+      "appURL": "https://go.haircompass-ai.com/vitamin-d",
+      "name": "Vitamin D",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    },
+    {
+      "productID": "b12",
+      "path": "/vitamin-b12",
+      "appURL": "https://go.haircompass-ai.com/vitamin-b12",
+      "name": "Vitamin B12",
+      "mode": null,
+      "merchant": null,
+      "destination": null,
+      "status": 302
+    }
+  ]
+}

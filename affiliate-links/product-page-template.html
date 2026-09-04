@@ -1,0 +1,54 @@
+<!doctype html>
+<!--
+  Interstitial product page — required where an affiliate programme forbids automatic
+  forwarding through an intermediate site. Amazon's Associates programme is the one that
+  bites: their published commission rules exclude referrals arriving through a site that
+  redirects automatically, so /go/<slug> must land HERE and the visitor must press the
+  retailer button themselves.
+
+  To publish: copy to docs/go/<slug>.html on the GitHub Pages branch (rebuild/clinical-minimal),
+  fill the four marked fields, commit, push. Pages redeploys in about a minute.
+  To change where it sends people later: edit RETAILER_URL below and push again. No app build.
+
+  Never put a Cloudflare token, an admin credential, or anything about a person's health
+  in this file or in the outgoing URL.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>PRODUCT_NAME — Hair Compass AI</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 2.5rem 1.25rem; font: 16px/1.55 -apple-system, BlinkMacSystemFont,
+         "Segoe UI", system-ui, sans-serif; background: #faf8f5; color: #1c1b19; }
+  @media (prefers-color-scheme: dark) { body { background: #16151a; color: #ece9e4; } }
+  main { max-width: 34rem; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 .5rem; }
+  p.summary { margin: 0 0 1.5rem; opacity: .8; }
+  a.buy { display: inline-block; padding: .85rem 1.5rem; border-radius: 999px;
+          background: #2f6f5e; color: #fff; text-decoration: none; font-weight: 600; }
+  a.buy:focus-visible { outline: 3px solid #2f6f5e; outline-offset: 3px; }
+  .disclosure { margin-top: 2rem; font-size: .8rem; opacity: .65; }
+</style>
+</head>
+<body>
+<main>
+  <!-- 1. PRODUCT_NAME — the product as the app names it -->
+  <h1>PRODUCT_NAME</h1>
+  <!-- 2. SUMMARY — the app's own one honest line; do not upgrade the claim here -->
+  <p class="summary">SUMMARY</p>
+
+  <!-- 3. RETAILER_URL — the approved affiliate URL, tracking parameters intact.
+       4. RETAILER_NAME — e.g. "Amazon". -->
+  <p><a class="buy" rel="nofollow sponsored noopener" href="RETAILER_URL">View on RETAILER_NAME</a></p>
+
+  <p class="disclosure">
+    This is an affiliate link: if you buy through it we may earn a commission, at no extra cost
+    to you. It never changes a product's evidence rating in Hair Compass AI, and it is not
+    medical advice.
+  </p>
+</main>
+</body>
+</html>

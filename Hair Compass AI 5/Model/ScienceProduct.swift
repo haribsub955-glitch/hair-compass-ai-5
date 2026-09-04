@@ -61,7 +61,7 @@ struct ScienceProduct: Identifiable {
     /// of accruing false daily-adherence math.
     let suggestedSchedule: String
 
-    /// The iHerb search term shown in the DEBUG owner-links tool — never a live link in the repo.
+    /// The retailer search term shown in the DEBUG owner-links tool — never a live link in the repo.
     var searchHint: String { name }
 }
 
