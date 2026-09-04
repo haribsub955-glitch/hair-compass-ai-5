@@ -26,6 +26,7 @@ struct ConcernFlowTests {
         ],
         pregnancy: PregnancyStatus = .no,
         photo: PhotoCadence.Status = .upcoming(daysUntil: 11),
+        washDays: Int = 3,
         keepChecking: Int = 0
     ) -> ConcernRecord {
         let treatment = Treatment(
@@ -34,7 +35,7 @@ struct ConcernFlowTests {
         )
         return ConcernRecord(
             recentShed: [1, 1, 1, 1, 1, 1, 2],
-            washDaysLast7: 3,
+            washDaysLast7: washDays,
             sheddingAboveUsual: sheddingAboveUsual,
             scalpAverage: 4.2,
             phase: EvidencePhase.current(treatments: [treatment], entries: [], now: now, calendar: calendar),
@@ -84,6 +85,17 @@ struct ConcernFlowTests {
             record: record(flagIDs: ["heavyShed"])
         )
         #expect(flagged.seekHelp?.contains("clinician") == true)
+    }
+
+    @Test func zeroWashDaysNeverRefersToThoseDays() {
+        let response = ConcernResponder.respond(
+            kind: .moreShedding,
+            answers: [],
+            record: record(washDays: 0)
+        )
+        #expect(response.recordShows.contains("No recent wash day"))
+        #expect(!response.recordShows.contains("those days"))
+        #expect(!response.recordShows.contains("0 of"))
     }
 
     @Test func sideEffectsAlwaysUseDeterministicSafetyCopy() {

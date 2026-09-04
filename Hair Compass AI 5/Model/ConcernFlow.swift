@@ -166,7 +166,15 @@ enum ConcernResponder {
         } else {
             shows = "Your recent entries record shedding inside your usual range."
         }
-        let washContext = " \(record.washDaysLast7) of the last seven logged days were wash days; shedding can look higher on those days."
+        let washContext: String
+        switch record.washDaysLast7 {
+        case 0:
+            washContext = " No recent wash day is in that comparison yet."
+        case 1:
+            washContext = " One of the recent logged days was a wash day; wash days are best compared with wash days."
+        default:
+            washContext = " \(record.washDaysLast7) of the recent logged days were wash days; wash days are best compared with wash days."
+        }
         return ConcernResponse(
             headline: "Let's separate one moment from the pattern",
             recordShows: shows + washContext,
