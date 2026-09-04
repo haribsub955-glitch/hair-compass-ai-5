@@ -112,6 +112,15 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
 - FoundationModels generations cannot run on the Intel Mac's simulators (host lacks Apple
   Intelligence) — prompt/gate behavior with a LIVE model is verifiable only on a real
   AI-capable iPhone.
+- **Product links are paths on our own site, not merchant URLs.** The app ships
+  `https://haircompass-ai.com/go/<slug>` per product in `Resources/AffiliateLinks.json`;
+  each path is a generated page under `docs/go/` (GitHub Pages) carrying the disclosure and one
+  retailer button — several affiliate programmes, Amazon's included, exclude commission on
+  referrals through an automatically redirecting intermediate site. Destinations live in
+  `affiliate-links/mappings.json` and are published by `affiliate-links/build-pages.py`; changing
+  one is an edit and a push, never a build. `AffiliateStore` reads the bundle only — no catalogue
+  fetch, no AI session — and purges a remote payload cached by an earlier build so it cannot
+  outrank these links. Owner guide: `affiliate-links/OWNER-GUIDE.md`.
 - **Today = Daily Grounding (spec `docs/superpowers/specs/2026-09-03-daily-grounding-adherence-design.md`).**
   Order: `CalmHorizonHeader` → `GroundingCardView` → `TodayPlanSection` → `EvidenceRibbon` →
   shedding scene → rings → ledger. The card is a pure function of the record

@@ -1,168 +1,153 @@
 {
-  "schema": 1,
-  "host": "go.haircompass-ai.com",
+  "schema": 2,
+  "host": "haircompass-ai.com",
+  "linkBase": "https://haircompass-ai.com/go",
   "generated": "2026-09-04",
-  "note": "Portable record of the permanent app links. 'destination' is null until the owner supplies an approved affiliate URL. 'mode' decides how the path is served: 'redirect' = Cloudflare Bulk Redirect straight to the merchant; 'page' = redirect to an interstitial product page (required where the programme forbids automatic redirects through an intermediate site, e.g. Amazon Associates).",
+  "note": "Single source of truth for the app's permanent product links. The app ships linkBase + path and never changes; each page below is regenerated from this file by affiliate-links/build-pages.py into docs/go/<slug>/index.html and published by GitHub Pages. Edit 'destination' and 'merchant', run the script, commit, push — no app build. 'destination' is null until an approved affiliate URL exists; a null route writes no page and the app hides that product's button. Provider-independent on purpose: the same paths can be rebuilt on any host from this file alone.",
   "routes": [
     {
       "productID": "rosemary",
       "path": "/rosemary",
-      "appURL": "https://go.haircompass-ai.com/rosemary",
+      "appURL": "https://haircompass-ai.com/go/rosemary",
       "name": "Rosemary oil",
-      "mode": null,
+      "summary": "The strongest natural topical — a 6-month trial matched minoxidil 2% for regrowth, with less itch.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "ketoconazole",
       "path": "/ketoconazole-shampoo",
-      "appURL": "https://go.haircompass-ai.com/ketoconazole-shampoo",
+      "appURL": "https://haircompass-ai.com/go/ketoconazole-shampoo",
       "name": "Ketoconazole shampoo",
-      "mode": null,
+      "summary": "A medicated shampoo that improves density as an anti-inflammatory adjunct; best evidence is for 2%.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "sawpalmetto",
       "path": "/saw-palmetto",
-      "appURL": "https://go.haircompass-ai.com/saw-palmetto",
+      "appURL": "https://haircompass-ai.com/go/saw-palmetto",
       "name": "Saw palmetto",
-      "mode": null,
+      "summary": "A plant DHT-blocker with several positive trials — real, but clearly milder than finasteride.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "pumpkin",
       "path": "/pumpkin-seed-oil",
-      "appURL": "https://go.haircompass-ai.com/pumpkin-seed-oil",
+      "appURL": "https://haircompass-ai.com/go/pumpkin-seed-oil",
       "name": "Pumpkin seed oil",
-      "mode": null,
+      "summary": "One trial showed a large count gain — but the capsule was a blend, so it can't all be pinned on pumpkin oil.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "melatonin",
       "path": "/melatonin-topical",
-      "appURL": "https://go.haircompass-ai.com/melatonin-topical",
+      "appURL": "https://haircompass-ai.com/go/melatonin-topical",
       "name": "Melatonin (topical)",
-      "mode": null,
+      "summary": "A positive pilot trial plus many open-label reports; promising but not yet high-quality evidence.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "marineprotein",
       "path": "/marine-protein",
-      "appURL": "https://go.haircompass-ai.com/marine-protein",
+      "appURL": "https://haircompass-ai.com/go/marine-protein",
       "name": "Marine protein complex",
-      "mode": null,
+      "summary": "Viviscal/Nourkrin-type complexes have real placebo-controlled trials — but all are manufacturer-funded.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "caffeine",
       "path": "/caffeine-topical",
-      "appURL": "https://go.haircompass-ai.com/caffeine-topical",
+      "appURL": "https://haircompass-ai.com/go/caffeine-topical",
       "name": "Caffeine (topical)",
-      "mode": null,
+      "summary": "Broadly positive but low-quality trials; safe to use as a supporting active.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "procapil",
       "path": "/procapil-redensyl",
-      "appURL": "https://go.haircompass-ai.com/procapil-redensyl",
+      "appURL": "https://haircompass-ai.com/go/procapil-redensyl",
       "name": "Procapil / Redensyl",
-      "mode": null,
+      "summary": "Cosmeceutical actives with some controlled data — but on soft, bias-prone endpoints.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "greentea",
       "path": "/green-tea-egcg",
-      "appURL": "https://go.haircompass-ai.com/green-tea-egcg",
+      "appURL": "https://haircompass-ai.com/go/green-tea-egcg",
       "name": "Green tea / EGCG",
-      "mode": null,
+      "summary": "Only lab-dish evidence for hair growth so far — no controlled human trial.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "peppermint",
       "path": "/peppermint-oil",
-      "appURL": "https://go.haircompass-ai.com/peppermint-oil",
+      "appURL": "https://haircompass-ai.com/go/peppermint-oil",
       "name": "Peppermint oil",
-      "mode": null,
+      "summary": "Promising in mice, but there are zero human hair-loss trials.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "onion",
       "path": "/onion-juice",
-      "appURL": "https://go.haircompass-ai.com/onion-juice",
+      "appURL": "https://haircompass-ai.com/go/onion-juice",
       "name": "Onion juice",
-      "mode": null,
+      "summary": "A small trial showed regrowth — but for patchy alopecia areata, not pattern hair loss.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "omega3",
       "path": "/omega-3",
-      "appURL": "https://go.haircompass-ai.com/omega-3",
+      "appURL": "https://haircompass-ai.com/go/omega-3",
       "name": "Omega-3 (fish oil)",
-      "mode": null,
+      "summary": "One density trial exists, but it tested a fish-oil-plus-antioxidant blend — benefit can't be pinned on omega-3.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "ashwagandha",
       "path": "/ashwagandha",
-      "appURL": "https://go.haircompass-ai.com/ashwagandha",
+      "appURL": "https://haircompass-ai.com/go/ashwagandha",
       "name": "Ashwagandha",
-      "mode": null,
+      "summary": "Lowers stress hormones, but no study has measured a hair outcome — the link is mechanism-only.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "iron",
       "path": "/iron",
-      "appURL": "https://go.haircompass-ai.com/iron",
+      "appURL": "https://haircompass-ai.com/go/iron",
       "name": "Iron (ferritin support)",
-      "mode": null,
+      "summary": "Helps shedding only if a blood test shows low ferritin — blanket dosing risks iron overload.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "vitamind",
       "path": "/vitamin-d",
-      "appURL": "https://go.haircompass-ai.com/vitamin-d",
+      "appURL": "https://haircompass-ai.com/go/vitamin-d",
       "name": "Vitamin D",
-      "mode": null,
+      "summary": "Worth correcting only if measured low — there's no proof it regrows hair in people who aren't deficient.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     },
     {
       "productID": "b12",
       "path": "/vitamin-b12",
-      "appURL": "https://go.haircompass-ai.com/vitamin-b12",
+      "appURL": "https://haircompass-ai.com/go/vitamin-b12",
       "name": "Vitamin B12",
-      "mode": null,
+      "summary": "Worth correcting only if measured low — deficiency is uncommon and supplementing without a low result does nothing for hair.",
       "merchant": null,
-      "destination": null,
-      "status": 302
+      "destination": null
     }
   ]
 }

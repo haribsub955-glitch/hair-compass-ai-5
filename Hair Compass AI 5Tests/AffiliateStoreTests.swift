@@ -170,10 +170,10 @@ struct AffiliateStoreTests {
                      forKey: AffiliateStore.remoteCacheKey)
 
         let store = AffiliateStore(defaults: defaults,
-                                   bundledLinks: ["rosemary": "https://go.haircompass-ai.com/rosemary"],
+                                   bundledLinks: ["rosemary": "https://haircompass-ai.com/go/rosemary"],
                                    remoteCatalogEnabled: false)
 
-        #expect(store.url(for: "rosemary")?.absoluteString == "https://go.haircompass-ai.com/rosemary")
+        #expect(store.url(for: "rosemary")?.absoluteString == "https://haircompass-ai.com/go/rosemary")
         #expect(defaults.data(forKey: AffiliateStore.remoteCacheKey) == nil)
     }
 
@@ -181,8 +181,8 @@ struct AffiliateStoreTests {
         // The view renders its button on `url(for:)` being non-nil, so link resolution IS
         // button visibility. One stable path per product, no query string of our own.
         let store = AffiliateStore(defaults: freshDefaults(), bundledLinks: [
-            "rosemary": "https://go.haircompass-ai.com/rosemary",
-            "sawpalmetto": "https://go.haircompass-ai.com/saw-palmetto",
+            "rosemary": "https://haircompass-ai.com/go/rosemary",
+            "sawpalmetto": "https://haircompass-ai.com/go/saw-palmetto",
         ], remoteCatalogEnabled: false)
 
         #expect(store.hasLink(for: "rosemary") == true)

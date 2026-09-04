@@ -6,9 +6,11 @@
   redirects automatically, so /go/<slug> must land HERE and the visitor must press the
   retailer button themselves.
 
-  To publish: copy to docs/go/<slug>.html on the GitHub Pages branch (rebuild/clinical-minimal),
-  fill the four marked fields, commit, push. Pages redeploys in about a minute.
-  To change where it sends people later: edit RETAILER_URL below and push again. No app build.
+  DO NOT EDIT THE GENERATED PAGES. This is the template; the live pages are written to
+  docs/go/<slug>/index.html by affiliate-links/build-pages.py from affiliate-links/mappings.json.
+  Change a destination in mappings.json, re-run the script, commit, push — GitHub Pages
+  redeploys in about a minute and the app is untouched. Editing a generated page by hand works
+  until the next run overwrites it.
 
   Never put a Cloudflare token, an admin credential, or anything about a person's health
   in this file or in the outgoing URL.

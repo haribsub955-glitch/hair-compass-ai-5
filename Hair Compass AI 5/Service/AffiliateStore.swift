@@ -20,11 +20,12 @@ final class AffiliateStore {
     /// (bundled links still serve). The endpoint must return the same JSON shape as the
     /// bundled file: `{"version": 1, "updatedAt": "…", "links": {"<productID>": "https://…"}}`.
     ///
-    /// **Deliberately empty on the managed-links model.** The bundled links point at the owner's
-    /// own redirect host, so the destination is edited at the DNS provider rather than fetched —
-    /// which is what makes the buy buttons independent of any server of ours, this app's AI
-    /// backend included. Setting a URL here re-enables the fetch; it is not needed for links to
-    /// be remotely editable.
+    /// **Deliberately empty on the managed-links model.** The bundled links point at fixed paths
+    /// on the owner's own site (`haircompass-ai.com/go/<product>`), so a destination is changed
+    /// by editing that page rather than by fetching anything — which is what makes the buy
+    /// buttons independent of every server of ours, this app's AI backend included. Setting a URL
+    /// here re-enables the fetch; it is not needed for links to be remotely editable.
+    /// See `affiliate-links/OWNER-GUIDE.md`.
     struct RemoteConfig {
         static var catalogURLString = ""
 
