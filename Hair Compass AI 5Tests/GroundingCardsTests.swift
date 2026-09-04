@@ -90,6 +90,34 @@ struct GroundingCardsTests {
         #expect(card.closure.contains("prescriber"))
     }
 
+    @Test func todaysConcernOutranksEverythingButSafety() throws {
+        let context = try makeContext()
+        let (open, _) = plan(open: true, in: context)
+        let record = ConcernRecord(
+            recentShed: [1, 1, 2], washDaysLast7: 2, sheddingAboveUsual: true,
+            scalpAverage: nil, phase: phase(daysAgo: 33), consistency30: nil,
+            photo: .upcoming(daysUntil: 9), flagIDs: [], treatments: [],
+            pregnancy: .no, keepCheckingCount14d: 0
+        )
+        let response = ConcernResponder.respond(kind: .moreShedding, answers: [], record: record)
+        var withConcern = input(plan: open, sheddingAboveUsual: true)
+        withConcern.concern = (kind: .moreShedding, response: response)
+
+        let card = GroundingCards.select(withConcern)
+        #expect(card.kind == .concern)
+        #expect(card.headline == response.headline)
+        #expect(card.reason == "You chose \"More shedding\" today.")
+        if case .completePlanItem = card.primary {} else {
+            Issue.record("the due action should still ride on the concern card")
+        }
+
+        withConcern.flags = [ClinicianReviewFlag(
+            id: "scalpPain", title: "Scalp pain reported",
+            detail: "Scalp pain was reported in a monthly check-in."
+        )]
+        #expect(GroundingCards.select(withConcern).kind == .safety)
+    }
+
     @Test func safetyCopyForEveryKnownFlag() throws {
         let context = try makeContext()
         let (open, _) = plan(open: true, in: context)

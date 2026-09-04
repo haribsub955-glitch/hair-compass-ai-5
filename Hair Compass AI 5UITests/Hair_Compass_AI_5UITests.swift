@@ -24,6 +24,37 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["planStrands"].exists)
     }
 
+    /// "I'm worried" starts with a bounded picker rather than a blank chat, answers in four
+    /// ordered sections, and lets that concern shape today's grounding note.
+    @MainActor
+    func testWorriedFlowAnswersInFourSections() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_MOTION_STATIC"]
+        app.launch()
+
+        let worried = app.buttons["groundingWorried"]
+        XCTAssertTrue(worried.waitForExistence(timeout: 10), "the grounding card should offer I'm worried")
+        worried.tap()
+
+        let option = app.buttons["concernOption.moreShedding"]
+        XCTAssertTrue(option.waitForExistence(timeout: 4), "the bounded picker should list shedding")
+        option.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["concernResponse"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["What the record shows"].exists)
+        XCTAssertTrue(app.staticTexts["What cannot be concluded yet"].exists)
+        XCTAssertTrue(app.staticTexts["What to do next"].exists)
+
+        let done = app.buttons["concernDone"]
+        for _ in 0..<3 where !done.isHittable { app.swipeUp() }
+        XCTAssertTrue(app.staticTexts["When to seek help"].exists)
+        XCTAssertTrue(done.isHittable)
+        done.tap()
+        XCTAssertTrue(
+            app.staticTexts["Let's separate one moment from the pattern"].waitForExistence(timeout: 5),
+            "today's note should answer the concern after the flow closes"
+        )
+    }
+
     /// First run presents the illustrated cover (`OnboardingIntro`, which replaced the old single
     /// "Begin" welcome step), and walking it through hands off to the name step.
     @MainActor

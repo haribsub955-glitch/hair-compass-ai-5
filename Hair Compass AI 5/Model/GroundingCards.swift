@@ -15,7 +15,7 @@ import Foundation
 
 struct GroundingCard: Equatable {
     enum Kind: String {
-        case safety, grounding, continuation, preparation, closure, settled, recovery, celebration, education, quiet
+        case safety, concern, grounding, continuation, preparation, closure, settled, recovery, celebration, education, quiet
     }
 
     enum Action: Equatable {
@@ -48,6 +48,8 @@ struct GroundingInput {
     var consistency30: PlanAdherence.Consistency?
     var sheddingAboveUsual: Bool
     var loggedToday: Bool
+    /// The concern explicitly chosen today. Safety remains the only state allowed to outrank it.
+    var concern: (kind: ConcernKind, response: ConcernResponse)? = nil
 }
 
 enum GroundingSignals {
@@ -157,7 +159,19 @@ enum GroundingCards {
             return safetyCard(for: flag)
         }
 
-        // 2. (An explicit concern from "I'm worried" arrives with sub-project G4.)
+        // 2. Explicit concern: answer what the person chose today before generic encouragement.
+        if let concern = input.concern {
+            return GroundingCard(
+                kind: .concern,
+                eyebrow: "Wren · evidence lens",
+                headline: concern.response.headline,
+                body: concern.response.recordShows,
+                evidenceAnchor: reviewAnchor(phase),
+                primary: dueAction(input.plan, loggedToday: input.loggedToday),
+                closure: concern.response.closure,
+                reason: "You chose \"\(concern.kind.title)\" today."
+            )
+        }
 
         // 3. Grounding: yesterday's shedding sat above the recent range.
         if input.sheddingAboveUsual {

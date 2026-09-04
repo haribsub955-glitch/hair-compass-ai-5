@@ -62,6 +62,9 @@ enum GroundingKeys {
             "\(input.consistency30?.completed ?? -1)/\(input.consistency30?.planned ?? -1)/\(input.consistency30?.scored ?? -1)",
             "\(input.sheddingAboveUsual)",
             "\(input.loggedToday)",
+            input.concern.map {
+                "\($0.kind.rawValue)-\($0.response.headline)-\($0.response.recordShows)"
+            } ?? "no-concern",
         ].joined(separator: "|")
     }
 

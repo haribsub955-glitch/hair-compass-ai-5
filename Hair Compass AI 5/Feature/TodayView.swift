@@ -62,6 +62,11 @@ struct TodayView: View {
     @State private var skipCandidate: PlanAdherence.Occurrence?
     @State private var pauseCandidate: PlanAdherence.Occurrence?
     @State private var detailTreatment: Treatment?
+    @State private var showConcern = false
+    /// Actions are performed only after the concern sheet has finished dismissing, avoiding a
+    /// sheet-on-sheet race when the useful next step is a treatment record or Wren chat.
+    @State private var pendingConcernAction: ConcernAction?
+    @State private var concernChatFocus: String?
 
     /// The provider seam (G2 task-4 amendment): Today never calls `GroundingCards.select`
     /// directly. A future validated server card (G5) can sit in front of this deterministic
@@ -114,18 +119,61 @@ struct TodayView: View {
         return PlanAdherence.consistency(treatments: treatments, doses: doses, missed: missedDoses,
                                          from: start, through: today, now: .now, calendar: calendar)
     }
+
+    private var clinicianFlags: [ClinicianReviewFlag] {
+        ClinicianReviewFlags.forToday(
+            ClinicianReviewFlags.evaluate(
+                progressCheckIns: progressCheckIns, entries: entries, triggers: triggers,
+                sideEffects: sideEffectLogs, now: .now, calendar: calendar
+            ),
+            now: .now,
+            calendar: calendar
+        )
+    }
+
+    private func concernRecord(
+        consistency30: PlanAdherence.Consistency?,
+        flags: [ClinicianReviewFlag]
+    ) -> ConcernRecord {
+        let firstDay = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: .now)) ?? .now
+        let recentEntries = entries.filter { $0.date >= firstDay }
+        let scalpScores = recentEntries.map { Double($0.scalpTotal) }
+        return ConcernRecord(
+            recentShed: Array(entries.prefix(7).reversed()).map { $0.shed.rawValue },
+            washDaysLast7: recentEntries.filter(\.washedHair).count,
+            sheddingAboveUsual: GroundingSignals.sheddingAboveUsual(
+                entries: entries, now: .now, calendar: calendar
+            ),
+            scalpAverage: scalpScores.isEmpty ? nil : scalpScores.reduce(0, +) / Double(scalpScores.count),
+            phase: evidencePhase,
+            consistency30: consistency30,
+            photo: photoStatus,
+            flagIDs: flags.map(\.id),
+            // Side-effect questions cover every active item, including periodic shampoos and
+            // devices; they are not restricted to treatments that happen to have clock slots.
+            treatments: treatments.filter(\.isActive).map {
+                ConcernRecord.TreatmentSummary(
+                    name: $0.name.isEmpty ? $0.treatmentClass.title : $0.name,
+                    treatmentClass: $0.treatmentClass,
+                    weeks: HairAnalytics.weeksElapsed(since: $0.startDate),
+                    sideEffectCount: $0.sideEffects.count
+                )
+            },
+            pregnancy: profile?.pregnancyStatus ?? .unspecified,
+            keepCheckingCount14d: ConcernLog.count(.keepChecking, withinDays: 14)
+        )
+    }
     /// Built once per render (Important 5) from a `consistency30` the caller already computed —
     /// so the ribbon and the card never disagree from two separate reads of the same 30-day
     /// window inside one render pass.
     private func groundingInput(consistency30: PlanAdherence.Consistency?) -> GroundingInput {
-        GroundingInput(
-            flags: ClinicianReviewFlags.forToday(
-                ClinicianReviewFlags.evaluate(
-                    progressCheckIns: progressCheckIns, entries: entries, triggers: triggers,
-                    sideEffects: sideEffectLogs, now: .now, calendar: calendar
-                ),
-                now: .now, calendar: calendar
-            ),
+        let flags = clinicianFlags
+        let record = concernRecord(consistency30: consistency30, flags: flags)
+        let concern = ConcernLog.today().map { kind in
+            (kind: kind, response: ConcernResponder.respond(kind: kind, answers: [], record: record))
+        }
+        return GroundingInput(
+            flags: flags,
             plan: todayPlan,
             missedYesterday: GroundingSignals.missedYesterday(
                 treatments: treatments, doses: doses, missed: missedDoses, now: .now, calendar: calendar
@@ -135,7 +183,8 @@ struct TodayView: View {
             photoWithinTwoWeeks: PhotoCadence.hasPhoto(withinDays: 14, photos: photos, now: .now, calendar: calendar),
             consistency30: consistency30,
             sheddingAboveUsual: GroundingSignals.sheddingAboveUsual(entries: entries, now: .now, calendar: calendar),
-            loggedToday: todayEntry != nil
+            loggedToday: todayEntry != nil,
+            concern: concern
         )
     }
     /// Start of today via `GroundingKeys` — reused by the entrance key, the fingerprint and the
@@ -243,7 +292,8 @@ struct TodayView: View {
                                 guard completedKey == entranceKey else { return }
                                 enteredCardKey = completedKey
                             },
-                            onPrimary: performGroundingAction
+                            onPrimary: performGroundingAction,
+                            onWorried: { showConcern = true }
                         )
                     }
                     TodayPlanSection(
@@ -388,6 +438,7 @@ struct TodayView: View {
             if ProcessInfo.processInfo.arguments.contains("HC_LEARN") { showLearn = true }
             if ProcessInfo.processInfo.arguments.contains("HC_LOG") { showLog = true }
             if ProcessInfo.processInfo.arguments.contains("HC_BACKFILL") { showBackfill = true }
+            if ProcessInfo.processInfo.arguments.contains("HC_CONCERN") { showConcern = true }
             #endif
         }
         .onChange(of: [deepLinks.openLogRequested, deepLinks.canConsumeRoutes]) { _, _ in
@@ -412,7 +463,22 @@ struct TodayView: View {
         .sheet(isPresented: $showDeepAnalysis) {
             DeepAnalysisSheet()
         }
-        .sheet(isPresented: $showChat) {
+        .sheet(isPresented: $showConcern, onDismiss: finishConcernDismissal) {
+            ConcernFlowSheet(
+                record: concernRecord(consistency30: self.consistency30, flags: clinicianFlags),
+                onAction: { kind, _, action in
+                    ConcernLog.record(kind)
+                    pendingConcernAction = action
+                },
+                onAskWren: { kind, response in
+                    ConcernLog.record(kind)
+                    concernChatFocus = "The person chose \"\(kind.title)\" in the structured concern flow. The deterministic response already established: \(response.recordShows) \(response.cannotConclude)"
+                    showConcern = false
+                }
+            )
+            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showChat, onDismiss: { concernChatFocus = nil }) {
             HairChatSheet(
                 contextJSON: chatContext, focus: chatFocus,
                 eyebrow: "Ask about your record",
@@ -656,7 +722,7 @@ struct TodayView: View {
     /// One line telling the chat what's on screen — the whole record, not a specific chart,
     /// since Today has no single comparison in view.
     private var chatFocus: String {
-        "User is asking from the Today screen about their overall record."
+        concernChatFocus ?? "User is asking from the Today screen about their overall record."
     }
 
     /// Snapshot the canonical AIContext at open time — same pattern as `CompareView.openChat()`
@@ -669,6 +735,29 @@ struct TodayView: View {
             profile: profile, progressCheckIns: progressCheckIns, now: .now
         ).jsonString()
         showChat = true
+    }
+
+    private func finishConcernDismissal() {
+        if concernChatFocus != nil {
+            openChat()
+            return
+        }
+        guard let action = pendingConcernAction else { return }
+        pendingConcernAction = nil
+        switch action {
+        case .done:
+            break
+        case .openPhotos:
+            onOpenPhotos?()
+        case .openPlan:
+            onOpenPlan?()
+        case .logCheckIn:
+            showLog = true
+        case .openTreatment(let name):
+            detailTreatment = treatments.first {
+                ($0.name.isEmpty ? $0.treatmentClass.title : $0.name) == name
+            }
+        }
     }
 
     private var insightFootnoteText: String {

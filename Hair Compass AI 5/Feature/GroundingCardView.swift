@@ -35,6 +35,7 @@ struct GroundingCardView: View {
     var celebrates: Bool = false
     var onEntranceCompleted: (String) -> Void = { _ in }
     var onPrimary: (GroundingCard.Action) -> Void
+    var onWorried: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsReason = false
@@ -148,6 +149,14 @@ struct GroundingCardView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .groundingEntrance(isVisible: showsFollower, staticState: isStatic)
                 HStack {
+                    if let onWorried, card.kind != .safety {
+                        Button("I'm worried", action: onWorried)
+                            .font(Clinical.body(12, weight: .medium))
+                            .foregroundStyle(Clinical.accent)
+                            .buttonStyle(.plain)
+                            .minimumHitTarget()
+                            .accessibilityIdentifier("groundingWorried")
+                    }
                     Button(showsReason ? "Hide" : "Why this?") {
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { showsReason.toggle() }
                     }

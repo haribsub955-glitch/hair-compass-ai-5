@@ -83,6 +83,23 @@ struct GroundingKeysTests {
         #expect(GroundingKeys.entranceKey(dayKey: dayKey, card: card) == GroundingKeys.entranceKey(dayKey: dayKey, card: card))
     }
 
+    @Test func choosingAConcernChangesTheProviderFingerprint() {
+        let plan = PlanAdherence.TodayPlan(occurrences: [])
+        var base = input(plan: plan)
+        let record = ConcernRecord(
+            recentShed: [], washDaysLast7: 0, sheddingAboveUsual: false,
+            scalpAverage: nil, phase: nil, consistency30: nil,
+            photo: .upcoming(daysUntil: 10), flagIDs: [], treatments: [],
+            pregnancy: .no, keepCheckingCount14d: 0
+        )
+        let before = GroundingKeys.fingerprint(base, dayKey: "2026-09-09")
+        base.concern = (
+            kind: .keepChecking,
+            response: ConcernResponder.respond(kind: .keepChecking, answers: ["Several"], record: record)
+        )
+        #expect(GroundingKeys.fingerprint(base, dayKey: "2026-09-09") != before)
+    }
+
     @Test func aPersistedEntranceDoesNotReplayOnReopen() {
         let key = GroundingKeys.entranceKey(dayKey: GroundingKeys.dayKey(now, calendar: calendar), card: makeCard())
         #expect(GroundingKeys.shouldAnimateEntrance(persistedKey: "", currentKey: key))
