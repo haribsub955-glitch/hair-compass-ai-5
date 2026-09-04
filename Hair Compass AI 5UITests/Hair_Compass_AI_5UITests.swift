@@ -89,6 +89,31 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Your starting plan"].isHittable, "Today should return to the actionable plan")
     }
 
+    /// During the first week Wren introduces a small, record-backed guide instead of dropping a
+    /// new person into an empty chat. Each instruction is a real route; this exercises the Plan
+    /// hand-off because it is the one that could otherwise become an inert educational card.
+    @MainActor
+    func testWrenNewcomerGuideIntroducesPersonaAndRoutesToPlan() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_WREN_GUIDE", "HC_MOTION_STATIC"]
+        app.launch()
+
+        let invitation = app.buttons["wrenGuideInvite"]
+        XCTAssertTrue(invitation.waitForExistence(timeout: 10), "Wren should introduce the first-week guide after launch clears")
+        invitation.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["wrenNewcomerGuide"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["YOUR CALM TRACKING COMPANION"].exists)
+        XCTAssertTrue(app.staticTexts["Three small things. Then let the record breathe."].exists)
+        XCTAssertEqual(app.buttons["wrenGuide.checkIn"].value as? String, "Ready")
+        XCTAssertEqual(app.buttons["wrenGuide.routine"].value as? String, "Not ready")
+        app.buttons["wrenGuide.routine"].tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["planJumpBar"].waitForExistence(timeout: 6),
+            "the routine instruction should land directly on Plan"
+        )
+    }
+
     /// "I'm worried" starts with a bounded picker rather than a blank chat, answers in four
     /// ordered sections, and lets that concern shape today's grounding note.
     @MainActor

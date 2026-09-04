@@ -262,7 +262,12 @@ struct RootView: View {
                 // inset: the padding contributes real layout height, so she cannot steal a tap from
                 // content, while no invisible trailing spacer can push navigation off-centre.
                 FloatingTabBar(selection: $tab)
-                WrenChatButton(tab: tab, profile: profile)
+                WrenChatButton(
+                    tab: tab,
+                    profile: profile,
+                    canIntroduce: launchPresentation.surface == .normal,
+                    onGuideAction: handleWrenGuideAction
+                )
                     .padding(.bottom, 64)
             }
             // Charts can establish their own compositing layers. Flatten the complete bar
@@ -272,6 +277,21 @@ struct RootView: View {
         }
         .background(Clinical.canvas.ignoresSafeArea())
         .background(WindowSceneReader(scene: $owningWindowScene))
+    }
+
+    /// Wren's first-week instructions end in the real destination rather than a dead-end lesson.
+    /// These are record-keeping routes only; the guide never starts or changes treatment.
+    private func handleWrenGuideAction(_ action: CompanionGuideAction) {
+        switch action {
+        case .checkIn:
+            tab = .today
+            deepLinks.openLogRequested = true
+        case .routine:
+            tab = .care
+        case .baselinePhoto:
+            tab = .photos
+            deepLinks.openGuidedCaptureRequested = true
+        }
     }
 
     var body: some View {

@@ -23,6 +23,72 @@ enum CompanionMoment: CaseIterable {
     case celebrating   // milestone / streak celebration
 }
 
+/// The three pieces of the app Wren teaches during the first week. These are navigation
+/// destinations, not treatment recommendations: Wren asks the person to record what is already
+/// true, then gives slow-moving hair data enough time to become useful.
+enum CompanionGuideAction: String, CaseIterable {
+    case checkIn
+    case routine
+    case baselinePhoto
+
+    var title: String {
+        switch self {
+        case .checkIn: return "Check in once, then leave it"
+        case .routine: return "Mirror your real routine"
+        case .baselinePhoto: return "Make one honest baseline"
+        }
+    }
+
+    var instruction: String {
+        switch self {
+        case .checkIn:
+            return "A rough shedding and scalp check is enough. Consistent beats perfectly counted."
+        case .routine:
+            return "Add only care you already use. You never need to start something for the app."
+        case .baselinePhoto:
+            return "Use the guided angles once, then compare on schedule — not every anxious day."
+        }
+    }
+
+    var buttonTitle: String {
+        switch self {
+        case .checkIn: return "Log today"
+        case .routine: return "Open Plan"
+        case .baselinePhoto: return "Take baseline"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .checkIn: return "checkmark.circle"
+        case .routine: return "checklist"
+        case .baselinePhoto: return "camera.viewfinder"
+        }
+    }
+}
+
+struct CompanionGuideStep: Identifiable, Equatable {
+    let action: CompanionGuideAction
+    let isComplete: Bool
+
+    var id: CompanionGuideAction { action }
+}
+
+/// A short-lived, deterministic guide for the first seven calendar days after the first entry.
+/// It deliberately expires: Wren should become a quiet companion once the person knows the app,
+/// not keep treating a returning user like a beginner. Completion comes from the record itself,
+/// so there is no second checklist that can drift out of sync.
+struct CompanionNewcomerGuide: Equatable {
+    let dayNumber: Int
+    let steps: [CompanionGuideStep]
+
+    var invitation: String {
+        "New here? I’ll keep your first week to three small steps."
+    }
+
+    var completedCount: Int { steps.filter(\.isComplete).count }
+}
+
 /// Wren — the name and personality of the AI companion (engine varies: cloud once consented,
 /// on-device otherwise). This is the single home of the
 /// companion's voice: a pure mapping, no SwiftUI, no state, fully unit-tested (mirrors how
@@ -32,6 +98,9 @@ enum CompanionMoment: CaseIterable {
 /// `HairChatService` and are untouched. Copy here stays warm, patient, and non-diagnostic.
 enum Companion {
     static let name = "Wren"
+    static let role = "Your calm tracking companion"
+    static let introduction = "I watch the pattern, not one alarming day. I’ll be honest about what your record can — and cannot — show, then point to one useful next step."
+    static let newcomerReassurance = "Nothing is judged in your first week. You’re building a baseline, not a verdict."
 
     /// The pose asset for a moment.
     static func pose(for moment: CompanionMoment) -> String {
@@ -80,11 +149,42 @@ enum Companion {
         }
     }
 
+    /// Builds Wren's first-week instructions from facts the app already owns. `firstEntryDate`
+    /// normally marks the end of onboarding more accurately than `profileCreatedAt`; the latter
+    /// remains a safe fallback for profiles created before a first entry existed.
+    static func newcomerGuide(
+        profileCreatedAt: Date,
+        firstEntryDate: Date?,
+        hasOnboarded: Bool,
+        hasLoggedToday: Bool,
+        hasRoutine: Bool,
+        hasBaselinePhoto: Bool,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> CompanionNewcomerGuide? {
+        guard hasOnboarded else { return nil }
+
+        let start = calendar.startOfDay(for: firstEntryDate ?? profileCreatedAt)
+        let today = calendar.startOfDay(for: now)
+        let rawOffset = calendar.dateComponents([.day], from: start, to: today).day ?? 0
+        let dayOffset = max(0, rawOffset)
+        guard dayOffset < 7 else { return nil }
+
+        return CompanionNewcomerGuide(
+            dayNumber: dayOffset + 1,
+            steps: [
+                CompanionGuideStep(action: .checkIn, isComplete: hasLoggedToday),
+                CompanionGuideStep(action: .routine, isComplete: hasRoutine),
+                CompanionGuideStep(action: .baselinePhoto, isComplete: hasBaselinePhoto),
+            ]
+        )
+    }
+
     /// Wren's line for a moment, or `nil` for ambient moments that should stay silent.
     static func line(for moment: CompanionMoment) -> String? {
         switch moment {
         case .greeting:
-            return "I'm Wren. I'll help you read what your hair is telling you — a little at a time."
+            return "I’m Wren. I help you step back from one scary hair day and read the slower pattern."
         case .searching:
             return "Nothing here yet. Add something and I'll help you see what changes."
         case .celebrating:

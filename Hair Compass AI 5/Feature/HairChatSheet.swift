@@ -382,6 +382,9 @@ struct HairChatSheet: View {
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 14) {
             CompanionView(moment: .listening, variant: .pose, size: 84)
+            Text(Companion.role.uppercased())
+                .font(Clinical.eyebrow(10))
+                .foregroundStyle(Clinical.accent)
             if let hello = Companion.line(for: .greeting) {
                 Text(hello)
                     .font(Clinical.body(14, weight: .medium))
