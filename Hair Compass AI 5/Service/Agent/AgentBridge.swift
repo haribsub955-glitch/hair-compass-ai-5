@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import SwiftData
 
 #if DEBUG
@@ -35,15 +36,52 @@ enum AgentBridge {
     }
 
     /// Stable per install, as the contract requires — it identifies which install is asking.
-    /// Not a credential: the session token is. Persisted so it survives app restarts.
+    /// Not a credential: the session token is.
+    ///
+    /// **Keychain, not UserDefaults, for the same reason `AccessWindow` uses it.** iOS deletes
+    /// UserDefaults with the app, so a reinstall used to mint a brand-new id — and on the server
+    /// side a new id is a new principal with a fresh taster allowance on a paid provider key. The
+    /// server knows and prices that ("the defence is the size of the prize"), but pricing around
+    /// a farm cycle is strictly worse than not having one. A Keychain row survives app deletion,
+    /// so the cycle simply stops working.
+    ///
+    /// Device-only and non-syncing, matching `KeychainAnchorStore`: an id that syncs to iCloud
+    /// exists on two devices, which is the opposite of identifying one install.
     static var installationID: String {
-        let key = "agentInstallationID"
-        if let existing = UserDefaults.standard.string(forKey: key), !existing.isEmpty {
-            return existing
-        }
+        if let existing = keychainID(), !existing.isEmpty { return existing }
         let fresh = UUID().uuidString
-        UserDefaults.standard.set(fresh, forKey: key)
+        saveKeychainID(fresh)
         return fresh
+    }
+
+    private static let idService = "harib.Hair-Compass-AI-5.agent"
+    private static let idAccount = "installationID"
+
+    private static func keychainID() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: idService,
+            kSecAttrAccount as String: idAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func saveKeychainID(_ id: String) {
+        let attributes: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: idService,
+            kSecAttrAccount as String: idAccount,
+            kSecValueData as String: Data(id.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        // Add-or-keep: an existing row wins, so two racing first launches cannot end up with
+        // different ids for the same install.
+        SecItemAdd(attributes as CFDictionary, nil)
     }
 
     private static var client: AgentClient?
