@@ -11,6 +11,7 @@ struct AddTreatmentSheet: View {
     @State private var dose = ""
     @State private var startDate = Date.now
     @State private var times = "08:00,21:00"
+    @State private var scheduleDates: [Date] = []
     /// Which weekdays a periodic item is used (Calendar weekday numbers 1=Sun…7=Sat). Empty = every
     /// day. Only shown/used for classes where `supportsWeekdaySchedule` is true — the care
     /// products plus the home-use devices with a real weekly-ish cadence (microneedling, LLLT).
@@ -50,9 +51,11 @@ struct AddTreatmentSheet: View {
     init(initialClass: TreatmentClass = .minoxidil) {
         _treatmentClass = State(initialValue: initialClass)
         let preset = TreatmentGuide.presets(for: initialClass).first
+        let initialTimes = preset?.scheduleTimes ?? (initialClass.isDaily ? "08:00,21:00" : "")
         _name = State(initialValue: preset?.name ?? "")
         _dose = State(initialValue: preset?.dose ?? "")
-        _times = State(initialValue: preset?.scheduleTimes ?? (initialClass.isDaily ? "08:00,21:00" : ""))
+        _times = State(initialValue: initialTimes)
+        _scheduleDates = State(initialValue: TreatmentSchedule.dates(from: initialTimes))
     }
 
     var body: some View {
@@ -113,9 +116,47 @@ struct AddTreatmentSheet: View {
 
                     if treatmentClass.isDaily {
                         section("Daily times") {
-                            textField("08:00,21:00", text: $times)
-                            Text("Comma-separated 24-hour times. Drives adherence math.")
+                            VStack(spacing: 8) {
+                                ForEach(scheduleDates.indices, id: \.self) { index in
+                                    HStack(spacing: 10) {
+                                        Text("Time \(index + 1)")
+                                            .font(Clinical.caption(12))
+                                            .foregroundStyle(Clinical.secondary)
+                                        Spacer()
+                                        DatePicker(
+                                            "Time \(index + 1)",
+                                            selection: $scheduleDates[index],
+                                            displayedComponents: .hourAndMinute
+                                        )
+                                        .labelsHidden()
+                                        .tint(Clinical.accent)
+                                        if scheduleDates.count > 1 {
+                                            Button {
+                                                scheduleDates.remove(at: index)
+                                            } label: {
+                                                Image(systemName: "xmark")
+                                                    .font(Clinical.body(10, weight: .semibold))
+                                                    .foregroundStyle(Clinical.tertiary)
+                                                    .frame(width: 44, height: 44)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .accessibilityLabel("Remove time \(index + 1)")
+                                        }
+                                    }
+                                }
+                            }
+                            if scheduleDates.count < 4 {
+                                Button("Add a time") { addScheduleTime() }
+                                    .font(Clinical.body(13, weight: .medium))
+                                    .foregroundStyle(Clinical.accent)
+                                    .buttonStyle(.plain)
+                                    .minimumHitTarget()
+                            }
+                            Text("These times drive reminders and consistency. You can change them later.")
                                 .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                        }
+                        .onChange(of: scheduleDates) { _, values in
+                            times = TreatmentSchedule.encode(values)
                         }
                     }
 
@@ -313,6 +354,7 @@ struct AddTreatmentSheet: View {
         }
         if previousPresets.map(\.dose).contains(dose) { dose = "" }
         times = defaultTimes(for: c)
+        scheduleDates = TreatmentSchedule.dates(from: times)
     }
 
     // MARK: Common-regimen presets (one explicit tap — never auto-applied)
@@ -325,7 +367,15 @@ struct AddTreatmentSheet: View {
         name = p.name
         dose = p.dose
         times = p.scheduleTimes.isEmpty ? defaultTimes(for: treatmentClass) : p.scheduleTimes
+        scheduleDates = TreatmentSchedule.dates(from: times)
         UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private func addScheduleTime() {
+        guard scheduleDates.count < 4 else { return }
+        let anchor = scheduleDates.last ?? Date.now
+        let next = Calendar.current.date(byAdding: .hour, value: scheduleDates.isEmpty ? 0 : 1, to: anchor) ?? anchor
+        scheduleDates.append(next)
     }
 
     private func presetChip(_ p: DosePreset) -> some View {

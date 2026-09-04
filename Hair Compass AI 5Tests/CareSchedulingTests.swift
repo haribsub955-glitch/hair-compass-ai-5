@@ -43,6 +43,12 @@ struct CareSchedulingTests {
         #expect(oil.isDueToday(now: dateWithWeekday(6), calendar: cal))   // empty → every day
     }
 
+    @Test func treatmentTimesEncodeInClockOrder() {
+        let morning = cal.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 8))!
+        let evening = cal.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 21))!
+        #expect(TreatmentSchedule.encode([evening, morning], calendar: cal) == "08:00,21:00")
+    }
+
     /// A date whose `Calendar.weekday` component equals `weekday` (1=Sun…7=Sat). 2026-07-12 is a
     /// Sunday (weekday 1); adding `weekday-1` days lands on the target weekday.
     private func dateWithWeekday(_ weekday: Int) -> Date {

@@ -252,13 +252,12 @@ struct Hair_Compass_AI_5Tests {
 
     // MARK: - Milestones
 
-    @Test func milestonesDetectStreakAndTreatmentMarks() {
-        let m = Milestones.achieved(streak: 7, treatments: [(name: "Minox", weeks: 26), (name: "Fin", weeks: 13)])
-        #expect(m.contains { $0.id == "streak-7" })
+    @Test func milestonesDetectTreatmentMarksWithoutScoringAStreak() {
+        let m = Milestones.achieved(treatments: [(name: "Minox", weeks: 26), (name: "Fin", weeks: 13)])
         #expect(m.contains { $0.id == "ready-Minox" })   // >= 24 weeks
         #expect(m.contains { $0.id == "half-Fin" })       // 12..<24
-        // Below the first threshold, no streak milestone.
-        #expect(Milestones.achieved(streak: 2, treatments: []).isEmpty)
+        #expect(!m.contains { $0.id.hasPrefix("streak-") })
+        #expect(Milestones.achieved(treatments: []).isEmpty)
     }
 
     // MARK: - Progress report (the periodic synthesis)

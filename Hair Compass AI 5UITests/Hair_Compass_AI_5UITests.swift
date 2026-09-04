@@ -6,6 +6,24 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Plan leads with a time-based evidence path, and each checkpoint explains what it can and
+    /// cannot tell the person yet.
+    @MainActor
+    func testEvidencePathShowsOnPlan() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_TAB", "care", "HC_MOTION_STATIC"]
+        app.launch()
+
+        let path = app.otherElements["evidencePath"]
+        XCTAssertTrue(path.waitForExistence(timeout: 10), "the evidence path should lead the Plan screen")
+        let week4 = app.buttons["evidenceMilestone.4"]
+        XCTAssertTrue(week4.waitForExistence(timeout: 4))
+        week4.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["evidenceMilestoneDetail.4"].waitForExistence(timeout: 4))
+        XCTAssertEqual(week4.value as? String, "Expanded")
+        XCTAssertTrue(app.descendants(matching: .any)["planStrands"].exists)
+    }
+
     /// First run presents the illustrated cover (`OnboardingIntro`, which replaced the old single
     /// "Begin" welcome step), and walking it through hands off to the name step.
     @MainActor

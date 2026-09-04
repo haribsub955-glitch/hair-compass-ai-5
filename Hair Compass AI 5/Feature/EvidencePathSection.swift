@@ -123,6 +123,13 @@ struct EvidencePathSection: View {
                     .padding(.leading, 31)
                     .padding(.bottom, 12)
                     .transition(.opacity.combined(with: .offset(y: -4)))
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(
+                        "Why: \(milestone.why) Reviews: \(milestone.evidence) "
+                        + "Photo: \(milestone.needsPhoto ? "A comparable photo is needed." : "No photo is needed.") "
+                        + "Reads: \(milestone.interpretable ? "Enough to interpret with the usual caveats." : "Too early to interpret.") "
+                        + "Next: \(milestone.nextAction)"
+                    )
                     .accessibilityIdentifier("evidenceMilestoneDetail.\(milestone.week)")
             }
         }
@@ -380,8 +387,10 @@ struct EvidencePathSection: View {
 
     private func strandCount(_ strand: PlanStrand) -> String {
         guard let thirtyDay = strand.thirtyDay else { return "" }
-        let sevenDay = strand.sevenDay.map {
-            " · This week \($0.completed) of \($0.planned) planned"
+        let sevenDay = strand.sevenDay.map { value in
+            value.scored > 0
+                ? " · This week \(value.completed) of \(value.scored) due · \(value.planned) planned"
+                : " · This week not enough due actions yet"
         } ?? ""
         return "\(thirtyDay.completed) of \(thirtyDay.scored) due · \(thirtyDay.planned) planned\(sevenDay)"
     }
@@ -397,7 +406,8 @@ struct EvidencePathSection: View {
             return "\(strand.name), starting"
         }
         return "\(strand.name), \(thirtyDay.percent) percent of due actions over thirty days, "
-            + "\(thirtyDay.completed) completed, \(thirtyDay.planned) planned through today"
+            + "\(thirtyDay.completed) completed of \(thirtyDay.scored) due, "
+            + "\(thirtyDay.planned) planned through today"
     }
 
     // MARK: - Entrance

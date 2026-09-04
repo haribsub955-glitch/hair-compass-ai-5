@@ -86,7 +86,8 @@ struct ExportServiceNotesTests {
             labs: [], triggers: [], progressCheckIns: [], now: now, calendar: fixed
         )
 
-        #expect(summary.contains("14-day consistency 100% (2 of 2 planned)"))
+        #expect(summary.contains("30-day consistency 100% of due actions (2 completed of 2 due; 2 planned through today)"))
+        #expect(summary.contains("this week 2 completed of 2 due; 2 planned through today"))
         #expect(!summary.contains("% adherence"))
     }
 
@@ -102,7 +103,7 @@ struct ExportServiceNotesTests {
             labs: [], triggers: [], progressCheckIns: [], now: now, calendar: fixed
         )
 
-        #expect(summary.contains("14-day consistency: not enough due actions yet"))
+        #expect(summary.contains("30-day consistency: not enough due actions yet (0 completed; 1 planned through today)"))
         #expect(!summary.contains("0%"))
     }
 }

@@ -121,17 +121,31 @@ enum ExportService {
                 let ready = HairAnalytics.outcomeReady(weeksElapsed: weeks) ? "assessable" : "pre-24-week"
                 // One adherence engine (Important 10 → G2-R16): the same PlanAdherence
                 // occurrence math Today, Care and Trends already read.
-                let consistency = PlanAdherence.consistency(
+                let thirtyDay = PlanAdherence.consistency(
                     treatment: t, doses: doses, missed: missedDoses,
-                    windowDays: 14, now: now, calendar: calendar
+                    windowDays: 30, now: now, calendar: calendar
                 )
-                let adhStr: String
-                if let consistency, consistency.scored > 0 {
-                    adhStr = " · 14-day consistency \(consistency.percent)% (\(consistency.completed) of \(consistency.planned) planned)"
-                } else if PlanAdherence.hasSchedule(t) {
-                    adhStr = " · 14-day consistency: not enough due actions yet"
-                } else {
-                    adhStr = ""
+                let sevenDay = PlanAdherence.consistency(
+                    treatment: t, doses: doses, missed: missedDoses,
+                    windowDays: 7, now: now, calendar: calendar
+                )
+                var consistencyText = ""
+                if let thirtyDay, thirtyDay.scored > 0 {
+                    consistencyText = " · 30-day consistency \(thirtyDay.percent)% of due actions "
+                        + "(\(thirtyDay.completed) completed of \(thirtyDay.scored) due; "
+                        + "\(thirtyDay.planned) planned through today)"
+                } else if let thirtyDay {
+                    consistencyText = " · 30-day consistency: not enough due actions yet "
+                        + "(\(thirtyDay.completed) completed; \(thirtyDay.planned) planned through today)"
+                }
+                if let sevenDay, sevenDay.scored > 0 {
+                    consistencyText += " · this week \(sevenDay.completed) completed of \(sevenDay.scored) due; "
+                        + "\(sevenDay.planned) planned through today"
+                } else if sevenDay != nil {
+                    consistencyText += " · this week: not enough due actions yet"
+                }
+                if !PlanAdherence.hasSchedule(t) {
+                    consistencyText = " · recorded per use"
                 }
                 // A stop date is one of the most clinically actionable things on this line —
                 // shedding changes after discontinuing a treatment often lag by 2–3 months, the
@@ -143,7 +157,7 @@ enum ExportService {
                 } else {
                     stopStr = t.isActive ? "" : " [inactive]"
                 }
-                out += "• \(t.name.isEmpty ? t.treatmentClass.title : t.name): week \(weeks)/24 (\(ready))\(adhStr)\(stopStr)\n"
+                out += "• \(t.name.isEmpty ? t.treatmentClass.title : t.name): week \(weeks)/24 (\(ready))\(consistencyText)\(stopStr)\n"
             }
         }
         out += "\n"
@@ -221,10 +235,12 @@ enum ExportService {
         snapshots: [HealthSnapshot],
         sideEffects: [SideEffectLog] = [],
         procedures: [ProcedureAppointment] = [],
-        missedDoses: [MissedDoseRecord] = []
+        missedDoses: [MissedDoseRecord] = [],
+        now: Date = .now,
+        calendar: Calendar = .current
     ) -> Data? {
         let dto = ExportBundle(
-            exportedAt: .now,
+            exportedAt: now,
             profile: profile.map {
                 .init(sex: $0.sexRaw, ageBand: $0.ageBand, condition: $0.conditionRaw,
                       familyHistory: $0.familyHistoryRaw, baselineStage: $0.baselineStage,
@@ -237,9 +253,23 @@ enum ExportService {
                       cigarettes: $0.cigarettes, alcohol: $0.alcoholDrinks, oiliness: $0.oiliness,
                       washedHair: $0.washedHair, note: $0.note)
             },
-            treatments: treatments.map {
-                .init(name: $0.name.isEmpty ? $0.treatmentClass.title : $0.name, treatmentClass: $0.classRaw,
-                      dose: $0.dose, startDate: $0.startDate, endDate: $0.endDate, isActive: $0.isActive)
+            treatments: treatments.map { treatment in
+                let thirtyDay = PlanAdherence.consistency(
+                    treatment: treatment, doses: doses, missed: missedDoses,
+                    windowDays: 30, now: now, calendar: calendar
+                )
+                let sevenDay = PlanAdherence.consistency(
+                    treatment: treatment, doses: doses, missed: missedDoses,
+                    windowDays: 7, now: now, calendar: calendar
+                )
+                return .init(
+                    name: treatment.name.isEmpty ? treatment.treatmentClass.title : treatment.name,
+                    treatmentClass: treatment.classRaw, dose: treatment.dose,
+                    startDate: treatment.startDate, endDate: treatment.endDate,
+                    isActive: treatment.isActive,
+                    consistency30: thirtyDay.map(ExportBundle.ConsistencyDTO.init),
+                    consistency7: sevenDay.map(ExportBundle.ConsistencyDTO.init)
+                )
             },
             treatmentDoses: doses.map { .init(treatment: $0.treatment?.name ?? "", slot: $0.slot, loggedAt: $0.loggedAt) },
             missedDoses: missedDoses.map {
@@ -307,6 +337,20 @@ private struct ExportBundle: Codable {
     struct TreatmentDTO: Codable {
         let name: String; let treatmentClass: String; let dose: String
         let startDate: Date; let endDate: Date?; let isActive: Bool
+        let consistency30: ConsistencyDTO?; let consistency7: ConsistencyDTO?
+    }
+    struct ConsistencyDTO: Codable {
+        let completed: Int
+        let planned: Int
+        let scored: Int
+        let percent: Int?
+
+        init(_ consistency: PlanAdherence.Consistency) {
+            completed = consistency.completed
+            planned = consistency.planned
+            scored = consistency.scored
+            percent = consistency.scored > 0 ? consistency.percent : nil
+        }
     }
     struct Dose: Codable { let treatment: String; let slot: String; let loggedAt: Date }
     struct MissedDose: Codable { let treatment: String; let slot: String; let date: Date; let reason: String }
