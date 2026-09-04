@@ -83,6 +83,9 @@ private struct PlanJumpBar: View {
 struct CareView: View {
     /// From RootView: switch to Today and open the log — the "Log today" setup row's action.
     var onLogToday: (() -> Void)? = nil
+    /// Evidence lens hand-offs that belong to another primary destination.
+    var onOpenLabs: (() -> Void)? = nil
+    var onOpenPhotos: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
     @Environment(NotificationService.self) private var notifications
@@ -211,7 +214,8 @@ struct CareView: View {
                         milestones: evidenceMilestones,
                         signals: evidenceSignals,
                         strands: planStrands,
-                        overall: overallRhythm
+                        overall: overallRhythm,
+                        onAction: { openEvidenceAction($0, proxy: proxy) }
                     )
                     .id(PlanJumpDestination.evidence.anchor)
                     .staggeredEntrance(index: 6)
@@ -463,6 +467,34 @@ struct CareView: View {
         case .recordTrigger: showRecommendedTrigger = true
         case .addLabResult(let test): recommendedLabTest = test; showRecommendedLab = true
         case .reviewPregnancyCaution: recommendedTreatmentClass = .spironolactone
+        }
+    }
+
+    /// Turns every evidence explanation into one direct route. The signal model decides what the
+    /// useful action is; this view only presents the correct in-app surface.
+    private func openEvidenceAction(_ action: EvidenceSignal.Action, proxy: ScrollViewProxy) {
+        switch action {
+        case .addTreatment:
+            showAdd = true
+        case .reviewTreatments:
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.28)) {
+                proxy.scrollTo(PlanJumpDestination.treatments.anchor, anchor: .top)
+            }
+        case .logToday:
+            onLogToday?()
+        case .captureBaseline, .capturePhoto:
+            showRecommendedPhoto = true
+        case .reviewPhotos:
+            onOpenPhotos?()
+        case .addLab:
+            recommendedLabTest = .ferritin
+            showRecommendedLab = true
+        case .reviewLabs:
+            onOpenLabs?()
+        case .addEvent:
+            showRecommendedTrigger = true
+        case .reviewEvents:
+            showLifeEvents = true
         }
     }
 

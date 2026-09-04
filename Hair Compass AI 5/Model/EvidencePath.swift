@@ -241,12 +241,58 @@ struct EvidenceSignal: Identifiable, Equatable {
         case discuss
     }
 
+    /// A typed hand-off from evidence interpretation to the place where the person can do
+    /// something useful. Keeping this out of the display copy means the UI never has to guess
+    /// whether "next" means log, capture, review, or add.
+    enum Action: Equatable {
+        case addTreatment
+        case reviewTreatments
+        case logToday
+        case captureBaseline
+        case capturePhoto
+        case reviewPhotos
+        case addLab
+        case reviewLabs
+        case addEvent
+        case reviewEvents
+
+        var title: String {
+            switch self {
+            case .addTreatment: return "Add treatment"
+            case .reviewTreatments: return "Review treatments"
+            case .logToday: return "Log today's check-in"
+            case .captureBaseline: return "Capture photo baseline"
+            case .capturePhoto: return "Capture a matched photo"
+            case .reviewPhotos: return "Open photo record"
+            case .addLab: return "Add a lab result"
+            case .reviewLabs: return "Review lab results"
+            case .addEvent: return "Add a life event"
+            case .reviewEvents: return "Open life events"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .addTreatment: return "plus"
+            case .reviewTreatments: return "list.bullet"
+            case .logToday: return "square.and.pencil"
+            case .captureBaseline, .capturePhoto: return "camera"
+            case .reviewPhotos: return "photo.on.rectangle.angled"
+            case .addLab: return "plus"
+            case .reviewLabs: return "testtube.2"
+            case .addEvent: return "plus"
+            case .reviewEvents: return "calendar"
+            }
+        }
+    }
+
     let kind: Kind
     let state: State
     let status: String
     let summary: String
     let rule: String
     let nextAction: String
+    let action: Action
 
     var id: Kind { kind }
 }
@@ -314,7 +360,8 @@ enum EvidenceSignals {
                 status: "Recent severe side effect",
                 summary: "A severe \(severe.type.title.lowercased()) entry is part of this treatment record. This is a tolerability signal, not an effectiveness result.",
                 rule: rule,
-                nextAction: "Keep the date and treatment attached to it; this is worth discussing with the prescriber."
+                nextAction: "Keep the date and treatment attached to it; this is worth discussing with the prescriber.",
+                action: .reviewTreatments
             )
         }
 
@@ -330,7 +377,8 @@ enum EvidenceSignals {
                 rule: rule,
                 nextAction: hasOnlyAsNeeded
                     ? "Keep recording each use; add a schedule only if one genuinely belongs to the plan."
-                    : "Add the treatment and schedule you already follow."
+                    : "Add the treatment and schedule you already follow.",
+                action: hasOnlyAsNeeded ? .reviewTreatments : .addTreatment
             )
         }
 
@@ -345,7 +393,8 @@ enum EvidenceSignals {
                 status: "Waiting for due actions",
                 summary: "The plan is scheduled, but no occurrence has become scorable yet. An open or future action is not a missed action.",
                 rule: rule,
-                nextAction: "Use the plan normally; the first settled due action will start the record."
+                nextAction: "Use the plan normally; the first settled due action will start the record.",
+                action: .reviewTreatments
             )
         }
 
@@ -364,7 +413,8 @@ enum EvidenceSignals {
             rule: rule,
             nextAction: hasWeek
                 ? "Read each treatment separately below; consistency helps interpret a later review but does not prove effectiveness."
-                : "Keep settling due actions until there is at least one week of plan evidence."
+                : "Keep settling due actions until there is at least one week of plan evidence.",
+            action: .reviewTreatments
         )
     }
 
@@ -377,18 +427,27 @@ enum EvidenceSignals {
                 kind: .shedding, state: .standby, status: "No observations yet",
                 summary: "Shedding becomes useful as a repeated ordinal pattern, not as a hair count.",
                 rule: rule,
-                nextAction: "Log the level and whether hair was washed whenever you check in."
+                nextAction: "Log the level and whether hair was washed whenever you check in.",
+                action: .logToday
             )
         }
 
-        let washCount = entries.filter(\.washedHair).count
-        let nonWashCount = entries.count - washCount
+        let washEntries = entries.filter(\.washedHair)
+        let nonWashEntries = entries.filter { !$0.washedHair }
+        let washCount = washEntries.count
+        let nonWashCount = nonWashEntries.count
         let span = spanDays(entries.map(\.date), calendar: calendar)
+        let washSpan = spanDays(washEntries.map(\.date), calendar: calendar)
+        let nonWashSpan = spanDays(nonWashEntries.map(\.date), calendar: calendar)
+        // The time requirement belongs to the context itself. Five wash observations made in a
+        // few days do not become longitudinal evidence because one old non-wash entry stretches
+        // the combined date range.
         let washReady = washCount >= minimumSheddingContextSamples
+            && washSpan >= minimumSheddingSpanDays
         let nonWashReady = nonWashCount >= minimumSheddingContextSamples
-        let hasTimeSpan = span >= minimumSheddingSpanDays
+            && nonWashSpan >= minimumSheddingSpanDays
 
-        if hasTimeSpan && (washReady || nonWashReady) {
+        if washReady || nonWashReady {
             let status: String
             if washReady && nonWashReady {
                 status = "Both wash contexts are readable"
@@ -405,13 +464,18 @@ enum EvidenceSignals {
                 rule: rule,
                 nextAction: washReady && nonWashReady
                     ? "Keep marking wash days; read the two smoothed series over weeks, never day by day."
-                    : "Keep marking wash days so the other context can build its own five-observation baseline."
+                    : "Keep marking wash days so the other context can build its own five-observation baseline.",
+                action: .logToday
             )
         }
 
-        let strongestContext = max(washCount, nonWashCount)
-        let samplesNeeded = max(0, minimumSheddingContextSamples - strongestContext)
-        let timeNeeded = max(0, minimumSheddingSpanDays - span)
+        let strongest = [(count: washCount, span: washSpan), (count: nonWashCount, span: nonWashSpan)]
+            .max {
+                if $0.count == $1.count { return $0.span < $1.span }
+                return $0.count < $1.count
+            } ?? (0, 0)
+        let samplesNeeded = max(0, minimumSheddingContextSamples - strongest.count)
+        let timeNeeded = max(0, minimumSheddingSpanDays - strongest.span)
         let need: String
         if samplesNeeded > 0 && timeNeeded > 0 {
             need = "\(samplesNeeded) more like-with-like observation\(samplesNeeded == 1 ? "" : "s") across \(timeNeeded) more day\(timeNeeded == 1 ? "" : "s")"
@@ -426,7 +490,8 @@ enum EvidenceSignals {
             status: "Context-matched baseline building",
             summary: "You have \(washCount) wash-day and \(nonWashCount) non-wash observation\(nonWashCount == 1 ? "" : "s"); the record needs \(need).",
             rule: rule,
-            nextAction: "Keep the check-in light and consistent; do not add extra checks after an anxious hair day."
+            nextAction: "Keep the check-in light and consistent; do not add extra checks after an anxious hair day.",
+            action: .logToday
         )
     }
 
@@ -439,7 +504,8 @@ enum EvidenceSignals {
                 kind: .scalp, state: .standby, status: "No symptom record yet",
                 summary: "Flaking, redness and itch need to be captured together for the score to mean anything.",
                 rule: rule,
-                nextAction: "Rate the same three signs in a daily check-in when symptoms are relevant."
+                nextAction: "Rate the same three signs in a daily check-in when symptoms are relevant.",
+                action: .logToday
             )
         }
 
@@ -458,7 +524,8 @@ enum EvidenceSignals {
                 status: "Symptom window building",
                 summary: "The latest scalp score is \(latestTotal)/16 (\(latestBand)); the direction needs \(needs.joined(separator: " and ")).",
                 rule: rule,
-                nextAction: "Use the same 0–3 ratings rather than checking more often."
+                nextAction: "Use the same 0–3 ratings rather than checking more often.",
+                action: .logToday
             )
         }
 
@@ -482,7 +549,8 @@ enum EvidenceSignals {
             rule: rule,
             nextAction: latest.scalpBand == .severe
                 ? "Keep the dated record; persistent severe or painful symptoms belong in a clinician conversation."
-                : "Continue the same three ratings so the next window stays comparable."
+                : "Continue the same three ratings so the next window stays comparable.",
+            action: .logToday
         )
     }
 
@@ -502,7 +570,8 @@ enum EvidenceSignals {
                 kind: .photos, state: .standby, status: "Baseline not captured",
                 summary: "A clear starting set is more useful than frequent, unmatched photos.",
                 rule: rule,
-                nextAction: "Capture a baseline in good light and keep the setup for the next month."
+                nextAction: "Capture a baseline in good light and keep the setup for the next month.",
+                action: .captureBaseline
             )
         }
 
@@ -514,6 +583,7 @@ enum EvidenceSignals {
         }
         var readyLabels: [String] = []
         var hasConditionMismatch = false
+        var hasIncompleteSetup = false
         var hasEarlyMatchedPair = false
         for (key, unsorted) in groups {
             let series = unsorted.sorted { $0.createdAt < $1.createdAt }
@@ -524,7 +594,7 @@ enum EvidenceSignals {
                     from: calendar.startOfDay(for: baseline.createdAt),
                     to: calendar.startOfDay(for: candidate.createdAt)
                 ).day ?? 0
-                if PhotoComparability.mismatchCaption(baseline, candidate) == nil {
+                if PhotoComparability.isEvidenceGradePair(baseline, candidate) {
                     if gap >= PhotoCadence.intervalDays {
                         let label = key.region == .patch && !key.patch.isEmpty
                             ? "\(key.region.title): \(key.patch)" : key.region.title
@@ -533,6 +603,10 @@ enum EvidenceSignals {
                         hasEarlyMatchedPair = true
                     }
                     break
+                } else if PhotoComparability.mismatchCaption(baseline, candidate) == nil {
+                    // Legacy photos can have no known mismatch simply because setup fields were
+                    // never saved. Keep them, but do not call the pair matched evidence.
+                    hasIncompleteSetup = true
                 } else {
                     hasConditionMismatch = true
                 }
@@ -548,30 +622,41 @@ enum EvidenceSignals {
                 status: "\(readyLabels.count) comparable series ready",
                 summary: "\(labels) \(readyLabels.count > 2 ? "and \(readyLabels.count - 2) more " : "")\(verb) a condition-matched pair at least 28 days apart.",
                 rule: rule,
-                nextAction: "Compare only those matched pairs; keep the next capture on the monthly cadence."
+                nextAction: "Compare only those matched pairs; keep the next capture on the monthly cadence.",
+                action: .reviewPhotos
             )
         }
 
         let cadence = PhotoCadence.status(photos: photos, now: now, calendar: calendar)
         let status: String
         let next: String
+        let action: EvidenceSignal.Action
         if hasConditionMismatch {
             status = "Follow-up conditions do not match"
             next = "Repeat one region using the baseline's light, distance, parting and wet/dry state."
+            action = .capturePhoto
+        } else if hasIncompleteSetup {
+            status = "Photo setup details are incomplete"
+            next = "Capture the region again with light, distance, parting and wet/dry state recorded."
+            action = .capturePhoto
         } else if hasEarlyMatchedPair {
             status = "Matched pair is still too close"
             next = "Let at least 28 days separate the baseline and follow-up; more photos will not make the change clearer."
+            action = .reviewPhotos
         } else {
             switch cadence {
             case .noBaseline:
                 status = "Baseline not captured"
                 next = "Capture one clear baseline set."
+                action = .captureBaseline
             case .due:
                 status = "Baseline ready for follow-up"
                 next = "Capture the same regions now, matching the baseline conditions."
+                action = .capturePhoto
             case .upcoming(let days):
                 status = "Baseline saved · follow-up in \(days) days"
                 next = "Wait for the monthly follow-up; keep the same setup notes."
+                action = .reviewPhotos
             }
         }
         return EvidenceSignal(
@@ -580,7 +665,8 @@ enum EvidenceSignals {
             status: status,
             summary: "\(photos.count) photo\(photos.count == 1 ? "" : "s") across \(groups.count) series, with no mature condition-matched pair yet.",
             rule: rule,
-            nextAction: next
+            nextAction: next,
+            action: action
         )
     }
 
@@ -593,7 +679,8 @@ enum EvidenceSignals {
                 kind: .labs, state: .standby, status: "No individualized labs",
                 summary: "Labs are optional context, not a checklist or a blanket supplement screen.",
                 rule: rule,
-                nextAction: "Record a result only when it was actually ordered; use the range printed on the report when available."
+                nextAction: "Record a result only when it was actually ordered; use the range printed on the report when available.",
+                action: .addLab
             )
         }
 
@@ -618,7 +705,8 @@ enum EvidenceSignals {
                 status: "\(flagged.count) latest result\(flagged.count == 1 ? "" : "s") outside range",
                 summary: "The app checked \(latest.count) latest test\(latest.count == 1 ? "" : "s") separately; an out-of-range flag is context for review, not a diagnosis.",
                 rule: rule,
-                nextAction: "Confirm the printed lab range and take the flagged result to a clinician; do not infer a supplement from a combined score."
+                nextAction: "Confirm the printed lab range and take the flagged result to a clinician; do not infer a supplement from a combined score.",
+                action: .reviewLabs
             )
         }
 
@@ -631,7 +719,8 @@ enum EvidenceSignals {
             status: repeated.isEmpty ? "Latest ranges are readable" : "Same-test history is readable",
             summary: "\(latest.count) latest test\(latest.count == 1 ? " is" : "s are") in the recorded range. \(repeatText)",
             rule: rule,
-            nextAction: "Keep each future draw attached to its test and report range; retest timing belongs to the clinician's plan."
+            nextAction: "Keep each future draw attached to its test and report range; retest timing belongs to the clinician's plan.",
+            action: .reviewLabs
         )
     }
 
@@ -646,7 +735,8 @@ enum EvidenceSignals {
                 kind: .events, state: .standby, status: "No event recorded",
                 summary: "No major illness, rapid weight loss, childbirth, medication change or other trigger is recorded.",
                 rule: rule,
-                nextAction: "Add only a real, memorable event—not ordinary daily stress or a guess."
+                nextAction: "Add only a real, memorable event—not ordinary daily stress or a guess.",
+                action: .addEvent
             )
         }
 
@@ -682,7 +772,8 @@ enum EvidenceSignals {
             status: status,
             summary: "\(event.type.title) was recorded \(weeks) week\(weeks == 1 ? "" : "s") ago; \(triggers.count) event\(triggers.count == 1 ? " is" : "s are") kept on the timeline.",
             rule: rule,
-            nextAction: next
+            nextAction: next,
+            action: .reviewEvents
         )
     }
 

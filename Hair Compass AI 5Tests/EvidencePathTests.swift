@@ -168,6 +168,9 @@ struct EvidencePathTests {
 
         #expect(values.map(\.kind) == [.treatment, .shedding, .scalp, .photos, .labs, .events])
         #expect(values.allSatisfy { !$0.rule.isEmpty && !$0.nextAction.isEmpty })
+        #expect(values.map(\.action) == [
+            .addTreatment, .logToday, .logToday, .captureBaseline, .addLab, .addEvent,
+        ])
         #expect(try #require(values.first { $0.kind == .treatment }).rule.contains("week 24"))
         #expect(try #require(values.first { $0.kind == .shedding }).rule.contains("wash days separate"))
         #expect(try #require(values.first { $0.kind == .photos }).rule.contains("at least 28 days"))
@@ -183,9 +186,9 @@ struct EvidencePathTests {
         #expect(building.state == .building)
         #expect(building.summary.contains("more days of separation"))
 
-        let spread = [13, 10, 7, 4, 1].map {
+        let spread = [14, 11, 8, 5, 1].map {
             DailyEntry(date: daysAgo($0), shed: .elevated, washedHair: true)
-        } + [12, 9, 6, 3, 0].map {
+        } + [13, 10, 7, 4, 0].map {
             DailyEntry(date: daysAgo($0), shed: .normal, washedHair: false)
         }
         let readable = try #require(signal(.shedding, entries: spread))
@@ -205,6 +208,22 @@ struct EvidencePathTests {
 
         #expect(result.state == .building)
         #expect(result.summary.contains("4 non-wash observations"))
+    }
+
+    @Test func sheddingTimeSpanMustBelongToTheSameWashContext() throws {
+        let compressedWashSeries = (0..<5).map { offset in
+            DailyEntry(date: daysAgo(offset), shed: .elevated, washedHair: true)
+        }
+        // This older non-wash row stretches the combined record beyond 14 days, but it must not
+        // make the five tightly-clustered wash observations readable.
+        let unrelatedContext = DailyEntry(date: daysAgo(14), shed: .normal, washedHair: false)
+        let result = try #require(signal(
+            .shedding, entries: compressedWashSeries + [unrelatedContext]
+        ))
+
+        #expect(result.state == .building)
+        #expect(result.status == "Context-matched baseline building")
+        #expect(result.summary.contains("days of separation"))
     }
 
     @Test func scalpUsesTheValidatedScoreAndASeparateFourteenDayWindow() throws {
@@ -255,6 +274,20 @@ struct EvidencePathTests {
         let matureResult = try #require(signal(.photos, photos: [baseline, matureMatch]))
         #expect(matureResult.state == .readable)
         #expect(matureResult.status == "1 comparable series ready")
+        #expect(matureResult.action == .reviewPhotos)
+    }
+
+    @Test func photosWithUnknownSetupNeverMasqueradeAsMatchedEvidence() throws {
+        let legacyBaseline = PhotoRecord(region: .frontal, createdAt: daysAgo(40))
+        let legacyFollowUp = PhotoRecord(region: .frontal, createdAt: daysAgo(0))
+        let result = try #require(signal(.photos, photos: [legacyBaseline, legacyFollowUp]))
+
+        #expect(PhotoComparability.mismatchCaption(legacyBaseline, legacyFollowUp) == nil)
+        #expect(!PhotoComparability.isEvidenceGradePair(legacyBaseline, legacyFollowUp))
+        #expect(PhotosView.compareMismatchCaption(legacyBaseline, legacyFollowUp)?.contains("incomplete") == true)
+        #expect(result.state == .building)
+        #expect(result.status == "Photo setup details are incomplete")
+        #expect(result.action == .capturePhoto)
     }
 
     @Test func labsCompareOnlyLikeTestsAndPrioritizeTheLatestFlag() throws {
@@ -273,6 +306,7 @@ struct EvidencePathTests {
         let discuss = try #require(signal(.labs, labs: improvingFerritin + [customRangeFlag]))
         #expect(discuss.state == .discuss)
         #expect(discuss.status == "1 latest result outside range")
+        #expect(discuss.action == .reviewLabs)
     }
 
     @Test func lifeEventsUseTheLagWindowWithoutClaimingCause() throws {

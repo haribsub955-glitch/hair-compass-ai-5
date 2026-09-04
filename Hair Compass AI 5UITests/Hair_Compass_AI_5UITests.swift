@@ -29,8 +29,16 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["evidenceMilestoneDetail.4"].waitForExistence(timeout: 4))
         XCTAssertEqual(week4.value as? String, "Expanded")
         XCTAssertTrue(app.buttons["planStrandsToggle"].exists)
+        let suggested = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "evidenceSuggested.")
+        ).firstMatch
+        XCTAssertTrue(
+            suggested.exists,
+            "the most useful unfinished signal should be surfaced calmly without expanding every tracker"
+        )
 
         let photosLens = app.buttons["evidenceLens.photos"]
+        for _ in 0..<5 where !photosLens.exists { app.swipeUp() }
         XCTAssertTrue(photosLens.waitForExistence(timeout: 4), "every evidence source should expose its own logic")
         for _ in 0..<4 where !photosLens.isHittable { app.swipeUp() }
         XCTAssertTrue(photosLens.isHittable)
@@ -40,6 +48,10 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
             "choosing Photos should replace the generic treatment read with the photo-specific rule"
         )
         XCTAssertTrue(app.staticTexts["READS BY"].exists)
+        XCTAssertTrue(
+            app.buttons["evidenceAction.photos"].exists,
+            "the explanation should end in a direct action instead of passive next-step copy"
+        )
         XCTAssertFalse(app.descendants(matching: .any)["planStrands"].exists)
     }
 

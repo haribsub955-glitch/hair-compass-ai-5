@@ -55,7 +55,7 @@ struct PhotosView: View {
     /// differ on the metadata the app already collects, so a wet-vs-dry or lighting mismatch
     /// never reads as regrowth. `static` + pure so it's unit-testable without a model context.
     static func compareMismatchCaption(_ a: PhotoRecord, _ b: PhotoRecord) -> String? {
-        PhotoComparability.mismatchCaption(a, b)
+        PhotoComparability.cautionCaption(a, b)
     }
 
     /// Regions with at least one capture — drives the region-chip coverage dots and the

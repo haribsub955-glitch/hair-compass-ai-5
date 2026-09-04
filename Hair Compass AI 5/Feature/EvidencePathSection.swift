@@ -16,6 +16,7 @@ struct EvidencePathSection: View {
     let signals: [EvidenceSignal]
     let strands: [PlanStrand]
     let overall: PlanAdherence.Consistency?
+    let onAction: (EvidenceSignal.Action) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("evidencePath.enteredKey") private var enteredKey = ""
@@ -323,6 +324,10 @@ struct EvidencePathSection: View {
                     .foregroundStyle(Clinical.secondary)
             }
 
+            if let suggestedSignal {
+                suggestedStep(suggestedSignal)
+            }
+
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
                 spacing: 8
@@ -345,6 +350,66 @@ struct EvidencePathSection: View {
         .animation(reduceMotion ? nil : .easeOut(duration: 0.24), value: selectedSignal)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("evidenceSignals")
+    }
+
+    /// Only one item earns this extra prominence. Safety/review signals come first, followed by
+    /// unfinished core tracking. Optional empty labs and life events do not become synthetic
+    /// chores simply because the fields exist.
+    private var suggestedSignal: EvidenceSignal? {
+        if let review = signals.first(where: { $0.state == .discuss }) { return review }
+        let core: [EvidenceSignal.Kind] = [.treatment, .shedding, .scalp, .photos]
+        return signals.first { core.contains($0.kind) && $0.state != .readable }
+    }
+
+    private func suggestedStep(_ signal: EvidenceSignal) -> some View {
+        let tint = stateColor(signal.state)
+        let isReview = signal.state == .discuss
+        return Button { select(signal.kind) } label: {
+            suggestedStepLabel(signal, tint: tint, isReview: isReview)
+        }
+        .buttonStyle(.clinicalPressable)
+        .accessibilityLabel("Suggested: \(signal.kind.title), \(signal.status)")
+        .accessibilityHint("Selects this evidence lens")
+        .accessibilityIdentifier("evidenceSuggested.\(signal.kind.rawValue)")
+    }
+
+    private func suggestedStepLabel(
+        _ signal: EvidenceSignal,
+        tint: Color,
+        isReview: Bool
+    ) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.12))
+                    .frame(width: 30, height: 30)
+                Image(systemName: isReview ? "heart.text.clipboard" : "sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isReview ? "WORTH A LOOK" : "BEST NEXT STEP")
+                    .font(Clinical.eyebrow(8.5))
+                    .tracking(0.7)
+                    .foregroundStyle(Clinical.tertiary)
+                Text("\(signal.kind.title) · \(signal.status)")
+                    .font(Clinical.caption(12.5))
+                    .foregroundStyle(Clinical.ink)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "arrow.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Clinical.tertiary)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .background(tint.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(tint.opacity(0.2), lineWidth: 1)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     private func signalButton(_ signal: EvidenceSignal) -> some View {
@@ -438,6 +503,26 @@ struct EvidencePathSection: View {
 
             signalDetailLine("READS BY", symbol: "slider.horizontal.3", signal.rule)
             signalDetailLine("NEXT", symbol: "arrow.right", signal.nextAction)
+
+            Button { onAction(signal.action) } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: signal.action.symbol)
+                    Text(signal.action.title)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .opacity(0.7)
+                }
+                .font(Clinical.body(12.5, weight: .semibold))
+                .foregroundStyle(Clinical.surface)
+                .padding(.horizontal, 13)
+                .frame(minHeight: 42)
+                .background(Clinical.accent, in: Capsule())
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.clinicalPressable)
+            .accessibilityHint("Opens the place to do this")
+            .accessibilityIdentifier("evidenceAction.\(signal.kind.rawValue)")
         }
         .padding(13)
         .background(Clinical.surface.opacity(0.82), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -445,11 +530,7 @@ struct EvidencePathSection: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Clinical.hairline, lineWidth: 1)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(signal.kind.title). \(signal.status). \(signal.summary) "
-            + "Reads by: \(signal.rule) Next: \(signal.nextAction)"
-        )
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("evidenceLensDetail.\(signal.kind.rawValue)")
     }
 

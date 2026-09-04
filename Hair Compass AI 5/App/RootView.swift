@@ -215,10 +215,15 @@ struct RootView: View {
                     description: "Deterministic charts of your record over time — part of Hair Compass Pro.") {
                 TrendsView()
             }
-        case .care: CareView(onLogToday: {
-            tab = .today
-            deepLinks.openLogRequested = true
-        })
+        case .care:
+            CareView(
+                onLogToday: {
+                    tab = .today
+                    deepLinks.openLogRequested = true
+                },
+                onOpenLabs: { tab = .labs },
+                onOpenPhotos: { tab = .photos }
+            )
         case .labs:
             ProGate(feature: "Lab Results",
                     symbol: "testtube.2",
