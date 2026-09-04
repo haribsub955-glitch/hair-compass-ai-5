@@ -73,6 +73,8 @@ struct ScienceProductsSection: View {
                     .padding(.top, 4)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scienceProductsSection")
         // Same confirmation card as the Add-Treatment form: a prescription-only product's
         // one-tap add pauses here, and Confirm runs the exact insert the tap always did.
         .sheet(item: $rxConfirmProduct) { product in
@@ -167,7 +169,7 @@ private struct ProductRow: View {
                     Button {
                         openURL(url)
                     } label: {
-                        Label("View on iHerb", systemImage: "arrow.up.right.square")
+                        Label("View buying options", systemImage: "arrow.up.right.square")
                             .font(Clinical.body(13, weight: .semibold)).foregroundStyle(Clinical.accent)
                     }
                     .buttonStyle(.plain)
@@ -187,10 +189,11 @@ private struct ProductRow: View {
 }
 
 #if DEBUG
-/// Owner tool, debug builds only (opened via the HC_LINKS launch flag): paste an iHerb URL to
-/// try a product's buy flow before shipping it. Writes to the `affiliate.debugOverride.<id>`
+/// Owner tool, debug builds only (opened via the HC_LINKS launch flag): paste a destination URL
+/// to try a product's buy flow before shipping it. Writes to the `affiliate.debugOverride.<id>`
 /// layer, which takes top precedence in DEBUG resolution and is compiled out of release —
-/// shipping links live in the bundled AffiliateLinks.json / remote catalog instead.
+/// shipping links live in the bundled AffiliateLinks.json, which points at the owner's redirect
+/// host so a destination can be changed without a new build.
 struct ManageLinksSheet: View {
     @Environment(AffiliateStore.self) private var affiliates
     @Environment(\.dismiss) private var dismiss
@@ -203,7 +206,7 @@ struct ManageLinksSheet: View {
                     ClinicalCard {
                         VStack(alignment: .leading, spacing: 6) {
                             Eyebrow(text: "Owner link overrides (debug)")
-                            Text("Debug-only overrides that beat the bundled and remote catalogs on this device. Use them to preview a product's buy flow; ship real links via AffiliateLinks.json or the remote catalog. Leave blank to fall back.")
+                            Text("Debug-only overrides that beat the bundled and remote catalogs on this device. Use them to preview a product's buy flow; shipping links live in AffiliateLinks.json and point at the redirect host. Leave blank to fall back.")
                                 .font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                         }
                     }

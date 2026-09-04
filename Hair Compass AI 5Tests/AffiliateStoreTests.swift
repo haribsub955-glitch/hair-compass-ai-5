@@ -138,11 +138,13 @@ struct AffiliateStoreTests {
     @Test func acceptedRemotePayloadSurvivesRelaunch() throws {
         let defaults = freshDefaults()
         let bundled = ["rosemary": "https://example.com/bundled"]
-        AffiliateStore(defaults: defaults, bundledLinks: bundled)
+        AffiliateStore(defaults: defaults, bundledLinks: bundled, remoteCatalogEnabled: true)
             .ingestRemotePayload(try payloadData(links: ["rosemary": "https://example.com/remote"]))
 
-        // A brand-new store over the same defaults (fresh launch, no network) reads the cache.
-        let relaunched = AffiliateStore(defaults: defaults, bundledLinks: bundled)
+        // A brand-new store over the same defaults (fresh launch, no network) reads the cache —
+        // but only while a catalog is configured, which is what `remoteCatalogEnabled` says.
+        let relaunched = AffiliateStore(defaults: defaults, bundledLinks: bundled,
+                                        remoteCatalogEnabled: true)
         #expect(relaunched.url(for: "rosemary")?.absoluteString == "https://example.com/remote")
     }
 
@@ -154,6 +156,46 @@ struct AffiliateStoreTests {
         #expect(store.hasLink(for: "rosemary") == false)
         store.ingestRemotePayload(try payloadData(links: ["rosemary": ""]))
         #expect(store.hasLink(for: "rosemary") == false)
+    }
+
+    // MARK: - Managed redirect links
+
+    @Test func legacyRemoteCacheCannotBypassManagedLinksAndIsPurged() throws {
+        // The hazard this closes: a build that once had a catalog URL leaves its payload in
+        // UserDefaults, where the cache outranks the bundled links. Ship the managed redirect
+        // links with no catalog configured and that stale row would keep winning forever,
+        // because `refresh()` no-ops without a URL and nothing else clears it.
+        let defaults = freshDefaults()
+        defaults.set(try payloadData(links: ["rosemary": "https://legacy.example.com/old-deal"]),
+                     forKey: AffiliateStore.remoteCacheKey)
+
+        let store = AffiliateStore(defaults: defaults,
+                                   bundledLinks: ["rosemary": "https://haircompass-ai.com/go/rosemary"],
+                                   remoteCatalogEnabled: false)
+
+        #expect(store.url(for: "rosemary")?.absoluteString == "https://haircompass-ai.com/go/rosemary")
+        #expect(defaults.data(forKey: AffiliateStore.remoteCacheKey) == nil)
+    }
+
+    @Test func managedLinkResolvesSoTheBuyButtonShows() {
+        // The view renders its button on `url(for:)` being non-nil, so link resolution IS
+        // button visibility. One stable path per product, no query string of our own.
+        let store = AffiliateStore(defaults: freshDefaults(), bundledLinks: [
+            "rosemary": "https://haircompass-ai.com/go/rosemary",
+            "sawpalmetto": "https://haircompass-ai.com/go/saw-palmetto",
+        ], remoteCatalogEnabled: false)
+
+        #expect(store.hasLink(for: "rosemary") == true)
+        #expect(store.hasLink(for: "sawpalmetto") == true)
+        #expect(store.hasLink(for: "iron") == false)   // not configured yet → button stays hidden
+        #expect(store.configuredCount == 2)
+    }
+
+    @Test func managedLinksNeedNoNetworkOrCatalogFetch() {
+        // The whole point of the redirect model: nothing is fetched at launch, so the buttons
+        // work with the AI server down, the catalog unset, and the device offline.
+        #expect(AffiliateStore.RemoteConfig.catalogURLString.isEmpty)
+        #expect(AffiliateStore.RemoteConfig.isEnabled == false)
     }
 
     @Test func userEnteredLegacyKeysAreIgnored() {

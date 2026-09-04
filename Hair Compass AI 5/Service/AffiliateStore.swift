@@ -7,7 +7,7 @@ import Foundation
 ///
 /// Resolution order per product id:
 ///   1. DEBUG owner override (`affiliate.debugOverride.<id>`, debug builds only)
-///   2. cached remote payload (`affiliate.remoteCache`)
+///   2. cached remote payload (`affiliate.remoteCache`) — only while a remote catalog is configured
 ///   3. bundled AffiliateLinks.json
 ///   4. nil → the product's buy button stays hidden
 ///
@@ -19,8 +19,19 @@ final class AffiliateStore {
     /// Where the owner hosts the remote catalog. Empty string = remote refresh disabled
     /// (bundled links still serve). The endpoint must return the same JSON shape as the
     /// bundled file: `{"version": 1, "updatedAt": "…", "links": {"<productID>": "https://…"}}`.
+    ///
+    /// **Deliberately empty on the managed-links model.** The bundled links point at fixed paths
+    /// on the owner's own site (`haircompass-ai.com/go/<product>`), so a destination is changed
+    /// by editing that page rather than by fetching anything — which is what makes the buy
+    /// buttons independent of every server of ours, this app's AI backend included. Setting a URL
+    /// here re-enables the fetch; it is not needed for links to be remotely editable.
+    /// See `affiliate-links/OWNER-GUIDE.md`.
     struct RemoteConfig {
         static var catalogURLString = ""
+
+        /// True only while an owner-hosted catalog is configured. Gates BOTH the network refresh
+        /// and the rehydration of a previously cached payload.
+        static var isEnabled: Bool { !catalogURLString.isEmpty }
     }
 
     /// The one JSON shape used by both the bundled file and the remote catalog.
@@ -43,15 +54,28 @@ final class AffiliateStore {
     private var remoteLinks: [String: String]
     private(set) var revision = 0
 
-    /// `defaults` and `bundledLinks` are injectable for tests; production uses `.standard`
-    /// and the JSON shipped in the app bundle.
-    init(defaults: UserDefaults = .standard, bundledLinks: [String: String]? = nil) {
+    /// `defaults`, `bundledLinks` and `remoteCatalogEnabled` are injectable for tests;
+    /// production uses `.standard`, the JSON shipped in the app bundle, and whether a catalog
+    /// URL is configured.
+    init(defaults: UserDefaults = .standard,
+         bundledLinks: [String: String]? = nil,
+         remoteCatalogEnabled: Bool = RemoteConfig.isEnabled) {
         self.defaults = defaults
         self.bundledLinks = bundledLinks ?? Self.loadBundledLinks()
-        self.remoteLinks = Self.decodeLinks(from: defaults.data(forKey: Self.remoteCacheKey)) ?? [:]
-        // Kick off an over-the-air refresh at construction; a no-op while the URL is unset.
-        if !RemoteConfig.catalogURLString.isEmpty {
+        if remoteCatalogEnabled {
+            self.remoteLinks = Self.decodeLinks(from: defaults.data(forKey: Self.remoteCacheKey)) ?? [:]
+            // Kick off an over-the-air refresh at construction.
             Task { await self.refresh() }
+        } else {
+            // A catalog that was configured in an EARLIER build leaves its payload in
+            // UserDefaults, and the cache outranks the bundled links — so a device that once
+            // fetched a legacy catalog would keep serving those destinations forever, silently
+            // bypassing the managed redirect links this build ships. Nothing can refresh or
+            // correct it, because `refresh()` no-ops without a URL. Drop the row rather than
+            // merely ignoring it: an ignored row comes back the day a catalog is configured
+            // again, carrying links nobody has looked at in months.
+            self.remoteLinks = [:]
+            defaults.removeObject(forKey: Self.remoteCacheKey)
         }
     }
 
