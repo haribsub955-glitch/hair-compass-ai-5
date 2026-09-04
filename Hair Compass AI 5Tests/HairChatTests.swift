@@ -42,6 +42,10 @@ struct HairChatTests {
         let prompt = HairChatPrompt.system(contextJSON: contextJSON, focus: focus)
         #expect(prompt.contains("You are \(Companion.name)"))
         #expect(prompt.contains("stays on this iPhone"))
+        #expect(prompt.contains("calm second set of eyes"))
+        #expect(prompt.contains("Treat worry as real"))
+        #expect(prompt.contains("one small, useful next step"))
+        #expect(prompt.contains("Never use guilt"))
     }
 
     /// The clauses that keep general-knowledge answers alive through AIOutputValidator: digits
@@ -97,6 +101,14 @@ struct HairChatTests {
         #expect(starters.count == 3)
         #expect(starters.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
         #expect(Set(starters).count == 3)
+    }
+
+    @Test func newcomerStartersTeachTrackingWithoutPretendingThereIsAResultYet() {
+        let starters = HairChatPrompt.starters(focus: "First-week guide", kind: .newcomer)
+        #expect(starters.count == 3)
+        #expect(starters.contains { $0.localizedCaseInsensitiveContains("first week") })
+        #expect(starters.contains { $0.localizedCaseInsensitiveContains("overchecking") })
+        #expect(starters.allSatisfy { $0.hasSuffix("?") })
     }
 
     @Test func fullRecordStartersDontPresupposeATwoSignalRelationship() {

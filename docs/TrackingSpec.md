@@ -23,8 +23,8 @@ One-time risk factors dominate AGA risk and must be captured up front, not track
 
 ## 2. Daily / periodic signals (longitudinal)
 
-### Seborrheic-dermatitis severity — 16-point validated scale
-Zhang et al. 2023, *J Cosmet Dermatol* (verified 3-0). Three near-patient-observable items:
+### Seborrheic-dermatitis symptoms — self-reported score adapted from a 16-point scale
+Zhang et al. 2023, *J Cosmet Dermatol* (verified 3-0). The source instrument was clinician-administered; the app's 0–3 flaking input and mapping are an unvalidated self-report adaptation. Three near-patient-observable items:
 - **Flaking** 0–3 (scale item is 0–10, adherent flakes at the top; we band it 0–3 for self-report)
 - **Erythema (max area)** 0–3
 - **Itch / pruritus** 0–3

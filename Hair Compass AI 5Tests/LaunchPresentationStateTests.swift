@@ -78,6 +78,25 @@ struct LaunchPresentationStateTests {
         #expect(LaunchPresentationState.reduce(onboarding).surface == .onboarding)
     }
 
+    @Test func privacyObscuresButDoesNotDestroyOnboarding() {
+        var input = LaunchPresentationState.Input(
+            persistenceFailed: false, isLocked: false, hasOnboarded: false,
+            hasPendingRoute: false, ritualDueOrForced: false, appActive: true
+        )
+        #expect(LaunchPresentationState.reduce(input).keepsOnboardingMounted)
+        input.appActive = false
+        #expect(LaunchPresentationState.reduce(input).surface == .privacy)
+        #expect(LaunchPresentationState.reduce(input).keepsOnboardingMounted)
+        input.appActive = true
+        #expect(LaunchPresentationState.reduce(input).surface == .onboarding)
+        #expect(LaunchPresentationState.reduce(input).keepsOnboardingMounted)
+        input.isLocked = true
+        #expect(!LaunchPresentationState.reduce(input).keepsOnboardingMounted)
+        input.isLocked = false
+        input.hasOnboarded = true
+        #expect(!LaunchPresentationState.reduce(input).keepsOnboardingMounted)
+    }
+
     @Test func pendingDeepLinkSurvivesLockedLaunch() {
         var input = LaunchPresentationState.Input(
             persistenceFailed: false, isLocked: true, hasOnboarded: true,

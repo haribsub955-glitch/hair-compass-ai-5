@@ -1,605 +1,320 @@
-import Charts
 import StoreKit
 import SwiftUI
 
-/// Onboarding step 12 — "your plan". The honest Pro offer: a scientifically grounded projection
-/// (the ONLY quantitative number is the published male-AGA combination-therapy average from
-/// `docs/TrackingSpec.md`; everyone else gets qualitative milestones), an illustrated card per
-/// genuinely-gated feature — there are exactly two, and only what `hasPro` actually gates may be
-/// listed here — and purchase buttons that never show a placeholder price. Until real products load
-/// they're replaced by `StoreUnavailableView` (a spinner, or an honest "can't reach the store"
-/// message with Retry). "Continue free" sits directly under them, same size of voice, and there
-/// is no countdown, no fake discount, no back navigation trap: this screen only moves forward,
-/// either through a purchase or through the free path.
+/// Presentation only: StarterPlan, AccessWindow and PurchaseService remain the sources of truth.
 struct OnboardingPlanStep: View {
     let profile: Profile
+    var onBack: () -> Void
     var onContinue: () -> Void
 
     @Environment(PurchaseService.self) private var purchases
+    @Environment(AccessWindow.self) private var accessWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    /// Bumped when availability may have changed: `ProAvailability.current` is a static system
-    /// read SwiftUI does not track, so without this the AI notice would keep showing "switched
-    /// off" after the person enables Apple Intelligence in Settings and comes back.
-    @State private var availabilityRefresh = 0
-    /// The product ID currently mid-purchase, or `nil`. A per-product id (not a plain `Bool`) so
-    /// only the button the user actually tapped shows its spinner.
+    @State private var phase = Self.initialPhase
+    @State private var selectedID = PurchaseService.yearlyID
     @State private var purchasingProductID: String?
-    @State private var yearlyIntroEligible = false
-    @State private var monthlyIntroEligible = false
+    @State private var introEligibility: [String: Bool] = [:]
+    @State private var availabilityRefresh = 0
+    @Namespace private var selection
 
     private var isBusy: Bool { purchasingProductID != nil || purchases.isRestoring }
+    private var still: Bool { reduceMotion || MotionQA.isStatic }
+    private var items: [StarterPlanItem] { StarterPlan.items(for: .fresh(profile: profile)) }
+    private var products: [Product] { [purchases.yearly, purchases.monthly].compactMap { $0 } }
+    private var selectedProduct: Product? { products.first { $0.id == selectedID } ?? products.first }
+    private var eligibilityTaskID: String { "\(products.map(\.id).joined())-\(scenePhase == .active)" }
 
-    /// Read fresh on every body evaluation rather than cached in `@State`: Apple Intelligence can
-    /// be switched on, or finish downloading, while this step is on screen.
-    private var availability: OnDeviceAvailability { ProAvailability.current }
-
-    /// Scroll target for the DEBUG bottom-of-page screenshot hook.
-    private static let footerAnchor = "planFooter"
-
-    private var model: ProjectionModel {
-        ProjectionModel.make(condition: profile.condition, sex: profile.sex)
+    private static var initialPhase: OnboardingOfferPhase {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("HC_PAYWALL_BOTTOM") { return .pricing }
+        if let index = args.firstIndex(of: "HC_OFFER_PHASE"), index + 1 < args.count,
+           let phase = OnboardingOfferPhase(rawValue: args[index + 1]) { return phase }
+        #endif
+        return .plan
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    VStack(alignment: .leading, spacing: 18) {
-                        header
-                        // Sits above the projection card: the felt version of the same claim the
-                        // card then makes with data. Both describe visibility, never regrowth.
-                        ClarityContrast(sex: profile.sex)
-                        projectionCard
-                        proAdds
+        VStack(spacing: 0) {
+            navigation
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        header.id("offerTop")
+                        OnboardingPlanCards(items: OnboardingPlanSummary.items(from: items), compact: phase != .plan)
+                        phaseContent
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 12)
-                    .padding(.bottom, 16)
-                    footer.id(Self.footerAnchor)
+                    .padding(.bottom, 22)
+                }
+                .onChange(of: phase) { _, _ in
+                    proxy.scrollTo("offerTop", anchor: .top)
                 }
             }
-            .onAppear {
-                // This screen is taller than any phone, so QA screenshots of the offer itself
-                // need a way to land below the fold. DEBUG-only, same spirit as HC_ONBOARD_STEP.
-                #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("HC_PAYWALL_BOTTOM") {
-                    Task { @MainActor in
-                        // Long enough for the step transition and the store's product load to
-                        // settle, or the anchor moves out from under the scroll.
-                        try? await Task.sleep(for: .milliseconds(1800))
-                        proxy.scrollTo(Self.footerAnchor, anchor: .bottom)
-                    }
-                }
-                #endif
+            onward
+        }
+        .task(id: eligibilityTaskID) {
+            guard scenePhase == .active else { return }
+            introEligibility = [:]
+            for product in products {
+                let eligible = await purchases.isEligibleForIntro(product)
+                guard !Task.isCancelled else { return }
+                introEligibility[product.id] = eligible
             }
         }
-        .task(id: purchases.yearly?.id) {
-            guard let yearly = purchases.yearly else { return }
-            yearlyIntroEligible = await purchases.isEligibleForIntro(yearly)
-        }
-        .task(id: purchases.monthly?.id) {
-            guard let monthly = purchases.monthly else { return }
-            monthlyIntroEligible = await purchases.isEligibleForIntro(monthly)
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { availabilityRefresh += 1 }
-        }
-        // Watch availability every 2 s in both directions while the paywall is up: the AI
-        // notice clears the moment the model becomes usable, and reappears if it stops being
-        // usable mid-session. Bumps only on change.
-        .task {
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            availabilityRefresh += 1
             var last = ProAvailability.current
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
-                let now = ProAvailability.current
-                if now != last { last = now; availabilityRefresh += 1 }
-            }
+            do {
+                while !Task.isCancelled {
+                    try await Task.sleep(for: .seconds(2))
+                    let now = ProAvailability.current
+                    if now != last { last = now; availabilityRefresh += 1 }
+                }
+            } catch { /* No polling while backgrounded or after leaving. */ }
         }
+        .onDisappear { purchases.resetPurchaseState() }
     }
 
-    // MARK: Header
+    private var navigation: some View {
+        HStack {
+            Button {
+                if let previous = phase.previous { move(to: previous) } else { onBack() }
+            } label: {
+                Label("Back", systemImage: "chevron.left")
+                    .font(Clinical.body(13, weight: .medium))
+                    .foregroundStyle(Clinical.secondary)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .disabled(isBusy)
+            .accessibilityIdentifier("onboardOfferBack")
+            Spacer()
+            Text(phase == .plan ? "YOUR PLAN" : phase == .preview ? "A CLOSER LOOK" : "YOUR CHOICE")
+                .font(Clinical.eyebrow(10))
+                .foregroundStyle(Clinical.secondary)
+                .accessibilityIdentifier("onboardOfferPhase")
+        }
+        .padding(.horizontal, 20)
+    }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Eyebrow(text: "Your plan")
-            Text("Make the next 6 months count")
+        VStack(alignment: .leading, spacing: 7) {
+            if phase != .preview {
+                OnboardingIllustration(name: phase == .plan ? OnboardingArt.journal : OnboardingArt.support,
+                                       height: phase == .plan ? 134 : 106)
+            }
+            Text(phase == .plan ? "A small place to begin."
+                 : phase == .preview ? "Small notes. A clearer record."
+                 : purchases.hasPro ? "Your support is already here."
+                 : "A little more support.")
                 .font(Clinical.headline(28))
                 .foregroundStyle(Clinical.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(personalLine)
+                .accessibilityAddTraits(.isHeader)
+            Text(phase == .plan
+                 ? planIntroduction
+                 : phase == .preview
+                 ? "See how a check-in finds its place over time."
+                 : "Your starting plan stays with you. Choose how you’d like to keep building your record.")
                 .font(Clinical.caption(14))
                 .foregroundStyle(Clinical.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var personalLine: String {
-        var facts = [profile.condition.plainTitle.lowercased()]
-        if profile.familyHistory != .none { facts.append("family history") }
-        if profile.hasTractionRisk { facts.append("hair-care habits worth watching") }
-        let joined = facts.joined(separator: ", ")
-        return "You told us: \(joined). Here's what consistent tracking does with that."
-    }
-
-    // MARK: Projection card
-
-    private var projectionCard: some View {
-        ClinicalCard {
-            VStack(alignment: .leading, spacing: 14) {
-                projectionBanner
-                Eyebrow(text: "Projection")
-                Text(model.headline)
-                    .font(Clinical.headline(19))
-                    .foregroundStyle(Clinical.ink)
-
-                if let curve = model.evidenceCurve {
-                    evidenceChart(curve)
-                } else {
-                    milestoneTimeline(model.milestones)
-                }
-
-                differenceChart(model.differenceCurve)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(model.citation)
-                        .font(Clinical.caption(11))
-                        .foregroundStyle(Clinical.secondary)
-                    Text(model.disclaimer)
-                        .font(Clinical.caption(11))
-                        .foregroundStyle(Clinical.tertiary)
-                }
-                .fixedSize(horizontal: false, vertical: true)
-            }
+    private var planIntroduction: String {
+        if profile.condition == .unsure {
+            return "You don’t need to have it all figured out. Your answers give us a place to start."
         }
-    }
-
-    /// Full-bleed gouache banner across the card's top edge — decorative and honest (no
-    /// hair-regrowth or before/after imagery). Negative padding cancels the card's own 18pt inset
-    /// for just this child so it reaches all three top edges; `ClinicalCard`'s outer 22pt corner
-    /// clip then rounds the banner's top corners to match the card.
-    private var projectionBanner: some View {
-        Image("onboard-difference")
-            .resizable()
-            .scaledToFill()
-            .frame(height: 132)
-            .frame(maxWidth: .infinity)
-            .clipped()
-            .padding(.horizontal, -18)
-            .padding(.top, -18)
-            .accessibilityHidden(true)
-    }
-
-    private func evidenceChart(_ curve: [ProjectionModel.CurvePoint]) -> some View {
-        Chart {
-            ForEach(curve, id: \.week) { p in
-                AreaMark(x: .value("Week", p.week), y: .value("Δ hairs/cm²", p.hairsPerCm2))
-                    .interpolationMethod(.monotone)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Clinical.accent.opacity(0.16), .clear],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                    )
-                LineMark(x: .value("Week", p.week), y: .value("Δ hairs/cm²", p.hairsPerCm2))
-                    .interpolationMethod(.monotone)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .foregroundStyle(Clinical.accent)
-            }
-            if let last = curve.last {
-                PointMark(x: .value("Week", last.week), y: .value("Δ hairs/cm²", last.hairsPerCm2))
-                    .symbolSize(50)
-                    .foregroundStyle(Clinical.accent)
-                    .annotation(position: .top) {
-                        Text("+\(last.hairsPerCm2, format: .number.precision(.fractionLength(1)))")
-                            .font(Clinical.eyebrow(9))
-                            .foregroundStyle(Clinical.accent)
-                    }
-            }
-        }
-        .frame(height: 130)
-        .chartXAxis {
-            AxisMarks(values: [0, 6, 12, 18, 24]) { value in
-                AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
-                AxisValueLabel {
-                    if let w = value.as(Int.self) {
-                        Text("W\(w)").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-                    }
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks(position: .leading) { value in
-                AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
-                AxisValueLabel().font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-            }
-        }
-        .accessibilityLabel("Projected hair density change through 24 weeks, from published averages, not a prediction of your results")
-    }
-
-    /// The universal "tracking vs guessing" illustration — shown for EVERY profile, unlike
-    /// `evidenceChart` which only exists for male AGA. Honesty rule: the y-axis is explicitly
-    /// "signal clarity", never hair count — tracking doesn't grow hair, it's how you see whether
-    /// a plan is working. Fixed to a 0…1 domain so the copper "tracking" line visibly rises while
-    /// the dashed grey "guessing" line reads as flat and low, never negative.
-    private func differenceChart(_ curve: [ProjectionModel.DifferencePoint]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Signal clarity (illustrative)")
-                .font(Clinical.caption(11))
-                .foregroundStyle(Clinical.tertiary)
-
-            Chart {
-                // Explicit `series:` on both mark groups — LineMarks without it merge into ONE
-                // series and draw a single zigzag line in one color (see docs/DesignSystem.md
-                // Swift Charts note; this bit the CheckIns chart before the rebuild too).
-                ForEach(curve, id: \.week) { p in
-                    LineMark(x: .value("Week", p.week), y: .value("Tracking daily", p.withTracking),
-                             series: .value("Series", "tracking"))
-                        .interpolationMethod(.monotone)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5))
-                        .foregroundStyle(Clinical.accent)
-                }
-                ForEach(curve, id: \.week) { p in
-                    LineMark(x: .value("Week", p.week), y: .value("Guessing", p.without),
-                             series: .value("Series", "guessing"))
-                        .interpolationMethod(.monotone)
-                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [4, 4]))
-                        .foregroundStyle(Clinical.tertiary)
-                }
-            }
-            .frame(height: 140)
-            .chartYScale(domain: 0...1)
-            .chartYAxis(.hidden)
-            .chartXAxis {
-                AxisMarks(values: [0, 12, 24]) { value in
-                    AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
-                    AxisValueLabel {
-                        if let w = value.as(Int.self) {
-                            Text("W\(w)").font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
-                        }
-                    }
-                }
-            }
-            .accessibilityLabel("Illustrative signal clarity: rises steadily while tracking daily, stays low and flat while guessing. Not a prediction of hair count or results.")
-
-            HStack(spacing: 14) {
-                differenceLegendKey(color: Clinical.accent, dashed: false, label: "Tracking daily")
-                differenceLegendKey(color: Clinical.tertiary, dashed: true, label: "Guessing")
-            }
-        }
-    }
-
-    /// A small inline swatch + label — deliberately not `.chartLegend()`, so the two rows read as
-    /// plain body content rather than a chart-owned legend.
-    private func differenceLegendKey(color: Color, dashed: Bool, label: String) -> some View {
-        HStack(spacing: 5) {
-            if dashed {
-                HStack(spacing: 2) {
-                    Capsule().fill(color).frame(width: 5, height: 2)
-                    Capsule().fill(color).frame(width: 5, height: 2)
-                }
-            } else {
-                Capsule().fill(color).frame(width: 14, height: 3)
-            }
-            Text(label)
-                .font(Clinical.eyebrow(9))
-                .foregroundStyle(Clinical.secondary)
-        }
-    }
-
-    private func milestoneTimeline(_ milestones: [ProjectionModel.Milestone]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(milestones, id: \.week) { m in
-                HStack(alignment: .top, spacing: 10) {
-                    Text("W\(m.week)")
-                        .font(Clinical.eyebrow(10))
-                        .foregroundStyle(Clinical.surface)
-                        .frame(width: 36, height: 22)
-                        .background(Clinical.accent, in: Capsule())
-                    Text(m.label)
-                        .font(Clinical.caption(13))
-                        .foregroundStyle(Clinical.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-
-    // MARK: What Pro adds
-
-    /// Since 1.1 Pro is the whole app except medication/treatment logging: daily check-ins,
-    /// trends, labs, photos, export — plus the two Apple Intelligence features below. Every
-    /// install starts with 3 full days of everything before this screen's promise is tested,
-    /// and the honesty rule is unchanged: nothing may be listed here that `hasPro` (with the
-    /// trial window) does not actually gate — check `RootView.tabContent` before editing.
-    private var proAdds: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Eyebrow(text: "What Pro includes")
-            Text("Daily check-ins, trends & evidence, lab tracking, progress photos, and your "
-                 + "exportable clinician report — everything except medication logging, which "
-                 + "stays free on every iPhone, always. Your first 3 days include all of it, "
-                 + "no purchase needed.")
-                .font(Clinical.caption(13))
-                .foregroundStyle(Clinical.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            // Each AI card's footnote states that feature's real limit, and the limit depends on
-            // the build: with the cloud model configured (the shipping build) answers come from
-            // the cloud after consent, on any iPhone; without it, on Apple Intelligence only.
-            let cloudAI = CloudAIConfig.current.isConfigured
-            ProFeatureCard(
-                art: CompanionArt.listening,
-                title: "Ask \(Companion.name) anything",
-                line: "Your record, in plain language. \"Is my shedding actually improving?\" — answered from your own entries"
-                    + (cloudAI ? "." : ", on-device."),
-                footnote: cloudAI
-                    ? "Answered by a cloud model, only after you say yes. Your entries are sent without your name or photos."
-                    : "Runs on Apple Intelligence. Nothing leaves your phone."
-            )
-            ProFeatureCard(
-                art: "pro-analysis",
-                title: "Deep record analysis",
-                line: "\(Companion.name) reads months of your entries at once and surfaces what moved together — the connections you'd need a spreadsheet to spot.",
-                footnote: "A reading of your record, never a diagnosis."
-            )
-        }
-    }
-
-    // MARK: Footer — purchase, free path, restore. No back navigation, no timers.
-
-    private var footer: some View {
-        VStack(spacing: 10) {
-            wrenClose
-
-            // Directly above the price. `proAdds` has just promised two Apple Intelligence
-            // features; if this iPhone can't run them, that has to be said before the buttons,
-            // not discovered after the charge. Reading the refresh token ties the notice to the
-            // availability watch — the computed `availability` alone never invalidates the view.
-            let _ = availabilityRefresh
-            ProAvailabilityNotice(status: availability)
-
-            if !purchases.products.isEmpty {
-                purchaseButtons
-            } else {
-                StoreUnavailableView(isLoading: purchases.isLoading) {
-                    Task { await purchases.load() }
-                }
-            }
-
-            PurchaseStatusLine(purchaseState: purchases.purchaseState, restoreResult: purchases.restoreResult)
-
-            Button {
-                onContinue()
-            } label: {
-                Text("Continue free")
-                    .font(Clinical.body(15, weight: .medium))
-                    .foregroundStyle(Clinical.ink)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-            }
-            .buttonStyle(.plain)
-            .disabled(isBusy)
-            .accessibilityIdentifier("onboardContinueFree")
-
-            Button {
-                Task { await purchases.restore() }
-            } label: {
-                HStack(spacing: 6) {
-                    if purchases.isRestoring {
-                        ProgressView().tint(Clinical.tertiary)
-                    }
-                    Text("Restore purchases")
-                        .font(Clinical.caption(12))
-                        .foregroundStyle(Clinical.tertiary)
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(isBusy)
-
-            PaywallLegal(showsRenewalDisclosure: ProAvailability.sellable(availability))
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 24)
-        .padding(.top, 8)
-    }
-
-    /// The last thing before the price. Wren is not decoration here — she *is* the thing being
-    /// sold (the chat's face and name), so putting her at the decision point is both the warmest
-    /// and the most accurate close available. Deliberately no urgency, no scarcity, no countdown:
-    /// this screen's whole design contract is that it only ever moves forward honestly.
-    private var wrenClose: some View {
-        HStack(alignment: .top, spacing: 12) {
-            CompanionView(moment: .greeting, variant: .avatar, size: 44)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("\(Companion.name) comes with Pro")
-                    .font(Clinical.body(14, weight: .semibold))
-                    .foregroundStyle(Clinical.ink)
-                Text("Six months from now you'll either have a record worth reading — or you'll be asking the same questions with nothing to check them against.")
-                    .font(Clinical.caption(12))
-                    .foregroundStyle(Clinical.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Clinical.accentSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Clinical.accent.opacity(0.22), lineWidth: 1)
-        )
-        .accessibilityElement(children: .combine)
-        .padding(.bottom, 4)
+        return "Based on your answers about \(profile.condition.plainTitle.lowercased()). Take these at your own pace."
     }
 
     @ViewBuilder
-    private var purchaseButtons: some View {
-        if let yearly = purchases.yearly {
-            // Eligibility-gated: the launch offer only renders for Apple IDs that haven't
-            // already used the group's introductory offer — never a placeholder discount.
-            let offer = yearlyIntroEligible ? purchases.launchOffer(for: yearly) : nil
-            // Only shown when there's no real intro offer to display instead, so the screen never
-            // stacks two different discount stories on top of each other.
-            let versus = offer == nil ? purchases.yearlyVersusMonthly() : nil
-            VStack(spacing: 8) {
-                if let offer {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(offer.base)
-                            .font(Clinical.caption(14))
-                            .strikethrough()
-                            .foregroundStyle(Clinical.tertiary)
-                        Text(offer.intro)
-                            .font(Clinical.body(18, weight: .semibold))
-                            .foregroundStyle(Clinical.ink)
-                        Text("/year")
-                            .font(Clinical.caption(13))
-                            .foregroundStyle(Clinical.secondary)
-                    }
-                } else if let versus {
-                    // "$118.80 billed monthly / $39.99 / year". The struck figure is the REAL cost
-                    // of a year on the monthly plan — never a former price of the yearly plan —
-                    // and the words "billed monthly" sit with it so it cannot be read as one.
-                    // See `PurchaseService.yearlyVersusMonthly()` for why that distinction is legal
-                    // rather than cosmetic.
-                    VStack(spacing: 2) {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(versus.monthlyForAYear)
-                                .font(Clinical.caption(14))
-                                .strikethrough()
-                                .foregroundStyle(Clinical.tertiary)
-                            Text(versus.yearly)
-                                .font(Clinical.body(18, weight: .semibold))
-                                .foregroundStyle(Clinical.ink)
-                            Text("/year")
-                                .font(Clinical.caption(13))
-                                .foregroundStyle(Clinical.secondary)
-                        }
-                        Text("\(versus.monthlyForAYear) is what a year costs billed monthly")
-                            .font(Clinical.caption(11))
-                            .foregroundStyle(Clinical.tertiary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(
-                        "\(versus.yearly) per year, versus \(versus.monthlyForAYear) for the same "
-                        + "year billed monthly. Save \(versus.percentOff) percent."
-                    )
-                }
-                Button {
-                    buy(yearly)
-                } label: {
-                    PurchaseButtonLabel(isPurchasing: purchasingProductID == yearly.id, tint: Clinical.surface) {
-                        VStack(spacing: 2) {
-                            if let offer {
-                                Text("Start yearly — \(offer.intro) first year")
-                                Text("First year — save \(offer.percentOff)%, then \(offer.base)/year · Limited-time")
-                                    .font(Clinical.caption(11))
-                                    .foregroundStyle(Clinical.secondary)
-                            } else {
-                                Text("Start with yearly — \(yearly.displayPrice)/year")
-                                if let perMonth = yearly.monthlyEquivalentDisplay, let versus {
-                                    // Both halves are derived from the two real products: the
-                                    // per-month figure from the yearly price, the percentage from
-                                    // the yearly-vs-monthly comparison.
-                                    Text("\(perMonth) · save \(versus.percentOff)% vs monthly")
-                                        .font(Clinical.body(11, weight: .regular))
-                                } else if let perMonth = yearly.monthlyEquivalentDisplay {
-                                    Text(perMonth)
-                                        .font(Clinical.body(11, weight: .regular))
-                                }
-                            }
-                        }
-                    }
-                }
-                .buttonStyle(ClinicalButtonStyle())
-                .disabled(isBusy)
-                .accessibilityIdentifier("onboardPurchaseYearly")
-            }
-        }
-        if let monthly = purchases.monthly {
-            let trialText = monthlyIntroEligible ? purchases.trialDescriptor(for: monthly) : nil
-            Button {
-                buy(monthly)
-            } label: {
-                PurchaseButtonLabel(isPurchasing: purchasingProductID == monthly.id, tint: Clinical.ink) {
-                    if let trialText {
-                        Text("\(trialText)/month")
-                    } else {
-                        Text("Monthly — \(monthly.displayPrice)/month")
-                    }
-                }
-            }
-            .buttonStyle(ClinicalButtonStyle(filled: false))
-            .disabled(isBusy)
-            .accessibilityIdentifier("onboardPurchaseMonthly")
+    private var phaseContent: some View {
+        switch phase {
+        case .plan:
+            Text("You don’t need to do everything today. These steps stay on your Plan tab, ready when you are.")
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.secondary)
+            OnboardingPlanDetails(items: items)
+        case .preview:
+            OnboardingRecordPreview()
+            Text("Pro brings your check-ins, photos, labs and trends together. Ask \(Companion.name) for a plain-language reading, never a diagnosis.")
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        case .pricing:
+            pricing
         }
     }
 
-    private func buy(_ product: Product) {
+    private var pricing: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("PRO INCLUDES")
+                .font(Clinical.eyebrow(10)).foregroundStyle(Clinical.accent)
+            Text("Daily check-ins · trends · photos · labs · clinician reports\n\(Companion.name) conversations & deep record analysis")
+                .font(Clinical.caption(13))
+                .foregroundStyle(Clinical.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            let _ = availabilityRefresh
+            ProAvailabilityNotice(status: ProAvailability.current)
+
+            if purchases.hasPro {
+                Label("Pro is already active", systemImage: "checkmark.circle")
+                    .font(Clinical.body(15, weight: .medium))
+                    .foregroundStyle(Clinical.positive)
+                    .accessibilityIdentifier("onboardProActive")
+            } else if products.isEmpty {
+                StoreUnavailableView(isLoading: purchases.isLoading) {
+                    Task { await purchases.load() }
+                }
+            } else {
+                VStack(spacing: 9) {
+                    ForEach(products) { product in productChoice(product) }
+                }
+                if let product = selectedProduct {
+                    let copy = OnboardingPriceCopy(product: product, introEligible: introEligibility[product.id] == true)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(copy.detail)
+                            .font(Clinical.caption(12))
+                            .foregroundStyle(Clinical.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("onboardBillingDisclosure")
+                            .transaction { $0.animation = nil }
+                        Button { buy(product) } label: {
+                            PurchaseButtonLabel(isPurchasing: purchasingProductID == product.id, tint: Clinical.surface) {
+                                Text(copy.action)
+                            }
+                        }
+                        .buttonStyle(ClinicalButtonStyle())
+                        .disabled(isBusy || introEligibility[product.id] == nil)
+                        .opacity(isBusy || introEligibility[product.id] == nil ? 0.6 : 1)
+                        .accessibilityIdentifier("onboardBuySelectedPlan")
+                        if introEligibility[product.id] == nil {
+                            Text("Checking available offers…")
+                                .font(Clinical.caption(11)).foregroundStyle(Clinical.secondary)
+                        }
+                    }
+                }
+            }
+            PurchaseStatusLine(purchaseState: purchases.purchaseState, restoreResult: purchases.restoreResult)
+            Text(CloudAIConfig.current.isConfigured
+                 ? "Cloud AI is optional and asks for your consent first. Entries are sent without your name or photos."
+                 : "AI features use Apple Intelligence on supported devices. Your record stays on your phone.")
+                .font(Clinical.caption(11))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(accessWindow.isActive
+                 ? "Your current introductory access needs no purchase and won’t auto-renew. Medication logging stays free afterward."
+                 : "Medication logging stays free. Pro is needed for check-ins, trends, photos, labs and AI features.")
+                .font(Clinical.caption(12))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                Task {
+                    await purchases.restore()
+                    if purchases.hasPro { onContinue() }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if purchases.isRestoring { ProgressView().tint(Clinical.secondary) }
+                    Text("Restore purchases")
+                        .font(Clinical.body(13, weight: .medium))
+                        .foregroundStyle(Clinical.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .disabled(isBusy)
+            .accessibilityIdentifier("onboardRestorePurchases")
+            PaywallLegal(showsRenewalDisclosure: !purchases.hasPro)
+        }
+    }
+
+    private func productChoice(_ product: Product) -> some View {
+        let selected = selectedProduct?.id == product.id
+        let copy = OnboardingPriceCopy(product: product, introEligible: introEligibility[product.id] == true)
+        return Button {
+            withAnimation(still ? nil : .easeInOut(duration: MotionSpec.onboarding.selection)) {
+                selectedID = product.id
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(selected ? Clinical.accent : Clinical.secondary)
+                    .padding(.top, 2)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(product.id == PurchaseService.yearlyID ? "Yearly" : "Monthly")
+                        .font(Clinical.body(15, weight: .medium))
+                    Text(copy.price + " / " + (product.subscription.map {
+                        OnboardingPriceCopy.period($0.subscriptionPeriod.value, unit: $0.subscriptionPeriod.unit)
+                    } ?? "period"))
+                        .font(Clinical.body(15, weight: .semibold))
+                    if introEligibility[product.id] == true, product.subscription?.introductoryOffer != nil {
+                        Text(copy.detail)
+                            .font(Clinical.caption(11))
+                            .foregroundStyle(Clinical.secondary)
+                    }
+                }
+                .foregroundStyle(Clinical.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 16).fill(Clinical.surface)
+                if selected {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Clinical.accentSoft)
+                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Clinical.accent.opacity(0.55)))
+                        .matchedGeometryEffect(id: "selected-plan", in: selection)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Clinical.hairline, lineWidth: selected ? 0 : 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier(product.id == PurchaseService.yearlyID ? "onboardPurchaseYearly" : "onboardPurchaseMonthly")
+    }
+
+    private var onward: some View {
+        VStack(spacing: 2) {
+            if let next = phase.next {
+                Button(phase == .plan ? "See how it comes together" : "Explore Pro") { move(to: next) }
+                    .buttonStyle(ClinicalButtonStyle())
+                    .accessibilityIdentifier("onboardOfferNext")
+            }
+            Button(purchases.hasPro ? "Continue to my plan" : "Continue free", action: onContinue)
+                .font(Clinical.body(15, weight: .medium))
+                .foregroundStyle(Clinical.ink)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .buttonStyle(.plain)
+                .disabled(isBusy)
+                .accessibilityIdentifier("onboardContinueFree")
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .background(Clinical.canvas)
+    }
+
+    private func move(to destination: OnboardingOfferPhase) {
         guard !isBusy else { return }
+        withAnimation(still ? nil : .easeInOut(duration: MotionSpec.onboarding.settle)) { phase = destination }
+    }
+
+    private func buy(_ product: Product) {
+        guard !isBusy, introEligibility[product.id] != nil else { return }
         purchasingProductID = product.id
         Task {
             let bought = await purchases.purchase(product)
             purchasingProductID = nil
             if bought { onContinue() }
         }
-    }
-}
-
-/// One genuinely-gated feature, sold with its own gouache emblem rather than a 15pt SF Symbol.
-/// The `footnote` line is load-bearing: each card states its own limit (on-device, not a
-/// diagnosis) so the honesty sits *with* the claim instead of in a disclaimer far below it.
-private struct ProFeatureCard: View {
-    let art: String
-    let title: String
-    let line: String
-    var footnote: String? = nil
-
-    @Environment(\.dynamicTypeSize) private var typeSize
-
-    var body: some View {
-        // Art beside copy normally; stacked once the text is large enough that an 84pt emblem
-        // would squeeze the words into a sliver.
-        let stacked = typeSize.isAccessibilitySize
-        return VStack(alignment: .leading, spacing: 10) {
-            if stacked { emblem }
-            HStack(alignment: .top, spacing: 14) {
-                if !stacked { emblem }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(Clinical.body(15, weight: .semibold))
-                        .foregroundStyle(Clinical.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(line)
-                        .font(Clinical.caption(13))
-                        .foregroundStyle(Clinical.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let footnote {
-                        Text(footnote)
-                            .font(Clinical.caption(11))
-                            .foregroundStyle(Clinical.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 1)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Clinical.surfaceWash, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Clinical.hairline, lineWidth: 1)
-        )
-        .shadow(color: Clinical.cardShadow, radius: 8, y: 3)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var emblem: some View {
-        Image(art)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 84, height: 84)
-            .accessibilityHidden(true)
     }
 }

@@ -1,54 +1,45 @@
-//
-//  StarterPlan.swift
-//  Hair Compass AI 5
-//
-//  The starting plan handed over at the end of onboarding and kept on the Plan tab: labs worth
-//  asking a clinician about, the treatment options the evidence supports, in-clinic options, and
-//  five setup steps. Pure and stateless — a function of the profile and a value snapshot of the
-//  record — so done-ness can never drift from the record. The only stored state (dismissed ids)
-//  is an input.
-//
-//  Framing: education and record-keeping. Every "why" is a plain sentence; none is a directive.
-//
-
 import Foundation
 
+/// A record-backed roadmap, not a prescription. Sources and clinical boundaries are shared
+/// by onboarding and Plan; see docs/StarterCarePlan.md.
 enum StarterPlanGroup: String, CaseIterable, Identifiable {
     case setUp, askClinician, evidenceOptions, inClinic
     var id: String { rawValue }
-
     var eyebrow: String {
         switch self {
-        case .setUp: return "Set up"
-        case .askClinician: return "Ask your clinician about"
-        case .evidenceOptions: return "Options with evidence"
-        case .inClinic: return "In-clinic options"
+        case .setUp: return "1 · Start with a record"
+        case .askClinician: return "2 · Check the cause"
+        case .evidenceOptions: return "3 · Agree on care"
+        case .inClinic: return "Later · Specialist options"
         }
     }
 }
 
 enum StarterSetupStep: String, CaseIterable {
     case logToday, addTreatments, enterLabs, baselinePhoto, reminders
-
     var title: String {
         switch self {
-        case .logToday: return "Log today"
-        case .addTreatments: return "Add your medications and treatments"
-        case .enterLabs: return "Enter your lab values"
+        case .logToday: return "Make a brief check-in"
+        case .addTreatments: return "Record care you already use"
+        case .enterLabs: return "Save results you already have"
         case .baselinePhoto: return "Take a baseline photo"
-        case .reminders: return "Turn on reminders"
+        case .reminders: return "Choose a reminder, if helpful"
         }
     }
-
     var why: String {
         switch self {
-        case .logToday: return "One entry a day is what the trends are built from."
-        case .addTreatments: return "Anything you apply or take becomes a daily step in your ritual."
-        case .enterLabs: return "Results you already have go here; the app watches the trend."
-        case .baselinePhoto: return "The same angle every month is how change becomes visible."
-        case .reminders: return "A nudge at your routine time keeps the record continuous."
+        case .logToday: return "Note how things are today. You do not need to count every hair or keep checking."
+        case .addTreatments: return "Optional: record existing medicines or scalp care and the schedule you were given. This is not a request to start treatment."
+        case .enterLabs: return "Optional: copy the date, units and reference range from an existing report. No new test is required to use the app."
+        case .baselinePhoto: return "One consistent set gives you a starting point. Compare about monthly, not several times a day."
+        case .reminders: return "Optional: a quiet nudge for a routine you choose, never pressure to keep a perfect streak."
         }
     }
+}
+
+enum StarterGuidance: String, Identifiable {
+    case labs, care
+    var id: String { rawValue }
 }
 
 enum StarterPlanKind: Equatable {
@@ -56,6 +47,7 @@ enum StarterPlanKind: Equatable {
     case treatment(optionID: String, action: RecommendedAction?)
     case procedure(ProcedureType)
     case setup(StarterSetupStep)
+    case guidance(StarterGuidance)
 }
 
 struct StarterPlanItem: Identifiable, Equatable {
@@ -68,87 +60,74 @@ struct StarterPlanItem: Identifiable, Equatable {
     let isDone: Bool
 }
 
-/// Which labs are worth asking about, by condition. Wording everywhere is "worth asking your
-/// clinician about" — this table never orders a test. A clinician review of the table is a
-/// release-checklist item.
+/// Discussion examples, never a standing lab order. The profile does not collect enough
+/// history to infer a deficiency, thyroid disorder or hormone excess from sex alone.
 enum LabSuggestion {
-    static let pregnancyCaution = "Pregnancy, breastfeeding or trying to conceive change what's normal — tell your clinician when you ask."
-
+    static let pregnancyCaution = "Tell your clinician if you are pregnant, breastfeeding or trying to conceive before discussing tests or treatment."
     static func tests(condition: HairCondition, sex: BiologicalSex, pregnancy: PregnancyStatus) -> [LabTest] {
-        var base: [LabTest]
-        switch condition {
-        case .telogenEffluvium: base = [.ferritin, .tsh, .vitaminD, .vitaminB12, .hemoglobin, .zinc]
-        case .unsure: base = [.ferritin, .tsh, .vitaminD, .vitaminB12, .hemoglobin]
-        case .androgenetic:
-            base = sex == .female ? [.ferritin, .tsh, .vitaminD, .totalTestosterone, .dheaS] : [.ferritin, .vitaminD]
-        case .alopeciaAreata: base = [.tsh, .freeT4, .vitaminD, .vitaminB12]
-        case .traction, .seborrheicDermatitis: base = []
-        }
-        if isPregnancyRelated(pregnancy) {
-            base.removeAll { $0 == .ferritin || $0 == .tsh }
-            base.insert(contentsOf: [.ferritin, .tsh], at: 0)
-        }
-        return base
+        condition == .telogenEffluvium ? [.ferritin, .tsh] : []
     }
-
-    /// Duplicates `PregnancyStatus.flagsMedicationCaution` in name only — this delegates to it so
-    /// the one clinical judgement (which statuses change what's normal enough to flag) lives in
-    /// one place. Kept as its own function so existing callers and tests are unchanged.
-    static func isPregnancyRelated(_ status: PregnancyStatus) -> Bool {
-        status.flagsMedicationCaution
-    }
-
+    static func isPregnancyRelated(_ status: PregnancyStatus) -> Bool { status.flagsMedicationCaution }
     static func why(_ test: LabTest) -> String {
         switch test {
-        case .ferritin: return "Low iron stores are a common, fixable reason for shedding."
-        case .tsh: return "Thyroid problems are a common, checkable driver of shedding."
-        case .freeT4: return "Paired with TSH, it completes the thyroid picture."
-        case .vitaminD: return "Low vitamin D is common and easy to correct."
-        case .vitaminB12: return "Low B12 can thin hair and is simple to check."
-        case .hemoglobin: return "Anaemia is a frequent, treatable cause of diffuse shedding."
-        case .zinc: return "Zinc is part of the hair cycle and worth ruling out."
-        case .totalTestosterone: return "Helps your clinician see whether hormones play a part."
-        case .dheaS: return "Another hormone marker that helps explain pattern loss in women."
+        case .ferritin: return "With diffuse shedding, your clinician may consider iron studies if your history or examination suggests iron deficiency."
+        case .tsh: return "Your clinician may consider thyroid testing when evaluating diffuse shedding or symptoms of thyroid disease."
+        default: return "Whether this test is useful depends on your history, examination and existing results. Ask your clinician before arranging it."
         }
     }
 }
 
-/// In-clinic options by condition. Only the conditions where a procedure is a recognised path;
-/// effluvium and a flaky scalp get none.
+/// Procedures remain in the education library, not a new user's required to-do list.
 enum ProcedureSuggestion {
-    static func types(condition: HairCondition) -> [ProcedureType] {
-        switch condition {
-        case .androgenetic: return [.prp, .lllt, .microneedling, .transplant]
-        case .alopeciaAreata, .traction, .unsure: return [.consultation]
-        case .telogenEffluvium, .seborrheicDermatitis: return []
-        }
-    }
+    static func types(condition: HairCondition) -> [ProcedureType] { [.consultation] }
 }
 
 enum StarterPlan {
+    static let disclaimer = "Based on your answers, not a diagnosis. A clinician decides which tests and treatments, if any, are appropriate. Tracking must not delay getting care."
+    static let safetyNote = "Seek prompt medical assessment for sudden patches, rapid worsening, scalp pain or burning, sores, or a shiny/scar-like area. You do not need to wait for a trend."
+    static let diagnosisURL = URL(string: "https://www.aad.org/public/diseases/hair-loss/treatment/diagnosis-treat")!
+    static let sheddingURL = URL(string: "https://www.bad.org.uk/pils/telogen-effluvium")!
+    static let symptomsURL = URL(string: "https://www.aad.org/public/diseases/hair-loss/types/ccca/symptoms")!
 
-    /// Everything the plan depends on, as values. Built from SwiftData by the callers
-    /// (`StarterPlan.Snapshot.make`, `.fresh`) so this file never touches a model context.
     struct Snapshot: Equatable {
         var condition: HairCondition
         var sex: BiologicalSex
         var pregnancy: PregnancyStatus
-        var labTests: Set<LabTest>              // tests with at least one result
+        var labTests: Set<LabTest>
         var treatmentClasses: Set<TreatmentClass>
         var hasAnyTreatment: Bool
         var hasAnyLab: Bool
         var hasBaselinePhoto: Bool
-        var procedureTypes: Set<ProcedureType>  // recorded appointments
+        var procedureTypes: Set<ProcedureType>
         var remindersEnabled: Bool
         var loggedToday: Bool
         var dismissed: Set<String>
+        var hasCompletedConsultation = false
+        var discussed: Set<String> = []
+    }
+
+    static func visitReason(_ condition: HairCondition) -> String {
+        switch condition {
+        case .unsure: return "Start with a primary-care clinician or dermatologist to examine your scalp and work out the cause before choosing treatment."
+        case .telogenEffluvium: return "Discuss when shedding began, recent illness, childbirth, diet changes and medicines. Your reported pattern still needs clinical assessment."
+        case .androgenetic: return "A clinician can assess the pattern, check for overlapping causes and discuss suitable options. Selecting a pattern in onboarding is not a diagnosis."
+        case .alopeciaAreata: return "Arrange a dermatologist assessment for patchy loss. An examination helps distinguish causes and guide care."
+        case .traction: return "Discuss pulling or tight hairstyles and have the affected areas examined. Avoid styles that pull while arranging advice."
+        case .seborrheicDermatitis: return "Discuss persistent flaking, itch and any hair loss with a clinician so scalp care matches the cause."
+        }
+    }
+
+    static func labReason(_ condition: HairCondition) -> String {
+        if condition == .telogenEffluvium {
+            return "For diffuse shedding, ask whether iron studies (such as ferritin) or thyroid testing are indicated. History and examination come first; not everyone needs tests."
+        }
+        return "There is no automatic hair-loss blood panel here. Ask whether your symptoms, diet, medicines or examination make targeted testing useful."
     }
 
     static func items(for s: Snapshot) -> [StarterPlanItem] {
         var out: [StarterPlanItem] = []
-
-        // Set up — always present, in a fixed order.
-        for step in StarterSetupStep.allCases {
+        // Two small first steps. Optional setup stays available without dominating day one.
+        for step in [StarterSetupStep.baselinePhoto, .logToday, .addTreatments, .enterLabs, .reminders] {
             let done: Bool
             switch step {
             case .logToday: done = s.loggedToday
@@ -161,52 +140,27 @@ enum StarterPlan {
                 id: "setup.\(step.rawValue)", group: .setUp, kind: .setup(step),
                 title: step.title, why: step.why, caution: nil, isDone: done))
         }
+        let caution = s.pregnancy.flagsMedicationCaution ? LabSuggestion.pregnancyCaution : nil
+        out.append(StarterPlanItem(
+            id: "procedure.consultation", group: .askClinician, kind: .procedure(.consultation),
+            title: s.hasCompletedConsultation ? "Clinician visit recorded" : "Arrange a clinician assessment",
+            why: visitReason(s.condition), caution: caution, isDone: s.hasCompletedConsultation))
+        out.append(StarterPlanItem(
+            id: "discussion.labs", group: .askClinician, kind: .guidance(.labs),
+            title: "Discuss whether labs would help", why: labReason(s.condition),
+            caution: nil, isDone: s.discussed.contains(StarterGuidance.labs.rawValue)))
+        out.append(StarterPlanItem(
+            id: "discussion.care", group: .evidenceOptions, kind: .guidance(.care),
+            title: "Agree on care and a review date",
+            why: "Ask what to use, what side effects to report and when to review. Record only the care you choose together; no purchase or procedure is required.",
+            caution: caution, isDone: s.discussed.contains(StarterGuidance.care.rawValue)))
 
-        // Ask your clinician about.
-        let pregnancyRelated = LabSuggestion.isPregnancyRelated(s.pregnancy)
-        for test in LabSuggestion.tests(condition: s.condition, sex: s.sex, pregnancy: s.pregnancy) {
-            out.append(StarterPlanItem(
-                id: "lab.\(test.rawValue)", group: .askClinician, kind: .lab(test),
-                title: test.title, why: LabSuggestion.why(test),
-                caution: pregnancyRelated ? LabSuggestion.pregnancyCaution : nil,
-                isDone: s.labTests.contains(test)))
-        }
-
-        // Options with evidence — the top three strong or moderate options.
-        let options = TreatmentRecommender.options(condition: s.condition, sex: s.sex)
-            .filter { $0.tier == .strong || $0.tier == .moderate }
-            .prefix(3)
-        for option in options {
-            let done: Bool
-            switch option.action {
-            case .addToPlan(let treatmentClass): done = s.treatmentClasses.contains(treatmentClass)
-            case .addLabResult(let test): done = s.labTests.contains(test)
-            default: done = false
-            }
-            out.append(StarterPlanItem(
-                id: "treatment.\(option.id)", group: .evidenceOptions,
-                kind: .treatment(optionID: option.id, action: option.action),
-                title: option.name, why: option.summary, caution: option.caution, isDone: done))
-        }
-
-        // In-clinic options.
-        for type in ProcedureSuggestion.types(condition: s.condition) {
-            out.append(StarterPlanItem(
-                id: "procedure.\(type.rawValue)", group: .inClinic, kind: .procedure(type),
-                title: type.title, why: ProcedureGuide.shortExpectation(for: type), caution: nil,
-                isDone: s.procedureTypes.contains(type)))
-        }
-
-        // Dismissed items are gone; within each group, done items sink to the end (stable).
         let kept = out.filter { !s.dismissed.contains($0.id) }
         return StarterPlanGroup.allCases.flatMap { group in
-            let inGroup = kept.filter { $0.group == group }
-            return inGroup.filter { !$0.isDone } + inGroup.filter { $0.isDone }
+            let rows = kept.filter { $0.group == group }
+            return rows.filter { !$0.isDone } + rows.filter { $0.isDone }
         }
     }
 
-    /// Nothing left to do: every remaining item is done (dismissed ones are already excluded).
-    static func isComplete(_ items: [StarterPlanItem]) -> Bool {
-        items.allSatisfy(\.isDone)
-    }
+    static func isComplete(_ items: [StarterPlanItem]) -> Bool { items.allSatisfy(\.isDone) }
 }

@@ -14,9 +14,14 @@ import Testing
 @MainActor
 struct PhotoCompareMismatchTests {
 
-    private func photo(isWet: Bool = false, lighting: String = "daylight", parting: String = "center") -> PhotoRecord {
+    private func photo(
+        isWet: Bool = false,
+        lighting: String = "daylight",
+        distance: String = "arm's length",
+        parting: String = "center"
+    ) -> PhotoRecord {
         PhotoRecord(region: .frontal, imagePath: "x.jpg", createdAt: .now,
-                    lighting: lighting, distance: "arm's length", parting: parting, isWet: isWet)
+                    lighting: lighting, distance: distance, parting: parting, isWet: isWet)
     }
 
     @Test func noCaptionWhenMetadataMatches() {
@@ -32,23 +37,35 @@ struct PhotoCompareMismatchTests {
         #expect(caption.contains("wet vs dry"))
     }
 
-    @Test func flagsDifferentLightingOnlyWhenBothAreSpecified() {
+    @Test func distinguishesDifferentLightingFromMissingSetup() {
         let daylight = photo(lighting: "daylight")
         let lamp = photo(lighting: "lamp")
         #expect(PhotosView.compareMismatchCaption(daylight, lamp)?.contains("lighting") == true)
 
-        // An unspecified lighting field on either side isn't a known mismatch — nothing to flag.
+        // Missing metadata is not proof of a match. The current comparability contract
+        // deliberately warns that the setup is incomplete rather than silently clearing it.
         let unspecified = photo(lighting: "")
-        #expect(PhotosView.compareMismatchCaption(daylight, unspecified) == nil)
+        #expect(PhotosView.compareMismatchCaption(daylight, unspecified)?.contains("incomplete") == true)
+        #expect(PhotosView.compareMismatchCaption(unspecified, daylight)?.contains("incomplete") == true)
     }
 
-    @Test func flagsDifferentPartingOnlyWhenBothAreSpecified() {
+    @Test func distinguishesDifferentPartingFromMissingSetup() {
         let center = photo(parting: "center")
         let side = photo(parting: "side")
         #expect(PhotosView.compareMismatchCaption(center, side)?.contains("parting") == true)
 
         let unspecified = photo(parting: "")
-        #expect(PhotosView.compareMismatchCaption(center, unspecified) == nil)
+        #expect(PhotosView.compareMismatchCaption(center, unspecified)?.contains("incomplete") == true)
+        #expect(PhotosView.compareMismatchCaption(unspecified, center)?.contains("incomplete") == true)
+    }
+
+    @Test func flagsDifferentDistanceAndNormalizesKnownText() {
+        let arm = photo(distance: "Arm's length")
+        let close = photo(distance: "Close")
+        let normalizedMatch = photo(distance: " arm's LENGTH ")
+
+        #expect(PhotosView.compareMismatchCaption(arm, close)?.contains("distance") == true)
+        #expect(PhotosView.compareMismatchCaption(arm, normalizedMatch) == nil)
     }
 
     @Test func combinesMultipleMismatches() {

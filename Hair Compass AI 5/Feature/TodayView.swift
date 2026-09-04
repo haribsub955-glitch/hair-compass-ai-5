@@ -142,10 +142,11 @@ struct TodayView: View {
     ) -> ConcernRecord {
         let firstDay = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: .now)) ?? .now
         let recentEntries = entries.filter { $0.date >= firstDay }
-        let scalpScores = recentEntries.map { Double($0.scalpTotal) }
+        let scalpScores = recentEntries.filter(\.hasCompleteScalpRecording).map { Double($0.scalpTotal) }
+        let recentShedEntries = entries.filter { $0.hasRecorded(.shedding) }
         return ConcernRecord(
-            recentShed: Array(entries.prefix(7).reversed()).map { $0.shed.rawValue },
-            washDaysLast7: recentEntries.filter(\.washedHair).count,
+            recentShed: Array(recentShedEntries.prefix(7).reversed()).map { $0.shed.rawValue },
+            washDaysLast7: recentEntries.filter { $0.hasRecorded(.washDay) && $0.washedHair }.count,
             sheddingAboveUsual: GroundingSignals.sheddingAboveUsual(
                 entries: entries, now: .now, calendar: calendar
             ),
@@ -288,29 +289,36 @@ struct TodayView: View {
             currentKey: entranceKey
         )
         let celebratesNow = activeCelebrationDay == dayKey
+        let groundingNote = Group {
+            if let displayedCard {
+                GroundingCardView(
+                    card: displayedCard,
+                    entranceKey: entranceKey,
+                    animatesEntrance: animatesGroundingEntrance,
+                    celebrates: celebratesNow,
+                    onEntranceCompleted: { completedKey in
+                        guard completedKey == entranceKey else { return }
+                        enteredCardKey = completedKey
+                    },
+                    onPrimary: performGroundingAction,
+                    onWorried: { showConcern = true }
+                )
+            }
+        }
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                // Today's new order (G2): the horizon says where the person is in the plan, one
-                // deterministic grounding note answers "what should I pay attention to", the plan
-                // is the day's actions, the evidence ribbon is the supporting numbers. The
-                // shedding scene, rings and tile ledger follow as the record's detail.
+                TodayJournalHeader(greeting: greeting, onOpenBaseline: onOpenBaseline)
                 VStack(alignment: .leading, spacing: 16) {
-                    CalmHorizonHeader(greeting: greeting, phase: evidencePhase, onOpenBaseline: onOpenBaseline)
-                        .staggeredEntrance(index: 0)
-                    if let displayedCard {
-                        GroundingCardView(
-                            card: displayedCard,
-                            entranceKey: entranceKey,
-                            animatesEntrance: animatesGroundingEntrance,
-                            celebrates: celebratesNow,
-                            onEntranceCompleted: { completedKey in
-                                guard completedKey == entranceKey else { return }
-                                enteredCardKey = completedKey
-                            },
-                            onPrimary: performGroundingAction,
-                            onWorried: { showConcern = true }
-                        )
+                    // Recording leads the everyday flow. A selected clinician-review notice
+                    // remains above it; the selector and all of its safety rules are unchanged.
+                    if displayedCard?.kind == .safety { groundingNote }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Daily check-in").font(Clinical.headline(24)).foregroundStyle(Clinical.ink)
+                        conditionsScene(yesterday: yesterday)
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("dailyCheckInSection")
+                    if displayedCard?.kind != .safety { groundingNote }
                     TodayPlanSection(
                         plan: todayPlan,
                         week: weekStates,
@@ -322,19 +330,14 @@ struct TodayView: View {
                         },
                         onUndo: { occurrence in
                             // Undo is keyed by the action's natural identity, not the row's
-                            // captured render state. SwiftUI may preserve a row closure across
-                            // its due → completed transition; relying on that stale enum made the
-                            // visible Undo a no-op. Only one record type should exist, and safely
-                            // attempting both also repairs an inconsistent legacy pair.
+                            // captured render state. Safely attempting both record types also
+                            // repairs an inconsistent legacy pair.
                             _ = try? DoseRepository(context: context).delete(
                                 treatment: occurrence.treatment, day: occurrence.day, slot: occurrence.slot
                             )
                             _ = try? MissedDoseRepository(context: context).delete(
                                 treatment: occurrence.treatment, day: occurrence.day, slot: occurrence.slot
                             )
-                            // Commit the rollback as one transaction. In particular, a deleted
-                            // SwiftData row does not always invalidate an unsorted @Query before
-                            // autosave; saving here makes the row's open state observable now.
                             try? context.save()
                         },
                         onSkip: { skipCandidate = $0 },
@@ -343,59 +346,9 @@ struct TodayView: View {
                         onOpenPlan: onOpenPlan
                     )
                     .staggeredEntrance(index: 2)
-                    EvidenceRibbon(weekSummary: weekSummary, consistency30: consistency30,
-                                   photo: photoStatus, phase: evidencePhase)
-                        .staggeredEntrance(index: 3)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-
-                ConditionsHero(
-                    shed: todayEntry?.shed,
-                    scalpTotal: todayEntry?.scalpTotal,
-                    scalpBand: todayEntry?.scalpBand,
-                    hasLoggedToday: todayEntry != nil,
-                    greeting: greeting,
-                    showsHeader: false,
-                    onOpenBaseline: onOpenBaseline,
-                    onLog: { showLog = true },
-                    onCopyYesterday: YesterdayCopy.canOffer(
-                        todayLogged: todayEntry != nil,
-                        yesterday: yesterday
-                    ) ? { copyYesterday(yesterday: yesterday) } : nil,
-                    onShedSet: { level in
-                        // Quiet by design — a drag-set upserts today's entry directly, with no
-                        // celebration sheet. Streak/XP queries refresh naturally from the write.
-                        if let entry = todayEntry {
-                            entry.shed = level
-                        } else {
-                            try? DailyEntryRepository(context: context).upsert(day: .now) {
-                                $0.shed = level
-                            }
-                        }
+                    if showsReminderNudge {
+                        reminderNudgeCard.transition(.opacity)
                     }
-                )
-                .staggeredEntrance(index: 4)
-                .padding(.top, 20)
-                if showsReminderNudge {
-                    reminderNudgeCard
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
-                        .transition(.opacity)
-                }
-                VStack(alignment: .leading, spacing: 16) {
-                    // Entrance sequence continues from the horizon/note/plan/ribbon group (0…3)
-                    // and the hero (4): rings 5 (shares its 50ms step with the grid's own tile 1
-                    // below — a harmless timing overlap, not a functional dependency), tiles 1…6
-                    // (inside the grid, indices owned by TodayTileGrid), cards continue at 9…11.
-                    CompassRingsCard(
-                        score: compassScore,
-                        medsDone: medsDone,
-                        medsTotal: medsTotal,
-                        isDayOneSeed: isDayOneSeed,
-                        onLog: { showLog = true }
-                    )
-                    .staggeredEntrance(index: 5)
                     TodayTileGrid(
                         entry: todayEntry,
                         sleepHours: todaySleepHours,
@@ -403,6 +356,18 @@ struct TodayView: View {
                         onLogTap: { showLog = true },
                         onBackfill: { showBackfill = true }
                     )
+                    TodayJournalHero(phase: evidencePhase)
+                    EvidenceRibbon(weekSummary: weekSummary, consistency30: consistency30,
+                                   photo: photoStatus, phase: evidencePhase)
+                        .staggeredEntrance(index: 3)
+                    CompassRingsCard(
+                        score: compassScore,
+                        medsDone: medsDone,
+                        medsTotal: medsTotal,
+                        isDayOneSeed: isDayOneSeed,
+                        onLog: { showLog = true }
+                    )
+                    .staggeredEntrance(index: 4)
                     insightCard.staggeredEntrance(index: 9)
                     StrandDivider()
                     learnFootnote.staggeredEntrance(index: 10)
@@ -540,6 +505,28 @@ struct TodayView: View {
         } message: {
             Text(TodayPlanCopy.pauseMessage)
         }
+    }
+
+    /// The existing scene and all editing/copy actions lead Today beneath its compact greeting.
+    private func conditionsScene(yesterday: DailyEntry?) -> some View {
+        ConditionsHero(
+            shed: todayEntry?.shed, scalpTotal: todayEntry?.scalpTotal, scalpBand: todayEntry?.scalpBand,
+            hasLoggedToday: todayEntry != nil, greeting: greeting, showsHeader: false,
+            onOpenBaseline: onOpenBaseline, onLog: { showLog = true },
+            onCopyYesterday: YesterdayCopy.canOffer(todayLogged: todayEntry != nil, yesterday: yesterday)
+                ? { copyYesterday(yesterday: yesterday) } : nil,
+            onShedSet: { level in
+                if let entry = todayEntry {
+                    entry.shed = level
+                    entry.recordedSignals.formUnion([.shedding, .washDay])
+                } else {
+                    try? DailyEntryRepository(context: context).upsert(day: .now) {
+                        $0.shed = level
+                        $0.recordedSignals = [.shedding, .washDay]
+                    }
+                }
+            }
+        )
     }
 
     /// Starts Close the Day on both child surfaces even when Today first appears with an already

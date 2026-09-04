@@ -15,6 +15,7 @@ struct OnboardingFlow: View {
 
     @Environment(\.modelContext) private var context
     @Environment(HealthKitService.self) private var healthKit
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var step = OnboardingFlow.initialStep
     @State private var shedIntensity: CGFloat = 0.34
 
@@ -176,7 +177,7 @@ struct OnboardingFlow: View {
         case 10: familyStep
         case 11: habitsStep
         case 12: healthConnectStep
-        case 13: OnboardingPlanStep(profile: profile) { next() }
+        case 13: OnboardingPlanStep(profile: profile, onBack: { back() }) { next() }
         default: finale
         }
     }
@@ -186,11 +187,11 @@ struct OnboardingFlow: View {
     private func next() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         nameFocused = false
-        withAnimation(.easeInOut(duration: 0.35)) { step = advanced(from: step, by: 1) }
+        withAnimation(reduceMotion || MotionQA.isStatic ? nil : .easeInOut(duration: 0.35)) { step = advanced(from: step, by: 1) }
     }
     private func back() {
         nameFocused = false
-        withAnimation(.easeInOut(duration: 0.3)) { step = advanced(from: step, by: -1) }
+        withAnimation(reduceMotion || MotionQA.isStatic ? nil : .easeInOut(duration: 0.3)) { step = advanced(from: step, by: -1) }
     }
 
     /// One screen forward or backward, hopping over the female-only pregnancy step for anyone who
@@ -225,6 +226,7 @@ struct OnboardingFlow: View {
             entry.itch = seed.itch
             entry.stress = seed.stress
             entry.sleepQuality = seed.sleepQuality
+            entry.recordedSignals = seed.recordedSignals
         }
         for event in OnboardingSeed.triggerEvents(selectedTriggers) {
             context.insert(event)

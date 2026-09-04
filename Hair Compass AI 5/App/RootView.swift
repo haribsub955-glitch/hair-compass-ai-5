@@ -70,6 +70,7 @@ struct RootView: View {
     @State private var tab: AppTab = RootView.initialTab
     @State private var didBootstrap = false
     @State private var showOnboarding = false
+    @State private var onboardingPlanHandoff = false
     @State private var showProfileEdit = false
     @State private var healthKit = HealthKitService()
     @State private var notifications = NotificationService()
@@ -213,12 +214,26 @@ struct RootView: View {
             ProGate(feature: "Trends & Evidence",
                     symbol: "chart.xyaxis.line",
                     description: "Deterministic charts of your record over time — part of Hair Compass Pro.") {
-                TrendsView()
+                TrendsView(
+                    onLogToday: {
+                        tab = .today
+                        deepLinks.openLogRequested = true
+                    },
+                    onOpenPlan: { tab = .care },
+                    onOpenPhotos: { tab = .photos }
+                )
             }
-        case .care: CareView(onLogToday: {
-            tab = .today
-            deepLinks.openLogRequested = true
-        })
+        case .care:
+            CareView(
+                onLogToday: {
+                    tab = .today
+                    deepLinks.openLogRequested = true
+                },
+                onOpenLabs: { tab = .labs },
+                onOpenPhotos: { tab = .photos },
+                startsWithRoadmap: onboardingPlanHandoff
+            )
+            .id(onboardingPlanHandoff)
         case .labs:
             ProGate(feature: "Lab Results",
                     symbol: "testtube.2",
@@ -244,6 +259,9 @@ struct RootView: View {
         // Design V2: a quiet crossfade connects destinations while the matched tab pill carries
         // spatial continuity. Reduce Motion keeps only the short fade.
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.22), value: tab)
+        .onChange(of: tab) { _, destination in
+            if destination != .care { onboardingPlanHandoff = false }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Reserve real layout space for navigation. The previous overlay obscured the final
         // card on every tab and made users scroll content underneath an active control.
@@ -252,14 +270,18 @@ struct RootView: View {
         // frame speaks the same ink grammar wherever it's hosted, not just in RootView.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ZStack(alignment: .bottomTrailing) {
-                // Wren used to occupy a second 44pt row above navigation. Scroll content can
-                // legitimately paint behind a safe-area inset, which put her hit target directly
-                // over trailing plan actions such as Undo. Give her a reserved lane in the bar
-                // itself: still always available, never stealing a care-action tap, and with much
-                // less navigation chrome competing with the journal.
-                FloatingTabBar(selection: $tab, trailingAccessoryWidth: 52)
-                WrenChatButton(tab: tab, profile: profile)
-                    .padding(.bottom, 8)
+                // The five destinations use the complete width, so their collective midpoint is
+                // the screen midpoint. Wren gets a protected upper berth inside this same safe-area
+                // inset: the padding contributes real layout height, so she cannot steal a tap from
+                // content, while no invisible trailing spacer can push navigation off-centre.
+                FloatingTabBar(selection: $tab)
+                WrenChatButton(
+                    tab: tab,
+                    profile: profile,
+                    canIntroduce: launchPresentation.surface == .normal,
+                    onGuideAction: handleWrenGuideAction
+                )
+                    .padding(.bottom, 64)
             }
             // Charts can establish their own compositing layers. Flatten the complete bar
             // above them so no tab item is painted underneath a scrolling chart card.
@@ -268,6 +290,21 @@ struct RootView: View {
         }
         .background(Clinical.canvas.ignoresSafeArea())
         .background(WindowSceneReader(scene: $owningWindowScene))
+    }
+
+    /// Wren's first-week instructions end in the real destination rather than a dead-end lesson.
+    /// These are record-keeping routes only; the guide never starts or changes treatment.
+    private func handleWrenGuideAction(_ action: CompanionGuideAction) {
+        switch action {
+        case .checkIn:
+            tab = .today
+            deepLinks.openLogRequested = true
+        case .routine:
+            tab = .care
+        case .baselinePhoto:
+            tab = .photos
+            deepLinks.openGuidedCaptureRequested = true
+        }
     }
 
     var body: some View {
@@ -435,7 +472,9 @@ struct RootView: View {
             // `@Query` that delivers it hasn't necessarily fired yet on this same run loop turn.
             // Without the guard the cover could present before `profile` arrives, and the `if let
             // profile` below would render nothing over a blank cover.
-            get: { launchPresentation.surface == .onboarding && profile != nil },
+            // Privacy remains the top window during system permission/purchase sheets, but the
+            // underlying flow must stay mounted so its state and StoreKit presenter survive.
+            get: { launchPresentation.keepsOnboardingMounted && profile != nil },
             // Preserve the request when a higher-precedence privacy/lock surface temporarily wins.
             set: { presented in
                 if !presented, launchPresentation.surface == .onboarding { showOnboarding = false }
@@ -447,6 +486,7 @@ struct RootView: View {
                 // modifiers below. Without re-injecting directly on the cover's content, onboarding's
                 // health step and paywall step would crash reading their `@Environment(...)`.
                 OnboardingFlow(profile: profile, onFinish: {
+                    onboardingPlanHandoff = true
                     showOnboarding = false
                     tab = .care
                 })

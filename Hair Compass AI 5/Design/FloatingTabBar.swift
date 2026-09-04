@@ -1,7 +1,10 @@
 import SwiftUI
 import UIKit
 
-/// The app's floating tab bar: items sitting directly on the canvas, inside the bottom safe-area
+/// The journal edition's floating ivory dock retains all five buttons, centered hit targets,
+/// selection traits and a solid safe-area ground. The previous unboxed design is superseded by
+/// the owner's request to integrate the Ceramic Horizon concept across the shell.
+/// Earlier design history: items sat directly on the canvas, inside the bottom safe-area
 /// inset, on nothing but a bottom-anchored scrim that fades scrolling content into
 /// `Clinical.canvas` before it reaches the labels. Round-13 retired the ivory capsule (fill +
 /// hairline strokeBorder + two warm shadows) — every page had already shed its card chrome, and
@@ -15,10 +18,9 @@ import UIKit
 /// dropped. Each item is a real button: label = tab title, `.isSelected` when active.
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
-    /// Width reserved inside the bar for an adjacent control such as Wren. Keeping this padding
-    /// inside the background chain lets the material/scrim continue across the full viewport.
-    var trailingAccessoryWidth: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .caption2) private var labelSize = 11.0
+    @ScaledMetric(relativeTo: .body) private var symbolSize = 18.0
     @Namespace private var pill
     /// Per-tab bounce triggers so only the tapped symbol bounces — a shared trigger would
     /// bounce the outgoing icon too.
@@ -31,13 +33,16 @@ struct FloatingTabBar: View {
             }
         }
         .padding(.horizontal, 6)
-        .padding(.trailing, trailingAccessoryWidth)
+        .padding(.vertical, 3)
         // Order matters: `materialBand` is applied first so it paints in front of `scrim` (the
         // fade), directly behind the items — the fade dissolves scrolled content on its way up
         // to the bar, and the material band guarantees the row itself stays legible no matter
         // where the fade's own opacity lands at that height.
-        .background(materialBand)
+        .background(Clinical.surfaceWash, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).strokeBorder(Clinical.hairline, lineWidth: 1))
+        .shadow(color: Clinical.shadowWarm.opacity(0.13), radius: 12, y: 5)
         .background(scrim)
+        .background(materialBand)
         // Scoped to the bar: the underline slide + tint changes animate, the screen swap stays instant.
         .animation(
             reduceMotion ? .easeInOut(duration: 0.22) : .spring(response: 0.32, dampingFraction: 0.72),
@@ -62,8 +67,9 @@ struct FloatingTabBar: View {
     /// `scrim`'s own modifier order.
     private var materialBand: some View {
         Rectangle()
-            .fill(.ultraThinMaterial)
-            .overlay(Clinical.canvas.opacity(0.55))
+            .fill(Clinical.canvas)
+            .padding(.top, 25)
+            .padding(.horizontal, -20)
             .padding(.bottom, -60)
             .ignoresSafeArea(edges: .bottom)
             .allowsHitTesting(false)
@@ -97,10 +103,12 @@ struct FloatingTabBar: View {
             VStack(spacing: 3) {
                 Image(systemName: tab.symbol)
                     .symbolVariant(on ? .fill : .none)
-                    .font(Clinical.body(18, weight: on ? .semibold : .regular))
+                    .font(.system(size: min(symbolSize, 24), weight: on ? .semibold : .regular))
                     .symbolEffect(.bounce, value: bounceCounts[tab, default: 0])
                 Text(tab.title)
-                    .font(Clinical.body(11, weight: on ? .semibold : .medium))
+                    // Like a system tab bar, keep every destination visible. Long-press
+                    // magnification below supplies the full-size control at accessibility sizes.
+                    .font(.system(size: min(labelSize, 13), weight: on ? .semibold : .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                 // Selection is marked here — a small copper underline sliding between items —
@@ -122,11 +130,20 @@ struct FloatingTabBar: View {
             .foregroundStyle(on ? Clinical.accent : Clinical.secondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 9)
+            .background {
+                if on {
+                    RoundedRectangle(cornerRadius: 25).fill(Clinical.accent.opacity(0.10))
+                }
+            }
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.title)
+        .accessibilityIdentifier("tab.\(tab.rawValue)")
         .accessibilityValue(on ? "Selected" : "")
         .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .accessibilityShowsLargeContentViewer {
+            Label(tab.title, systemImage: tab.symbol)
+        }
     }
 }

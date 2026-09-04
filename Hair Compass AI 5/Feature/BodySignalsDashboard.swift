@@ -136,7 +136,7 @@ enum BodySignalsMath {
         }
         let current = valued.filter { $0.date >= cutoff }.map(\.value)
         let previous = valued.filter { $0.date >= previousCutoff && $0.date < cutoff }.map(\.value)
-        guard !current.isEmpty, !previous.isEmpty else { return nil }
+        guard current.count >= 3, previous.count >= 3 else { return nil }
         return ChartMath.mean(current) - ChartMath.mean(previous)
     }
 
@@ -172,7 +172,7 @@ enum BodySignalsMath {
 /// its latest value, a sparkline of the windowed trend, a delta against the previous
 /// same-length window, and one honest line on why it matters for hair.
 ///
-/// A metric renders only when it has ≥2 readings in the window — no empty boxes. With no data
+/// A metric renders only when it has ≥3 readings in the window — no empty boxes. With no data
 /// at all: authorized shows a quiet one-liner, not-authorized keeps the Connect CTA. The
 /// traction-risk and trigger-lag context notes from the old lifestyle card live below the rows.
 struct BodySignalsDashboard: View {
@@ -241,7 +241,7 @@ struct BodySignalsDashboard: View {
     /// Only metrics with enough readings to draw a trend — the rest simply don't appear.
     private var visibleSignals: [BodySignal] {
         let cache = seriesCache
-        return BodySignal.allCases.filter { (cache[$0]?.count ?? 0) >= 2 }
+        return BodySignal.allCases.filter { (cache[$0]?.count ?? 0) >= 3 }
     }
 
     private var massSamples: [(date: Date, massKg: Double)] {
@@ -256,7 +256,7 @@ struct BodySignalsDashboard: View {
         // through `BodySignalsMath.windowedSeries`, so calling it more than once here would
         // redo that work for no reason.
         let cache = seriesCache
-        let visible = BodySignal.allCases.filter { (cache[$0]?.count ?? 0) >= 2 }
+        let visible = BodySignal.allCases.filter { (cache[$0]?.count ?? 0) >= 3 }
         if !visible.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 Divider().overlay(Clinical.hairline)
@@ -274,7 +274,7 @@ struct BodySignalsDashboard: View {
                 // existing explanation of why there is no in-app retry for a denied request.
                 VStack(alignment: .leading, spacing: 12) {
                     ChartPlaceholder(
-                        required: 2,
+                        required: 3,
                         have: cache.values.map(\.count).max() ?? 0,
                         unit: .readings,
                         height: 110
@@ -427,13 +427,9 @@ struct BodySignalsDashboard: View {
     }
 
     private func deltaChip(signal: BodySignal, delta: Double, rapidLossActive: Bool) -> some View {
-        let tone = BodySignalsMath.tone(for: signal, delta: delta, rapidLossActive: rapidLossActive)
-        let color: Color
-        switch tone {
-        case .favorable: color = Clinical.positive
-        case .unfavorable: color = Clinical.warning
-        case .neutral: color = Clinical.tertiary
-        }
+        // Ordinary Health deltas are context, not hair outcomes. Only the explicit rapid-loss
+        // rule earns warning color; everything else stays neutral numerical language.
+        let color: Color = rapidLossActive ? Clinical.warning : Clinical.tertiary
         return Text(signal.formatDelta(delta))
             .font(Clinical.number(12))
             .foregroundStyle(color)
@@ -507,8 +503,9 @@ private struct SignalSparkline: View {
 
     var body: some View {
         let values = series.map(\.value)
-        let smoothed = zip(series, ChartMath.rollingMean(values, window: 7))
-            .map { pair in MetricPoint(date: pair.0.date, value: pair.1) }
+        let smoothed = ChartMath.trailingCalendarMean(
+            series.map { (day: $0.date, value: $0.value) }, windowDays: 7
+        ).map { MetricPoint(date: $0.day, value: $0.value) }
         let lo = values.min() ?? 0
         let hi = values.max() ?? 1
         let pad = max((hi - lo) * 0.15, 0.001)

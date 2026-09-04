@@ -2,6 +2,46 @@ import Charts
 import SwiftData
 import SwiftUI
 
+/// Daily signal that earns the primary timeline for the user's selected concern.
+enum JourneyMetric: Equatable {
+    case shedding
+    case scalpSymptoms
+
+    var title: String {
+        switch self {
+        case .shedding: return "Shedding"
+        case .scalpSymptoms: return "Scalp symptoms"
+        }
+    }
+
+    var axisValues: [Double] { [0, 1, 2, 3] }
+
+    var axisLabels: [String] {
+        switch self {
+        case .shedding: return ShedLevel.allCases.map(\.title)
+        case .scalpSymptoms: return ["None", "Mild", "Moderate", "Marked"]
+        }
+    }
+
+    var showsTriggerEchoes: Bool { self == .shedding }
+
+    func value(for entry: DailyEntry) -> Double? {
+        switch self {
+        case .shedding:
+            guard entry.hasRecorded(.shedding) else { return nil }
+            return Double(entry.shed.rawValue)
+        case .scalpSymptoms:
+            let answered: [Double] = [
+                entry.hasRecorded(.flaking) ? Double(entry.flaking) : nil,
+                entry.hasRecorded(.erythema) ? Double(entry.erythema) : nil,
+                entry.hasRecorded(.itch) ? Double(entry.itch) : nil
+            ].compactMap { $0 }
+            guard !answered.isEmpty else { return nil }
+            return ChartMath.mean(answered)
+        }
+    }
+}
+
 /// The app's headline visualization: one time-aligned timeline answering "what happened to my
 /// shedding, and what was I doing about it?" A smoothed shed trend with dated event markers
 /// (procedures, medication starts, telogen-effluvium triggers) sits above a day-by-day
@@ -17,12 +57,15 @@ struct JourneyChart: View {
     /// `ProcedureAppointment`/`AddProcedureSheet`), so the "Procedure" legend key was
     /// effectively dead. Defaults to empty so existing call sites keep compiling.
     var procedures: [ProcedureAppointment] = []
+    var photos: [PhotoRecord] = []
+    var progressCheckIns: [ProgressCheckIn] = []
+    var sideEffects: [SideEffectLog] = []
     let windowDays: Int
+    var metric: JourneyMetric = .shedding
 
-    private static let shedAxisValues: [Double] = [0, 1, 2, 3]
-    // Complete words only — no abbreviations that could read as truncated (the same rule
-    // TrendsView.yAxis already follows). "Elevated" is the widest label, so it sets the gutter.
-    private static let shedAxisLabels = ShedLevel.allCases.map(\.title)
+    private var widestAxisLabel: String {
+        metric.axisLabels.max(by: { $0.count < $1.count }) ?? "Elevated"
+    }
 
     /// Measured width of the widest axis label ("Elevated") at the live Dynamic Type size —
     /// replaces a hard-pinned 44pt gutter that broke "Elevated" onto two lines ("Elevate/d") at
@@ -45,7 +88,8 @@ struct JourneyChart: View {
         let start = Calendar.current.date(byAdding: .day, value: -windowDays, to: end) ?? end
         let data = JourneyData(
             entries: entries, treatments: treatments, doses: doses,
-            triggers: triggers, procedures: procedures, start: start, end: end
+            triggers: triggers, procedures: procedures, photos: photos, progress: progressCheckIns,
+            sideEffects: sideEffects, start: start, end: end, metric: metric
         )
         // Full-bleed on the canvas — the app's headline visualization earns the whole width
         // instead of sitting boxed inside another card. No "Your journey" eyebrow + serif title
@@ -53,7 +97,7 @@ struct JourneyChart: View {
         // this view already say what the chart is, so this used to be a double heading that
         // pushed the chart itself below the fold's midline.
         VStack(alignment: .leading, spacing: 12) {
-            if data.shedPoints.count < 2 {
+            if data.shedPoints.isEmpty {
                 thinDataPlaceholder(data)
             } else {
                 // Round-9: one `RevealOnce` now drives both halves of the instrument — the shed
@@ -66,6 +110,11 @@ struct JourneyChart: View {
                         shedChart(data: data, domain: start...end, progress: progress, elapsed: elapsed)
                         intakeLane(data: data, domain: start...end, elapsed: elapsed)
                     }
+                }
+                if data.shedPoints.count < 5 {
+                    Text("\(data.shedPoints.count) observation\(data.shedPoints.count == 1 ? "" : "s") — enough to remember the days, not call a trend yet.")
+                        .font(Clinical.caption(11))
+                        .foregroundStyle(Clinical.tertiary)
                 }
                 if !data.echoBands.isEmpty { echoWindowKey }
                 if let selectedMarker { markerDisclosure(selectedMarker) }
@@ -130,20 +179,23 @@ struct JourneyChart: View {
                             .foregroundStyle(Clinical.accent.opacity(rawDotStyle.opacity))
                     }
                 }
-                // 7-day centered rolling mean — the trend the eye should follow.
-                ForEach(data.shedPoints) { p in
-                    AreaMark(x: .value("Date", p.date), y: .value("Shed", p.smoothed))
-                        .interpolationMethod(.monotone)
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Clinical.accent.opacity(0.14), .clear],
-                                startPoint: .top, endPoint: .bottom
+                // The trailing seven-calendar-day trace opens after five observations. Before
+                // that, only real dots are visible: a record, not a verdict-shaped line.
+                if data.shedPoints.count >= 5 {
+                    ForEach(data.shedPoints) { p in
+                        AreaMark(x: .value("Date", p.date), y: .value("Level", p.smoothed))
+                            .interpolationMethod(.monotone)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Clinical.accent.opacity(0.14), .clear],
+                                    startPoint: .top, endPoint: .bottom
+                                )
                             )
-                        )
-                    LineMark(x: .value("Date", p.date), y: .value("Shed", p.smoothed))
-                        .interpolationMethod(.monotone)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5))
-                        .foregroundStyle(Clinical.accent)
+                        LineMark(x: .value("Date", p.date), y: .value("Level", p.smoothed))
+                            .interpolationMethod(.monotone)
+                            .lineStyle(StrokeStyle(lineWidth: 2.5))
+                            .foregroundStyle(Clinical.accent)
+                    }
                 }
                 // Dashed verticals anchor each dated event to the trend — lightened to 0.35
                 // opacity (round-7) now that the marker itself is a tick rather than a heavy dot.
@@ -176,13 +228,13 @@ struct JourneyChart: View {
             .chartYScale(domain: -0.3...3.3)
             .chartXAxis(.hidden) // the intake lane below owns the shared time axis
             .chartYAxis {
-                AxisMarks(position: .leading, values: Self.shedAxisValues) { value in
+                AxisMarks(position: .leading, values: metric.axisValues) { value in
                     AxisGridLine().foregroundStyle(Clinical.hairline.opacity(0.6))
                     AxisValueLabel {
                         if let v = value.as(Double.self) {
                             let i = Int(v)
-                            if Self.shedAxisLabels.indices.contains(i) {
-                                Text(Self.shedAxisLabels[i])
+                            if metric.axisLabels.indices.contains(i) {
+                                Text(metric.axisLabels[i])
                                     .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
                                     .lineLimit(1).fixedSize()   // never wrap mid-word
                                     .frame(width: gutterWidth, alignment: .trailing)
@@ -200,7 +252,7 @@ struct JourneyChart: View {
             // named twice above the chart (page context + the trajectory sentence), so a third
             // on-plot utterance broke the "said exactly once" rule. VoiceOver still hears what
             // the chart is via this label instead of the removed visual text.
-            .accessibilityLabel("Shedding trend, 7-day average")
+            .accessibilityLabel("\(metric.title) observations with a trailing seven-calendar-day average after five logs")
         }
     }
 
@@ -289,10 +341,10 @@ struct JourneyChart: View {
     private func markerKindLabel(_ m: JourneyData.Marker) -> String {
         switch m.kind {
         case .procedure: return "Procedure — \(m.tag)"
-        case .start: return "Started — \(m.tag)"
-        case .stop: return "Stopped — \(m.tag)"
+        case .start: return m.tag
+        case .stop: return m.tag
         case .trigger: return "Life event — \(m.tag)"
-        case .note: return m.noteText ?? "Note"
+        case .note, .photo, .regrowth, .sideEffect: return m.noteText ?? m.tag
         }
     }
 
@@ -367,6 +419,7 @@ struct JourneyChart: View {
                         if let d = value.as(Date.self) {
                             Text(d.formatted(axisFormat))
                                 .font(Clinical.eyebrow(9)).foregroundStyle(Clinical.tertiary)
+                                .lineLimit(1).fixedSize()
                         }
                     }
                 }
@@ -377,7 +430,7 @@ struct JourneyChart: View {
                 // the same width and the two time axes stay vertically aligned.
                 AxisMarks(position: .leading, values: [0.0]) { _ in
                     AxisValueLabel {
-                        Text("Elevated")
+                        Text(widestAxisLabel)
                             .font(Clinical.eyebrow(9)).foregroundStyle(.clear)
                             .lineLimit(1).fixedSize()
                             // Measures its own natural (unwrapped) width at the live type size
@@ -420,7 +473,7 @@ struct JourneyChart: View {
     /// Same height as the live shed chart (`.frame(height: 180)` below), so nothing jumps the
     /// moment the second log lands and the real timeline takes its place.
     private func thinDataPlaceholder(_ data: JourneyData) -> some View {
-        ChartPlaceholder(required: 2, have: data.shedPoints.count, unit: .dailyLogs, height: 180)
+        ChartPlaceholder(required: 5, have: data.shedPoints.count, unit: .dailyLogs, height: 180)
     }
 }
 
@@ -507,7 +560,7 @@ private struct JourneyData {
     }
 
     struct Marker: Identifiable, Equatable {
-        enum Kind { case procedure, start, stop, trigger, note }
+        enum Kind { case procedure, start, stop, trigger, note, photo, regrowth, sideEffect }
         let id: String
         let kind: Kind
         let date: Date
@@ -531,7 +584,9 @@ private struct JourneyData {
             // not something the app judges.
             case .stop: return Clinical.tertiary
             case .trigger: return Clinical.warning
-            case .note: return Clinical.sage
+            case .note, .photo: return Clinical.sage
+            case .regrowth: return Clinical.positive
+            case .sideEffect: return Clinical.warning
             }
         }
 
@@ -573,87 +628,49 @@ private struct JourneyData {
         doses: [TreatmentDose],
         triggers: [TriggerEvent],
         procedures: [ProcedureAppointment] = [],
+        photos: [PhotoRecord] = [],
+        progress: [ProgressCheckIn] = [],
+        sideEffects: [SideEffectLog] = [],
         start: Date,
-        end: Date
+        end: Date,
+        metric: JourneyMetric = .shedding
     ) {
         let calendar = Calendar.current
 
-        // Shed trend: raw daily 0–3 values plus the shared 7-day centered rolling mean.
-        let window = entries
+        // One value per calendar day, then a trailing calendar smoother. Missing days stay
+        // missing and an observation never receives information from a future date.
+        let rawPoints = entries
             .filter { $0.date >= start && $0.date <= end }
-            .sorted { $0.date < $1.date }
-        let raw = window.map { Double($0.shed.rawValue) }
-        let smoothed = ChartMath.rollingMean(raw, window: 7)
-        shedPoints = window.indices.map {
-            ShedPoint(date: window[$0].date, raw: raw[$0], smoothed: smoothed[$0])
+            .compactMap { entry in metric.value(for: entry).map { (day: entry.date, value: $0) } }
+        let daily = ChartMath.dailyAverages(rawPoints, calendar: calendar)
+        let smoothed = ChartMath.trailingCalendarMean(daily, windowDays: 7, calendar: calendar)
+        let smoothedByDay = Dictionary(uniqueKeysWithValues: smoothed.map { ($0.day, $0.value) })
+        shedPoints = daily.map {
+            ShedPoint(date: $0.day, raw: $0.value, smoothed: smoothedByDay[$0.day] ?? $0.value)
         }
 
-        // Event markers: procedures, daily-med starts, and TE triggers inside the window.
-        var built: [Marker] = []
-        for t in treatments where t.startDate >= start && t.startDate <= end {
-            if !t.slots.isEmpty {   // schedule-driven: `.other` daily items get a "start" marker too
-                built.append(Marker(
-                    id: "start-\(t.classRaw)-\(t.startDate.timeIntervalSinceReferenceDate)",
-                    kind: .start, date: t.startDate,
-                    symbol: t.treatmentClass.symbol,
-                    tag: Self.canonicalTag(t.treatmentClass, name: t.name)
-                ))
-            } else {
-                built.append(Marker(
-                    id: "proc-\(t.classRaw)-\(t.startDate.timeIntervalSinceReferenceDate)",
-                    kind: .procedure, date: t.startDate,
-                    symbol: t.treatmentClass.symbol,
-                    tag: Self.canonicalTag(t.treatmentClass, name: t.name)
-                ))
+        let highlights = TrendContext.highlights(
+            treatments: treatments, procedures: procedures, photos: photos, progress: progress,
+            sideEffects: sideEffects, triggers: triggers, entries: entries, start: start, end: end
+        )
+        var built: [Marker] = highlights.map { highlight in
+            let kind: Marker.Kind
+            switch highlight.kind {
+            case .start: kind = .start
+            case .stop: kind = .stop
+            case .procedure: kind = .procedure
+            case .trigger: kind = .trigger
+            case .note: kind = .note
+            case .photo: kind = .photo
+            case .regrowth: kind = .regrowth
+            case .sideEffect: kind = .sideEffect
             }
-            // Stop markers: dated the same way a trigger is — a recent stop is exactly the
-            // kind of event that can explain a shedding change 2–3 months later.
-            if let stopDate = t.endDate, stopDate >= start, stopDate <= end {
-                built.append(Marker(
-                    id: "stop-\(t.classRaw)-\(stopDate.timeIntervalSinceReferenceDate)",
-                    kind: .stop, date: stopDate,
-                    symbol: "xmark.circle",
-                    tag: Self.canonicalTag(t.treatmentClass, name: t.name)
-                ))
-            }
+            return Marker(id: highlight.id, kind: kind, date: highlight.date,
+                          symbol: highlight.kind.symbol, tag: highlight.title,
+                          noteText: [highlight.title, highlight.detail].filter { !$0.isEmpty }.joined(separator: " · "),
+                          triggerRef: highlight.trigger)
         }
-        for tr in triggers where tr.date >= start && tr.date <= end {
-            built.append(Marker(
-                id: "trig-\(tr.typeRaw)-\(tr.date.timeIntervalSinceReferenceDate)",
-                kind: .trigger, date: tr.date,
-                symbol: tr.type.symbol,
-                tag: Self.triggerTag(tr.type),
-                triggerRef: tr
-            ))
-        }
-        // Daily-log notes — the richest causal context a person records ("switched shampoo",
-        // "started keto", "post-COVID") used to be write-only outside that exact day's log
-        // sheet. Surfaced as a tap-to-reveal marker so it finally sits alongside the trend it
-        // might explain.
-        for e in entries where e.date >= start && e.date <= end {
-            let trimmed = e.note.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            built.append(Marker(
-                id: "note-\(e.date.timeIntervalSinceReferenceDate)",
-                kind: .note, date: e.date,
-                symbol: "text.bubble",
-                tag: "Note",
-                noteText: trimmed
-            ))
-        }
-        // Completed in-office procedures — dated by when they were actually marked done, which
-        // is the moment worth reading a shedding change against.
-        for p in procedures where p.isCompleted {
-            let date = p.completedAt ?? p.date
-            guard date >= start, date <= end else { continue }
-            built.append(Marker(
-                id: "proc-\(p.persistentModelID.hashValue)",
-                kind: .procedure, date: date,
-                symbol: p.type.symbol,
-                tag: p.type.title
-            ))
-        }
-        built.sort { $0.date < $1.date }
+        built.sort { $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date }
 
         // Anti-crowding: badges closer than ~1/9 of the window drop to a second row.
         let minGap = end.timeIntervalSince(start) / 9
@@ -689,7 +706,7 @@ private struct JourneyData {
             guard let stopDate = t.endDate, stopDate >= start, stopDate <= end else { continue }
             addEchoBand(id: "stop-echo-\(t.classRaw)-\(stopDate.timeIntervalSinceReferenceDate)", anchor: stopDate)
         }
-        echoBands = bands
+        echoBands = metric.showsTriggerEchoes ? bands : []
 
         // Intake lane: doses of daily-med classes, grouped per calendar day and stacked by class.
         let dailyOrder: [TreatmentClass] = [.minoxidil, .finasteride, .dutasteride]

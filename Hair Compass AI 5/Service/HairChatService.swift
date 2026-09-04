@@ -70,6 +70,11 @@ enum HairChatPrompt {
         return """
         You are \(Companion.name), a small warm wren — the bird companion inside this personal hair-tracking app, and a careful hair-science explainer. The person is looking at their own tracking data — sometimes a specific chart, sometimes their whole record — and wants to understand it. \(identity)
 
+        Wren's voice:
+        - Be a calm second set of eyes. Treat worry as real without treating the person's feared conclusion as fact.
+        - Separate today's moment from the slower pattern, and say plainly when the record cannot support a conclusion yet.
+        - Offer one small, useful next step when one exists. Never use guilt, hype, forced optimism, or streak pressure.
+
         Scope — the only topics you discuss: hair biology and the hair growth cycle, shedding, scalp health, hair treatments and their evidence, and the relationships in the person's own tracking data (the JSON record below). If you are asked about anything outside that scope — coding, news, medical questions beyond hair, or anything else — reply with one friendly sentence redirecting the conversation back to hair topics, and nothing more.
 
         Honesty rules:
@@ -96,7 +101,7 @@ enum HairChatPrompt {
     /// `chartComparison`: opened over a specific two-signal chart (Compare). `fullRecord`:
     /// opened over the whole tracking record with no single chart on screen (Today, deep
     /// analysis follow-up).
-    enum StarterKind { case chartComparison, fullRecord }
+    enum StarterKind { case chartComparison, fullRecord, newcomer }
 
     /// Three tappable starter questions for the empty chat, shaped by where the chat was
     /// opened from. For a chart comparison, the last one is keyed off the focus line when it
@@ -118,6 +123,12 @@ enum HairChatPrompt {
                 "What patterns stand out in my record?",
                 "What should I keep an eye on?",
                 "What usually drives shedding changes?",
+            ]
+        case .newcomer:
+            return [
+                "What should I track in my first week?",
+                "How do I avoid overchecking my hair?",
+                "What can my record tell me later?",
             ]
         }
     }

@@ -70,6 +70,42 @@ enum ChartMath {
 
     static func mean(_ v: [Double]) -> Double { v.isEmpty ? 0 : v.reduce(0, +) / Double(v.count) }
 
+    /// Collapse duplicate observations onto calendar days before any smoothing or matching.
+    /// This prevents two same-day edits/imports from receiving twice the weight of another day.
+    static func dailyAverages(
+        _ points: [(day: Date, value: Double)],
+        calendar: Calendar = .current
+    ) -> [(day: Date, value: Double)] {
+        let grouped = Dictionary(grouping: points) { calendar.startOfDay(for: $0.day) }
+        return grouped.map { day, values in
+            (day: day, value: mean(values.map(\.value)))
+        }
+        .sorted { $0.day < $1.day }
+    }
+
+    /// A trailing calendar-day mean. Unlike `rollingMean`, sparse logging does not turn seven
+    /// observations spread across several weeks into something labelled a seven-day trend, and
+    /// future observations never influence an earlier point.
+    static func trailingCalendarMean(
+        _ points: [(day: Date, value: Double)],
+        windowDays: Int,
+        calendar: Calendar = .current
+    ) -> [(day: Date, value: Double)] {
+        let daily = dailyAverages(points, calendar: calendar)
+        guard windowDays > 1 else { return daily }
+        return daily.map { point in
+            let lower = calendar.date(
+                byAdding: .day,
+                value: -(windowDays - 1),
+                to: point.day
+            ) ?? point.day
+            let values = daily.lazy
+                .filter { $0.day >= lower && $0.day <= point.day }
+                .map(\.value)
+            return (day: point.day, value: mean(Array(values)))
+        }
+    }
+
     /// Centered moving average — smooths daily noise so the trend's shape reads clearly.
     /// For each index the window is `[i-half, i+half]` (half = window/2) clamped to the array
     /// bounds, shrinking at the edges so the ends aren't blank. Same length as the input;
@@ -98,11 +134,19 @@ enum ChartMath {
         return num / (da * db).squareRoot()
     }
 
+    /// Spearman rank correlation, including average ranks for ties. Daily self-report bands are
+    /// ordinal rather than continuous measurements, so their ordering is more defensible than
+    /// assuming equal numeric distance between every label.
+    static func rankCorrelation(_ a: [Double], _ b: [Double]) -> Double? {
+        guard a.count == b.count, a.count >= 2 else { return nil }
+        return correlation(ranks(a), ranks(b))
+    }
+
     /// The honest read: sign + clarity only, gated behind `minPairs` overlapping days.
     static func association(hair: [Double], lifestyle: [Double], minPairs: Int = 8) -> Association {
         guard hair.count == lifestyle.count else { return .insufficient(need: minPairs) }
         guard hair.count >= minPairs else { return .insufficient(need: minPairs) }
-        guard let r = correlation(hair, lifestyle) else { return .unclear }
+        guard let r = rankCorrelation(hair, lifestyle) else { return .unclear }
         // Scale the clarity gate with sample size. At n=8 a correlation must clear ~0.71 to read as
         // a pattern — |r|=0.25 on a handful of days is indistinguishable from noise, and a worried
         // user anchors on the direction, not the hedge. The bound eases to the 0.25 floor by n≈64.
@@ -120,6 +164,8 @@ enum ChartMath {
 
     /// Pair a hair-fall day series with a lifestyle series shifted `lagDays` earlier — i.e. compare
     /// today's shedding against lifestyle from `lagDays` ago (within a ±`tolerance`-day match).
+    /// Both inputs are first collapsed to one value per day, and a lifestyle day can be used only
+    /// once, preventing sparse context samples from being repeated into an inflated pair count.
     static func pairWithLag(
         hair: [(day: Date, value: Double)],
         lifestyle: [(day: Date, value: Double)],
@@ -127,21 +173,28 @@ enum ChartMath {
         tolerance: Int = 3,
         calendar: Calendar = .current
     ) -> (hair: [Double], lifestyle: [Double]) {
-        var lifeByDay: [Date: Double] = [:]
-        for p in lifestyle { lifeByDay[calendar.startOfDay(for: p.day)] = p.value }
+        let dailyHair = dailyAverages(hair, calendar: calendar)
+        let dailyLifestyle = dailyAverages(lifestyle, calendar: calendar)
+        let lifeByDay = Dictionary(uniqueKeysWithValues: dailyLifestyle.map { ($0.day, $0.value) })
+        var usedLifestyleDays: Set<Date> = []
         var h: [Double] = [], l: [Double] = []
-        for hp in hair {
+        for hp in dailyHair {
             let target = calendar.date(byAdding: .day, value: -lagDays, to: calendar.startOfDay(for: hp.day)) ?? hp.day
-            var matched: Double?
+            var matched: (day: Date, value: Double)?
             for offset in 0...tolerance {
                 for sign in (offset == 0 ? [0] : [-offset, offset]) {
-                    if let d = calendar.date(byAdding: .day, value: sign, to: target), let v = lifeByDay[d] {
-                        matched = v; break
+                    if let day = calendar.date(byAdding: .day, value: sign, to: target),
+                       !usedLifestyleDays.contains(day), let value = lifeByDay[day] {
+                        matched = (day, value); break
                     }
                 }
                 if matched != nil { break }
             }
-            if let m = matched { h.append(hp.value); l.append(m) }
+            if let matched {
+                usedLifestyleDays.insert(matched.day)
+                h.append(hp.value)
+                l.append(matched.value)
+            }
         }
         return (h, l)
     }
@@ -171,5 +224,21 @@ enum ChartMath {
         case 14..<30: return "\(days / 7) weeks"
         default: return "\(Int((Double(days) / 30).rounded())) months"
         }
+    }
+
+    private static func ranks(_ values: [Double]) -> [Double] {
+        let sorted = values.enumerated().sorted {
+            $0.element == $1.element ? $0.offset < $1.offset : $0.element < $1.element
+        }
+        var result = Array(repeating: 0.0, count: values.count)
+        var index = 0
+        while index < sorted.count {
+            var end = index + 1
+            while end < sorted.count && sorted[end].element == sorted[index].element { end += 1 }
+            let averageRank = (Double(index + 1) + Double(end)) / 2
+            for rankedIndex in index..<end { result[sorted[rankedIndex].offset] = averageRank }
+            index = end
+        }
+        return result
     }
 }

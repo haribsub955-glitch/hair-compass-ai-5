@@ -40,10 +40,12 @@ struct BodySignalsTests {
         let now = Date.now
         // Previous 30-day window averages 7.0; the current window averages 7.4.
         let samples: [(date: Date, value: Double?)] = [
-            (daysAgo(50, from: now), 6.8),
+            (daysAgo(55, from: now), 6.8),
+            (daysAgo(50, from: now), 7.0),
             (daysAgo(40, from: now), 7.2),
             (daysAgo(45, from: now), nil),    // nils never drag a mean toward zero
-            (daysAgo(15, from: now), 7.3),
+            (daysAgo(25, from: now), 7.3),
+            (daysAgo(15, from: now), 7.4),
             (daysAgo(5, from: now), 7.5),
         ]
         let delta = BodySignalsMath.delta(samples, windowDays: 30, now: now)

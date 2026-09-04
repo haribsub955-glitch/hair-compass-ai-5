@@ -31,9 +31,10 @@ struct DailyEntryRepository {
             entry = existing
             inserted = false
         } else {
-            entry = DailyEntry(date: HairAnalytics.normalizedLogDate(
-                for: day, now: now(), calendar: calendar
-            ))
+            entry = DailyEntry(
+                date: HairAnalytics.normalizedLogDate(for: day, now: now(), calendar: calendar),
+                recordedSignals: []
+            )
             context.insert(entry)
             inserted = true
         }
@@ -165,7 +166,8 @@ struct PhotoRepository {
         parting: String = "",
         isWet: Bool = false,
         note: String = "",
-        patchSeriesLabel: String = ""
+        patchSeriesLabel: String = "",
+        babyHairsNoticed: Bool = false
     ) throws -> PhotoRecord {
         guard let path = store.save(image, quality: 0.82) else {
             throw PhotoRepositoryError.fileWriteFailed
@@ -173,7 +175,8 @@ struct PhotoRepository {
         let record = PhotoRecord(
             region: region, imagePath: path, createdAt: createdAt, lighting: lighting,
             distance: distance, parting: parting, isWet: isWet, note: note,
-            patchSeriesLabel: region == .patch ? patchSeriesLabel : ""
+            patchSeriesLabel: region == .patch ? patchSeriesLabel : "",
+            babyHairsNoticed: babyHairsNoticed
         )
         context.insert(record)
         do {

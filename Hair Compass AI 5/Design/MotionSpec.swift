@@ -11,6 +11,13 @@
 import SwiftUI
 
 enum MotionSpec {
+    enum onboarding {
+        static let settle: Double = 0.6
+        static let selection: Double = 0.32
+        static let recordDelay: Double = 1.2
+        static let noteDelay: Double = 1.5
+        static let noteFade: Double = 0.45
+    }
     enum horizon {
         static let draw: Double = 1.0            // 0.9–1.2 s
         static let markerDelay: Double = 0.45

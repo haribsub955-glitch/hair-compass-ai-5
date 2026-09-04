@@ -33,3 +33,54 @@ enum PhotoCadence {
         return photos.contains { $0.createdAt >= floor && $0.createdAt <= now }
     }
 }
+
+/// The single condition-matching rule used by Photos, exports and the Evidence lens. Keeping it
+/// here prevents one surface from accepting a pair that another warns about. Empty legacy metadata
+/// remains unknown rather than a mismatch; known values must agree.
+enum PhotoComparability {
+    /// A visible caution for comparison surfaces. Missing legacy metadata is different from a
+    /// mismatch, but it still means the pair cannot support a confident visual comparison.
+    static func cautionCaption(_ a: PhotoRecord, _ b: PhotoRecord) -> String? {
+        if let mismatch = mismatchCaption(a, b) { return mismatch }
+        guard !hasCompleteSetup(a) || !hasCompleteSetup(b) else { return nil }
+        return "Setup details are incomplete — lighting, distance and parting must be recorded for a reliable comparison."
+    }
+
+    static func mismatchCaption(_ a: PhotoRecord, _ b: PhotoRecord) -> String? {
+        var notes: [String] = []
+        if a.isWet != b.isWet {
+            notes.append("wet vs dry — wet hair looks thinner")
+        }
+        if knownValuesDiffer(a.lighting, b.lighting) {
+            notes.append("different lighting")
+        }
+        if knownValuesDiffer(a.distance, b.distance) {
+            notes.append("different distance")
+        }
+        if knownValuesDiffer(a.parting, b.parting) {
+            notes.append("different parting")
+        }
+        guard !notes.isEmpty else { return nil }
+        return "These shots differ: " + notes.joined(separator: ", ")
+    }
+
+    static func isEvidenceGradePair(_ a: PhotoRecord, _ b: PhotoRecord) -> Bool {
+        hasCompleteSetup(a) && hasCompleteSetup(b) && mismatchCaption(a, b) == nil
+    }
+
+    private static func hasCompleteSetup(_ photo: PhotoRecord) -> Bool {
+        !normalized(photo.lighting).isEmpty
+            && !normalized(photo.distance).isEmpty
+            && !normalized(photo.parting).isEmpty
+    }
+
+    private static func knownValuesDiffer(_ lhs: String, _ rhs: String) -> Bool {
+        let left = normalized(lhs)
+        let right = normalized(rhs)
+        return !left.isEmpty && !right.isEmpty && left.caseInsensitiveCompare(right) != .orderedSame
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}

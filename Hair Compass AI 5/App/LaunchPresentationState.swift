@@ -25,6 +25,10 @@ struct LaunchPresentationState: Equatable {
     }
 
     let surface: Surface
+    /// A privacy window obscures a presented flow; it must not tear that flow down. StoreKit,
+    /// HealthKit and photo permission sheets all make the scene briefly inactive. Dismissing
+    /// onboarding then discards its answers/phase and can cancel the system sheet above it.
+    let keepsOnboardingMounted: Bool
 
     static func reduce(_ input: Input) -> LaunchPresentationState {
         let surface: Surface
@@ -43,6 +47,9 @@ struct LaunchPresentationState: Equatable {
         } else {
             surface = .normal
         }
-        return LaunchPresentationState(surface: surface)
+        return LaunchPresentationState(
+            surface: surface,
+            keepsOnboardingMounted: !input.persistenceFailed && !input.isLocked && !input.hasOnboarded
+        )
     }
 }

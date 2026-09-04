@@ -15,6 +15,7 @@ struct PhotoDetailView: View {
     /// Drives the delete confirmation dialog — the JPEG on disk is gone the moment it confirms,
     /// unrecoverable, so the button below only asks for confirmation rather than deleting on tap.
     @State private var showDeleteConfirm = false
+    @State private var highlightSaveFailed = false
 
     var body: some View {
         NavigationStack {
@@ -31,11 +32,39 @@ struct PhotoDetailView: View {
 
                     metadataSection
 
+                    ClinicalCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle("Baby hairs noticed", isOn: Binding(
+                                get: { record.babyHairsNoticed },
+                                set: { value in
+                                    let previous = record.babyHairsNoticed
+                                    record.babyHairsNoticed = value
+                                    do { try context.save() }
+                                    catch {
+                                        record.babyHairsNoticed = previous
+                                        highlightSaveFailed = true
+                                    }
+                                }
+                            ))
+                            .tint(Clinical.positive)
+                            .accessibilityIdentifier("photoBabyHairs")
+                            Text("Your observation appears as a highlight in Trends on the photo's date. You can remove it here at any time.")
+                                .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                        }
+                    }
+
+                    if !record.note.isEmpty {
+                        Text(record.note).font(Clinical.body(14)).foregroundStyle(Clinical.secondary)
+                    }
+
                     deleteButton
                 }
                 .padding(20)
             }
             .clinicalScreen()
+            .alert("Highlight couldn't be saved", isPresented: $highlightSaveFailed) {
+                Button("OK", role: .cancel) {}
+            } message: { Text("Please try again. Your previous observation is unchanged.") }
             .navigationTitle(record.region.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

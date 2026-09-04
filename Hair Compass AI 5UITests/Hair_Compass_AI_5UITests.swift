@@ -14,14 +14,113 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_TAB", "care", "HC_MOTION_STATIC"]
         app.launch()
 
+        let evidenceJump = app.buttons["planJump.evidence"]
+        XCTAssertTrue(evidenceJump.waitForExistence(timeout: 10))
+        evidenceJump.tap()
         let path = app.otherElements["evidencePath"]
-        XCTAssertTrue(path.waitForExistence(timeout: 10), "the evidence path should lead the Plan screen")
+        // A first scrollTo can race the initial LazyVStack measurement on a cold simulator.
+        // Retrying the still-pinned command mirrors a real second tap and keeps the test about
+        // the navigation contract rather than XCUITest's first-frame timing.
+        if !path.waitForExistence(timeout: 4) { evidenceJump.tap() }
+        XCTAssertTrue(path.waitForExistence(timeout: 10), "the evidence shortcut should reveal the evidence path")
         let week4 = app.buttons["evidenceMilestone.4"]
         XCTAssertTrue(week4.waitForExistence(timeout: 4))
         week4.tap()
         XCTAssertTrue(app.descendants(matching: .any)["evidenceMilestoneDetail.4"].waitForExistence(timeout: 4))
         XCTAssertEqual(week4.value as? String, "Expanded")
-        XCTAssertTrue(app.descendants(matching: .any)["planStrands"].exists)
+        XCTAssertTrue(app.buttons["planStrandsToggle"].exists)
+        let suggested = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "evidenceSuggested.")
+        ).firstMatch
+        XCTAssertTrue(
+            suggested.exists,
+            "the most useful unfinished signal should be surfaced calmly without expanding every tracker"
+        )
+
+        let photosLens = app.buttons["evidenceLens.photos"]
+        for _ in 0..<5 where !photosLens.exists { app.swipeUp() }
+        XCTAssertTrue(photosLens.waitForExistence(timeout: 4), "every evidence source should expose its own logic")
+        for _ in 0..<4 where !photosLens.isHittable { app.swipeUp() }
+        XCTAssertTrue(photosLens.isHittable)
+        photosLens.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["evidenceLensDetail.photos"].waitForExistence(timeout: 4),
+            "choosing Photos should replace the generic treatment read with the photo-specific rule"
+        )
+        XCTAssertTrue(app.staticTexts["READS BY"].exists)
+        XCTAssertTrue(
+            app.buttons["evidenceAction.photos"].exists,
+            "the explanation should end in a direct action instead of passive next-step copy"
+        )
+        XCTAssertFalse(app.descendants(matching: .any)["planStrands"].exists)
+    }
+
+    /// Plan's long-form record has a persistent table of contents, Products is one tap away, and
+    /// Wren's separate lane no longer shifts the five primary destinations to the left.
+    @MainActor
+    func testPlanNavigatorReachesProductsAndTabsAreCentered() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_TAB", "care", "HC_MOTION_STATIC"]
+        app.launch()
+
+        let jumpBar = app.descendants(matching: .any)["planJumpBar"]
+        XCTAssertTrue(jumpBar.waitForExistence(timeout: 10), "Plan should expose its table of contents immediately")
+
+        let todayTab = app.buttons["tab.today"]
+        let photosTab = app.buttons["tab.photos"]
+        XCTAssertTrue(todayTab.waitForExistence(timeout: 4))
+        XCTAssertTrue(photosTab.exists)
+        XCTAssertEqual(
+            (todayTab.frame.midX + photosTab.frame.midX) / 2,
+            app.frame.midX,
+            accuracy: 2,
+            "the five-tab group should be centered on the screen"
+        )
+
+        let products = app.buttons["planJump.products"]
+        XCTAssertEqual(app.buttons["planJump.today"].value as? String, "Selected")
+        XCTAssertEqual(products.value as? String, "Not selected")
+        XCTAssertTrue(products.isHittable, "Products must be visible without horizontal discovery")
+        products.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scienceProductsSection"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Rosemary oil"].isHittable, "one tap should land on the first product")
+        XCTAssertTrue(app.buttons["planJump.today"].isHittable, "the navigator should remain pinned at depth")
+        XCTAssertEqual(products.value as? String, "Selected")
+        // Drag content rather than tapping another shortcut: selection must follow the section.
+        app.swipeDown()
+        let treatments = app.buttons["planJump.treatments"]
+        let followsScroll = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Selected"), object: treatments)
+        XCTAssertEqual(XCTWaiter.wait(for: [followsScroll], timeout: 5), .completed)
+
+        app.buttons["planJump.today"].tap()
+        XCTAssertTrue(app.staticTexts["Your daily ritual"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your daily ritual"].isHittable, "Today should return to the scheduled routine")
+        XCTAssertEqual(app.buttons["planJump.today"].value as? String, "Selected")
+    }
+
+    /// During the first week Wren introduces a small, record-backed guide instead of dropping a
+    /// new person into an empty chat. Each instruction is a real route; this exercises the Plan
+    /// hand-off because it is the one that could otherwise become an inert educational card.
+    @MainActor
+    func testWrenNewcomerGuideIntroducesPersonaAndRoutesToPlan() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_WREN_GUIDE", "HC_MOTION_STATIC"]
+        app.launch()
+
+        let invitation = app.buttons["wrenGuideInvite"]
+        XCTAssertTrue(invitation.waitForExistence(timeout: 10), "Wren should introduce the first-week guide after launch clears")
+        invitation.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["wrenNewcomerGuide"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["YOUR CALM TRACKING COMPANION"].exists)
+        XCTAssertTrue(app.staticTexts["Three small things. Then let the record breathe."].exists)
+        XCTAssertEqual(app.buttons["wrenGuide.checkIn"].value as? String, "Ready")
+        XCTAssertEqual(app.buttons["wrenGuide.routine"].value as? String, "Not ready")
+        app.buttons["wrenGuide.routine"].tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["planJumpBar"].waitForExistence(timeout: 6),
+            "the routine instruction should land directly on Plan"
+        )
     }
 
     /// "I'm worried" starts with a bounded picker rather than a blank chat, answers in four
@@ -205,6 +304,26 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
                       "after Open my plan the Plan tab with the starting plan must be showing")
     }
 
+    @MainActor
+    func testStarterPlanVisitOpensAppointmentNotProcedureShopping() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_ONBOARD", "HC_ONBOARD_STEP", "14", "HC_NORITUAL", "HC_MOTION_STATIC"]
+        app.launch()
+        let open = app.buttons["onboardOpenPlan"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        open.tap()
+        let visit = app.buttons["starterPlanRow.procedure.consultation"]
+        XCTAssertTrue(visit.waitForExistence(timeout: 5), app.debugDescription)
+        for _ in 0..<10 where !visit.isHittable { app.swipeUp() }
+        XCTAssertTrue(visit.isHittable)
+        visit.tap()
+        let book = app.buttons["starterBookVisit"]
+        XCTAssertTrue(book.waitForExistence(timeout: 5))
+        book.tap()
+        XCTAssertTrue(app.navigationBars["Clinician visit"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Save appointment"].exists)
+    }
+
     /// A quiet day is one tap: with yesterday logged and today empty, "Same as yesterday" exists
     /// and turns into "Edit log" once tapped.
     @MainActor
@@ -229,6 +348,13 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
 
         let circle = app.buttons["planRowComplete.0"]
         XCTAssertTrue(circle.waitForExistence(timeout: 10), "today's plan must list an open action")
+        let row = app.otherElements["planRow.0"]
+        // Daily check-in now leads Today. Reveal the full row before interacting, especially
+        // for a long press: XCTest does not reliably scroll an off-screen container into view.
+        for _ in 0..<5 where !row.isHittable || row.frame.maxY > app.buttons["tab.today"].frame.minY {
+            app.swipeUp()
+        }
+        XCTAssertTrue(row.isHittable)
         XCTAssertEqual(circle.value as? String, "Not yet")
         XCTAssertFalse(app.otherElements["planClosure"].exists, "the closure line waits for every row")
 
@@ -243,7 +369,7 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
                       "Undo must restore the open row after SwiftData publishes the deletion")
 
         // Skip lives behind a long press on the row and asks for a reason.
-        app.otherElements["planRow.0"].press(forDuration: 1.2)
+        row.press(forDuration: 1.2)
         let skip = app.buttons["Skip today"]
         XCTAssertTrue(skip.waitForExistence(timeout: 4), "the long-press menu offers Skip today")
         skip.tap()
@@ -253,29 +379,29 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(waitFor(circle, value: "Skipped", timeout: 4), "the row settles as Skipped once the reason is recorded")
     }
 
-    /// Today opens on the horizon and one grounding card; "Why this?" reveals the reason.
+    /// Today opens on its signature conditions scene, followed by one grounding note; "Why
+    /// this?" reveals the reason without turning the first screen into a dashboard stack.
     @MainActor
     func testGroundingCardExplainsItself() throws {
         let app = XCUIApplication()
         app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL"]
         app.launch()
-        XCTAssertTrue(app.otherElements["calmHorizon"].waitForExistence(timeout: 10), "the horizon header leads the page")
+        XCTAssertTrue(app.otherElements["conditionsHero"].waitForExistence(timeout: 10),
+                      "the full-bleed conditions hero leads the page")
         let card = app.otherElements["groundingCard"]
-        XCTAssertTrue(card.waitForExistence(timeout: 4), "one grounding card follows it")
+        XCTAssertTrue(card.waitForExistence(timeout: 4), "one grounding note follows it")
         XCTAssertTrue(app.otherElements["evidenceRibbon"].exists)
         app.buttons["groundingWhy"].tap()
         XCTAssertTrue(app.staticTexts["groundingReason"].waitForExistence(timeout: 4), "Why this? shows the reason")
         XCTAssertFalse(app.buttons["tutorialSkip"].exists, "the card tour is gone")
         XCTAssertFalse(app.buttons["Skip the tour"].exists, "the card tour is gone")
 
-        // Important 8: the headerless shedding scene should close its gap — a scrolled
-        // screenshot for a human look, since "no blank band above TODAY'S SHEDDING" is a
-        // visual claim no assertion can make on its own.
+        // Keep a scrolled screenshot for a human look at the note → plan transition.
         app.swipeUp()
         let screenshot = app.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.lifetime = .keepAlways
-        attachment.name = "g2-shedding-scene"
+        attachment.name = "minimal-today-note"
         add(attachment)
         try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/private/tmp/claude-501/-Users-haribazri-Hair-Compass-AI-5/ff0a543b-cd29-4e99-83c4-0d3dc9b8f4cb/scratchpad/g2-shedding-scene.png"))
     }

@@ -72,8 +72,9 @@ struct TodayPlanSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Eyebrow(text: TodayPlanCopy.eyebrow)
-                .padding(.bottom, 6)
+            Text(TodayPlanCopy.eyebrow)
+                .font(Clinical.headline(24)).foregroundStyle(Clinical.ink)
+                .padding(.bottom, 14)
             if plan.nothingExpected {
                 quietLine
             } else if plan.isComplete && !showsRecorded && undoableID == nil && optimisticallyOpenIDs.isEmpty {
@@ -92,6 +93,11 @@ struct TodayPlanSection: View {
             ContinuityStrip(days: week, summary: weekSummary, celebrate: celebrate)
                 .padding(.top, 14)
         }
+        .padding(18)
+        .background(alignment: .topTrailing) { BotanicalCardSprig(width: 94, opacity: 0.18) }
+        .background(Clinical.surfaceWash, in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Clinical.accent.opacity(0.20)))
+        .shadow(color: Clinical.cardShadow, radius: 10, y: 4)
         .onChange(of: plan.isComplete) { _, complete in
             guard complete else { return }
             showsRecorded = false

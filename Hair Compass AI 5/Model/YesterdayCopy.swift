@@ -31,6 +31,10 @@ enum YesterdayCopy {
         today.sleepQuality = yesterday.sleepQuality
         today.stress = yesterday.stress
         today.oiliness = yesterday.oiliness
+        let copyable: Set<DailySignal> = [
+            .shedding, .flaking, .erythema, .itch, .sleepQuality, .stress, .oiliness
+        ]
+        today.recordedSignals = yesterday.recordedSignals.intersection(copyable)
     }
 
     /// The entry dated on the calendar day before `now`, whatever order the list arrives in.

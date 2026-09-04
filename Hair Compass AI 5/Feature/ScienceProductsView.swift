@@ -73,6 +73,8 @@ struct ScienceProductsSection: View {
                     .padding(.top, 4)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scienceProductsSection")
         // Same confirmation card as the Add-Treatment form: a prescription-only product's
         // one-tap add pauses here, and Confirm runs the exact insert the tap always did.
         .sheet(item: $rxConfirmProduct) { product in

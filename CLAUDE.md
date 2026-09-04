@@ -33,7 +33,9 @@ iPhone answers from DeepSeek. No key literal exists anywhere in git history.
   fixes were ported to `fix/1.1-polish` (availability watch, Open Settings removal, periodLabel).
 - `design/monetization-hard-wall` holds the App Review rejection log (both rejections + causes).
 - `fix/1.1-polish` — Moosawi's review line (agent-platform cost review, Keychain installation id).
-  Merged into main 2026-09-04; nothing of it is outstanding.
+  Merged 2026-09-04 into `claude/mosaowi-comments-review-5dmvsq`, together with the live line, so
+  that branch is the only place holding BOTH his work and Codex's latest. Nothing of his is
+  outstanding; main and `feat/agent-profile-memory` do not carry it yet.
 - **`feat/agent-platform-server` carries the Python server as a monorepo subfolder**
   `agent-platform/` (`4af35de`) — same codebase as the local clone at
   `Programming/Harib/agent-platform`, but **copied, sharing no git history**, and **last touched
@@ -110,6 +112,20 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
 - FoundationModels generations cannot run on the Intel Mac's simulators (host lacks Apple
   Intelligence) — prompt/gate behavior with a LIVE model is verifiable only on a real
   AI-capable iPhone.
+- **Today = Daily Grounding (spec `docs/superpowers/specs/2026-09-03-daily-grounding-adherence-design.md`).**
+  Order: `CalmHorizonHeader` → `GroundingCardView` → `TodayPlanSection` → `EvidenceRibbon` →
+  shedding scene → rings → ledger. The card is a pure function of the record
+  (`GroundingCards.select`, hierarchy safety → concern → shedding grounding → continuation (due
+  only) → recovery → preparation → settled/closure → no-baseline → recognition → education →
+  quiet); a completion CTA exists only for a `.due` occurrence; the safety card never names a
+  condition and Today consumes only flags ≤30 days old (`ClinicianReviewFlags.forToday`).
+  `PlanAdherence.Consistency { completed, planned, scored }`: `planned` never moves when an
+  action is completed, percent reads `scored`, nothing is graded when `scored == 0`. Close the
+  Day fires once per day (`grounding.celebratedDay`); the card can be switched off
+  (`grounding.enabled`) without touching the plan. A server card (`/v1/grounding`, contract in
+  `docs/agent-platform/daily-grounding-card.md`) is DEBUG-only until the session advertises
+  `daily_grounding`; the deterministic card is always the fallback. Motion is native one-shots
+  inside `MotionSpec` budgets — no Lottie on this line.
 
 ## QUEUE
 
@@ -128,7 +144,7 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
    ≈ $100/month, refused at live boot if unset) · **`PROVIDER_SPEND_ENABLED` kill switch**
    enforced in `reserve()` so no endpoint can skip it. 596 passed.
 0c. done 2026-09-03 — `16f280e`: `AgentBridge.installationID` moved to the Keychain; merged
-   onto main 2026-09-04 with the rest of `fix/1.1-polish`.
+   2026-09-04 onto `claude/mosaowi-comments-review-5dmvsq` with the rest of `fix/1.1-polish`.
 0d. Still open, server side, from their own `docs/ENGINE_AUDIT_2026-08-31.md`: image cost is not
    reserved (`agent.py:449` — the cap does not apply to the expensive class) · four
    pay-for-nothing bugs (`dispatch.py:157` HIGH, every write turn dies after the model call is
@@ -160,7 +176,8 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
    account. The server-side ledger fixes nothing here, because the phone never talks to the
    server. Cheapest real fix is a thin proxy holding the key; second-cheapest is DeepSeek's own
    account cap, set low.
-2. done 2026-09-04 — `fix/1.1-polish` merged into main: `16f280e` (Keychain installation id —
+2. done 2026-09-04 — `fix/1.1-polish` merged onto `claude/mosaowi-comments-review-5dmvsq`
+   (NOT onto main or the live line yet — they still run the UserDefaults id): `16f280e` (Keychain installation id —
    `AgentBridge` no longer mints a fresh id per reinstall) plus the six review/docs commits
    `8151886`, `77f8273`, `74b0c6e`, `9ef78f1`, `041501a`, `c2413c1`. The 2026-09-02 note it
    replaces: `0ea1e55` + `266a476` merged into `feat/agent-profile-memory` (and main) with the
@@ -174,3 +191,15 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
    branch) + agy icon-severity fixed in `d0def34`; agy's step-13 and DCE findings discarded
    with verified reasons (see commit message).
 6. dropped — resubmission ASC lane for 1.0: app already approved and live.
+7. done 2026-09-04 — Daily Grounding + Plan Adherence series landed on the live line and main:
+   A (quick wins) `42aff26`, B (starter plan) `a081473`, E (fresh eyes) `e0fe9d6`, G1 (adherence
+   engine + Today's plan) `72d7687`, G2 (Calm Horizon + grounding card) `3c94ddb`, then the
+   owner's Codex session implemented G3 (evidence path) `eabec6f`, G4 (I'm worried) `49ef157`,
+   G5 (server card contract) `4e4c743`, G6 (notification action + widget completion) `43f3f83`,
+   `ee4a1d7`. Plans in `docs/superpowers/plans/2026-09-0{2,3}-*`; sub-project C (spotlight
+   tour) dropped per spec §8; sub-project D (design refinement + gouache art) still open.
+8. Open from the spec: tone preferences (§4.7, Phase 4), "Helpful / Not for me" feedback,
+   Lock Screen widget completion (accessory families are not interactive), appearance-checking
+   protections (§5, "I keep checking" repeats), and the server side of `/v1/grounding`
+   (`docs/agent-platform/daily-grounding-card.md`). User: device QA of Today's motion and the
+   three-Wren density (marker, card avatar, chat lane).

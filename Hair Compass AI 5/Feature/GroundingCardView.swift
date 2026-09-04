@@ -2,10 +2,10 @@
 //  GroundingCardView.swift
 //  Hair Compass AI 5
 //
-//  The Daily Grounding card as a reassuring note, not a dashboard tile: eyebrow, a small Wren
-//  avatar, a serif headline, two or three sentences, an optional anchor from the record, one
-//  action rendered as an outlined chip (never a second filled button on Today), the closure
-//  line, and "Why this?" which reveals the one fact that chose the card.
+//  Daily Grounding as an editorial note on the bare Today canvas: eyebrow, a small Wren avatar,
+//  a serif headline, record-grounded copy, one quiet action, a closure line, and progressive
+//  disclosure. Only deterministic safety guidance keeps a bordered card, because it must remain
+//  unmistakable rather than visually recede into the page.
 //
 //  Motion (G2 motion amendment M2): the note enters once per card identity — opacity 0 → 1 and
 //  a 6 pt rise over 0.35 s — and the action chip and the footer row follow 80 ms later on the
@@ -81,101 +81,16 @@ struct GroundingCardView: View {
     }
 
     var body: some View {
-        ClinicalCard(padding: 22) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
-                    ZStack {
-                        if showsHalo {
-                            Circle()
-                                .strokeBorder(Clinical.sage.opacity(0.35), lineWidth: 1)
-                                .frame(width: 28, height: 28)
-                                .scaleEffect(haloScale1)
-                                .opacity(haloOpacity1)
-                            Circle()
-                                .strokeBorder(Clinical.sage.opacity(0.18), lineWidth: 1)
-                                .frame(width: 28, height: 28)
-                                .scaleEffect(haloScale2)
-                                .opacity(haloOpacity2)
-                        }
-                        CompanionView(moment: .resting, variant: .avatar, size: 28)
-                            .scaleEffect(breathScale)
+        Group {
+            if card.kind == .safety {
+                ClinicalCard(padding: 22) { noteContent(compact: false) }
+            } else {
+                noteContent(compact: true)
+                    .padding(.top, 2)
+                    .padding(.bottom, 8)
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(Clinical.hairline).frame(height: 1)
                     }
-                    Eyebrow(text: card.eyebrow, color: card.kind == .safety ? Clinical.warning : Clinical.secondary)
-                }
-                .groundingEntrance(isVisible: showsMain, staticState: isStatic)
-                Text(card.headline)
-                    .font(Clinical.headline(22, weight: .semibold))
-                    .foregroundStyle(Clinical.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("groundingHeadline")
-                    .groundingEntrance(isVisible: showsMain, staticState: isStatic)
-                Text(card.body)
-                    .font(Clinical.body(14.5))
-                    .foregroundStyle(Clinical.ink.opacity(0.9))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .groundingEntrance(isVisible: showsMain, staticState: isStatic)
-                if let anchor = card.evidenceAnchor {
-                    Text(anchor)
-                        .font(Clinical.caption(12))
-                        .foregroundStyle(Clinical.tertiary)
-                        .monospacedDigit()
-                        .groundingEntrance(isVisible: showsMain, staticState: isStatic)
-                }
-                if let actionLabel {
-                    Button { onPrimary(card.primary) } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: actionSymbol).font(Clinical.body(12, weight: .medium))
-                            Text(actionLabel).font(Clinical.body(13, weight: .medium))
-                        }
-                        .foregroundStyle(Clinical.ink)
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 36)
-                        .background(Clinical.surface, in: Capsule())
-                        .overlay(Capsule().strokeBorder(Clinical.hairline, lineWidth: 1))
-                    }
-                    .buttonStyle(.clinicalPressable)
-                    .minimumHitTarget()
-                    .accessibilityIdentifier("groundingAction")
-                    // Differs from the plan row's own circle ("Mark <name> complete") — without
-                    // this, VoiceOver reads two identically-labeled controls that do the same
-                    // thing from two different places on the page.
-                    .accessibilityLabel("\(actionLabel) from today's note")
-                    .groundingEntrance(isVisible: showsFollower, staticState: isStatic)
-                }
-                Text(card.closure)
-                    .font(Clinical.caption(12.5))
-                    .foregroundStyle(Clinical.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .groundingEntrance(isVisible: showsFollower, staticState: isStatic)
-                HStack {
-                    if let onWorried, card.kind != .safety {
-                        Button("I'm worried", action: onWorried)
-                            .font(Clinical.body(12, weight: .medium))
-                            .foregroundStyle(Clinical.accent)
-                            .buttonStyle(.plain)
-                            .minimumHitTarget()
-                            .accessibilityIdentifier("groundingWorried")
-                    }
-                    Button(showsReason ? "Hide" : "Why this?") {
-                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { showsReason.toggle() }
-                    }
-                    .font(Clinical.body(12, weight: .medium))
-                    .foregroundStyle(Clinical.tertiary)
-                    .buttonStyle(.plain)
-                    .minimumHitTarget()
-                    .accessibilityIdentifier("groundingWhy")
-                    Spacer(minLength: 0)
-                }
-                .groundingEntrance(isVisible: showsFollower, staticState: isStatic)
-                if showsReason {
-                    Text(card.reason)
-                        .font(Clinical.caption(12))
-                        .foregroundStyle(Clinical.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .transition(.opacity)
-                        .accessibilityIdentifier("groundingReason")
-                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -193,6 +108,130 @@ struct GroundingCardView: View {
             entranceTask?.cancel(); entranceTask = nil
             halo2Task?.cancel(); halo2Task = nil
             breathTask?.cancel(); breathTask = nil
+        }
+    }
+
+    /// The same content and safety contract in two visual weights. The normal daily note is
+    /// deliberately unboxed and slightly tighter; safety keeps the established card treatment.
+    private func noteContent(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: compact ? 9 : 12) {
+            HStack(spacing: 9) {
+                ZStack {
+                    if showsHalo {
+                        Circle()
+                            .strokeBorder(Clinical.sage.opacity(0.35), lineWidth: 1)
+                            .frame(width: 28, height: 28)
+                            .scaleEffect(haloScale1)
+                            .opacity(haloOpacity1)
+                        Circle()
+                            .strokeBorder(Clinical.sage.opacity(0.18), lineWidth: 1)
+                            .frame(width: 28, height: 28)
+                            .scaleEffect(haloScale2)
+                            .opacity(haloOpacity2)
+                    }
+                    CompanionView(moment: .resting, variant: .avatar, size: compact ? 24 : 28)
+                        .scaleEffect(breathScale)
+                }
+                Eyebrow(
+                    text: card.eyebrow,
+                    color: card.kind == .safety ? Clinical.warning : Clinical.secondary
+                )
+                if compact {
+                    Rectangle()
+                        .fill(Clinical.hairline)
+                        .frame(height: 1)
+                }
+            }
+            .groundingEntrance(isVisible: showsMain, staticState: isStatic)
+
+            Text(card.headline)
+                .font(Clinical.headline(compact ? 20 : 22, weight: .semibold))
+                .foregroundStyle(Clinical.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("groundingHeadline")
+                .groundingEntrance(isVisible: showsMain, staticState: isStatic)
+
+            Text(card.body)
+                .font(Clinical.body(compact ? 13.5 : 14.5))
+                .foregroundStyle(Clinical.ink.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+                .groundingEntrance(isVisible: showsMain, staticState: isStatic)
+
+            if let anchor = card.evidenceAnchor {
+                Text(anchor)
+                    .font(Clinical.caption(12))
+                    .foregroundStyle(Clinical.tertiary)
+                    .monospacedDigit()
+                    .groundingEntrance(isVisible: showsMain, staticState: isStatic)
+            }
+
+            if let actionLabel {
+                Button { onPrimary(card.primary) } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: actionSymbol)
+                            .font(Clinical.body(11.5, weight: .semibold))
+                        Text(actionLabel)
+                            .font(Clinical.body(13, weight: .semibold))
+                        if compact {
+                            Image(systemName: "arrow.right")
+                                .font(Clinical.body(10, weight: .semibold))
+                        }
+                    }
+                    .foregroundStyle(compact ? Clinical.accent : Clinical.ink)
+                    .padding(.horizontal, compact ? 0 : 14)
+                    .frame(minHeight: 36)
+                    .background {
+                        if !compact { Clinical.surface.clipShape(Capsule()) }
+                    }
+                    .overlay {
+                        if !compact { Capsule().strokeBorder(Clinical.hairline, lineWidth: 1) }
+                    }
+                }
+                .buttonStyle(.clinicalPressable)
+                .minimumHitTarget()
+                .accessibilityIdentifier("groundingAction")
+                .accessibilityLabel("\(actionLabel) from today's note")
+                .groundingEntrance(isVisible: showsFollower, staticState: isStatic)
+            }
+
+            Text(card.closure)
+                .font(Clinical.caption(12.5))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .groundingEntrance(isVisible: showsFollower, staticState: isStatic)
+
+            HStack(spacing: 14) {
+                if let onWorried, card.kind != .safety {
+                    Button("I'm worried", action: onWorried)
+                        .font(Clinical.body(12, weight: .medium))
+                        .foregroundStyle(Clinical.accent)
+                        .buttonStyle(.plain)
+                        .minimumHitTarget()
+                        .accessibilityIdentifier("groundingWorried")
+                }
+                Button(showsReason ? "Hide" : "Why this?") {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                        showsReason.toggle()
+                    }
+                }
+                .font(Clinical.body(12, weight: .medium))
+                .foregroundStyle(Clinical.tertiary)
+                .buttonStyle(.plain)
+                .minimumHitTarget()
+                .accessibilityIdentifier("groundingWhy")
+                Spacer(minLength: 0)
+            }
+            .groundingEntrance(isVisible: showsFollower, staticState: isStatic)
+
+            if showsReason {
+                Text(card.reason)
+                    .font(Clinical.caption(12))
+                    .foregroundStyle(Clinical.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("groundingReason")
+            }
         }
     }
 

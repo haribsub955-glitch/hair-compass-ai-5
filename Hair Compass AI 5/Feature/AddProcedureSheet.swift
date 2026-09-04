@@ -17,11 +17,11 @@ struct AddProcedureSheet: View {
     @State private var location: String
     @State private var note: String
 
-    init(existing: ProcedureAppointment? = nil) {
+    init(existing: ProcedureAppointment? = nil, initialType: ProcedureType = .prp) {
         self.existing = existing
         // The date-strip day and the time picker both read the one stored instant.
         let instant = existing?.date ?? .now
-        _type = State(initialValue: existing?.type ?? .prp)
+        _type = State(initialValue: existing?.type ?? initialType)
         _date = State(initialValue: instant)
         _time = State(initialValue: instant)
         _location = State(initialValue: existing?.location ?? "")
@@ -74,13 +74,17 @@ struct AddProcedureSheet: View {
                         textField("Anything worth remembering", text: $note)
                     }
 
-                    Button(existing == nil ? "Add procedure" : "Save changes", action: save)
+                    if type == .consultation {
+                        Text("This saves an appointment in your record. Contact the clinic yourself to book it.")
+                            .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                    }
+                    Button(existing == nil ? (type == .consultation ? "Save appointment" : "Add procedure") : "Save changes", action: save)
                         .buttonStyle(ClinicalButtonStyle())
                 }
                 .padding(20)
             }
             .clinicalScreen()
-            .navigationTitle(existing == nil ? "New procedure" : "Edit procedure")
+            .navigationTitle(existing == nil ? (type == .consultation ? "Clinician visit" : "New procedure") : "Edit procedure")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

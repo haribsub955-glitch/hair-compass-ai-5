@@ -36,6 +36,7 @@ struct GuidedCaptureView: View {
     @State private var isWet = false
     @State private var patchSeriesLabel = ""
     @State private var newPatchSeriesLabel = ""
+    @State private var babyHairsNoticed = false
 
     private let lightingOptions = ["Daylight", "Warm indoor", "Cool indoor"]
     private let distanceOptions = ["Close", "Arm's length", "Far"]
@@ -249,6 +250,14 @@ struct GuidedCaptureView: View {
                     }
                 }
 
+                section("Highlight") {
+                    Toggle("Baby hairs noticed", isOn: $babyHairsNoticed)
+                        .tint(Clinical.positive)
+                        .accessibilityIdentifier("captureBabyHairs")
+                    Text("Save your observation as a highlight in Trends, alongside this photo's date.")
+                        .font(Clinical.caption(12)).foregroundStyle(Clinical.secondary)
+                }
+
                 section("Region") {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
@@ -407,7 +416,7 @@ struct GuidedCaptureView: View {
         guard (try? PhotoRepository(context: context).create(
             image: captured, region: region, createdAt: isFromLibrary ? takenOnDate : .now,
             lighting: lighting, distance: distance, parting: parting, isWet: isWet,
-            patchSeriesLabel: normalizedPatchLabel
+            patchSeriesLabel: normalizedPatchLabel, babyHairsNoticed: babyHairsNoticed
         )) != nil else { return }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()

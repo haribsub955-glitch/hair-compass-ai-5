@@ -74,20 +74,26 @@ enum ExportService {
         let recent = entries.filter { $0.date >= cutoff }
         out += "RECENT SIGNALS (last 30 days, \(recent.count) logs)\n"
         if !recent.isEmpty {
-            let sheds = recent.map { Double($0.shed.rawValue) }
-            let scalps = recent.map { Double($0.scalpTotal) }
-            out += "• Shedding avg: \(oneDecimal(HairAnalytics.mean(sheds)))/3 (trend \(trend(HairAnalytics.direction(recent.sorted { $0.date < $1.date }.map { Double($0.shed.rawValue) }))))\n"
+            let shedEntries = recent.filter { $0.hasRecorded(.shedding) }
+            let sheds = shedEntries.map { Double($0.shed.rawValue) }
+            let scalps = recent.filter(\.hasCompleteScalpRecording).map { Double($0.scalpTotal) }
+            let sleep = recent.filter { $0.hasRecorded(.sleepQuality) }.map { Double($0.sleepQuality) }
+            let stress = recent.filter { $0.hasRecorded(.stress) }.map { Double($0.stress) }
+            if !sheds.isEmpty {
+                out += "• Shedding avg: \(oneDecimal(HairAnalytics.mean(sheds)))/3 (trend \(trend(HairAnalytics.direction(shedEntries.sorted { $0.date < $1.date }.map { Double($0.shed.rawValue) }))))\n"
+            }
             // Wash days read heavier than dry days for reasons unrelated to a real change —
             // splitting the average keeps the headline number from quietly absorbing that.
-            let washed = recent.filter(\.washedHair).map { Double($0.shed.rawValue) }
-            let dry = recent.filter { !$0.washedHair }.map { Double($0.shed.rawValue) }
+            let washAnswered = shedEntries.filter { $0.hasRecorded(.washDay) }
+            let washed = washAnswered.filter(\.washedHair).map { Double($0.shed.rawValue) }
+            let dry = washAnswered.filter { !$0.washedHair }.map { Double($0.shed.rawValue) }
             if !washed.isEmpty && !dry.isEmpty {
                 out += "  – wash-day avg \(oneDecimal(HairAnalytics.mean(washed)))/3 (\(washed.count) days) vs non-wash avg \(oneDecimal(HairAnalytics.mean(dry)))/3 (\(dry.count) days)\n"
             }
-            out += "• Scalp severity avg: \(oneDecimal(HairAnalytics.mean(scalps)))/16\n"
-            out += "• Sleep quality avg: \(oneDecimal(HairAnalytics.mean(recent.map { Double($0.sleepQuality) })))/5\n"
-            out += "• Stress avg: \(oneDecimal(HairAnalytics.mean(recent.map { Double($0.stress) })))/5\n"
-            let cigs = recent.map { $0.cigarettes }.reduce(0, +)
+            if !scalps.isEmpty { out += "• Self-reported scalp symptom score avg: \(oneDecimal(HairAnalytics.mean(scalps)))/16\n" }
+            if !sleep.isEmpty { out += "• Sleep quality avg: \(oneDecimal(HairAnalytics.mean(sleep)))/5\n" }
+            if !stress.isEmpty { out += "• Stress avg: \(oneDecimal(HairAnalytics.mean(stress)))/5\n" }
+            let cigs = recent.filter { $0.hasRecorded(.cigarettes) }.map(\.cigarettes).reduce(0, +)
             if cigs > 0 { out += "• Cigarettes (30d total): \(cigs)\n" }
         } else {
             out += "• No recent logs.\n"
