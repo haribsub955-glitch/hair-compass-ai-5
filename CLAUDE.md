@@ -127,6 +127,69 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
   `daily_grounding`; the deterministic card is always the fallback. Motion is native one-shots
   inside `MotionSpec` budgets — no Lottie on this line.
 
+## Handover — Moosawi, 2026-09-04 (read before basing anything)
+
+**Start from `claude/mosaowi-comments-review-5dmvsq` (`afc2372`).** It is the only branch holding
+all three lines at once: main's G2 work, your `fix/1.1-polish`, and the six newest commits from
+the owner's Codex session. `rebuild/clinical-minimal` is six behind the live line;
+`feat/agent-profile-memory` does not carry your work. Basing on either loses one side.
+
+### What Codex did (`2b4fde9`…`c152549`, pushed to `feat/agent-profile-memory` 2026-09-04)
+
+App work: Today's living-minimalist first impression restored (full-bleed shedding hero leads;
+grounding guidance becomes an unboxed note, safety stays a bordered card) · Plan gains a pinned
+table of contents and the tab bar centres, with Wren in a protected lane above it ·
+signal-specific evidence tracking, and insights turned into direct actions · Wren's first-week
+companion guide · a refinement pass over onboarding, care plans and trend relationships. Tests
+came with it (`EvidencePathTests`, `TrendContextTests`, `OnboardingOfferTests`,
+`LivingClinicalUITests`, `TrendRelationshipsUITests`, `StoreKitPurchaseIntegrationTests`).
+
+`docs/release-readiness-2026-09-04.md` is the part that changes decisions — a **NO-GO**, written
+against live App Store Connect. Four items touch your review directly:
+
+- **Your 1b is confirmed independently.** `HCDeepSeekAPIKey` is populated in the existing Debug
+  AND Release bundles, and current Release build settings resolve a provider credential. Codex's
+  wording: "Gitignore does not protect a distributed binary." `scripts/release-preflight.sh`
+  (read-only, withholds values) rejects that bundle for the embedded credential — it does not
+  disable cloud, it only refuses to certify. Your proxy-or-account-cap decision (QUEUE 1b) is now
+  a release gate, not a preference.
+- **The shipping claims contradict the shipping code.** Version 1.1's description, review notes
+  and the U.S. subscription descriptions still say on-device AI while Release enables direct
+  DeepSeek. Reconcile before submitting — this is the class of mismatch that earned the last two
+  rejections.
+- **1.1 build 5 already exists in ASC and is Developer Rejected**; 1.0 is Ready for Distribution.
+  The next upload needs a new build number. Both subscriptions are Approved, Paid Apps Agreement
+  and tax forms Active — but yearly carries **no** introductory offer, so no free-trial copy may
+  appear on that plan.
+- **No clean full-suite result is claimed.** 675/677 unit at the time (the two stale
+  `PhotoCompareMismatchTests` expectations were corrected in that same wave), 20/20 UI, but the
+  xcresult could not finalize (disk) and later builds were interrupted by concurrent work.
+
+### What I did
+
+- Merged your seven commits whole rather than cherry-picking, so the review notes keep their
+  provenance. `16f280e` (Keychain installation id) merged clean — main had not touched
+  `AgentBridge`. CLAUDE.md was the only conflict: main's cloud-first paragraph is the accurate
+  one for a tree that HAS `CloudAI.swift`, so your branch-conditional framing went; the two facts
+  under it that survive the port stayed.
+- `99cce64` — one gap in `16f280e`. Add-or-keep does keep the winner's row, but the getter
+  returned the id it had just minted, so the loser of a first-launch race talked to the server as
+  a second principal for the rest of the process — the exact farming shape the Keychain move
+  closes. It reads the row back now.
+- Merged the live line in on top. No conflicts, no file overlap between the two sets.
+
+### What is NOT true yet — do not assume otherwise
+
+- **Nothing in this tree has been compiled.** That environment has no Mac. The combined tree
+  needs the unit suite on `HC-Automation` before build 5, and neither side has ever been built
+  against the other.
+- Main and `feat/agent-profile-memory` still mint the installation id from **UserDefaults**. Only
+  this branch has the Keychain version.
+- Your server `70e4815` is still unpushed, and `feat/agent-platform-server` is still at
+  2026-08-08 — un-suffixed product ids, no `global_daily_spend`.
+- Still yours and still open: QUEUE 0d (image cost unreserved, the four pay-for-nothing bugs),
+  0d-i (`PROVIDER_SPEND_ENABLED` fixed at boot), 0e (`X-Access-Key` in Release), 1b.
+
 ## QUEUE
 
 0. **Agent-platform cost review — "The Spend Line" (artifact, 2026-09-02, corrected).**
