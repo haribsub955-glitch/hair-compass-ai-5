@@ -33,3 +33,32 @@ enum PhotoCadence {
         return photos.contains { $0.createdAt >= floor && $0.createdAt <= now }
     }
 }
+
+/// The single condition-matching rule used by Photos, exports and the Evidence lens. Keeping it
+/// here prevents one surface from accepting a pair that another warns about. Empty legacy metadata
+/// remains unknown rather than a mismatch; known values must agree.
+enum PhotoComparability {
+    static func mismatchCaption(_ a: PhotoRecord, _ b: PhotoRecord) -> String? {
+        var notes: [String] = []
+        if a.isWet != b.isWet {
+            notes.append("wet vs dry — wet hair looks thinner")
+        }
+        if knownValuesDiffer(a.lighting, b.lighting) {
+            notes.append("different lighting")
+        }
+        if knownValuesDiffer(a.distance, b.distance) {
+            notes.append("different distance")
+        }
+        if knownValuesDiffer(a.parting, b.parting) {
+            notes.append("different parting")
+        }
+        guard !notes.isEmpty else { return nil }
+        return "These shots differ: " + notes.joined(separator: ", ")
+    }
+
+    private static func knownValuesDiffer(_ lhs: String, _ rhs: String) -> Bool {
+        let left = lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        let right = rhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !left.isEmpty && !right.isEmpty && left.caseInsensitiveCompare(right) != .orderedSame
+    }
+}

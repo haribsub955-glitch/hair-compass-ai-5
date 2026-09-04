@@ -18,13 +18,29 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(evidenceJump.waitForExistence(timeout: 10))
         evidenceJump.tap()
         let path = app.otherElements["evidencePath"]
+        // A first scrollTo can race the initial LazyVStack measurement on a cold simulator.
+        // Retrying the still-pinned command mirrors a real second tap and keeps the test about
+        // the navigation contract rather than XCUITest's first-frame timing.
+        if !path.waitForExistence(timeout: 4) { evidenceJump.tap() }
         XCTAssertTrue(path.waitForExistence(timeout: 10), "the evidence shortcut should reveal the evidence path")
         let week4 = app.buttons["evidenceMilestone.4"]
         XCTAssertTrue(week4.waitForExistence(timeout: 4))
         week4.tap()
         XCTAssertTrue(app.descendants(matching: .any)["evidenceMilestoneDetail.4"].waitForExistence(timeout: 4))
         XCTAssertEqual(week4.value as? String, "Expanded")
-        XCTAssertTrue(app.descendants(matching: .any)["planStrands"].exists)
+        XCTAssertTrue(app.buttons["planStrandsToggle"].exists)
+
+        let photosLens = app.buttons["evidenceLens.photos"]
+        XCTAssertTrue(photosLens.waitForExistence(timeout: 4), "every evidence source should expose its own logic")
+        for _ in 0..<4 where !photosLens.isHittable { app.swipeUp() }
+        XCTAssertTrue(photosLens.isHittable)
+        photosLens.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["evidenceLensDetail.photos"].waitForExistence(timeout: 4),
+            "choosing Photos should replace the generic treatment read with the photo-specific rule"
+        )
+        XCTAssertTrue(app.staticTexts["READS BY"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["planStrands"].exists)
     }
 
     /// Plan's long-form record has a persistent table of contents, Products is one tap away, and

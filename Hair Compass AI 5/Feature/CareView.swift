@@ -209,6 +209,7 @@ struct CareView: View {
                     EvidencePathSection(
                         phase: phase,
                         milestones: evidenceMilestones,
+                        signals: evidenceSignals,
                         strands: planStrands,
                         overall: overallRhythm
                     )
@@ -591,6 +592,21 @@ struct CareView: View {
         PlanStrands.build(
             treatments: treatments, doses: doses, missed: missedDoseRecords,
             now: .now, calendar: calendar
+        )
+    }
+
+    private var evidenceSignals: [EvidenceSignal] {
+        EvidenceSignals.build(
+            entries: entries,
+            treatments: treatments,
+            doses: doses,
+            missed: missedDoseRecords,
+            sideEffects: sideEffectLogs,
+            photos: photoRecords,
+            labs: labs,
+            triggers: triggerEvents,
+            now: .now,
+            calendar: calendar
         )
     }
 

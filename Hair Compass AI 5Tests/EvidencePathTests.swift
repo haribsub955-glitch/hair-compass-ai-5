@@ -159,4 +159,189 @@ struct EvidencePathTests {
         #expect(open.thirtyDay == PlanAdherence.Consistency(completed: 0, planned: 1, scored: 0))
         #expect(open.isUnscored)
     }
+
+    @Test func evidenceLensesAlwaysUseTheirOwnFixedOrderAndRules() throws {
+        let values = EvidenceSignals.build(
+            entries: [], treatments: [], doses: [], missed: [], sideEffects: [],
+            photos: [], labs: [], triggers: [], now: now, calendar: calendar
+        )
+
+        #expect(values.map(\.kind) == [.treatment, .shedding, .scalp, .photos, .labs, .events])
+        #expect(values.allSatisfy { !$0.rule.isEmpty && !$0.nextAction.isEmpty })
+        #expect(try #require(values.first { $0.kind == .treatment }).rule.contains("week 24"))
+        #expect(try #require(values.first { $0.kind == .shedding }).rule.contains("wash days separate"))
+        #expect(try #require(values.first { $0.kind == .photos }).rule.contains("at least 28 days"))
+        #expect(try #require(values.first { $0.kind == .labs }).rule.contains("each test"))
+        #expect(try #require(values.first { $0.kind == .events }).rule.contains("8–12 week lag"))
+    }
+
+    @Test func sheddingNeedsFiveLikeForLikeSamplesSpreadAcrossTwoWeeks() throws {
+        let tooClose = (0..<5).map { offset in
+            DailyEntry(date: daysAgo(offset), shed: .elevated, washedHair: true)
+        }
+        let building = try #require(signal(.shedding, entries: tooClose))
+        #expect(building.state == .building)
+        #expect(building.summary.contains("more days of separation"))
+
+        let spread = [13, 10, 7, 4, 1].map {
+            DailyEntry(date: daysAgo($0), shed: .elevated, washedHair: true)
+        } + [12, 9, 6, 3, 0].map {
+            DailyEntry(date: daysAgo($0), shed: .normal, washedHair: false)
+        }
+        let readable = try #require(signal(.shedding, entries: spread))
+        #expect(readable.state == .readable)
+        #expect(readable.status == "Both wash contexts are readable")
+        #expect(readable.summary.contains("5 wash-day and 5 non-wash"))
+    }
+
+    @Test func sheddingDeDuplicatesImportedEntriesFromTheSameDay() throws {
+        let entries = [13, 10, 7, 4].flatMap { offset in
+            [
+                DailyEntry(date: daysAgo(offset, hour: 9), shed: .normal),
+                DailyEntry(date: daysAgo(offset, hour: 18), shed: .heavy),
+            ]
+        }
+        let result = try #require(signal(.shedding, entries: entries))
+
+        #expect(result.state == .building)
+        #expect(result.summary.contains("4 non-wash observations"))
+    }
+
+    @Test func scalpUsesTheValidatedScoreAndASeparateFourteenDayWindow() throws {
+        let compressed = (0..<7).map { offset in
+            DailyEntry(date: daysAgo(offset), flaking: 3, erythema: 2, itch: 2)
+        }
+        #expect(try #require(signal(.scalp, entries: compressed)).state == .building)
+
+        let spread = [14, 12, 10].map {
+            DailyEntry(date: daysAgo($0), flaking: 3, erythema: 0, itch: 0)
+        } + [8].map {
+            DailyEntry(date: daysAgo($0), flaking: 1, erythema: 1, itch: 1)
+        } + [6, 3, 0].map {
+            DailyEntry(date: daysAgo($0), flaking: 0, erythema: 0, itch: 0)
+        }
+        let readable = try #require(signal(.scalp, entries: spread))
+        #expect(readable.state == .readable)
+        #expect(readable.status == "Symptoms are easing in this window")
+        #expect(readable.summary.contains("latest score is 0/16 (mild)"))
+    }
+
+    @Test func photosRequireSameSeriesConditionsAndTwentyEightDays() throws {
+        let baseline = PhotoRecord(
+            region: .vertex, createdAt: daysAgo(40), lighting: "Window",
+            distance: "Arm's length", parting: "Center", isWet: false
+        )
+        let mismatched = PhotoRecord(
+            region: .vertex, createdAt: daysAgo(0), lighting: "Window",
+            distance: "Close", parting: "Center", isWet: false
+        )
+        let mismatchResult = try #require(signal(.photos, photos: [baseline, mismatched]))
+        #expect(mismatchResult.state == .building)
+        #expect(mismatchResult.status == "Follow-up conditions do not match")
+        #expect(PhotosView.compareMismatchCaption(baseline, mismatched)?.contains("distance") == true)
+
+        let earlyMatch = PhotoRecord(
+            region: .vertex, createdAt: daysAgo(20), lighting: "window",
+            distance: " arm's length ", parting: "center", isWet: false
+        )
+        let earlyResult = try #require(signal(.photos, photos: [baseline, earlyMatch]))
+        #expect(earlyResult.state == .building)
+        #expect(earlyResult.status == "Matched pair is still too close")
+
+        let matureMatch = PhotoRecord(
+            region: .vertex, createdAt: daysAgo(0), lighting: "window",
+            distance: " arm's length ", parting: "center", isWet: false
+        )
+        let matureResult = try #require(signal(.photos, photos: [baseline, matureMatch]))
+        #expect(matureResult.state == .readable)
+        #expect(matureResult.status == "1 comparable series ready")
+    }
+
+    @Test func labsCompareOnlyLikeTestsAndPrioritizeTheLatestFlag() throws {
+        let improvingFerritin = [
+            LabResult(test: .ferritin, value: 18, collectedAt: daysAgo(60)),
+            LabResult(test: .ferritin, value: 42, collectedAt: daysAgo(2)),
+        ]
+        let readable = try #require(signal(.labs, labs: improvingFerritin))
+        #expect(readable.state == .readable)
+        #expect(readable.status == "Same-test history is readable")
+        #expect(readable.summary.contains("1 moved toward its range"))
+
+        let customRangeFlag = LabResult(
+            test: .vitaminD, value: 35, collectedAt: daysAgo(1), refLow: 40, refHigh: 100
+        )
+        let discuss = try #require(signal(.labs, labs: improvingFerritin + [customRangeFlag]))
+        #expect(discuss.state == .discuss)
+        #expect(discuss.status == "1 latest result outside range")
+    }
+
+    @Test func lifeEventsUseTheLagWindowWithoutClaimingCause() throws {
+        let early = TriggerEvent(type: .illness, date: daysAgo(21))
+        let earlySignal = try #require(signal(.events, triggers: [early]))
+        #expect(earlySignal.state == .building)
+        #expect(earlySignal.status == "Context window opens in 5 weeks")
+
+        let timely = TriggerEvent(type: .crashDiet, date: daysAgo(70))
+        let timelySignal = try #require(signal(.events, triggers: [early, timely]))
+        #expect(timelySignal.state == .readable)
+        #expect(timelySignal.status == "Inside the 8–12 week context window")
+        #expect(timelySignal.rule.contains("cannot prove"))
+    }
+
+    @Test func treatmentLensDoesNotScoreFutureActionsAndPrioritizesTolerability() throws {
+        let schema = Schema([
+            Profile.self, DailyEntry.self, Treatment.self, TreatmentDose.self,
+            SideEffectLog.self, MissedDoseRecord.self, LabResult.self, PhotoRecord.self,
+            HealthSnapshot.self, TriggerEvent.self, ProcedureAppointment.self, ProgressCheckIn.self,
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let context = ModelContext(try ModelContainer(for: schema, configurations: configuration))
+        let treatment = Treatment(
+            name: "Evening treatment", treatmentClass: .finasteride, dose: "1 mg",
+            scheduleTimes: "21:00", startDate: daysAgo(0, hour: 1), isActive: true
+        )
+        context.insert(treatment)
+
+        let waiting = try #require(signal(.treatment, treatments: [treatment]))
+        #expect(waiting.state == .building)
+        #expect(waiting.status == "Waiting for due actions")
+
+        let twiceDaily = Treatment(
+            name: "Short twice-daily plan", treatmentClass: .minoxidil, dose: "1 mL",
+            scheduleTimes: "08:00,09:00", startDate: daysAgo(3, hour: 1), isActive: true
+        )
+        context.insert(twiceDaily)
+        let shortWindow = try #require(signal(.treatment, treatments: [twiceDaily]))
+        #expect(shortWindow.state == .building)
+        #expect(shortWindow.status == "First week is still building")
+
+        let effect = SideEffectLog(
+            treatment: treatment, type: .dizziness, severity: 3, date: daysAgo(1)
+        )
+        context.insert(effect)
+        let discuss = try #require(signal(
+            .treatment, treatments: [treatment], sideEffects: [effect]
+        ))
+        #expect(discuss.state == .discuss)
+        #expect(discuss.status == "Recent severe side effect")
+        #expect(discuss.summary.contains("tolerability signal"))
+    }
+
+    private func signal(
+        _ kind: EvidenceSignal.Kind,
+        entries: [DailyEntry] = [],
+        treatments: [Treatment] = [],
+        doses: [TreatmentDose] = [],
+        missed: [MissedDoseRecord] = [],
+        sideEffects: [SideEffectLog] = [],
+        photos: [PhotoRecord] = [],
+        labs: [LabResult] = [],
+        triggers: [TriggerEvent] = []
+    ) -> EvidenceSignal? {
+        EvidenceSignals.build(
+            entries: entries, treatments: treatments, doses: doses, missed: missed,
+            sideEffects: sideEffects, photos: photos, labs: labs, triggers: triggers,
+            now: now, calendar: calendar
+        ).first { $0.kind == kind }
+    }
 }

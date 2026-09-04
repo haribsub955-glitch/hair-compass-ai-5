@@ -14,9 +14,14 @@ import Testing
 @MainActor
 struct PhotoCompareMismatchTests {
 
-    private func photo(isWet: Bool = false, lighting: String = "daylight", parting: String = "center") -> PhotoRecord {
+    private func photo(
+        isWet: Bool = false,
+        lighting: String = "daylight",
+        distance: String = "arm's length",
+        parting: String = "center"
+    ) -> PhotoRecord {
         PhotoRecord(region: .frontal, imagePath: "x.jpg", createdAt: .now,
-                    lighting: lighting, distance: "arm's length", parting: parting, isWet: isWet)
+                    lighting: lighting, distance: distance, parting: parting, isWet: isWet)
     }
 
     @Test func noCaptionWhenMetadataMatches() {
@@ -49,6 +54,15 @@ struct PhotoCompareMismatchTests {
 
         let unspecified = photo(parting: "")
         #expect(PhotosView.compareMismatchCaption(center, unspecified) == nil)
+    }
+
+    @Test func flagsDifferentDistanceAndNormalizesKnownText() {
+        let arm = photo(distance: "Arm's length")
+        let close = photo(distance: "Close")
+        let normalizedMatch = photo(distance: " arm's LENGTH ")
+
+        #expect(PhotosView.compareMismatchCaption(arm, close)?.contains("distance") == true)
+        #expect(PhotosView.compareMismatchCaption(arm, normalizedMatch) == nil)
     }
 
     @Test func combinesMultipleMismatches() {

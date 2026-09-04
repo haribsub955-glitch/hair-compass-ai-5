@@ -13,6 +13,7 @@ import SwiftUI
 struct EvidencePathSection: View {
     let phase: EvidencePhase
     let milestones: [EvidenceMilestone]
+    let signals: [EvidenceSignal]
     let strands: [PlanStrand]
     let overall: PlanAdherence.Consistency?
 
@@ -23,6 +24,9 @@ struct EvidencePathSection: View {
     @State private var revealsNodes = false
     @State private var settlesCurrent = false
     @State private var entranceTask: Task<Void, Never>?
+    @State private var selectedSignal: EvidenceSignal.Kind = .treatment
+    @State private var strandsExpanded = false
+    @Namespace private var signalSelection
 
     private var isStatic: Bool { reduceMotion || MotionQA.isStatic }
     private var entranceKey: String {
@@ -33,7 +37,7 @@ struct EvidencePathSection: View {
         VStack(alignment: .leading, spacing: 18) {
             header
             path
-            strandsBlock
+            signalsBlock
         }
         .onAppear { enterIfNeeded() }
         .onChange(of: entranceKey) { _, _ in enterIfNeeded(reset: true) }
@@ -301,6 +305,237 @@ struct EvidencePathSection: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Evidence lenses
+
+    /// Six compact selectors replace a permanently-expanded stack of generic trackers. One lens
+    /// stays open at a time, making the special rule and next action visible without turning Plan
+    /// back into an endless page.
+    private var signalsBlock: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Six signals · six rules")
+                    .font(Clinical.body(15, weight: .semibold))
+                    .foregroundStyle(Clinical.ink)
+                Text("Choose a lens to see what makes that evidence readable.")
+                    .font(Clinical.caption(12))
+                    .foregroundStyle(Clinical.secondary)
+            }
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
+                spacing: 8
+            ) {
+                ForEach(signals) { signal in
+                    signalButton(signal)
+                }
+            }
+
+            if let signal = signals.first(where: { $0.kind == selectedSignal }) ?? signals.first {
+                signalDetail(signal)
+                    .id(signal.kind)
+                    .transition(.opacity.combined(with: .offset(y: 5)))
+
+                if signal.kind == .treatment {
+                    strandsDisclosure
+                }
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.24), value: selectedSignal)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("evidenceSignals")
+    }
+
+    private func signalButton(_ signal: EvidenceSignal) -> some View {
+        let selected = signal.kind == selectedSignal
+        let border = selected ? Clinical.accent.opacity(0.42) : Clinical.hairline
+        return Button(action: { select(signal.kind) }) {
+            signalButtonLabel(signal, selected: selected)
+                .background { signalButtonBackground(selected: selected) }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(border, lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.clinicalPressable)
+        .accessibilityLabel("\(signal.kind.title), \(signal.status)")
+        .accessibilityValue(selected ? "Selected" : stateLabel(signal))
+        .accessibilityHint("Shows the special logic for \(signal.kind.title.lowercased()) evidence")
+        .accessibilityIdentifier("evidenceLens.\(signal.kind.rawValue)")
+    }
+
+    private func select(_ kind: EvidenceSignal.Kind) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.24)) {
+            if kind != .treatment { strandsExpanded = false }
+            selectedSignal = kind
+        }
+    }
+
+    private func signalButtonLabel(_ signal: EvidenceSignal, selected: Bool) -> some View {
+        let tint = selected ? Clinical.accent : stateColor(signal.state)
+        let weight: Font.Weight = selected ? .semibold : .medium
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Image(systemName: signal.kind.symbol)
+                    .font(Clinical.body(13, weight: .semibold))
+                    .foregroundStyle(tint)
+                Spacer(minLength: 4)
+                Circle()
+                    .fill(stateColor(signal.state))
+                    .frame(width: 6, height: 6)
+            }
+            Text(signal.kind.title)
+                .font(Clinical.caption(11.5))
+                .fontWeight(weight)
+                .foregroundStyle(Clinical.ink)
+                .lineLimit(1)
+            Text(stateLabel(signal))
+                .font(Clinical.eyebrow(8.5))
+                .tracking(0.55)
+                .foregroundStyle(stateColor(signal.state))
+        }
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+    }
+
+    @ViewBuilder
+    private func signalButtonBackground(selected: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Clinical.surface.opacity(0.72))
+        if selected {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Clinical.accent.opacity(0.085))
+                .matchedGeometryEffect(id: "evidenceSignalSelection", in: signalSelection)
+        }
+    }
+
+    private func signalDetail(_ signal: EvidenceSignal) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Circle()
+                    .fill(stateColor(signal.state))
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                Text(signal.status)
+                    .font(Clinical.body(14, weight: .semibold))
+                    .foregroundStyle(Clinical.ink)
+                Spacer(minLength: 8)
+                Text(stateLabel(signal).uppercased())
+                    .font(Clinical.eyebrow(9))
+                    .tracking(0.7)
+                    .foregroundStyle(stateColor(signal.state))
+            }
+
+            Text(signal.summary)
+                .font(Clinical.caption(12.5))
+                .foregroundStyle(Clinical.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Rectangle().fill(Clinical.hairline).frame(height: 1)
+
+            signalDetailLine("READS BY", symbol: "slider.horizontal.3", signal.rule)
+            signalDetailLine("NEXT", symbol: "arrow.right", signal.nextAction)
+        }
+        .padding(13)
+        .background(Clinical.surface.opacity(0.82), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Clinical.hairline, lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(signal.kind.title). \(signal.status). \(signal.summary) "
+            + "Reads by: \(signal.rule) Next: \(signal.nextAction)"
+        )
+        .accessibilityIdentifier("evidenceLensDetail.\(signal.kind.rawValue)")
+    }
+
+    private func signalDetailLine(_ label: String, symbol: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: symbol)
+                .font(Clinical.caption(10.5))
+                .foregroundStyle(Clinical.sage)
+                .frame(width: 14)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(Clinical.eyebrow(8.5))
+                    .tracking(0.7)
+                    .foregroundStyle(Clinical.tertiary)
+                Text(text)
+                    .font(Clinical.caption(11.5))
+                    .foregroundStyle(Clinical.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func stateLabel(_ signal: EvidenceSignal) -> String {
+        switch signal.state {
+        case .standby:
+            switch signal.kind {
+            case .photos: return "Baseline"
+            case .labs, .events: return "Optional"
+            case .treatment: return "Setup"
+            case .shedding, .scalp: return "Start"
+            }
+        case .building: return "Building"
+        case .readable: return "Readable"
+        case .discuss: return "Discuss"
+        }
+    }
+
+    private func stateColor(_ state: EvidenceSignal.State) -> Color {
+        switch state {
+        case .standby: return Clinical.tertiary
+        case .building: return Clinical.accent
+        case .readable: return Clinical.sage
+        case .discuss: return Clinical.warning
+        }
+    }
+
+    private var strandsDisclosure: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.22)) {
+                    strandsExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .font(Clinical.caption(11))
+                        .foregroundStyle(Clinical.sage)
+                    Text("Treatment by treatment")
+                        .font(Clinical.caption(12.5))
+                        .foregroundStyle(Clinical.ink)
+                    Spacer(minLength: 8)
+                    Text(strands.isEmpty ? "None" : "\(strands.count)")
+                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Clinical.tertiary)
+                    Image(systemName: "chevron.down")
+                        .font(Clinical.caption(9))
+                        .foregroundStyle(Clinical.tertiary)
+                        .rotationEffect(.degrees(strandsExpanded ? 180 : 0))
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background(Clinical.sage.opacity(0.055), in: Capsule())
+                .overlay { Capsule().strokeBorder(Clinical.hairline, lineWidth: 1) }
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.clinicalPressable)
+            .accessibilityValue(strandsExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint("Shows the separate consistency record for each treatment")
+            .accessibilityIdentifier("planStrandsToggle")
+
+            if strandsExpanded {
+                strandsBlock
+                    .transition(.opacity.combined(with: .offset(y: -4)))
+            }
+        }
     }
 
     // MARK: - Consistency strands

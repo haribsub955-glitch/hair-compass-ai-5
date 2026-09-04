@@ -55,18 +55,7 @@ struct PhotosView: View {
     /// differ on the metadata the app already collects, so a wet-vs-dry or lighting mismatch
     /// never reads as regrowth. `static` + pure so it's unit-testable without a model context.
     static func compareMismatchCaption(_ a: PhotoRecord, _ b: PhotoRecord) -> String? {
-        var notes: [String] = []
-        if a.isWet != b.isWet {
-            notes.append("wet vs dry — wet hair looks thinner")
-        }
-        if !a.lighting.isEmpty, !b.lighting.isEmpty, a.lighting != b.lighting {
-            notes.append("different lighting")
-        }
-        if !a.parting.isEmpty, !b.parting.isEmpty, a.parting != b.parting {
-            notes.append("different parting")
-        }
-        guard !notes.isEmpty else { return nil }
-        return "These shots differ: " + notes.joined(separator: ", ")
+        PhotoComparability.mismatchCaption(a, b)
     }
 
     /// Regions with at least one capture — drives the region-chip coverage dots and the
