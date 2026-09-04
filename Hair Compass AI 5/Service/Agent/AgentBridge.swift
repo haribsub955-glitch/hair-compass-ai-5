@@ -51,6 +51,11 @@ enum AgentBridge {
         if let existing = keychainID(), !existing.isEmpty { return existing }
         let fresh = UUID().uuidString
         saveKeychainID(fresh)
+        // Add-or-keep means the row may already belong to a racing first launch, and the write
+        // above is then a silent no-op. The stored row is the truth, so read it back rather than
+        // trusting the id we just minted — otherwise the loser of that race talks to the server
+        // as a second principal for the rest of the process.
+        if let stored = keychainID(), !stored.isEmpty { return stored }
         return fresh
     }
 
