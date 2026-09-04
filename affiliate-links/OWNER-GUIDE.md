@@ -11,6 +11,11 @@ deliberate. Several affiliate programmes — Amazon's is the strict one — excl
 referrals that arrive through a site which redirects automatically, so the visitor presses the
 button themselves.
 
+A page with no destination yet renders a **holding state** instead: it says plainly that there is
+no buying link for that product, and shows **no** affiliate disclosure, because there is no
+affiliate link on it to disclose. That is what every page looks like today. Filling one in is the
+"change a destination" job below — no app build, ever.
+
 **No Cloudflare account and no DNS change is needed.** `haircompass-ai.com` already serves this
 repository's `docs/` folder through GitHub Pages, and the pages live there. Nothing here touches
 the AI/agent server: the buttons work with that server switched off, offline-cached links and
@@ -18,8 +23,10 @@ all. They do depend on **DNS for haircompass-ai.com** and on **GitHub Pages**, w
 `affiliate-links/mappings.json` is provider-independent — it is the entire mapping, so the same
 paths can be rebuilt on any host from that one file.
 
-> **Status: not published.** No page exists yet, because no destination exists yet. See "What is
-> still waiting on you".
+> **Status: the app ships all 16 links and all 16 pages exist, every one in its holding state —
+> "no buying link yet" — because no destination exists yet. The pages go live on the website when
+> this branch's `docs/` reaches `rebuild/clinical-minimal`, which is what GitHub Pages publishes.
+> Until then the URLs 404.** See "What is still waiting on you".
 
 ---
 
@@ -35,28 +42,31 @@ paths can be rebuilt on any host from that one file.
 ## Change a destination
 
 1. Open `affiliate-links/mappings.json`, find the route by `productID` or `path`.
-2. Set `destination` to the new affiliate URL — paste it **whole**, every tracking parameter
-   intact — and set `merchant` to the retailer's name (it appears on the button).
+2. Set `destination` to the affiliate URL — paste it **whole**, every tracking parameter intact —
+   and set `merchant` to the retailer's name (it appears on the button). A page flips from the
+   holding state to the live button-and-disclosure state the moment it has both.
 3. Run `python3 affiliate-links/build-pages.py`.
 4. Commit and push. Pages redeploys in about a minute; the app is untouched.
 
 The script refuses anything that would publish a broken or unsafe page: a non-HTTPS destination,
 a URL carrying embedded credentials, a destination with no merchant named, a duplicate path. It
+also cross-checks `Resources/AffiliateLinks.json` against the routes and fails on any
+disagreement — that is the guard against a shipped button pointing at a path nobody generated. It
 exits non-zero so a mistake stops a release rather than reaching the site. `--check` validates
 without writing.
 
 ## Disable a link gracefully
 
-- **Best:** point `destination` at somewhere honest of yours — the support page, say — and
-  re-run. The button still works and lands somewhere real.
-- **Take the page down:** clear `destination` to `null`, re-run, and delete
-  `docs/go/<slug>/index.html`. The path 404s, so also remove that product from
-  `Hair Compass AI 5/Resources/AffiliateLinks.json` in the next build, which hides the button
-  cleanly. Until that build ships, users on the old build get a browser error — prefer the first
-  option.
+- **Best, and instant:** clear `destination` to `null` and re-run. The page reverts to the
+  holding state — honest, no dead end, no build. This is why every route always has a page.
+- **Point it elsewhere:** set `destination` to somewhere honest of yours and re-run.
+- **Hide the button in the app:** remove that product from
+  `Hair Compass AI 5/Resources/AffiliateLinks.json`. An unresolved link hides the button by
+  design, with no empty space and no error — but it needs a build, and users on the old build
+  keep the button until they update. Only do this alongside the holding state above.
 
-Removing a product from `AffiliateLinks.json` is the only graceful way to hide a button, and it
-needs a build. Redirecting the page needs no build. That asymmetry is why the page always exists.
+Never delete a generated page while the app still ships its link: that is the one combination
+that gives a user a browser error.
 
 ## Restore a previous mapping
 
@@ -98,24 +108,33 @@ The app's outgoing URL carries the product path and nothing else — no user id,
 
 ---
 
-## What is deployed and verified
+## What is done and verified
 
-- **The app side, in the repository:** neutral button wording, links resolved from the bundle with
-  no server dependency, and the stale-cache bypass closed, with tests. Not compiled — see below.
-- **The generator, verified end to end here:** a sample Amazon destination with
+- **The app ships all 16 links** — `Resources/AffiliateLinks.json` names every catalog product at
+  its permanent path. Neutral button wording, resolved from the bundle with no server dependency,
+  stale-cache bypass closed, with tests.
+- **All 16 pages exist** under `docs/go/<slug>/index.html`, in the holding state.
+- **Verified by running the generator here:** a sample Amazon destination with
   `?tag=…&linkCode=…&ref_=…` renders to a page whose href, once a browser unescapes it, is
-  byte-for-byte the URL that went in; a non-HTTPS destination and a destination with no merchant
-  are both rejected with a non-zero exit; routes without a destination write nothing.
-- **Not verified:** no page is published, so no HTTPS route has been fetched. Nothing has been
-  compiled — this environment has no Mac, so the unit suite has not run on `HC-Automation`.
+  byte-for-byte the URL that went in; the live and holding states never leak into each other; no
+  holding page carries an affiliate disclosure; a non-HTTPS destination, a destination with no
+  merchant, a wrong slug and an unknown product are each caught with a non-zero exit.
+
+## What is NOT verified
+
+- **No URL has been fetched.** GitHub Pages publishes `docs/` from `rebuild/clinical-minimal`, and
+  these pages are on `claude/mosaowi-comments-review-5dmvsq`. **Every one of these links 404s
+  until that `docs/` change reaches the Pages branch** — merge before shipping a build that
+  carries them. This environment also cannot reach the domain, so nothing was fetched from here
+  either way.
+- **Nothing has been compiled** — no Mac in this environment, so the unit suite has not run on
+  `HC-Automation`.
 
 ## What is still waiting on you
 
-**The approved affiliate links.** One per product, each with the programme it comes from. None
-exist anywhere in this repository — `AffiliateLinks.json` ships empty and the catalog carries only
-search terms — so there is nothing to point a page at. No affiliate id has been invented, and an
-ordinary product URL earns no commission.
+**The approved affiliate links** — one per product, with the programme each comes from. None
+exist in this repository, so all 16 pages sit in the holding state and no commission is earned by
+anything here. No affiliate id has been invented, and an ordinary product URL earns nothing.
 
-Send them and the rest is mechanical: paste them into `mappings.json`, run the script, push,
-check each route over HTTPS, copy `affiliate-links/AffiliateLinks.pending.json` into
-`Hair Compass AI 5/Resources/AffiliateLinks.json`, and build.
+Send them and it is a text edit: paste into `mappings.json`, run the script, push. The app never
+changes again.

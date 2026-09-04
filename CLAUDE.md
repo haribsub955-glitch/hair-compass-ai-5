@@ -120,7 +120,13 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
   `affiliate-links/mappings.json` and are published by `affiliate-links/build-pages.py`; changing
   one is an edit and a push, never a build. `AffiliateStore` reads the bundle only — no catalogue
   fetch, no AI session — and purges a remote payload cached by an earlier build so it cannot
-  outrank these links. Owner guide: `affiliate-links/OWNER-GUIDE.md`.
+  outrank these links. A route with no destination yet renders a holding page ("no buying link
+  yet", and no affiliate disclosure, since there is no affiliate link on it) — that is all 16
+  today. ⚠️ Pages publish from `docs/` on `rebuild/clinical-minimal`, so every one of these URLs
+  404s until that reaches the Pages branch; merge before shipping a build carrying them. The
+  generator also fails if `AffiliateLinks.json` and `mappings.json` disagree, which is the only
+  thing standing between a shipped button and a path nobody generated. Owner guide:
+  `affiliate-links/OWNER-GUIDE.md`.
 - **Today = Daily Grounding (spec `docs/superpowers/specs/2026-09-03-daily-grounding-adherence-design.md`).**
   Order: `CalmHorizonHeader` → `GroundingCardView` → `TodayPlanSection` → `EvidenceRibbon` →
   shedding scene → rings → ledger. The card is a pure function of the record
