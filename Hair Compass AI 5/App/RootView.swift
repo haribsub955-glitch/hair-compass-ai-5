@@ -117,6 +117,23 @@ struct RootView: View {
         return "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)-\(photoWeek)-\(missedDoses.count)"
     }
 
+    /// The widget records intent in the App Group, never in SwiftData. Drain it through the same
+    /// repository as Today, then build from freshly fetched treatments/doses so the optimistic
+    /// widget row cannot linger when a request was already complete, invalid, or stale.
+    @MainActor
+    private func applyPendingCompletionsAndWriteWidget() {
+        let liveTreatments = (try? context.fetch(FetchDescriptor<Treatment>())) ?? treatments
+        _ = try? PendingCompletionApplier.apply(context: context, treatments: liveTreatments)
+        let liveDoses = (try? context.fetch(FetchDescriptor<TreatmentDose>())) ?? doses
+        WidgetBridge.write(WidgetSnapshotBuilder.build(
+            entries: entries,
+            treatments: liveTreatments,
+            doses: liveDoses,
+            missed: missedDoses,
+            photos: photos
+        ))
+    }
+
     // MARK: Evening check-in reminder
 
     /// Whether today already has a logged entry — the "cancel tonight's reminder once today is
@@ -346,9 +363,7 @@ struct RootView: View {
             }
         }
         .task(id: widgetFingerprint) {
-            WidgetBridge.write(WidgetSnapshotBuilder.build(
-                entries: entries, treatments: treatments, doses: doses, missed: missedDoses, photos: photos
-            ))
+            applyPendingCompletionsAndWriteWidget()
         }
         // Keeps the evening check-in's 3-day rolling horizon alive regardless of which tab is on
         // screen — `CareView` (the Plan tab) only exists while it's the selected tab, so without
@@ -364,6 +379,26 @@ struct RootView: View {
         // (round 4). Dispatched by identifier prefix, mirroring how NotificationService names
         // its own scheduled requests.
         .task {
+            notifications.onNotificationAction = { actionID, identifier, userInfo in
+                guard actionID == NotificationService.completeActionID,
+                      let slot = userInfo["slot"] as? String,
+                      identifier == "treatment.\(slot)"
+                else { return }
+
+                // Fetch at action time rather than capturing the treatment query from this
+                // render. A notification can be acted on days later, after the plan changed.
+                let current = (try? context.fetch(FetchDescriptor<Treatment>())) ?? []
+                let calendar = Calendar.current
+                let today = calendar.startOfDay(for: .now)
+                for treatment in current where treatment.isActive
+                    && PlanAdherence.expectedSlots(treatment, on: today, calendar: calendar).contains(slot) {
+                    _ = try? DoseRepository(context: context, calendar: calendar)
+                        .log(treatment: treatment, slot: slot)
+                }
+                // Notification actions may run briefly in the background. Persist now instead of
+                // relying on an autosave that suspension could interrupt.
+                try? context.save()
+            }
             notifications.onNotificationTapped = { identifier in
                 if identifier.hasPrefix("milestone.") {
                     tab = .care
@@ -479,6 +514,7 @@ struct RootView: View {
             case .inactive:
                 break
             case .active:
+                applyPendingCompletionsAndWriteWidget()
                 // Activation may follow suspension/termination where no view teardown ran.
                 Task { await RitualActivityService.shared.reconcileOrphans() }
                 // A Siri/Shortcuts "Log check-in" hands off through the App Group — honour it on
