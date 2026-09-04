@@ -76,6 +76,11 @@ struct TodayView: View {
     /// first frame, during which the body falls back to `GroundingCards.select` synchronously so
     /// the page never flashes empty.
     @State private var groundingResolution: GroundingResolution?
+    /// A server card never replaces the local value unless it passed the closed contract and was
+    /// resolved for the exact state still on screen. Release builds never request one.
+    @State private var serverCard: GroundingCard?
+    @State private var serverCardFingerprint = ""
+    @State private var attemptedServerFingerprints: Set<String> = []
     /// The one Undo path (Important 9): the grounding card's own completion action sets this so
     /// `TodayPlanSection` runs the identical row-tap bookkeeping (shows Undo, starts the 5 s
     /// timer) without a second write. Cleared after the same 5 s window.
@@ -260,11 +265,21 @@ struct TodayView: View {
         // An asynchronous answer belongs only to the exact input fingerprint it resolved. A
         // superseded response can remain in state, but it is never displayed while the current
         // record has a different identity; the deterministic selector fills that frame instead.
-        let displayedCard = input.map { input in
+        let deterministicCard = input.map { input in
             if let groundingResolution, groundingResolution.fingerprint == fingerprint {
                 groundingResolution.card
             } else {
                 GroundingCards.select(input)
+            }
+        }
+        // Include the calendar day in the task identity. The payload state can be identical on two
+        // quiet mornings, but the one-card-per-day contract still requires a fresh daily response.
+        let serverFingerprint = input.map { "\(dayKey)|\(GroundingState.fingerprint($0))" } ?? "off"
+        let displayedCard = deterministicCard.map { fallback in
+            if serverCardFingerprint == serverFingerprint, let serverCard {
+                serverCard
+            } else {
+                fallback
             }
         }
         let entranceKey = displayedCard.map { GroundingKeys.entranceKey(dayKey: dayKey, card: $0) } ?? ""
@@ -424,6 +439,18 @@ struct TodayView: View {
             guard !Task.isCancelled else { return }
             groundingResolution = GroundingResolution(fingerprint: fingerprint, card: card)
         }
+        .task(id: serverFingerprint) {
+            guard let input, let deterministicCard else {
+                serverCard = nil
+                serverCardFingerprint = ""
+                return
+            }
+            await refreshServerCard(
+                input: input,
+                fingerprint: serverFingerprint,
+                fallback: deterministicCard
+            )
+        }
         .onAppear { beginCelebrationIfNeeded() }
         .onChange(of: shouldStartCelebration) { _, _ in beginCelebrationIfNeeded() }
         .onDisappear {
@@ -578,6 +605,50 @@ struct TodayView: View {
         case .none:
             break
         }
+    }
+
+    private func refreshServerCard(
+        input: GroundingInput,
+        fingerprint: String,
+        fallback: GroundingCard
+    ) async {
+        #if DEBUG
+        guard AgentBridge.isEnabled else {
+            serverCard = nil
+            serverCardFingerprint = ""
+            return
+        }
+        guard attemptedServerFingerprints.insert(fingerprint).inserted,
+              fallback.kind != .safety,
+              let provider = ServerGroundingProvider()
+        else { return }
+
+        let resolved = await provider.card(input: input, now: .now)
+        guard !Task.isCancelled else { return }
+        if let resolved, materiallyDiffers(resolved, from: fallback) {
+            serverCard = resolved
+            serverCardFingerprint = fingerprint
+        } else {
+            serverCard = nil
+            serverCardFingerprint = ""
+        }
+        #else
+        serverCard = nil
+        serverCardFingerprint = ""
+        #endif
+    }
+
+    /// `reason` is intentionally excluded: it lives behind "Why this?" and always identifies the
+    /// provider. Swapping a visually identical card merely to change that line would replay the
+    /// entrance with no benefit.
+    private func materiallyDiffers(_ candidate: GroundingCard, from fallback: GroundingCard) -> Bool {
+        candidate.kind != fallback.kind
+            || candidate.eyebrow != fallback.eyebrow
+            || candidate.headline != fallback.headline
+            || candidate.body != fallback.body
+            || candidate.evidenceAnchor != fallback.evidenceAnchor
+            || candidate.primary != fallback.primary
+            || candidate.closure != fallback.closure
     }
 
     /// One tap, one full entry: today becomes a copy of yesterday's ratings. The hero flips to
