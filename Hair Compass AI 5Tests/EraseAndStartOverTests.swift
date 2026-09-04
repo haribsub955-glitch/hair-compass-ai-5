@@ -42,7 +42,7 @@ struct EraseAndStartOverTests {
 
         let suite = "EraseAndStartOverTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
-        defaults.set(true, forKey: "hasSeenTutorial")
+        defaults.set(true, forKey: "eveningCheckInEnabled")
         CloudAIConsent.record(true, in: defaults)
 
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("erase-\(UUID().uuidString)", isDirectory: true)
@@ -69,7 +69,7 @@ struct EraseAndStartOverTests {
         #expect(try context.fetch(FetchDescriptor<TreatmentDose>()).isEmpty)
 
         // Preferences gone, consent back to undecided.
-        #expect(defaults.object(forKey: "hasSeenTutorial") == nil)
+        #expect(defaults.object(forKey: "eveningCheckInEnabled") == nil)
         #expect(CloudAIConsent.isDecided(defaults) == false)
 
         // Photos gone, side effects fired.

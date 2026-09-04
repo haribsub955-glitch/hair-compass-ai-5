@@ -4,6 +4,33 @@ import Testing
 @testable import Hair_Compass_AI_5
 
 struct NotificationRegistryTests {
+    @Test @MainActor func routineRequestsCarryTheCompleteActionAndSlot() async {
+        let previous = UserDefaults.standard.object(forKey: NotificationService.enabledKey)
+        UserDefaults.standard.set(true, forKey: NotificationService.enabledKey)
+        defer {
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: NotificationService.enabledKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: NotificationService.enabledKey)
+            }
+        }
+
+        // Simulates a repeating request installed by the previous app version. Reconciliation
+        // must replace it even though the identifier is unchanged, or existing users never see
+        // the new action.
+        let client = NotificationClientFake(initial: [Self.request("treatment.21:00")])
+        let service = NotificationService(client: client)
+        await service.reschedule(treatments: [(name: "Minoxidil", slots: ["21:00"])])
+
+        let routine = await client.request(identifier: "treatment.21:00")
+        #expect(routine?.content.categoryIdentifier == NotificationService.routineCategoryID)
+        #expect(routine?.content.userInfo["slot"] as? String == "21:00")
+        let category = await client.category(identifier: NotificationService.routineCategoryID)
+        #expect(category?.actions.contains {
+            $0.identifier == NotificationService.completeActionID && $0.title == "Mark complete"
+        } == true)
+    }
+
     @Test func newerOverlappingPlannerWins() async {
         let client = NotificationClientFake(pendingDelayNanoseconds: 20_000_000)
         let registry = NotificationRegistry(client: client)
@@ -68,6 +95,7 @@ struct NotificationRegistryTests {
 private actor NotificationClientFake: NotificationCenterClient {
     private var pending: [UNNotificationRequest]
     private var statuses: [UNAuthorizationStatus]
+    private var categories: Set<UNNotificationCategory> = []
     private let failingAdds: Set<String>
     private let pendingDelayNanoseconds: UInt64
 
@@ -81,6 +109,9 @@ private actor NotificationClientFake: NotificationCenterClient {
         return statuses.first ?? .notDetermined
     }
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool { true }
+    func setCategories(_ categories: Set<UNNotificationCategory>) async {
+        self.categories = categories
+    }
     func pendingNotificationRequests() async -> [UNNotificationRequest] {
         if pendingDelayNanoseconds > 0 { try? await Task.sleep(nanoseconds: pendingDelayNanoseconds) }
         return pending
@@ -93,4 +124,10 @@ private actor NotificationClientFake: NotificationCenterClient {
         pending.removeAll { $0.identifier == request.identifier }; pending.append(request)
     }
     func identifiers() -> [String] { pending.map(\.identifier).sorted() }
+    func request(identifier: String) -> UNNotificationRequest? {
+        pending.first { $0.identifier == identifier }
+    }
+    func category(identifier: String) -> UNNotificationCategory? {
+        categories.first { $0.identifier == identifier }
+    }
 }

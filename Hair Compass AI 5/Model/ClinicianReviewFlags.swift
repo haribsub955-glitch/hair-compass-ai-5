@@ -10,6 +10,15 @@ struct ClinicianReviewFlag: Identifiable, Equatable, Sendable {
     let title: String
     /// One clinician-readable sentence — reused verbatim by Trends, the export, and the daily insight.
     let detail: String
+    /// The date of the evidence that fired this flag — drives `ClinicianReviewFlags.forToday`.
+    let since: Date
+
+    init(id: String, title: String, detail: String, since: Date = .distantPast) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.since = since
+    }
 }
 
 /// Computes `ClinicianReviewFlag`s from data the app already collects. Pure: plain model arrays
@@ -52,20 +61,24 @@ enum ClinicianReviewFlags {
             flags.append(ClinicianReviewFlag(
                 id: "scalpPain",
                 title: "Scalp pain reported",
-                detail: "Scalp pain/tenderness was reported in a monthly check-in\(note.isEmpty ? "" : " (\(note))") — persistent pain can be a sign of scarring alopecia, worth a prompt review."
+                detail: "Scalp pain/tenderness was reported in a monthly check-in\(note.isEmpty ? "" : " (\(note))") — persistent pain can be a sign of scarring alopecia, worth a prompt review.",
+                since: pain.date
             ))
         }
 
         // 2. A severity-3 side effect logged recently — the same predicate Care's own quiet
         //    banner already uses, reused here so it also surfaces on Trends and in the export.
-        if HairAnalytics.hasRecentSevereSideEffect(
-            logs: sideEffects.map { ($0.severity, $0.date) },
-            windowDays: sideEffectWindowDays, now: now, calendar: calendar
-        ) {
+        //    Recomputed (rather than reusing the Bool-only helper) so the flag can carry the
+        //    date of the most recent severe log.
+        let sideEffectStart = calendar.date(byAdding: .day, value: -sideEffectWindowDays, to: now) ?? now
+        if let mostSevere = sideEffects
+            .filter({ $0.severity >= 3 && $0.date >= sideEffectStart && $0.date <= now })
+            .max(by: { $0.date < $1.date }) {
             flags.append(ClinicianReviewFlag(
                 id: "severeSideEffect",
                 title: "Severe side effect logged",
-                detail: "A severe side effect was logged in the last \(sideEffectWindowDays) days — worth discussing with your prescriber."
+                detail: "A severe side effect was logged in the last \(sideEffectWindowDays) days — worth discussing with your prescriber.",
+                since: mostSevere.date
             ))
         }
 
@@ -79,7 +92,8 @@ enum ClinicianReviewFlags {
             flags.append(ClinicianReviewFlag(
                 id: "heavyShed",
                 title: "Heavy shedding most days",
-                detail: "Shedding was logged Heavy on \(heavyDays) of the last \(heavyShedWindowDays) days."
+                detail: "Shedding was logged Heavy on \(heavyDays) of the last \(heavyShedWindowDays) days.",
+                since: now
             ))
         }
 
@@ -100,10 +114,20 @@ enum ClinicianReviewFlags {
             flags.append(ClinicianReviewFlag(
                 id: "staleTrigger",
                 title: "Shedding beyond 6 months",
-                detail: "\(stale.type.title) was \(weeks) weeks ago and recent shedding is still trending up — telogen effluvium usually settles within about 6 months."
+                detail: "\(stale.type.title) was \(weeks) weeks ago and recent shedding is still trending up — telogen effluvium usually settles within about 6 months.",
+                since: now
             ))
         }
 
         return flags
+    }
+
+    /// Flags whose evidence is recent enough to still be worth surfacing today — the app never
+    /// keeps showing a safety card for something that fired months ago and was never revisited.
+    static func forToday(_ flags: [ClinicianReviewFlag], now: Date, calendar: Calendar) -> [ClinicianReviewFlag] {
+        guard let cutoff = calendar.date(byAdding: .day, value: -30, to: now) else { return [] }
+        return flags
+            .filter { $0.since >= cutoff }
+            .sorted { $0.since > $1.since }
     }
 }

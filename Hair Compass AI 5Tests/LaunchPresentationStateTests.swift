@@ -17,7 +17,6 @@ struct LaunchPresentationStateTests {
             isLocked: false,
             hasOnboarded: true,
             hasPendingRoute: false,
-            hasSeenTutorial: true,
             ritualDueOrForced: false,
             appActive: true
         )
@@ -25,37 +24,32 @@ struct LaunchPresentationStateTests {
             Case(name: "persistence recovery wins over every other request",
                  input: .init(persistenceFailed: true, isLocked: true,
                               hasOnboarded: false, hasPendingRoute: true,
-                              hasSeenTutorial: false, ritualDueOrForced: true, appActive: false),
+                              ritualDueOrForced: true, appActive: false),
                  expected: .persistenceRecovery),
             Case(name: "privacy wins while the app is inactive",
                  input: .init(persistenceFailed: false, isLocked: true,
                               hasOnboarded: false, hasPendingRoute: true,
-                              hasSeenTutorial: false, ritualDueOrForced: true, appActive: false),
+                              ritualDueOrForced: true, appActive: false),
                  expected: .privacy),
             Case(name: "lock wins over every active in-app request",
                  input: .init(persistenceFailed: false, isLocked: true,
                               hasOnboarded: false, hasPendingRoute: true,
-                              hasSeenTutorial: false, ritualDueOrForced: true, appActive: true),
+                              ritualDueOrForced: true, appActive: true),
                  expected: .lock),
-            Case(name: "onboarding wins over a pending route tutorial and ritual",
+            Case(name: "onboarding wins over a pending route and ritual",
                  input: .init(persistenceFailed: false, isLocked: false,
                               hasOnboarded: false, hasPendingRoute: true,
-                              hasSeenTutorial: false, ritualDueOrForced: true, appActive: true),
+                              ritualDueOrForced: true, appActive: true),
                  expected: .onboarding),
-            Case(name: "pending route wins over tutorial and ritual",
+            Case(name: "pending route wins over ritual",
                  input: .init(persistenceFailed: false, isLocked: false,
                               hasOnboarded: true, hasPendingRoute: true,
-                              hasSeenTutorial: false, ritualDueOrForced: true, appActive: true),
+                              ritualDueOrForced: true, appActive: true),
                  expected: .pendingRoute),
-            Case(name: "tutorial wins over ritual",
-                 input: .init(persistenceFailed: false, isLocked: false,
-                              hasOnboarded: true, hasPendingRoute: false,
-                              hasSeenTutorial: false, ritualDueOrForced: true, appActive: true),
-                 expected: .tutorial),
             Case(name: "ritual appears only when every higher request is clear",
                  input: .init(persistenceFailed: false, isLocked: false,
                               hasOnboarded: true, hasPendingRoute: false,
-                              hasSeenTutorial: true, ritualDueOrForced: true, appActive: true),
+                              ritualDueOrForced: true, appActive: true),
                  expected: .ritual),
             Case(name: "normal appears only when all requests are clear",
                  input: clear,
@@ -71,12 +65,12 @@ struct LaunchPresentationStateTests {
     @Test func ritualNeverAppearsOverLockOrOnboarding() {
         let locked = LaunchPresentationState.Input(
             persistenceFailed: false, isLocked: true, hasOnboarded: true,
-            hasPendingRoute: false, hasSeenTutorial: true, ritualDueOrForced: true,
+            hasPendingRoute: false, ritualDueOrForced: true,
             appActive: true
         )
         let onboarding = LaunchPresentationState.Input(
             persistenceFailed: false, isLocked: false, hasOnboarded: false,
-            hasPendingRoute: false, hasSeenTutorial: true, ritualDueOrForced: true,
+            hasPendingRoute: false, ritualDueOrForced: true,
             appActive: true
         )
 
@@ -87,7 +81,7 @@ struct LaunchPresentationStateTests {
     @Test func pendingDeepLinkSurvivesLockedLaunch() {
         var input = LaunchPresentationState.Input(
             persistenceFailed: false, isLocked: true, hasOnboarded: true,
-            hasPendingRoute: true, hasSeenTutorial: false, ritualDueOrForced: true,
+            hasPendingRoute: true, ritualDueOrForced: true,
             appActive: true
         )
 
@@ -128,20 +122,19 @@ struct LaunchPresentationStateTests {
     }
 
     @Test func reducerAlwaysYieldsExactlyOneSurface() {
-        for mask in 0..<(1 << 7) {
+        for mask in 0..<(1 << 6) {
             let input = LaunchPresentationState.Input(
                 persistenceFailed: mask & 1 != 0,
                 isLocked: mask & 2 != 0,
                 hasOnboarded: mask & 4 != 0,
                 hasPendingRoute: mask & 8 != 0,
-                hasSeenTutorial: mask & 16 != 0,
-                ritualDueOrForced: mask & 32 != 0,
-                appActive: mask & 64 != 0
+                ritualDueOrForced: mask & 16 != 0,
+                appActive: mask & 32 != 0
             )
             let result = LaunchPresentationState.reduce(input)
             let surfaced = [
                 .persistenceRecovery, .privacy, .lock, .onboarding,
-                .pendingRoute, .tutorial, .ritual, .normal
+                .pendingRoute, .ritual, .normal
             ].filter { $0 == result.surface }
             #expect(surfaced.count == 1, "mask \(mask) must select exactly one top surface")
         }

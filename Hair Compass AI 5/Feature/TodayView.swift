@@ -3,11 +3,18 @@ import SwiftUI
 import UIKit
 import os
 
+private struct GroundingResolution {
+    let fingerprint: String
+    let card: GroundingCard
+}
+
 struct TodayView: View {
     let profile: Profile?
     var onOpenBaseline: () -> Void
     /// Switches the root tab to Plan — the meds tile is a shortcut to the full routine.
     var onOpenPlan: (() -> Void)? = nil
+    /// Switches the root tab to Photos — the grounding card's "Open photos" action.
+    var onOpenPhotos: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
@@ -15,6 +22,18 @@ struct TodayView: View {
     @Environment(NotificationService.self) private var notifications
     @AppStorage("eveningCheckInEnabled") private var eveningCheckInEnabled = false
     @AppStorage(ReminderNudge.shownKey) private var reminderNudgeShown = false
+    /// Profile's "Daily grounding note" switch — off skips the card entirely; the plan and
+    /// reminders are unaffected either way.
+    @AppStorage("grounding.enabled") private var groundingEnabled = true
+    /// The `GroundingKeys.dayKey` Close the Day last celebrated on this install — G2-R14: once
+    /// per day, even if the plan gets undone and redone the same day. Erase and Start Over wipes
+    /// this by removing the whole preferences domain; `HC_PLANCLOSED` clears it explicitly so QA
+    /// can force the sequence to replay on a launch that reuses an already-closed install.
+    @AppStorage("grounding.celebratedDay") private var celebratedDay = ""
+    /// The last Daily Grounding identity whose entrance reached its settled state. Unlike local
+    /// modifier state, this survives switching tabs and reopening the app, so the note greets the
+    /// person once rather than performing every time Today is reconstructed.
+    @AppStorage("grounding.enteredCardKey") private var enteredCardKey = ""
     /// True once "Turn on" led to a denied system prompt — the nudge card stays up, but its body
     /// switches to the honest "notifications are off, here's how to fix it" state. View state
     /// only: it is not persisted, so the card never returns in a later session once the shown
@@ -33,10 +52,7 @@ struct TodayView: View {
 
     @State private var showLog = false
     @State private var showBackfill = false
-    /// Reward handed back by LogSheet.save; held until the log sheet finishes dismissing.
-    @State private var pendingReward: CheckInReward?
-    /// Drives the celebration sheet — set only from the log sheets' onDismiss (see below).
-    @State private var celebrationReward: CheckInReward?
+    @State private var showExport = false
     @State private var insight: DailyInsight?
     @State private var showDeepAnalysis = false
     @State private var showLearn = false
@@ -46,6 +62,35 @@ struct TodayView: View {
     @State private var skipCandidate: PlanAdherence.Occurrence?
     @State private var pauseCandidate: PlanAdherence.Occurrence?
     @State private var detailTreatment: Treatment?
+    @State private var showConcern = false
+    /// Actions are performed only after the concern sheet has finished dismissing, avoiding a
+    /// sheet-on-sheet race when the useful next step is a treatment record or Wren chat.
+    @State private var pendingConcernAction: ConcernAction?
+    @State private var concernChatFocus: String?
+
+    /// The provider seam (G2 task-4 amendment): Today never calls `GroundingCards.select`
+    /// directly. A future validated server card (G5) can sit in front of this deterministic
+    /// fallback without Today changing at all.
+    private let groundingProvider: any GroundingCardProvider = DeterministicGroundingProvider()
+    /// Resolved by the `.task(id:)` keyed on `GroundingKeys.fingerprint`; nil only on the very
+    /// first frame, during which the body falls back to `GroundingCards.select` synchronously so
+    /// the page never flashes empty.
+    @State private var groundingResolution: GroundingResolution?
+    /// A server card never replaces the local value unless it passed the closed contract and was
+    /// resolved for the exact state still on screen. Release builds never request one.
+    @State private var serverCard: GroundingCard?
+    @State private var serverCardFingerprint = ""
+    @State private var attemptedServerFingerprints: Set<String> = []
+    /// The one Undo path (Important 9): the grounding card's own completion action sets this so
+    /// `TodayPlanSection` runs the identical row-tap bookkeeping (shows Undo, starts the 5 s
+    /// timer) without a second write. Cleared after the same 5 s window.
+    @State private var externalCompletionID: String?
+    @State private var externalCompletionTask: Task<Void, Never>?
+    /// Latches the completion event for the full motion budget even after its once-per-day key is
+    /// persisted. Without this, saving the key after 100 ms removes the halo and connector before
+    /// either animation can finish.
+    @State private var activeCelebrationDay: String?
+    @State private var celebrationTask: Task<Void, Never>?
 
     private var calendar: Calendar { .current }
     private var todayEntry: DailyEntry? {
@@ -64,25 +109,106 @@ struct TodayView: View {
         return PlanAdherence.consistency(treatments: treatments, doses: doses, missed: missedDoses,
                                          from: start, through: today, now: .now, calendar: calendar)
     }
+
+    // MARK: - Calm Horizon / Daily Grounding (G2)
+
+    private var evidencePhase: EvidencePhase? {
+        EvidencePhase.current(treatments: treatments, entries: entries, now: .now, calendar: calendar)
+    }
+    private var photoStatus: PhotoCadence.Status {
+        PhotoCadence.status(photos: photos, now: .now, calendar: calendar)
+    }
+    private var consistency30: PlanAdherence.Consistency? {
+        let today = calendar.startOfDay(for: .now)
+        guard let start = calendar.date(byAdding: .day, value: -29, to: today) else { return nil }
+        return PlanAdherence.consistency(treatments: treatments, doses: doses, missed: missedDoses,
+                                         from: start, through: today, now: .now, calendar: calendar)
+    }
+
+    private var clinicianFlags: [ClinicianReviewFlag] {
+        ClinicianReviewFlags.forToday(
+            ClinicianReviewFlags.evaluate(
+                progressCheckIns: progressCheckIns, entries: entries, triggers: triggers,
+                sideEffects: sideEffectLogs, now: .now, calendar: calendar
+            ),
+            now: .now,
+            calendar: calendar
+        )
+    }
+
+    private func concernRecord(
+        consistency30: PlanAdherence.Consistency?,
+        flags: [ClinicianReviewFlag]
+    ) -> ConcernRecord {
+        let firstDay = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: .now)) ?? .now
+        let recentEntries = entries.filter { $0.date >= firstDay }
+        let scalpScores = recentEntries.map { Double($0.scalpTotal) }
+        return ConcernRecord(
+            recentShed: Array(entries.prefix(7).reversed()).map { $0.shed.rawValue },
+            washDaysLast7: recentEntries.filter(\.washedHair).count,
+            sheddingAboveUsual: GroundingSignals.sheddingAboveUsual(
+                entries: entries, now: .now, calendar: calendar
+            ),
+            scalpAverage: scalpScores.isEmpty ? nil : scalpScores.reduce(0, +) / Double(scalpScores.count),
+            phase: evidencePhase,
+            consistency30: consistency30,
+            photo: photoStatus,
+            flagIDs: flags.map(\.id),
+            // Side-effect questions cover every active item, including periodic shampoos and
+            // devices; they are not restricted to treatments that happen to have clock slots.
+            treatments: treatments.filter(\.isActive).map {
+                ConcernRecord.TreatmentSummary(
+                    name: $0.name.isEmpty ? $0.treatmentClass.title : $0.name,
+                    treatmentClass: $0.treatmentClass,
+                    weeks: HairAnalytics.weeksElapsed(since: $0.startDate),
+                    sideEffectCount: $0.sideEffects.count
+                )
+            },
+            pregnancy: profile?.pregnancyStatus ?? .unspecified,
+            keepCheckingCount14d: ConcernLog.count(.keepChecking, withinDays: 14)
+        )
+    }
+    /// Built once per render (Important 5) from a `consistency30` the caller already computed —
+    /// so the ribbon and the card never disagree from two separate reads of the same 30-day
+    /// window inside one render pass.
+    private func groundingInput(consistency30: PlanAdherence.Consistency?) -> GroundingInput {
+        let flags = clinicianFlags
+        let record = concernRecord(consistency30: consistency30, flags: flags)
+        let concern = ConcernLog.today().map { kind in
+            (kind: kind, response: ConcernResponder.respond(kind: kind, answers: [], record: record))
+        }
+        return GroundingInput(
+            flags: flags,
+            plan: todayPlan,
+            missedYesterday: GroundingSignals.missedYesterday(
+                treatments: treatments, doses: doses, missed: missedDoses, now: .now, calendar: calendar
+            ),
+            phase: evidencePhase,
+            photo: photoStatus,
+            photoWithinTwoWeeks: PhotoCadence.hasPhoto(withinDays: 14, photos: photos, now: .now, calendar: calendar),
+            consistency30: consistency30,
+            sheddingAboveUsual: GroundingSignals.sheddingAboveUsual(entries: entries, now: .now, calendar: calendar),
+            loggedToday: todayEntry != nil,
+            concern: concern
+        )
+    }
+    /// Start of today via `GroundingKeys` — reused by the entrance key, the fingerprint and the
+    /// Close the Day gate below.
+    private var dayKey: String { GroundingKeys.dayKey(.now, calendar: calendar) }
+    /// True once today's plan is complete with at least one real completion and today has not
+    /// already celebrated (G2-R14) — Close the Day fires exactly once per day, even across an
+    /// Undo-then-redo of the plan's last item the same day.
+    private var shouldStartCelebration: Bool {
+        GroundingKeys.shouldCelebrate(
+            isComplete: todayPlan.isComplete,
+            completedCount: todayPlan.completedCount,
+            celebratedDay: celebratedDay,
+            dayKey: dayKey
+        )
+    }
+
     private var medsDone: Int { todayPlan.completedCount }
     private var medsTotal: Int { todayPlan.occurrences.count }
-    /// Displayed streak with Duolingo-style shields — see `HairAnalytics.shieldedStreak`. Only
-    /// what's shown changes; XP/badge math (`CheckInReward`) still runs off the plain,
-    /// unshielded streak, so shields never mint extra reward.
-    private var shieldedInfo: (streak: Int, shieldsHeld: Int) {
-        HairAnalytics.shieldedStreak(entryDates: entries.map(\.date))
-    }
-
-    /// Total XP — a pure fold over the tracking data, hoisted so the hero's level name and its
-    /// XP chip (with progress-to-next ring) share one computation.
-    private var xpTotal: Int {
-        XP.total(entries: entries, doses: doses, photos: photos, labs: labs, triggers: triggers)
-    }
-
-    /// Effort-only gamification level ("Sapling") shown in the hero's XP chip.
-    private var levelName: String {
-        GamificationLevel.level(for: xpTotal).name
-    }
 
     /// Today's HealthKit sleep hours, if the sync service has cached a snapshot for today.
     private var todaySleepHours: Double? {
@@ -129,25 +255,114 @@ struct TodayView: View {
         // Computed once per render and fed to both `canOffer` and the tap closure below, rather
         // than looking yesterday's entry up twice (here and again inside `copyYesterday`).
         let yesterday = YesterdayCopy.yesterdayEntry(in: entries)
+        // One input per render (Important 5): `consistency30` is read once and threaded into
+        // both the input and the ribbon below, and `input` itself is built once and threaded
+        // into the fingerprint, the displayed card and the entrance key — never recomputed
+        // separately for each.
+        let consistency30 = self.consistency30
+        let input: GroundingInput? = groundingEnabled ? groundingInput(consistency30: consistency30) : nil
+        let fingerprint = input.map { GroundingKeys.fingerprint($0, dayKey: dayKey) } ?? "off"
+        // An asynchronous answer belongs only to the exact input fingerprint it resolved. A
+        // superseded response can remain in state, but it is never displayed while the current
+        // record has a different identity; the deterministic selector fills that frame instead.
+        let deterministicCard = input.map { input in
+            if let groundingResolution, groundingResolution.fingerprint == fingerprint {
+                groundingResolution.card
+            } else {
+                GroundingCards.select(input)
+            }
+        }
+        // Include the calendar day in the task identity. The payload state can be identical on two
+        // quiet mornings, but the one-card-per-day contract still requires a fresh daily response.
+        let serverFingerprint = input.map { "\(dayKey)|\(GroundingState.fingerprint($0))" } ?? "off"
+        let displayedCard = deterministicCard.map { fallback in
+            if serverCardFingerprint == serverFingerprint, let serverCard {
+                serverCard
+            } else {
+                fallback
+            }
+        }
+        let entranceKey = displayedCard.map { GroundingKeys.entranceKey(dayKey: dayKey, card: $0) } ?? ""
+        let animatesGroundingEntrance = GroundingKeys.shouldAnimateEntrance(
+            persistedKey: enteredCardKey,
+            currentKey: entranceKey
+        )
+        let celebratesNow = activeCelebrationDay == dayKey
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
+                // Today's new order (G2): the horizon says where the person is in the plan, one
+                // deterministic grounding note answers "what should I pay attention to", the plan
+                // is the day's actions, the evidence ribbon is the supporting numbers. The
+                // shedding scene, rings and tile ledger follow as the record's detail.
+                VStack(alignment: .leading, spacing: 16) {
+                    CalmHorizonHeader(greeting: greeting, phase: evidencePhase, onOpenBaseline: onOpenBaseline)
+                        .staggeredEntrance(index: 0)
+                    if let displayedCard {
+                        GroundingCardView(
+                            card: displayedCard,
+                            entranceKey: entranceKey,
+                            animatesEntrance: animatesGroundingEntrance,
+                            celebrates: celebratesNow,
+                            onEntranceCompleted: { completedKey in
+                                guard completedKey == entranceKey else { return }
+                                enteredCardKey = completedKey
+                            },
+                            onPrimary: performGroundingAction,
+                            onWorried: { showConcern = true }
+                        )
+                    }
+                    TodayPlanSection(
+                        plan: todayPlan,
+                        week: weekStates,
+                        weekSummary: weekSummary,
+                        externalCompletionID: externalCompletionID,
+                        celebrate: celebratesNow,
+                        onComplete: { occurrence in
+                            _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
+                        },
+                        onUndo: { occurrence in
+                            // Undo is keyed by the action's natural identity, not the row's
+                            // captured render state. SwiftUI may preserve a row closure across
+                            // its due → completed transition; relying on that stale enum made the
+                            // visible Undo a no-op. Only one record type should exist, and safely
+                            // attempting both also repairs an inconsistent legacy pair.
+                            _ = try? DoseRepository(context: context).delete(
+                                treatment: occurrence.treatment, day: occurrence.day, slot: occurrence.slot
+                            )
+                            _ = try? MissedDoseRepository(context: context).delete(
+                                treatment: occurrence.treatment, day: occurrence.day, slot: occurrence.slot
+                            )
+                            // Commit the rollback as one transaction. In particular, a deleted
+                            // SwiftData row does not always invalidate an unsorted @Query before
+                            // autosave; saving here makes the row's open state observable now.
+                            try? context.save()
+                        },
+                        onSkip: { skipCandidate = $0 },
+                        onPause: { pauseCandidate = $0 },
+                        onOpenDetail: { detailTreatment = $0.treatment },
+                        onOpenPlan: onOpenPlan
+                    )
+                    .staggeredEntrance(index: 2)
+                    EvidenceRibbon(weekSummary: weekSummary, consistency30: consistency30,
+                                   photo: photoStatus, phase: evidencePhase)
+                        .staggeredEntrance(index: 3)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+
                 ConditionsHero(
                     shed: todayEntry?.shed,
                     scalpTotal: todayEntry?.scalpTotal,
                     scalpBand: todayEntry?.scalpBand,
                     hasLoggedToday: todayEntry != nil,
                     greeting: greeting,
-                    streak: shieldedInfo.streak,
-                    shields: shieldedInfo.shieldsHeld,
-                    levelName: levelName,
+                    showsHeader: false,
                     onOpenBaseline: onOpenBaseline,
                     onLog: { showLog = true },
                     onCopyYesterday: YesterdayCopy.canOffer(
                         todayLogged: todayEntry != nil,
                         yesterday: yesterday
                     ) ? { copyYesterday(yesterday: yesterday) } : nil,
-                    xp: xpTotal,
-                    levelProgress: GamificationLevel.progressToNext(xp: xpTotal).fraction,
                     onShedSet: { level in
                         // Quiet by design — a drag-set upserts today's entry directly, with no
                         // celebration sheet. Streak/XP queries refresh naturally from the write.
@@ -160,7 +375,8 @@ struct TodayView: View {
                         }
                     }
                 )
-                .staggeredEntrance(index: 0)
+                .staggeredEntrance(index: 4)
+                .padding(.top, 20)
                 if showsReminderNudge {
                     reminderNudgeCard
                         .padding(.horizontal, 20)
@@ -168,33 +384,10 @@ struct TodayView: View {
                         .transition(.opacity)
                 }
                 VStack(alignment: .leading, spacing: 16) {
-                    // Entrance sequence: hero 0, plan section 1, compass rings 2 (shares its 50ms
-                    // step with the grid's own tile 1 below — a harmless timing overlap, not a
-                    // functional dependency), tiles 1…6 (inside the grid, indices owned by
-                    // TodayTileGrid), cards continue at 8…11.
-                    TodayPlanSection(
-                        plan: todayPlan,
-                        week: weekStates,
-                        weekSummary: weekSummary,
-                        onComplete: { occurrence in
-                            _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
-                        },
-                        onUndo: { occurrence in
-                            switch occurrence.state {
-                            case .completed:
-                                _ = try? DoseRepository(context: context).delete(treatment: occurrence.treatment, slot: occurrence.slot)
-                            case .skipped:
-                                _ = try? MissedDoseRepository(context: context).delete(treatment: occurrence.treatment, slot: occurrence.slot)
-                            default:
-                                break
-                            }
-                        },
-                        onSkip: { skipCandidate = $0 },
-                        onPause: { pauseCandidate = $0 },
-                        onOpenDetail: { detailTreatment = $0.treatment },
-                        onOpenPlan: onOpenPlan
-                    )
-                    .staggeredEntrance(index: 1)
+                    // Entrance sequence continues from the horizon/note/plan/ribbon group (0…3)
+                    // and the hero (4): rings 5 (shares its 50ms step with the grid's own tile 1
+                    // below — a harmless timing overlap, not a functional dependency), tiles 1…6
+                    // (inside the grid, indices owned by TodayTileGrid), cards continue at 9…11.
                     CompassRingsCard(
                         score: compassScore,
                         medsDone: medsDone,
@@ -202,7 +395,7 @@ struct TodayView: View {
                         isDayOneSeed: isDayOneSeed,
                         onLog: { showLog = true }
                     )
-                    .staggeredEntrance(index: 2)
+                    .staggeredEntrance(index: 5)
                     TodayTileGrid(
                         entry: todayEntry,
                         sleepHours: todaySleepHours,
@@ -240,23 +433,39 @@ struct TodayView: View {
         }
         .clinicalScreen()
         .task(id: insightFingerprint) { await refreshInsight() }
+        .task(id: fingerprint) {
+            guard let input else { return }
+            guard let card = await groundingProvider.card(input: input, now: .now) else { return }
+            guard !Task.isCancelled else { return }
+            groundingResolution = GroundingResolution(fingerprint: fingerprint, card: card)
+        }
+        .task(id: serverFingerprint) {
+            guard let input, let deterministicCard else {
+                serverCard = nil
+                serverCardFingerprint = ""
+                return
+            }
+            await refreshServerCard(
+                input: input,
+                fingerprint: serverFingerprint,
+                fallback: deterministicCard
+            )
+        }
+        .onAppear { beginCelebrationIfNeeded() }
+        .onChange(of: shouldStartCelebration) { _, _ in beginCelebrationIfNeeded() }
+        .onDisappear {
+            externalCompletionTask?.cancel()
+            externalCompletionTask = nil
+            celebrationTask?.cancel()
+            celebrationTask = nil
+            activeCelebrationDay = nil
+        }
         .onAppear {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("HC_LEARN") { showLearn = true }
             if ProcessInfo.processInfo.arguments.contains("HC_LOG") { showLog = true }
             if ProcessInfo.processInfo.arguments.contains("HC_BACKFILL") { showBackfill = true }
-            if ProcessInfo.processInfo.arguments.contains("HC_CELEBRATE") {
-                // Representative fixture for screenshots: +22 XP, 6-day streak, no level-up.
-                celebrationReward = CheckInReward(
-                    xpGained: 22,
-                    totalXP: 240,
-                    level: GamificationLevel.level(for: 240),
-                    progressToNext: GamificationLevel.progressToNext(xp: 240),
-                    leveledUp: false,
-                    streak: 6,
-                    newBadges: []
-                )
-            }
+            if ProcessInfo.processInfo.arguments.contains("HC_CONCERN") { showConcern = true }
             #endif
         }
         .onChange(of: [deepLinks.openLogRequested, deepLinks.canConsumeRoutes]) { _, _ in
@@ -266,25 +475,37 @@ struct TodayView: View {
             // Covers the cold-start case where the widget's URL arrives before this view exists.
             if deepLinks.consumeLogRequest() { showLog = true }
         }
-        // Celebration presentation uses the same onDismiss chain as the AI-consent →
-        // deep-analysis pair: the log sheet stores the reward, and only its onDismiss
-        // promotes it to the presented sheet — never two sheet presentations racing.
-        .sheet(isPresented: $showLog, onDismiss: presentPendingReward) {
+        .sheet(isPresented: $showLog) {
             LogSheet(existing: todayEntry, condition: profile?.condition ?? .unsure,
-                     onSaved: { pendingReward = $0 })
+                     onSaved: { _ in })
         }
-        .sheet(isPresented: $showBackfill, onDismiss: presentPendingReward) {
+        .sheet(isPresented: $showBackfill) {
             // existing: nil shows the day strip, so any of the last 60 days can be backfilled.
             LogSheet(existing: nil, condition: profile?.condition ?? .unsure,
-                     onSaved: { pendingReward = $0 })
+                     onSaved: { _ in })
         }
-        .sheet(item: $celebrationReward) { reward in
-            CheckInCelebration(reward: reward)
+        .sheet(isPresented: $showExport) {
+            ExportSheet()
         }
         .sheet(isPresented: $showDeepAnalysis) {
             DeepAnalysisSheet()
         }
-        .sheet(isPresented: $showChat) {
+        .sheet(isPresented: $showConcern, onDismiss: finishConcernDismissal) {
+            ConcernFlowSheet(
+                record: concernRecord(consistency30: self.consistency30, flags: clinicianFlags),
+                onAction: { kind, _, action in
+                    ConcernLog.record(kind)
+                    pendingConcernAction = action
+                },
+                onAskWren: { kind, response in
+                    ConcernLog.record(kind)
+                    concernChatFocus = "The person chose \"\(kind.title)\" in the structured concern flow. The deterministic response already established: \(response.recordShows) \(response.cannotConclude)"
+                    showConcern = false
+                }
+            )
+            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showChat, onDismiss: { concernChatFocus = nil }) {
             HairChatSheet(
                 contextJSON: chatContext, focus: chatFocus,
                 eyebrow: "Ask about your record",
@@ -321,12 +542,113 @@ struct TodayView: View {
         }
     }
 
-    /// Promotes a saved reward to the presented celebration once the log sheet has fully
-    /// dismissed — presenting from onDismiss avoids racing two sheet presentations.
-    private func presentPendingReward() {
-        guard let reward = pendingReward else { return }
-        pendingReward = nil
-        celebrationReward = reward
+    /// Starts Close the Day on both child surfaces even when Today first appears with an already
+    /// complete plan (the screenshot/debug seed and a real cold reopen both take that path).
+    /// The persistent gate is written after one render, while `activeCelebrationDay` keeps the
+    /// visual event latched for its full budget so saving the gate cannot cut the motion short.
+    private func beginCelebrationIfNeeded() {
+        guard shouldStartCelebration, activeCelebrationDay != dayKey else { return }
+        let day = dayKey
+        activeCelebrationDay = day
+        celebrationTask?.cancel()
+        celebrationTask = Task {
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled, activeCelebrationDay == day else { return }
+            celebratedDay = day
+
+            let remaining = max(0, MotionSpec.closeTheDay.total - 0.1)
+            try? await Task.sleep(for: .seconds(remaining))
+            guard !Task.isCancelled, activeCelebrationDay == day else { return }
+            activeCelebrationDay = nil
+            celebrationTask = nil
+        }
+    }
+
+    /// Routes the grounding card's one action to whatever it names — a plan completion, the log
+    /// sheet, Photos, Plan, or the visit-notes export. `.none` (a fully settled, quiet-day card)
+    /// renders no button at all, so this branch never runs.
+    private func performGroundingAction(_ action: GroundingCard.Action) {
+        switch action {
+        case .completePlanItem(let id, _):
+            // One Undo path (Important 9): the write happens here, once; `externalCompletionID`
+            // tells `TodayPlanSection` to run the same Undo bookkeeping a row tap would, without
+            // a second write. A stale id (the plan changed under the card) falls back to opening
+            // the full plan instead of silently doing nothing.
+            guard let occurrence = todayPlan.occurrences.first(where: { $0.id == id }) else {
+                onOpenPlan?()
+                return
+            }
+            // The final item receives TodayPlanSection's single success notification when the
+            // plan closes. Earlier items keep the quiet soft impact; never stack both haptics for
+            // one tap.
+            if !(occurrence.isOpen && todayPlan.openCount == 1) {
+                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            }
+            withAnimation(.easeOut(duration: 0.25)) {
+                _ = try? DoseRepository(context: context).log(treatment: occurrence.treatment, slot: occurrence.slot)
+            }
+            externalCompletionID = id
+            externalCompletionTask?.cancel()
+            externalCompletionTask = Task {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                externalCompletionID = nil
+            }
+        case .logCheckIn:
+            showLog = true
+        case .openPhotos:
+            onOpenPhotos?()
+        case .openPlan:
+            onOpenPlan?()
+        case .prepareVisit:
+            showExport = true
+        case .none:
+            break
+        }
+    }
+
+    private func refreshServerCard(
+        input: GroundingInput,
+        fingerprint: String,
+        fallback: GroundingCard
+    ) async {
+        #if DEBUG
+        guard AgentBridge.isEnabled else {
+            serverCard = nil
+            serverCardFingerprint = ""
+            return
+        }
+        guard attemptedServerFingerprints.insert(fingerprint).inserted,
+              fallback.kind != .safety,
+              let provider = ServerGroundingProvider()
+        else { return }
+
+        let resolved = await provider.card(input: input, now: .now)
+        guard !Task.isCancelled else { return }
+        if let resolved, materiallyDiffers(resolved, from: fallback) {
+            serverCard = resolved
+            serverCardFingerprint = fingerprint
+        } else {
+            serverCard = nil
+            serverCardFingerprint = ""
+        }
+        #else
+        serverCard = nil
+        serverCardFingerprint = ""
+        #endif
+    }
+
+    /// `reason` is intentionally excluded: it lives behind "Why this?" and always identifies the
+    /// provider. Swapping a visually identical card merely to change that line would replay the
+    /// entrance with no benefit.
+    private func materiallyDiffers(_ candidate: GroundingCard, from fallback: GroundingCard) -> Bool {
+        candidate.kind != fallback.kind
+            || candidate.eyebrow != fallback.eyebrow
+            || candidate.headline != fallback.headline
+            || candidate.body != fallback.body
+            || candidate.evidenceAnchor != fallback.evidenceAnchor
+            || candidate.primary != fallback.primary
+            || candidate.closure != fallback.closure
     }
 
     /// One tap, one full entry: today becomes a copy of yesterday's ratings. The hero flips to
@@ -471,7 +793,7 @@ struct TodayView: View {
     /// One line telling the chat what's on screen — the whole record, not a specific chart,
     /// since Today has no single comparison in view.
     private var chatFocus: String {
-        "User is asking from the Today screen about their overall record."
+        concernChatFocus ?? "User is asking from the Today screen about their overall record."
     }
 
     /// Snapshot the canonical AIContext at open time — same pattern as `CompareView.openChat()`
@@ -484,6 +806,29 @@ struct TodayView: View {
             profile: profile, progressCheckIns: progressCheckIns, now: .now
         ).jsonString()
         showChat = true
+    }
+
+    private func finishConcernDismissal() {
+        if concernChatFocus != nil {
+            openChat()
+            return
+        }
+        guard let action = pendingConcernAction else { return }
+        pendingConcernAction = nil
+        switch action {
+        case .done:
+            break
+        case .openPhotos:
+            onOpenPhotos?()
+        case .openPlan:
+            onOpenPlan?()
+        case .logCheckIn:
+            showLog = true
+        case .openTreatment(let name):
+            detailTreatment = treatments.first {
+                ($0.name.isEmpty ? $0.treatmentClass.title : $0.name) == name
+            }
+        }
     }
 
     private var insightFootnoteText: String {

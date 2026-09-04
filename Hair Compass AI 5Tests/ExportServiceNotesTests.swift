@@ -66,4 +66,44 @@ struct ExportServiceNotesTests {
 
         #expect(!summary.contains("NOTES (last 90 days)"))
     }
+
+    @Test func treatmentSummaryUsesPlanConsistencyNumbers() {
+        var fixed = Calendar(identifier: .gregorian)
+        fixed.timeZone = TimeZone(identifier: "Asia/Muscat")!
+        let now = fixed.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 9, minute: 30))!
+        let start = fixed.date(byAdding: .day, value: -1, to: fixed.startOfDay(for: now))!
+        let treatment = Treatment(name: "Minoxidil 5%", treatmentClass: .minoxidil, dose: "1 mL",
+                                  scheduleTimes: "08:00", startDate: start, isActive: true)
+        let yesterday = fixed.date(bySettingHour: 8, minute: 0, second: 0, of: start)!
+        let today = fixed.date(bySettingHour: 8, minute: 0, second: 0, of: now)!
+        let doses = [
+            TreatmentDose(treatment: treatment, loggedAt: yesterday, slot: "08:00"),
+            TreatmentDose(treatment: treatment, loggedAt: today, slot: "08:00")
+        ]
+
+        let summary = ExportService.clinicianSummary(
+            profile: nil, entries: [], treatments: [treatment], doses: doses,
+            labs: [], triggers: [], progressCheckIns: [], now: now, calendar: fixed
+        )
+
+        #expect(summary.contains("30-day consistency 100% of due actions (2 completed of 2 due; 2 planned through today)"))
+        #expect(summary.contains("this week 2 completed of 2 due; 2 planned through today"))
+        #expect(!summary.contains("% adherence"))
+    }
+
+    @Test func treatmentSummaryDoesNotGradeAnOpenOnlyWindow() {
+        var fixed = Calendar(identifier: .gregorian)
+        fixed.timeZone = TimeZone(identifier: "Asia/Muscat")!
+        let now = fixed.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 9, minute: 30))!
+        let treatment = Treatment(name: "Finasteride", treatmentClass: .finasteride, dose: "1 mg",
+                                  scheduleTimes: "21:00", startDate: fixed.startOfDay(for: now), isActive: true)
+
+        let summary = ExportService.clinicianSummary(
+            profile: nil, entries: [], treatments: [treatment], doses: [],
+            labs: [], triggers: [], progressCheckIns: [], now: now, calendar: fixed
+        )
+
+        #expect(summary.contains("30-day consistency: not enough due actions yet (0 completed; 1 planned through today)"))
+        #expect(!summary.contains("0%"))
+    }
 }

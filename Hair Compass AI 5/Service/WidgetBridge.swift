@@ -5,7 +5,7 @@ import WidgetKit
 // Shared contract with the widget target. Keep this struct in sync with the copy in
 // Hair Compass CheckIn Widget/HairCompassCheckInWidget.swift.
 enum WidgetStore {
-    static let appGroup = "group.harib.Hair-Compass-AI-5"
+    nonisolated static let appGroup = "group.harib.Hair-Compass-AI-5"
     static let snapshotKey = "clinicalSnapshot.v2"
     static let kind = "HairCompassCheckInWidget"
 }
@@ -20,8 +20,15 @@ enum WidgetStore {
 //   Service/WidgetBridge.swift  and
 //   Hair Compass CheckIn Widget/HairCompassCheckInWidget.swift
 // Stored fields (Codable): generatedAt, hasLoggedToday, score, ringLog, ringCare, ringLens,
-//   shedLabel, scalpLabel, streakDays, shieldsHeld, dueTitles. Change both together.
+//   shedLabel, scalpLabel, streakDays, shieldsHeld, dueTitles, dueItems, pendingKeys.
+// Change both together.
 struct WidgetSnapshot: Codable, Equatable {
+    struct DueItem: Codable, Equatable {
+        let title: String
+        let treatmentName: String
+        let slot: String
+    }
+
     let generatedAt: Date
     let hasLoggedToday: Bool
     let score: Int          // Compass score 0–100 (CompassScore)
@@ -33,16 +40,65 @@ struct WidgetSnapshot: Codable, Equatable {
     let streakDays: Int     // shielded streak
     let shieldsHeld: Int
     let dueTitles: [String] // remaining routine steps today
+    let dueItems: [DueItem] // structured rows used by the interactive medium widget
+    var pendingKeys: [String] // "name|slot" requests awaiting the app's SwiftData pass
 
     enum CodingKeys: String, CodingKey {
         case generatedAt, hasLoggedToday, score, ringLog, ringCare, ringLens, shedLabel, scalpLabel,
-             streakDays, shieldsHeld, dueTitles
+             streakDays, shieldsHeld, dueTitles, dueItems, pendingKeys
+    }
+
+    init(
+        generatedAt: Date,
+        hasLoggedToday: Bool,
+        score: Int,
+        ringLog: Double,
+        ringCare: Double?,
+        ringLens: Double,
+        shedLabel: String,
+        scalpLabel: String,
+        streakDays: Int,
+        shieldsHeld: Int,
+        dueTitles: [String],
+        dueItems: [DueItem] = [],
+        pendingKeys: [String] = []
+    ) {
+        self.generatedAt = generatedAt
+        self.hasLoggedToday = hasLoggedToday
+        self.score = score
+        self.ringLog = ringLog
+        self.ringCare = ringCare
+        self.ringLens = ringLens
+        self.shedLabel = shedLabel
+        self.scalpLabel = scalpLabel
+        self.streakDays = streakDays
+        self.shieldsHeld = shieldsHeld
+        self.dueTitles = dueTitles
+        self.dueItems = dueItems
+        self.pendingKeys = pendingKeys
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        generatedAt = try values.decode(Date.self, forKey: .generatedAt)
+        hasLoggedToday = try values.decode(Bool.self, forKey: .hasLoggedToday)
+        score = try values.decode(Int.self, forKey: .score)
+        ringLog = try values.decode(Double.self, forKey: .ringLog)
+        ringCare = try values.decodeIfPresent(Double.self, forKey: .ringCare)
+        ringLens = try values.decode(Double.self, forKey: .ringLens)
+        shedLabel = try values.decode(String.self, forKey: .shedLabel)
+        scalpLabel = try values.decode(String.self, forKey: .scalpLabel)
+        streakDays = try values.decode(Int.self, forKey: .streakDays)
+        shieldsHeld = try values.decode(Int.self, forKey: .shieldsHeld)
+        dueTitles = try values.decode([String].self, forKey: .dueTitles)
+        dueItems = try values.decodeIfPresent([DueItem].self, forKey: .dueItems) ?? []
+        pendingKeys = try values.decodeIfPresent([String].self, forKey: .pendingKeys) ?? []
     }
 
     static let placeholder = WidgetSnapshot(
         generatedAt: .now, hasLoggedToday: false, score: 0, ringLog: 0, ringCare: nil,
         ringLens: 0, shedLabel: "", scalpLabel: "", streakDays: 0, shieldsHeld: 0,
-        dueTitles: []
+        dueTitles: [], dueItems: [], pendingKeys: []
     )
 }
 
@@ -112,11 +168,13 @@ enum WidgetSnapshotBuilder {
     ) -> WidgetSnapshot {
         let plan = PlanAdherence.today(treatments: treatments, doses: doses, missed: missed,
                                        now: now, calendar: calendar)
-        let due = plan.occurrences.filter(\.isOpen).map { occurrence -> String in
+        let dueItems = plan.occurrences.filter(\.isOpen).map { occurrence -> WidgetSnapshot.DueItem in
             let name = occurrence.treatment.name.isEmpty
                 ? occurrence.treatment.treatmentClass.title : occurrence.treatment.name
-            return occurrence.slot.isEmpty ? name : "\(name) · \(occurrence.slot)"
+            let title = occurrence.slot.isEmpty ? name : "\(name) · \(occurrence.slot)"
+            return WidgetSnapshot.DueItem(title: title, treatmentName: name, slot: occurrence.slot)
         }
+        let due = dueItems.map(\.title)
 
         let hasLoggedToday = entries.contains { calendar.isDate($0.date, inSameDayAs: now) }
         let hasPhotoThisWeek = photos.contains {
@@ -146,7 +204,9 @@ enum WidgetSnapshotBuilder {
             scalpLabel: scalpLabel,
             streakDays: shielded.streak,
             shieldsHeld: shielded.shieldsHeld,
-            dueTitles: due
+            dueTitles: due,
+            dueItems: dueItems,
+            pendingKeys: PendingCompletionStore.load().map(\.key)
         )
     }
 }

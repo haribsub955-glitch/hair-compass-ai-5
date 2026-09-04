@@ -71,7 +71,10 @@ xcodebuild test -project "Hair Compass AI 5.xcodeproj" -scheme "Hair Compass AI 
 - DEBUG launch args for QA: `HC_AI_STATUS <available|notEnabled|modelNotReady|deviceNotEligible>`,
   `HC_ONBOARD`, `HC_ONBOARD_STEP <n>`, `HC_PAYWALL_BOTTOM`, `HC_NORITUAL`, `HC_NOTODAY` (demo seed
   skips today's `DailyEntry`, for testing the "Same as yesterday" quiet-day chip), `HC_PLANOPEN`
-  (clears today's doses so the plan is fully open).
+  (clears today's doses so the plan is fully open), `HC_PLANCLOSED` (G2 motion amendment M8 —
+  `Seed.ensureDosesToday` logs every open occurrence today, forcing the closure card, the
+  seven-day constellation and Close the Day), `HC_MOTION_STATIC` (renders every G2 one-shot
+  animation in its final state, the way Reduce Motion does — `MotionQA.isStatic`).
 - Trial copy: hyphenated compound modifiers stay singular — `PurchaseService.periodLabel` ("3-day
   free trial"); regression-tested in `PurchaseCopyTests`.
 - Legal/support URLs live in `Model/AppInfo.swift` and must point at `haircompass-ai.com`

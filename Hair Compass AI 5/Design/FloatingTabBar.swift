@@ -15,6 +15,9 @@ import UIKit
 /// dropped. Each item is a real button: label = tab title, `.isSelected` when active.
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
+    /// Width reserved inside the bar for an adjacent control such as Wren. Keeping this padding
+    /// inside the background chain lets the material/scrim continue across the full viewport.
+    var trailingAccessoryWidth: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var pill
     /// Per-tab bounce triggers so only the tapped symbol bounces — a shared trigger would
@@ -28,6 +31,12 @@ struct FloatingTabBar: View {
             }
         }
         .padding(.horizontal, 6)
+        .padding(.trailing, trailingAccessoryWidth)
+        // Order matters: `materialBand` is applied first so it paints in front of `scrim` (the
+        // fade), directly behind the items — the fade dissolves scrolled content on its way up
+        // to the bar, and the material band guarantees the row itself stays legible no matter
+        // where the fade's own opacity lands at that height.
+        .background(materialBand)
         .background(scrim)
         // Scoped to the bar: the underline slide + tint changes animate, the screen swap stays instant.
         .animation(
@@ -38,17 +47,40 @@ struct FloatingTabBar: View {
         .padding(.bottom, 8)
     }
 
+    /// Directly behind the labels, clipped to the bar's own height at the top (it takes no top
+    /// padding, so its top edge is proposed exactly the item row's own top) but extended past the
+    /// home indicator at the bottom — a blurred, canvas-tinted ground the items always read
+    /// against, independent of how far the fade above has faded in yet, that reaches all the way
+    /// to the physical bottom edge so nothing between the row and the edge reads through either.
+    /// `.ignoresSafeArea(edges: .bottom)` alone does not reach: this view sits inside
+    /// `RootView`'s `.safeAreaInset(edge: .bottom)` content, which has already claimed the
+    /// device's bottom safe area for itself by the time this renders, leaving nothing further
+    /// for a nested `ignoresSafeArea` call to ignore (confirmed empirically — a debug fill with
+    /// only `.ignoresSafeArea(edges: .bottom)` stopped exactly at the item row's own bottom edge).
+    /// `.padding(.bottom, -60)` is what actually does the work, the same negative-padding bleed
+    /// `scrim` already uses on its top edge; kept alongside `ignoresSafeArea` for parity with
+    /// `scrim`'s own modifier order.
+    private var materialBand: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .overlay(Clinical.canvas.opacity(0.55))
+            .padding(.bottom, -60)
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
+    }
+
     /// Clear at the top, full canvas by the labels' own top edge, extended into the bottom safe
     /// area — so content scrolled behind the bar dissolves into the page instead of ghosting
-    /// through a transparent white pill. Widened past the item stack (via `.padding(.top, -24)`)
-    /// so nothing shows a hard-edged rectangle above the tallest label.
+    /// through a transparent white pill. Widened past the item stack (via `.padding(.top, -48)`,
+    /// 24 pt more than before) so the fade starts higher and nothing shows a hard-edged rectangle
+    /// above the tallest label.
     private var scrim: some View {
         LinearGradient(
-            colors: [Clinical.canvas.opacity(0), Clinical.canvas.opacity(0.85), Clinical.canvas],
+            colors: [Clinical.canvas.opacity(0), Clinical.canvas],
             startPoint: .top,
             endPoint: .bottom
         )
-        .padding(.top, -24)
+        .padding(.top, -48)
         .padding(.horizontal, -20)
         .ignoresSafeArea(edges: .bottom)
         .allowsHitTesting(false)

@@ -26,6 +26,7 @@ struct BaselineFlow: View {
     @Environment(PurchaseService.self) private var purchases
     @State private var replayOnboarding = false
     @State private var showManageSubscriptions = false
+    @AppStorage("grounding.enabled") private var groundingEnabled = true
 
     private let ageBands = ["Under 25", "26–35", "36–45", "46–55", "56+"]
 
@@ -53,6 +54,22 @@ struct BaselineFlow: View {
                         intro
 
                         replayRow
+
+                        field("Today") {
+                            Toggle(isOn: $groundingEnabled) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Daily grounding note")
+                                        .font(Clinical.body(14, weight: .medium))
+                                        .foregroundStyle(Clinical.ink)
+                                    Text("One calm note a day on Today. Your plan and reminders stay either way.")
+                                        .font(Clinical.caption(12))
+                                        .foregroundStyle(Clinical.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .tint(Clinical.accent)
+                            .accessibilityIdentifier("groundingToggle")
+                        }
 
                         field("Your name") {
                             TextField("Name", text: $profile.name)

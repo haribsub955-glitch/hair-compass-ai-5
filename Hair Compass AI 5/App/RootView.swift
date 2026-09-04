@@ -82,8 +82,6 @@ struct RootView: View {
     @State private var ritualKind: RitualKind?
     @State private var purchases = PurchaseService()
     @State private var accessWindow = AccessWindow()
-    @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
-    @State private var showTutorial = false
     @State private var deepLinks = DeepLinkRouter()
     /// Set by BaselineFlow's "Erase" confirmation; honoured once the Profile sheet has fully
     /// closed so no presented view still holds the profile being deleted.
@@ -108,7 +106,6 @@ struct RootView: View {
             // Keep the established request flags so bootstrap and dismissal timing stay unchanged.
             hasOnboarded: !showOnboarding,
             hasPendingRoute: deepLinks.hasPendingRoute || IntentHandoff.hasPendingLog,
-            hasSeenTutorial: !showTutorial,
             ritualDueOrForced: ritualKind != nil,
             appActive: scenePhase == .active
         ))
@@ -118,6 +115,23 @@ struct RootView: View {
         let activeTreatments = treatments.filter(\.isActive).count
         let photoWeek = photos.first.map { "\($0.createdAt.timeIntervalSince1970)" } ?? "nophoto"
         return "\(entries.count)-\(entries.first?.date.timeIntervalSince1970 ?? 0)-\(doses.count)-\(treatments.count)-\(latestEntry)-\(activeTreatments)-\(photoWeek)-\(missedDoses.count)"
+    }
+
+    /// The widget records intent in the App Group, never in SwiftData. Drain it through the same
+    /// repository as Today, then build from freshly fetched treatments/doses so the optimistic
+    /// widget row cannot linger when a request was already complete, invalid, or stale.
+    @MainActor
+    private func applyPendingCompletionsAndWriteWidget() {
+        let liveTreatments = (try? context.fetch(FetchDescriptor<Treatment>())) ?? treatments
+        _ = try? PendingCompletionApplier.apply(context: context, treatments: liveTreatments)
+        let liveDoses = (try? context.fetch(FetchDescriptor<TreatmentDose>())) ?? doses
+        WidgetBridge.write(WidgetSnapshotBuilder.build(
+            entries: entries,
+            treatments: liveTreatments,
+            doses: liveDoses,
+            missed: missedDoses,
+            photos: photos
+        ))
     }
 
     // MARK: Evening check-in reminder
@@ -150,8 +164,7 @@ struct RootView: View {
 
     // MARK: - Erase and start over
 
-    /// The wipe, then straight back to the illustrated cover. `hasSeenTutorial` is cleared
-    /// explicitly because @AppStorage caches its value in this view.
+    /// The wipe, then straight back to the illustrated cover.
     private func eraseAndStartOver() async {
         do {
             try await EraseAndStartOver.perform(context: context)
@@ -166,7 +179,6 @@ struct RootView: View {
             eraseFailed = true
             return
         }
-        hasSeenTutorial = false
         // The domain wipe clears UserDefaults (including the App Lock preference), but this live
         // service instance still has the old value cached in memory — without this, a locked
         // profile's Face ID gate would keep guarding the fresh, un-onboarded app.
@@ -194,7 +206,8 @@ struct RootView: View {
                     description: "Log shedding, scalp, and treatments in seconds — part of Hair Compass Pro.") {
                 TodayView(profile: profile,
                           onOpenBaseline: { showProfileEdit = true },
-                          onOpenPlan: { tab = .care })
+                          onOpenPlan: { tab = .care },
+                          onOpenPhotos: { tab = .photos })
             }
         case .trends:
             ProGate(feature: "Trends & Evidence",
@@ -232,33 +245,21 @@ struct RootView: View {
         // spatial continuity. Reduce Motion keeps only the short fade.
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.22), value: tab)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // First-launch tutorial: a card-above-the-tab-bar coach sequence that drives `tab`
-        // itself. Placed BEFORE `.safeAreaInset` below so the tab bar (zIndex 100) composites
-        // above the overlay's scrim and stays interactive-looking while the tour is active.
-        .overlay {
-            if launchPresentation.surface == .tutorial {
-                TutorialOverlay(tab: $tab) {
-                    hasSeenTutorial = true
-                    showTutorial = false
-                    // The finale's promise was "Open my plan" — restore that destination now that
-                    // the tour (which drives `tab` through all five pages, ending on Photos) is done.
-                    tab = .care
-                }
-                .transition(.opacity)
-            }
-        }
         // Reserve real layout space for navigation. The previous overlay obscured the final
         // card on every tab and made users scroll content underneath an active control.
         // Round-13: the canvas fade that used to live here (behind the tab bar's now-retired
         // ivory capsule) moved onto `FloatingTabBar` itself — the bar owns its own scrim so the
         // frame speaks the same ink grammar wherever it's hosted, not just in RootView.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 8) {
-                // Wren rides directly above the bar, inside the same inset, so she reserves real
-                // layout space instead of floating over the last card on every screen — the same
-                // reason the tab bar itself is an inset rather than an overlay.
+            ZStack(alignment: .bottomTrailing) {
+                // Wren used to occupy a second 44pt row above navigation. Scroll content can
+                // legitimately paint behind a safe-area inset, which put her hit target directly
+                // over trailing plan actions such as Undo. Give her a reserved lane in the bar
+                // itself: still always available, never stealing a care-action tap, and with much
+                // less navigation chrome competing with the journal.
+                FloatingTabBar(selection: $tab, trailingAccessoryWidth: 52)
                 WrenChatButton(tab: tab, profile: profile)
-                FloatingTabBar(selection: $tab)
+                    .padding(.bottom, 8)
             }
             // Charts can establish their own compositing layers. Flatten the complete bar
             // above them so no tab item is painted underneath a scrolling chart card.
@@ -300,6 +301,21 @@ struct RootView: View {
                 if ProcessInfo.processInfo.arguments.contains("HC_PLANOPEN") {
                     Seed.ensureNoDosesToday(context: context)
                 }
+                // HC_PLANCLOSED (G2 motion amendment M8): the counterpart of HC_PLANOPEN — logs
+                // every open occurrence today so a fresh launch can force the closure card, the
+                // seven-day constellation and Close the Day. Fetches fresh rather than reading
+                // the `treatments` @Query, which has not re-run within this same task yet.
+                if ProcessInfo.processInfo.arguments.contains("HC_PLANCLOSED") {
+                    let freshTreatments = (try? context.fetch(
+                        FetchDescriptor<Treatment>(sortBy: [SortDescriptor(\.startDate)])
+                    )) ?? []
+                    Seed.ensureDosesToday(context: context, treatments: freshTreatments)
+                    // So QA can force the Close the Day sequence to replay on a launch that
+                    // reuses an already-closed install, rather than showing the plain closure
+                    // card because today was already celebrated in an earlier launch.
+                    UserDefaults.standard.removeObject(forKey: "grounding.celebratedDay")
+                    UserDefaults.standard.removeObject(forKey: "grounding.enteredCardKey")
+                }
             }
             #else
             let seededDemo = false
@@ -320,26 +336,13 @@ struct RootView: View {
                 p.pregnancyStatus = .pregnant
             }
             #endif
-            // Cover the "onboarded but never toured" relaunch — the user killed the app mid-tutorial.
-            // A DEBUG-forced ritual (HC_RITUAL_KIND / HC_RITUAL) is an explicit test/QA hook and
-            // must always win the one-cover slot, or forcing a kind wouldn't reliably show anything
-            // on a fresh install where hasSeenTutorial defaults false.
-            var forcingRitual = false
-            #if DEBUG
-            forcingRitual = ProcessInfo.processInfo.arguments.contains("HC_RITUAL_KIND")
-                || ProcessInfo.processInfo.arguments.contains("HC_RITUAL")
-            #endif
-            if !showOnboarding, profile?.hasOnboarded == true, !hasSeenTutorial, !forcingRitual {
-                showTutorial = true
-            }
             // Launch-ritual roll — only once onboarding is resolved, and never over onboarding.
             var suppressRitual = false
             #if DEBUG
             suppressRitual = ProcessInfo.processInfo.arguments.contains("HC_NORITUAL")
             #endif
             // Lock wins: a locked app never rolls a ritual — the lock screen is the only surface.
-            // A pending tutorial also suppresses the roll so the two covers never contend.
-            if !showOnboarding && !showTutorial && !suppressRitual && !appLock.isLocked {
+            if !showOnboarding && !suppressRitual && !appLock.isLocked {
                 ritualKind = ritualCoordinator.rollOnLaunch(hasOnboarded: profile?.hasOnboarded == true)
             }
             // Re-derive notification permission the same way, for the same reason:
@@ -360,9 +363,7 @@ struct RootView: View {
             }
         }
         .task(id: widgetFingerprint) {
-            WidgetBridge.write(WidgetSnapshotBuilder.build(
-                entries: entries, treatments: treatments, doses: doses, missed: missedDoses, photos: photos
-            ))
+            applyPendingCompletionsAndWriteWidget()
         }
         // Keeps the evening check-in's 3-day rolling horizon alive regardless of which tab is on
         // screen — `CareView` (the Plan tab) only exists while it's the selected tab, so without
@@ -378,6 +379,26 @@ struct RootView: View {
         // (round 4). Dispatched by identifier prefix, mirroring how NotificationService names
         // its own scheduled requests.
         .task {
+            notifications.onNotificationAction = { actionID, identifier, userInfo in
+                guard actionID == NotificationService.completeActionID,
+                      let slot = userInfo["slot"] as? String,
+                      identifier == "treatment.\(slot)"
+                else { return }
+
+                // Fetch at action time rather than capturing the treatment query from this
+                // render. A notification can be acted on days later, after the plan changed.
+                let current = (try? context.fetch(FetchDescriptor<Treatment>())) ?? []
+                let calendar = Calendar.current
+                let today = calendar.startOfDay(for: .now)
+                for treatment in current where treatment.isActive
+                    && PlanAdherence.expectedSlots(treatment, on: today, calendar: calendar).contains(slot) {
+                    _ = try? DoseRepository(context: context, calendar: calendar)
+                        .log(treatment: treatment, slot: slot)
+                }
+                // Notification actions may run briefly in the background. Persist now instead of
+                // relying on an autosave that suspension could interrupt.
+                try? context.save()
+            }
             notifications.onNotificationTapped = { identifier in
                 if identifier.hasPrefix("milestone.") {
                     tab = .care
@@ -428,7 +449,6 @@ struct RootView: View {
                 OnboardingFlow(profile: profile, onFinish: {
                     showOnboarding = false
                     tab = .care
-                    if !hasSeenTutorial { showTutorial = true }
                 })
                 .environment(healthKit)
                 .environment(purchases)
@@ -494,6 +514,7 @@ struct RootView: View {
             case .inactive:
                 break
             case .active:
+                applyPendingCompletionsAndWriteWidget()
                 // Activation may follow suspension/termination where no view teardown ran.
                 Task { await RitualActivityService.shared.reconcileOrphans() }
                 // A Siri/Shortcuts "Log check-in" hands off through the App Group — honour it on
@@ -521,7 +542,7 @@ struct RootView: View {
                     // Lock wins: never roll a ritual over the lock screen — go straight to Face ID.
                     lockPresenter.present(appLock)
                     Task { await appLock.unlock() }
-                } else if !wantsLog, !showOnboarding, !showTutorial, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
+                } else if !wantsLog, !showOnboarding, ritualKind == nil, ritualCoordinator.wasBackgroundedLongEnough() {
                     // Foreground after >4h in the background → re-roll (never over onboarding/another cover).
                     ritualKind = ritualCoordinator.rollOnForeground(hasOnboarded: profile?.hasOnboarded == true)
                     ritualCoordinator.clearBackgrounded()

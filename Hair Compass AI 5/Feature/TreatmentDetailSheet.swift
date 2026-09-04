@@ -34,6 +34,7 @@ struct TreatmentDetailSheet: View {
     /// backfill, so a late entry doesn't get mis-dated or skipped.
     @State private var newDate = Date.now
     @State private var showReport = false
+    @State private var scheduleDates: [Date] = []
 
     private var calendar: Calendar { .current }
 
@@ -44,6 +45,7 @@ struct TreatmentDetailSheet: View {
                     header
                     whatToExpectCard
                     if let report = treatmentReport { progressReportRow(report) }
+                    timeSection
                     scheduleSection
                     refillSection
                     ingredientsSection
@@ -62,6 +64,13 @@ struct TreatmentDetailSheet: View {
             }
             .onAppear {
                 if startWithLogForm { showLogForm = true }
+                if scheduleDates.isEmpty && (treatment.treatmentClass.isDaily || !treatment.scheduleTimes.isEmpty) {
+                    scheduleDates = TreatmentSchedule.dates(from: treatment.slots.joined(separator: ","))
+                }
+            }
+            .onChange(of: scheduleDates) { _, values in
+                guard !values.isEmpty else { return }
+                treatment.scheduleTimes = TreatmentSchedule.encode(values, calendar: calendar)
             }
             .sheet(isPresented: $showReport) {
                 if let report = treatmentReport { ProgressReportSheet(report: report, photos: photoRecords) }
@@ -186,7 +195,67 @@ struct TreatmentDetailSheet: View {
         }
     }
 
-    // MARK: Schedule (weekday cadence)
+    // MARK: Schedule
+
+    /// Real time pickers replace the old write-once comma-separated field. Every edit is saved in
+    /// the same `HH:mm` format already read by the routine, reminders, widget, and adherence math.
+    @ViewBuilder
+    private var timeSection: some View {
+        if treatment.treatmentClass.isDaily || !treatment.scheduleTimes.isEmpty {
+            section("Times") {
+                ClinicalCard(padding: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(scheduleDates.indices, id: \.self) { index in
+                            HStack(spacing: 10) {
+                                Text("Time \(index + 1)")
+                                    .font(Clinical.caption(12))
+                                    .foregroundStyle(Clinical.secondary)
+                                Spacer()
+                                DatePicker(
+                                    "Time \(index + 1)",
+                                    selection: $scheduleDates[index],
+                                    displayedComponents: .hourAndMinute
+                                )
+                                .labelsHidden()
+                                .tint(Clinical.accent)
+                                if scheduleDates.count > 1 {
+                                    Button {
+                                        scheduleDates.remove(at: index)
+                                    } label: {
+                                        Image(systemName: "xmark")
+                                            .font(Clinical.body(10, weight: .semibold))
+                                            .foregroundStyle(Clinical.tertiary)
+                                            .frame(width: 44, height: 44)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Remove time \(index + 1)")
+                                }
+                            }
+                        }
+                        if scheduleDates.count < 4 {
+                            Button("Add a time") { addScheduleTime() }
+                                .font(Clinical.body(13, weight: .medium))
+                                .foregroundStyle(Clinical.accent)
+                                .buttonStyle(.plain)
+                                .minimumHitTarget()
+                        }
+                        Text("Changes update your routine and future reminders.")
+                            .font(Clinical.caption(12))
+                            .foregroundStyle(Clinical.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private func addScheduleTime() {
+        guard scheduleDates.count < 4 else { return }
+        let anchor = scheduleDates.last ?? Date.now
+        let next = calendar.date(byAdding: .hour, value: scheduleDates.isEmpty ? 0 : 1, to: anchor) ?? anchor
+        scheduleDates.append(next)
+    }
+
+    // MARK: Weekday cadence
 
     /// Editable weekday cadence for the periodic classes with a real weekly-ish rhythm — the
     /// care products plus the home-use devices (microneedling, LLLT). This is the only place the

@@ -54,7 +54,7 @@ enum EraseAndStartOver {
         // 2. Photo files.
         photoStore.deleteAll()
 
-        // 3. Every preference — tutorial, reminders, consent, budget, dismissals. The access
+        // 3. Every preference — reminders, consent, budget, dismissals. The access
         //    window is in the Keychain, not here, so it survives by construction.
         defaults.removePersistentDomain(forName: defaultsDomain)
         CloudAIConsent.reset(in: defaults)

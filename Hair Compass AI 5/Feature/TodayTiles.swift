@@ -11,25 +11,25 @@ import UIKit
 /// big serif band word as the "temperature". Greeting/date/streak stay small around it. The
 /// scene doubles as a drag-to-set input when `onShedSet` is supplied (see `sceneLayer`).
 struct ConditionsHero: View {
+    /// The full hero's floor height (header + shedding scene).
+    static let heroHeight: CGFloat = 304
+    /// Important 8: without the header row (and its `Spacer(minLength: 12)`), the hero needs
+    /// less floor — otherwise the missing header leaves a blank band above "TODAY'S SHEDDING".
+    static let headerlessHeroHeight: CGFloat = 256
+
     var shed: ShedLevel?
     var scalpTotal: Int?
     var scalpBand: SeverityBand?
     var hasLoggedToday = false
     let greeting: String
-    let streak: Int
-    /// Streak shields currently held (0–2, Duolingo-style): a single-day logging gap consumes
-    /// one instead of breaking the streak. Purely a display badge on the streak chip below.
-    var shields: Int = 0
-    /// Optional gamification level name ("Sapling") shown in the XP chip — effort-only.
-    var levelName: String? = nil
+    /// False when `CalmHorizonHeader` (which leads the page now) already carries the
+    /// date/greeting/profile row — the hero then shows only the shedding scene, so it never
+    /// repeats a greeting the person already saw at the top of Today.
+    var showsHeader: Bool = true
     var onOpenBaseline: () -> Void
     var onLog: () -> Void
     /// Present only when today is empty and yesterday exists — the one-tap quiet-day log.
     var onCopyYesterday: (() -> Void)? = nil
-    /// Total XP — display only; this view never awards points, it only reflects them.
-    var xp: Int
-    /// Fraction (0…1) of the way to the next level (`GamificationLevel.progressToNext(xp:).fraction`).
-    var levelProgress: Double
     /// Drag-to-set callback. When nil, the scene stays passive — no gesture, no accessibility
     /// adjustable action, no rail-chip affordance (used by previews and any non-interactive host).
     var onShedSet: ((ShedLevel) -> Void)? = nil
@@ -115,7 +115,7 @@ struct ConditionsHero: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 304, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: showsHeader ? Self.heroHeight : Self.headerlessHeroHeight, alignment: .topLeading)
     }
 
     // MARK: - Scene (backdrop + drag-to-set)
@@ -176,8 +176,17 @@ struct ConditionsHero: View {
     /// Where falling strands become fully visible, as a fraction of hero height. At the calmest
     /// band (Minimal) the few strands are pushed below the band word, so one never drifts across
     /// the headline; busier bands keep the higher default and let the simulation fill the scene.
+    /// Important 8: without the header, every line of content sits `Self.heroHeight -
+    /// Self.headerlessHeroHeight` points higher, so the mask's start moves up by the same
+    /// absolute amount before being re-expressed as a fraction of the shorter frame — otherwise
+    /// a fraction calibrated for the full-height hero leaves a blank band above "TODAY'S
+    /// SHEDDING" once the header (and its height) is gone.
     private var strandMaskTop: CGFloat {
-        SheddingDial.band(displayIntensity) == ShedLevel.minimal.rawValue ? 0.56 : 0.36
+        let base = SheddingDial.band(displayIntensity) == ShedLevel.minimal.rawValue ? 0.56 : 0.36
+        guard !showsHeader else { return base }
+        let headerHeight = Self.heroHeight - Self.headerlessHeroHeight
+        let absoluteY = max(0, base * Self.heroHeight - headerHeight)
+        return absoluteY / Self.headerlessHeroHeight
     }
 
     private func dragGesture(height: CGFloat, set: @escaping (ShedLevel) -> Void) -> some Gesture {
@@ -216,27 +225,29 @@ struct ConditionsHero: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(Date.now.formatted(.dateTime.weekday(.wide).month().day()).uppercased())
-                        .font(Clinical.eyebrow(10)).tracking(1.4).foregroundStyle(Clinical.secondary)
-                    Text(greeting).font(Clinical.headline(20)).foregroundStyle(Clinical.ink)
+            if showsHeader {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Date.now.formatted(.dateTime.weekday(.wide).month().day()).uppercased())
+                            .font(Clinical.eyebrow(10)).tracking(1.4).foregroundStyle(Clinical.secondary)
+                        Text(greeting).font(Clinical.headline(20)).foregroundStyle(Clinical.ink)
+                    }
+                    Spacer()
+                    Button(action: onOpenBaseline) {
+                        // A plain outline glyph, not a filled coin — the last card-chrome disc on
+                        // Today dissolves back onto the canvas, matching the bare header-action
+                        // voice used everywhere else in the app.
+                        Image(systemName: "person.circle")
+                            .font(Clinical.caption(22))
+                            .foregroundStyle(Clinical.ink)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit profile and baseline")
                 }
-                Spacer()
-                Button(action: onOpenBaseline) {
-                    // A plain outline glyph, not a filled coin — the last card-chrome disc on
-                    // Today dissolves back onto the canvas, matching the bare header-action
-                    // voice used everywhere else in the app.
-                    Image(systemName: "person.circle")
-                        .font(Clinical.caption(22))
-                        .foregroundStyle(Clinical.ink)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Edit profile and baseline")
+                Spacer(minLength: 12)
             }
-            Spacer(minLength: 12)
             VStack(alignment: .leading, spacing: 8) {
                 Eyebrow(text: "Today's shedding")
                 if let shed, dragIntensity == nil {
@@ -322,9 +333,9 @@ struct ConditionsHero: View {
     /// Round-5: the streak/level footnote that used to live here is gone — the whole app now
     /// says that fact exactly once, on Trends' `ConsistencyCard` (see its "Sapling · Level 4 ·
     /// 177 XP to Grove · 1-day streak" footnote). `streak`/`shields`/`levelName`/`xp`/
-    /// `levelProgress` stay on this view's interface — the celebration flow and XP mechanics
-    /// that read them elsewhere are untouched — only the duplicate on-hero display is gone. What
-    /// remains here is the single control row: the sole action (Log/Edit today).
+    /// `levelProgress` have since been removed from this view's interface entirely (G2 commit 2)
+    /// — nothing here ever read them once the duplicate on-hero display was gone. What remains
+    /// here is the single control row: the sole action (Log/Edit today).
     /// `ViewThatFits` picks the existing single-row `HStack` whenever it fits, and only falls
     /// back to a stacked `VStack` at accessibility text sizes where the log button and the chip
     /// side by side would otherwise overflow the hero's width. Neither control's own styling

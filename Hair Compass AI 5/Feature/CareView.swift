@@ -123,7 +123,16 @@ struct CareView: View {
                 }
                 guidanceCard.staggeredEntrance(index: 4)
                 remindersCard.id("reminders").staggeredEntrance(index: 5)
-                gateExplainer.staggeredEntrance(index: 6)
+                if let phase = evidencePhase {
+                    EvidencePathSection(
+                        phase: phase,
+                        milestones: evidenceMilestones,
+                        strands: planStrands,
+                        overall: overallRhythm
+                    )
+                    .id("evidencePathAnchor")
+                    .staggeredEntrance(index: 6)
+                }
                 if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
 
                 // The page changes subject here: everything above is what you do today, everything
@@ -265,6 +274,10 @@ struct CareView: View {
                 try? await Task.sleep(for: .milliseconds(250))
                 showProgressCheckIn = true
             }
+            if ProcessInfo.processInfo.arguments.contains("HC_SCROLL_EVIDENCE") {
+                try? await Task.sleep(for: .milliseconds(350))
+                proxy.scrollTo("evidencePathAnchor", anchor: .top)
+            }
             #endif
         }
         // Combined fingerprint: an appointment change alone (fingerprint unaffected by
@@ -382,8 +395,8 @@ struct CareView: View {
             t.refillBy.map { (t.name.isEmpty ? t.treatmentClass.title : t.name, $0) }
         }
     }
-    /// Every active treatment, unfiltered by schedule — the 24-week judging gate applies to any
-    /// treatment (see `gateExplainer`/`treatmentCard`), not just the daily-slot ones the routine
+    /// Every active treatment, unfiltered by schedule — milestone reminders apply to any
+    /// treatment, not just the daily-slot ones the routine
     /// reminders target.
     private var notifMilestoneTreatments: [(id: String, name: String, startDate: Date)] {
         activeTreatments.map {
@@ -400,7 +413,6 @@ struct CareView: View {
     private var procedureFingerprint: String {
         procedureAppointments.map { "\($0.persistentModelID.hashValue)|\($0.date.timeIntervalSince1970)|\($0.isCompleted)" }.joined(separator: "|")
     }
-    private var streak: Int { HairAnalytics.loggingStreak(entryDates: entries.map(\.date)) }
     private var hasRecentSevereSideEffect: Bool {
         HairAnalytics.hasRecentSevereSideEffect(logs: sideEffectLogs.map { ($0.severity, $0.date) })
     }
@@ -453,6 +465,28 @@ struct CareView: View {
         )
     }
 
+    private var evidencePhase: EvidencePhase? {
+        EvidencePhase.current(treatments: treatments, entries: entries, now: .now, calendar: calendar)
+    }
+
+    private var evidenceMilestones: [EvidenceMilestone] {
+        evidencePhase.map { EvidencePath.milestones(phase: $0, photos: photoRecords, calendar: calendar) } ?? []
+    }
+
+    private var planStrands: [PlanStrand] {
+        PlanStrands.build(
+            treatments: treatments, doses: doses, missed: missedDoseRecords,
+            now: .now, calendar: calendar
+        )
+    }
+
+    private var overallRhythm: PlanAdherence.Consistency? {
+        PlanStrands.overall(
+            treatments: treatments, doses: doses, missed: missedDoseRecords,
+            windowDays: 30, now: .now, calendar: calendar
+        )
+    }
+
     /// Every active treatment with its own daily schedule — the report-focus picker only earns
     /// its place once there's more than one to choose between.
     private var dailyActiveTreatments: [Treatment] {
@@ -481,8 +515,8 @@ struct CareView: View {
     }
     // MARK: Routine progress
 
-    /// Fraction toward the milestone's own next marker, derived from the same data
-    /// (`treatmentWeeks`/`streak`) the milestone was built from — `Milestone` itself carries no
+    /// Fraction toward the milestone's own next marker, derived from the same treatment clock
+    /// the milestone was built from — `Milestone` itself carries no
     /// numeric progress, only an id whose prefix identifies which kind it is.
     private func milestoneProgress(_ m: Milestone) -> Double? {
         if m.id.hasPrefix("ready-") { return 1 }
@@ -490,12 +524,6 @@ struct CareView: View {
             let name = String(m.id.dropFirst("half-".count))
             guard let weeks = treatmentWeeks.first(where: { $0.name == name })?.weeks else { return nil }
             return min(1, Double(weeks) / 24)
-        }
-        if m.id.hasPrefix("streak-") {
-            guard let next = Milestones.streakThresholds.first(where: { $0 > streak }) else { return 1 }
-            let prevTier = Milestones.streakThresholds.last(where: { $0 <= streak }) ?? 0
-            let span = Double(next - prevTier)
-            return span > 0 ? min(1, Double(streak - prevTier) / span) : 1
         }
         return nil
     }
@@ -598,7 +626,7 @@ struct CareView: View {
     /// section rules, and the gold milestone (formerly its own separate card in the stack) closes
     /// the list as a one-line footnote instead of a fourth competing widget.
     private var routineSection: some View {
-        let milestone = Milestones.achieved(streak: streak, treatments: treatmentWeeks).first
+        let milestone = Milestones.achieved(treatments: treatmentWeeks).first
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(routine.enumerated()), id: \.element.block.id) { index, entry in
                 VStack(alignment: .leading, spacing: 10) {
@@ -895,19 +923,6 @@ struct CareView: View {
         }
     }
 
-    // MARK: 24-week gate + treatments (unchanged evidence framing)
-
-    /// Round-5: demoted from a boxed `ClinicalCard` with its own icon tile — the page's last
-    /// surviving box — to a plain hairline-ruled footnote row in the same family as
-    /// `guidanceCard`/`remindersCard`. Round-7: shortened from a three-line paragraph to the one
-    /// sentence that actually matters — the tail was stacking four typographic families across
-    /// five rows, and this closing line was the longest of them. Round-9: promoted to the shared
-    /// `Colophon` component — the app's one closing-sentence voice — so this line and Labs'
-    /// equivalent "context, not a diagnosis" line read as the same hand's writing.
-    private var gateExplainer: some View {
-        Colophon(text: "Density change is judged at 24 weeks — resist judging sooner.")
-    }
-
     /// One card that opens the full week-N progress report, sitting next to the assessment
     /// clock it serves. Gets an accent border when the current week IS a review milestone
     /// (4 · 12 · 24, then every 12). When more than one active daily treatment exists, a
@@ -1141,10 +1156,17 @@ struct CareView: View {
         let weeks = HairAnalytics.weeksElapsed(since: t.startDate)
         let progress = HairAnalytics.outcomeProgress(weeksElapsed: weeks)
         let ready = HairAnalytics.outcomeReady(weeksElapsed: weeks)
-        let dates = doses.filter { $0.treatment?.persistentModelID == t.persistentModelID }.map(\.loggedAt)
-        // Expected-per-day comes from the actual schedule, so `.other`-class daily items
-        // (e.g. products added from the science list) accrue adherence like any medication.
-        let adherence = HairAnalytics.adherence(doseDates: dates, expectedPerDay: t.slots.count)
+        // One adherence engine (Important 10 → G2-R16): the same PlanAdherence occurrence math
+        // Today and the week strip already use, not a second doseDates/expectedPerDay read that
+        // can silently disagree with it.
+        let thirtyDay = PlanAdherence.consistency(
+            treatment: t, doses: doses, missed: missedDoseRecords,
+            windowDays: 30, now: .now, calendar: calendar
+        )
+        let sevenDay = PlanAdherence.consistency(
+            treatment: t, doses: doses, missed: missedDoseRecords,
+            windowDays: 7, now: .now, calendar: calendar
+        )
 
         return ClinicalCard {
             VStack(alignment: .leading, spacing: 14) {
@@ -1188,16 +1210,33 @@ struct CareView: View {
                     ProgressBar(value: progress, tint: ready ? Clinical.positive : Clinical.accent).frame(height: 8)
                 }
 
-                if let adherence {
-                    HStack {
-                        Text("14-day adherence").font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                if PlanAdherence.hasSchedule(t) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("30-day consistency").font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
                         Spacer()
-                        Text("\(Int((adherence * 100).rounded()))%")
-                            .font(Clinical.number(13))
-                            .foregroundStyle(adherence >= 0.8 ? Clinical.positive : Clinical.warning)
+                        if let thirtyDay, thirtyDay.scored > 0 {
+                            Text("\(thirtyDay.percent)% · \(thirtyDay.completed) of \(thirtyDay.scored) due")
+                                .font(Clinical.number(13))
+                                .foregroundStyle(Clinical.ink)
+                        } else {
+                            Text("Not enough due actions yet")
+                                .font(Clinical.caption(12))
+                                .foregroundStyle(Clinical.tertiary)
+                        }
+                    }
+                    if let sevenDay {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("This week").font(Clinical.caption(13)).foregroundStyle(Clinical.secondary)
+                            Spacer()
+                            Text(sevenDay.scored > 0
+                                 ? "\(sevenDay.completed) of \(sevenDay.scored) due · \(sevenDay.planned) planned"
+                                 : "Not enough due actions yet")
+                                .font(Clinical.number(13))
+                                .foregroundStyle(Clinical.ink)
+                        }
                     }
                 } else {
-                    Text("Periodic treatment · logged per session")
+                    Text("Recorded per use · no schedule to measure")
                         .font(Clinical.caption(12)).foregroundStyle(Clinical.tertiary)
                 }
 
@@ -1408,8 +1447,8 @@ private struct RoutineStepRow: View {
                 // Unchecked reads as an actionable empty checkbox — a faint copper fill plus a
                 // stronger copper stroke — rather than the old near-invisible hairline dot that
                 // lost to the (i) info glyph for visual weight on the row.
-                Circle().fill(done ? Clinical.accent : Clinical.accent.opacity(0.06))
-                Circle().strokeBorder(done ? Clinical.accent : Clinical.accent.opacity(0.45), lineWidth: 2)
+                Circle().fill(done ? Clinical.sage : Clinical.accent.opacity(0.06))
+                Circle().strokeBorder(done ? Clinical.sage : Clinical.accent.opacity(0.45), lineWidth: 2)
                 if done {
                     Image(systemName: "checkmark")
                         .font(Clinical.body(11, weight: .bold))

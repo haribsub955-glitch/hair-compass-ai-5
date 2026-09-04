@@ -79,7 +79,7 @@ public actor AgentClient {
         /// A wave of tool calls. `parallel` means run them concurrently and submit each as it
         /// finishes — a fast read must not wait behind a slow one.
         case toolsRequested(count: Int, parallel: Bool)
-        case answer(String, served: Bool, safety: String)
+        case answer(String, served: Bool, safety: String, iterations: Int)
         case failed(String)
         case finished
     }
@@ -97,6 +97,13 @@ public actor AgentClient {
     public struct Session: Sendable {
         public let token: String
         public let entitlement: String
+        /// The actual commercial plan (`free`, `taster`, `trial`, `pro_monthly`, …). Feature
+        /// availability is still read from `features`, never inferred from this label.
+        public let planID: String
+        /// Capabilities the server decided this session may use.
+        public let features: [String]
+        /// Opaque paywall description retained losslessly for the eventual server-owned offer UI.
+        public let offerJSON: Data?
         /// `current`, `encouraged` or `required` — so the app can nag before it is ever cut off.
         public let upgrade: String
         /// Tool names this build may run: the server's allowlist intersected with what we
@@ -156,18 +163,55 @@ public actor AgentClient {
         guard status == 200 else { throw AgentError.badResponse(status: status) }
 
         let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        let established = try Self.parseSession(payload)
+        current = established
+        return established
+    }
+
+    /// Pure parser for the session envelope. Keeping this out of `startSession` lets feature
+    /// gating be contract-tested without a network or a live access key.
+    nonisolated public static func parseSession(_ payload: [String: Any]) throws -> Session {
         guard let token = payload["session_token"] as? String, !token.isEmpty else {
             throw AgentError.unauthenticated
         }
         let principal = payload["principal"] as? [String: Any] ?? [:]
-        let established = Session(
+        let offer = (payload["offer"] as? [String: Any]).flatMap {
+            try? JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys])
+        }
+        return Session(
             token: token,
             entitlement: principal["entitlement"] as? String ?? "free",
+            planID: principal["plan_id"] as? String ?? "free",
+            features: payload["features"] as? [String] ?? [],
+            offerJSON: offer,
             upgrade: payload["upgrade"] as? String ?? "current",
             tools: (payload["tools"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
         )
-        current = established
-        return established
+    }
+
+    /// Fetches the structured Daily Grounding card for a state snapshot. The caller owns decode,
+    /// provenance validation, and fallback; a server that does not yet implement this endpoint
+    /// simply returns a non-200 status and the deterministic card remains visible.
+    public func fetchGroundingCard(state: [String: Any]) async throws -> Data {
+        let established = try await startSession()
+        var request = URLRequest(url: configuration.baseURL.appendingPathComponent("v1/grounding"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        stamp(&request)
+        request.timeoutInterval = 20
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "session_token": established.token,
+            "state": state
+        ])
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        if status == 401 {
+            current = nil
+            throw AgentError.unauthenticated
+        }
+        if status == 426 { throw AgentError.upgradeRequired }
+        guard status == 200 else { throw AgentError.badResponse(status: status) }
+        return data
     }
 
     // MARK: - One turn
@@ -230,8 +274,12 @@ public actor AgentClient {
                 case "answer":
                     let text = payload["text"] as? String ?? ""
                     let served = payload["served"] as? Bool ?? false
-                    onEvent(.answer(text, served: served,
-                                    safety: payload["safety"] as? String ?? "allow"))
+                    onEvent(.answer(
+                        text,
+                        served: served,
+                        safety: payload["safety"] as? String ?? "allow",
+                        iterations: payload["iterations"] as? Int ?? -1
+                    ))
                     answer = served && !text.isEmpty ? text : nil
 
                 case "error":

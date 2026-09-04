@@ -31,7 +31,7 @@ struct ExportSheet: View {
         let report = ExportService.clinicianSummary(
             profile: profiles.first, entries: entries, treatments: treatments,
             doses: doses, labs: labs, triggers: triggers, progressCheckIns: progressCheckIns,
-            sideEffects: sideEffects, procedures: procedures
+            sideEffects: sideEffects, procedures: procedures, missedDoses: missedDoses
         )
         guard let visit = reportConsultation else { return report }
         return ExportService.visitAgendaSection(visit) + report
@@ -199,7 +199,7 @@ struct ExportSheet: View {
         guard let data = ExportService.dataJSON(
             profile: profiles.first, entries: entries, treatments: treatments, doses: doses,
             labs: labs, triggers: triggers, progressCheckIns: progressCheckIns, snapshots: snapshots,
-            sideEffects: sideEffects, procedures: procedures
+            sideEffects: sideEffects, procedures: procedures, missedDoses: missedDoses
         ) else { return }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("HairCompassData.json")
         try? data.write(to: url, options: .atomic)

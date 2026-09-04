@@ -373,35 +373,21 @@ struct Milestone: Identifiable, Equatable {
 }
 
 enum Milestones {
-    static let streakThresholds = [3, 7, 14, 30, 60, 100]
-
-    /// Achieved milestones, most salient first — a reached streak tier and any treatment that has
-    /// crossed the halfway (12-week) or 24-week judging marks.
-    static func achieved(streak: Int, treatments: [(name: String, weeks: Int)]) -> [Milestone] {
+    /// Treatment-time landmarks only. Logging streaks deliberately do not become achievements:
+    /// one difficult day should never make an anxious person feel they damaged the evidence.
+    static func achieved(treatments: [(name: String, weeks: Int)]) -> [Milestone] {
         var out: [Milestone] = []
         for t in treatments where t.weeks >= 24 {
             out.append(Milestone(id: "ready-\(t.name)", title: "\(t.name): 24 weeks reached",
-                                 body: "You've hit the point where results become fair to judge. Compare your photos and trends now.",
+                                 body: "This is a useful review point. Compare like-for-like photos and the longer record.",
                                  symbol: "checkmark.seal"))
-        }
-        if let tier = streakThresholds.last(where: { streak >= $0 }) {
-            out.append(Milestone(id: "streak-\(tier)", title: "\(tier)-day streak",
-                                 body: nextStreakLine(current: streak),
-                                 symbol: "flame"))
         }
         for t in treatments where t.weeks >= 12 && t.weeks < 24 {
             out.append(Milestone(id: "half-\(t.name)", title: "\(t.name): halfway there",
-                                 body: "Week \(t.weeks) of 24 — you're past the halfway mark. Keep going before judging results.",
+                                 body: "Week \(t.weeks) of 24 — keep the record steady and avoid a day-to-day verdict.",
                                  symbol: "hourglass"))
         }
         return out
-    }
-
-    private static func nextStreakLine(current: Int) -> String {
-        if let next = streakThresholds.first(where: { $0 > current }) {
-            return "Next milestone: \(next) days. \(next - current) to go."
-        }
-        return "You've passed every streak milestone — remarkable consistency."
     }
 }
 

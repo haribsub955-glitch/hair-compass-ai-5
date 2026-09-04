@@ -4,6 +4,7 @@ import Foundation
 protocol NotificationCenterClient: Sendable {
     func authorizationStatus() async -> UNAuthorizationStatus
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
+    func setCategories(_ categories: Set<UNNotificationCategory>) async
     func pendingNotificationRequests() async -> [UNNotificationRequest]
     func removePendingNotificationRequests(withIdentifiers identifiers: [String]) async
     func add(_ request: UNNotificationRequest) async throws
@@ -14,6 +15,7 @@ final class SystemNotificationCenterClient: NotificationCenterClient, @unchecked
     init(center: UNUserNotificationCenter = .current()) { self.center = center }
     func authorizationStatus() async -> UNAuthorizationStatus { await center.notificationSettings().authorizationStatus }
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool { try await center.requestAuthorization(options: options) }
+    func setCategories(_ categories: Set<UNNotificationCategory>) async { center.setNotificationCategories(categories) }
     func pendingNotificationRequests() async -> [UNNotificationRequest] { await center.pendingNotificationRequests() }
     func removePendingNotificationRequests(withIdentifiers identifiers: [String]) async { center.removePendingNotificationRequests(withIdentifiers: identifiers) }
     func add(_ request: UNNotificationRequest) async throws { try await center.add(request) }
@@ -53,9 +55,12 @@ actor NotificationRegistry {
         let accepted = Array(desired.sorted { $0.identifier < $1.identifier }.prefix(capacity))
         var message = desired.count > capacity
             ? "Some reminders could not be scheduled because iOS allows at most \(limit) pending notifications." : nil
-        let pendingIDs = Set(pending.map(\.identifier))
         var additionsSucceeded = true
-        for request in accepted where !pendingIDs.contains(request.identifier) {
+        // Re-adding the same identifier is Notification Center's atomic replace operation. This
+        // matters when an app update adds an action/category to an already-scheduled repeating
+        // request: comparing ids alone would leave the old actionless request installed forever.
+        // It also keeps renamed treatment copy current without a remove-then-add gap.
+        for request in accepted {
             do { try await client.add(request) }
             catch {
                 additionsSucceeded = false
@@ -85,6 +90,8 @@ actor NotificationRegistry {
 final class NotificationService {
     static let enabledKey = "remindersEnabled"
     static let genericWordingKey = "genericNotificationWording"
+    static let routineCategoryID = "routine"
+    static let completeActionID = "routine.complete"
 
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
     /// User-visible scheduling failure. Callers can render this instead of silently pretending a
@@ -92,6 +99,9 @@ final class NotificationService {
     private(set) var schedulingError: String?
     private let client: any NotificationCenterClient
     private let registry: NotificationRegistry
+    /// Registration starts as soon as the service exists. Planners await it so a reminder can
+    /// never be installed before iOS knows what its action means.
+    private let categoryRegistration: Task<Void, Never>
     /// Routes a notification tap back to the app by identifier prefix (see `onNotificationTapped`).
     private let tapDelegate = NotificationTapDelegate()
 
@@ -129,10 +139,35 @@ final class NotificationService {
         set { tapDelegate.onTapped = newValue }
     }
 
+    /// Fired separately from a normal banner tap. Keeping the action payload intact lets the app
+    /// validate the slot against today's active plan before recording anything.
+    var onNotificationAction: ((String, String, [AnyHashable: Any]) -> Void)? {
+        get { tapDelegate.onAction }
+        set { tapDelegate.onAction = newValue }
+    }
+
+    private static var routineCategory: UNNotificationCategory {
+        let complete = UNNotificationAction(
+            identifier: completeActionID,
+            title: "Mark complete",
+            options: []
+        )
+        return UNNotificationCategory(
+            identifier: routineCategoryID,
+            actions: [complete],
+            intentIdentifiers: [],
+            options: []
+        )
+    }
+
     init(client: (any NotificationCenterClient)? = nil) {
         let system = client == nil ? SystemNotificationCenterClient() : nil
-        self.client = client ?? system!
-        self.registry = NotificationRegistry(client: self.client)
+        let resolved = client ?? system!
+        self.client = resolved
+        self.registry = NotificationRegistry(client: resolved)
+        self.categoryRegistration = Task {
+            await resolved.setCategories([Self.routineCategory])
+        }
         system?.center.delegate = tapDelegate
     }
 
@@ -205,6 +240,7 @@ final class NotificationService {
         treatments: [(name: String, slots: [String])],
         refills: [(name: String, refillBy: Date)], generation: UInt64
     ) async {
+        await categoryRegistration.value
         // Self-refresh rather than trusting a caller to have called `refreshAuthorization()`
         // first: `authorization` starts `.notDetermined` on every cold launch, and nothing but
         // `CareView`'s `.task` previously re-derived it, so a user who never opened Plan would
@@ -241,6 +277,8 @@ final class NotificationService {
             content.body = wording.body
             content.sound = .default
             content.threadIdentifier = "routine"
+            content.categoryIdentifier = Self.routineCategoryID
+            content.userInfo = ["slot": slot]
             content.interruptionLevel = .passive
             if let art = NotificationArt.attachment() { content.attachments = [art] }
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
@@ -571,7 +609,26 @@ final class NotificationService {
 /// retrofitting `NotificationService` itself, which is an `@Observable` class with no `NSObject`
 /// ancestry.
 private final class NotificationTapDelegate: NSObject, UNUserNotificationCenterDelegate {
-    var onTapped: ((String) -> Void)?
+    typealias Action = (id: String, notificationID: String, userInfo: [AnyHashable: Any])
+
+    var onTapped: ((String) -> Void)? {
+        didSet {
+            guard let onTapped, let pendingTap else { return }
+            self.pendingTap = nil
+            onTapped(pendingTap)
+        }
+    }
+    var onAction: ((String, String, [AnyHashable: Any]) -> Void)? {
+        didSet {
+            guard let onAction, let pendingAction else { return }
+            self.pendingAction = nil
+            onAction(pendingAction.id, pendingAction.notificationID, pendingAction.userInfo)
+        }
+    }
+    /// A notification response can arrive while a terminated app is still constructing RootView.
+    /// Buffer that one response until its handler is installed instead of dropping the user's tap.
+    private var pendingTap: String?
+    private var pendingAction: Action?
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -579,8 +636,31 @@ private final class NotificationTapDelegate: NSObject, UNUserNotificationCenterD
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let identifier = response.notification.request.identifier
-        Task { @MainActor [onTapped] in onTapped?(identifier) }
-        completionHandler()
+        let actionID = response.actionIdentifier
+        let userInfo = response.notification.request.content.userInfo
+        Task { @MainActor [weak self] in
+            guard let self else {
+                completionHandler()
+                return
+            }
+            if actionID != UNNotificationDefaultActionIdentifier,
+               actionID != UNNotificationDismissActionIdentifier {
+                if let onAction {
+                    onAction(actionID, identifier, userInfo)
+                } else {
+                    pendingAction = (actionID, identifier, userInfo)
+                }
+            } else if actionID == UNNotificationDefaultActionIdentifier {
+                if let onTapped {
+                    onTapped(identifier)
+                } else {
+                    pendingTap = identifier
+                }
+            }
+            // Tell iOS the response is complete only after the main-actor handler has persisted
+            // (or safely buffered) it. Completing before dispatch risks suspension mid-write.
+            completionHandler()
+        }
     }
 
     func userNotificationCenter(

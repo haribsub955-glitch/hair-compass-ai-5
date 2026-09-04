@@ -1,4 +1,5 @@
 import ActivityKit
+import AppIntents
 import SwiftUI
 import WidgetKit
 
@@ -18,8 +19,15 @@ enum HairCompassWidgetStore {
 //   Service/WidgetBridge.swift  and
 //   Hair Compass CheckIn Widget/HairCompassCheckInWidget.swift
 // Stored fields (Codable): generatedAt, hasLoggedToday, score, ringLog, ringCare, ringLens,
-//   shedLabel, scalpLabel, streakDays, shieldsHeld, dueTitles. Change both together.
+//   shedLabel, scalpLabel, streakDays, shieldsHeld, dueTitles, dueItems, pendingKeys.
+// Change both together.
 struct WidgetSnapshot: Codable, Equatable {
+    struct DueItem: Codable, Equatable {
+        let title: String
+        let treatmentName: String
+        let slot: String
+    }
+
     let generatedAt: Date
     let hasLoggedToday: Bool
     let score: Int          // Compass score 0–100 (CompassScore)
@@ -31,10 +39,59 @@ struct WidgetSnapshot: Codable, Equatable {
     let streakDays: Int     // shielded streak
     let shieldsHeld: Int
     let dueTitles: [String] // remaining routine steps today
+    let dueItems: [DueItem]
+    var pendingKeys: [String]
 
     enum CodingKeys: String, CodingKey {
         case generatedAt, hasLoggedToday, score, ringLog, ringCare, ringLens, shedLabel, scalpLabel,
-             streakDays, shieldsHeld, dueTitles
+             streakDays, shieldsHeld, dueTitles, dueItems, pendingKeys
+    }
+
+    init(
+        generatedAt: Date,
+        hasLoggedToday: Bool,
+        score: Int,
+        ringLog: Double,
+        ringCare: Double?,
+        ringLens: Double,
+        shedLabel: String,
+        scalpLabel: String,
+        streakDays: Int,
+        shieldsHeld: Int,
+        dueTitles: [String],
+        dueItems: [DueItem] = [],
+        pendingKeys: [String] = []
+    ) {
+        self.generatedAt = generatedAt
+        self.hasLoggedToday = hasLoggedToday
+        self.score = score
+        self.ringLog = ringLog
+        self.ringCare = ringCare
+        self.ringLens = ringLens
+        self.shedLabel = shedLabel
+        self.scalpLabel = scalpLabel
+        self.streakDays = streakDays
+        self.shieldsHeld = shieldsHeld
+        self.dueTitles = dueTitles
+        self.dueItems = dueItems
+        self.pendingKeys = pendingKeys
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        generatedAt = try values.decode(Date.self, forKey: .generatedAt)
+        hasLoggedToday = try values.decode(Bool.self, forKey: .hasLoggedToday)
+        score = try values.decode(Int.self, forKey: .score)
+        ringLog = try values.decode(Double.self, forKey: .ringLog)
+        ringCare = try values.decodeIfPresent(Double.self, forKey: .ringCare)
+        ringLens = try values.decode(Double.self, forKey: .ringLens)
+        shedLabel = try values.decode(String.self, forKey: .shedLabel)
+        scalpLabel = try values.decode(String.self, forKey: .scalpLabel)
+        streakDays = try values.decode(Int.self, forKey: .streakDays)
+        shieldsHeld = try values.decode(Int.self, forKey: .shieldsHeld)
+        dueTitles = try values.decode([String].self, forKey: .dueTitles)
+        dueItems = try values.decodeIfPresent([DueItem].self, forKey: .dueItems) ?? []
+        pendingKeys = try values.decodeIfPresent([String].self, forKey: .pendingKeys) ?? []
     }
 
     /// Bundled preview + first-run fallback: every ring at rest, nothing logged yet. Never
@@ -50,7 +107,9 @@ struct WidgetSnapshot: Codable, Equatable {
         scalpLabel: "",
         streakDays: 0,
         shieldsHeld: 0,
-        dueTitles: []
+        dueTitles: [],
+        dueItems: [],
+        pendingKeys: []
     )
 
     /// True for the bundled placeholder and any genuinely untouched install — the total
@@ -94,6 +153,75 @@ private enum WidgetSnapshotDecoder {
             return .placeholder
         }
         return snapshot
+    }
+}
+
+// KEEP IN SYNC — PendingCompletion is duplicated in the app target's
+// Service/PendingCompletions.swift. The widget owns only this App Group queue, never SwiftData.
+private struct PendingCompletion: Codable, Equatable {
+    let treatmentName: String
+    let slot: String
+    let requestedAt: Date
+
+    var key: String { "\(treatmentName)|\(slot)" }
+}
+
+private enum PendingCompletionQueue {
+    static let key = "pendingCompletions.v1"
+
+    static func load(defaults: UserDefaults) -> [PendingCompletion] {
+        guard let data = defaults.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([PendingCompletion].self, from: data)) ?? []
+    }
+
+    static func append(_ item: PendingCompletion, defaults: UserDefaults) {
+        var items = load(defaults: defaults).filter { $0.key != item.key }
+        items.append(item)
+        if let data = try? JSONEncoder().encode(items) {
+            defaults.set(data, forKey: key)
+        }
+    }
+}
+
+/// Interactive widgets cannot touch the app's SwiftData store. Record an idempotent request in
+/// the App Group and immediately mark this row as pending; the app validates and persists it on
+/// its next launch/foreground pass.
+struct CompletePlanItemIntent: AppIntent {
+    static var title: LocalizedStringResource = "Mark plan item complete"
+    static var isDiscoverable = false
+
+    @Parameter(title: "Treatment") var treatmentName: String
+    @Parameter(title: "Slot") var slot: String
+
+    init() {}
+
+    init(treatmentName: String, slot: String) {
+        self.treatmentName = treatmentName
+        self.slot = slot
+    }
+
+    func perform() async throws -> some IntentResult {
+        guard let defaults = UserDefaults(suiteName: HairCompassWidgetStore.appGroup) else {
+            return .result()
+        }
+        let item = PendingCompletion(
+            treatmentName: treatmentName,
+            slot: slot,
+            requestedAt: .now
+        )
+        PendingCompletionQueue.append(item, defaults: defaults)
+
+        var snapshot = WidgetSnapshotDecoder.decode(
+            defaults.data(forKey: HairCompassWidgetStore.snapshotKey)
+        )
+        if !snapshot.pendingKeys.contains(item.key) {
+            snapshot.pendingKeys.append(item.key)
+        }
+        if let data = try? JSONEncoder().encode(snapshot) {
+            defaults.set(data, forKey: HairCompassWidgetStore.snapshotKey)
+        }
+        WidgetCenter.shared.reloadTimelines(ofKind: "HairCompassCheckInWidget")
+        return .result()
     }
 }
 
@@ -262,7 +390,33 @@ private struct MediumWidgetView: View {
 
                 StreakChip(streak: snapshot.streakDays, shields: snapshot.shieldsHeld)
 
-                if !snapshot.dueTitles.isEmpty {
+                if !snapshot.dueItems.isEmpty {
+                    Divider().overlay(WidgetPalette.hairline)
+                    ForEach(Array(snapshot.dueItems.prefix(2).enumerated()), id: \.offset) { _, item in
+                        let pending = isPending(item)
+                        Button(intent: CompletePlanItemIntent(
+                            treatmentName: item.treatmentName,
+                            slot: item.slot
+                        )) {
+                            HStack(spacing: 6) {
+                                Image(systemName: pending ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(pending ? WidgetPalette.sage : WidgetPalette.copper)
+                                Text(pending ? "Recorded — syncs when app opens" : item.title)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(pending ? WidgetPalette.secondary : WidgetPalette.ink)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(pending)
+                        .accessibilityLabel(pending
+                            ? "\(item.title), recorded and waiting to sync"
+                            : "Mark \(item.title) complete")
+                    }
+                } else if !snapshot.dueTitles.isEmpty {
+                    // A snapshot written by an older app has only display strings. Keep rendering
+                    // those honestly, but do not invent an action without a treatment and slot.
                     Divider().overlay(WidgetPalette.hairline)
                     ForEach(snapshot.dueTitles.prefix(2), id: \.self) { title in
                         HStack(spacing: 6) {
@@ -288,8 +442,15 @@ private struct MediumWidgetView: View {
             return snapshot.isFreshInstall ? "Your compass is ready — tap to log day one" : "Log today's check-in"
         }
         if snapshot.dueTitles.isEmpty { return "Logged — nice." }
-        let remaining = snapshot.dueTitles.count
+        let remaining = snapshot.dueItems.isEmpty
+            ? snapshot.dueTitles.count
+            : snapshot.dueItems.filter { !isPending($0) }.count
+        if remaining == 0 { return "Plan recorded for today" }
         return "\(remaining) step\(remaining == 1 ? "" : "s") left today"
+    }
+
+    private func isPending(_ item: WidgetSnapshot.DueItem) -> Bool {
+        snapshot.pendingKeys.contains("\(item.treatmentName)|\(item.slot)")
     }
 
     private var severityLine: String {

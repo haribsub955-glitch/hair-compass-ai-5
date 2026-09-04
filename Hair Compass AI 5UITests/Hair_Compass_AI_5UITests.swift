@@ -6,6 +6,55 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Plan leads with a time-based evidence path, and each checkpoint explains what it can and
+    /// cannot tell the person yet.
+    @MainActor
+    func testEvidencePathShowsOnPlan() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_TAB", "care", "HC_MOTION_STATIC"]
+        app.launch()
+
+        let path = app.otherElements["evidencePath"]
+        XCTAssertTrue(path.waitForExistence(timeout: 10), "the evidence path should lead the Plan screen")
+        let week4 = app.buttons["evidenceMilestone.4"]
+        XCTAssertTrue(week4.waitForExistence(timeout: 4))
+        week4.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["evidenceMilestoneDetail.4"].waitForExistence(timeout: 4))
+        XCTAssertEqual(week4.value as? String, "Expanded")
+        XCTAssertTrue(app.descendants(matching: .any)["planStrands"].exists)
+    }
+
+    /// "I'm worried" starts with a bounded picker rather than a blank chat, answers in four
+    /// ordered sections, and lets that concern shape today's grounding note.
+    @MainActor
+    func testWorriedFlowAnswersInFourSections() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_MOTION_STATIC"]
+        app.launch()
+
+        let worried = app.buttons["groundingWorried"]
+        XCTAssertTrue(worried.waitForExistence(timeout: 10), "the grounding card should offer I'm worried")
+        worried.tap()
+
+        let option = app.buttons["concernOption.moreShedding"]
+        XCTAssertTrue(option.waitForExistence(timeout: 4), "the bounded picker should list shedding")
+        option.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["concernResponse"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["What the record shows"].exists)
+        XCTAssertTrue(app.staticTexts["What cannot be concluded yet"].exists)
+        XCTAssertTrue(app.staticTexts["What to do next"].exists)
+
+        let done = app.buttons["concernDone"]
+        for _ in 0..<3 where !done.isHittable { app.swipeUp() }
+        XCTAssertTrue(app.staticTexts["When to seek help"].exists)
+        XCTAssertTrue(done.isHittable)
+        done.tap()
+        XCTAssertTrue(
+            app.staticTexts["Let's separate one moment from the pattern"].waitForExistence(timeout: 5),
+            "today's note should answer the concern after the flow closes"
+        )
+    }
+
     /// First run presents the illustrated cover (`OnboardingIntro`, which replaced the old single
     /// "Begin" welcome step), and walking it through hands off to the name step.
     @MainActor
@@ -151,9 +200,6 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         let open = app.buttons["onboardOpenPlan"]
         XCTAssertTrue(open.waitForExistence(timeout: 10), "the finale must offer Open my plan")
         open.tap()
-        // The card tour may follow; skip it if it appears.
-        let skip = app.buttons["tutorialSkip"]
-        if skip.waitForExistence(timeout: 4) { skip.tap() }
         XCTAssertTrue(app.otherElements["starterPlanSection"].waitForExistence(timeout: 10)
                       || app.staticTexts["Your starting plan"].waitForExistence(timeout: 2),
                       "after Open my plan the Plan tab with the starting plan must be showing")
@@ -193,7 +239,8 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
 
         undo.tap()
         XCTAssertTrue(circle.waitForExistence(timeout: 4))
-        XCTAssertEqual(circle.value as? String, "Not yet")
+        XCTAssertTrue(waitFor(circle, value: "Not yet", timeout: 4),
+                      "Undo must restore the open row after SwiftData publishes the deletion")
 
         // Skip lives behind a long press on the row and asks for a reason.
         app.otherElements["planRow.0"].press(forDuration: 1.2)
@@ -204,6 +251,33 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         XCTAssertTrue(reason.waitForExistence(timeout: 4), "skipping asks for a reason")
         reason.tap()
         XCTAssertTrue(waitFor(circle, value: "Skipped", timeout: 4), "the row settles as Skipped once the reason is recorded")
+    }
+
+    /// Today opens on the horizon and one grounding card; "Why this?" reveals the reason.
+    @MainActor
+    func testGroundingCardExplainsItself() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL"]
+        app.launch()
+        XCTAssertTrue(app.otherElements["calmHorizon"].waitForExistence(timeout: 10), "the horizon header leads the page")
+        let card = app.otherElements["groundingCard"]
+        XCTAssertTrue(card.waitForExistence(timeout: 4), "one grounding card follows it")
+        XCTAssertTrue(app.otherElements["evidenceRibbon"].exists)
+        app.buttons["groundingWhy"].tap()
+        XCTAssertTrue(app.staticTexts["groundingReason"].waitForExistence(timeout: 4), "Why this? shows the reason")
+        XCTAssertFalse(app.buttons["tutorialSkip"].exists, "the card tour is gone")
+        XCTAssertFalse(app.buttons["Skip the tour"].exists, "the card tour is gone")
+
+        // Important 8: the headerless shedding scene should close its gap — a scrolled
+        // screenshot for a human look, since "no blank band above TODAY'S SHEDDING" is a
+        // visual claim no assertion can make on its own.
+        app.swipeUp()
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.lifetime = .keepAlways
+        attachment.name = "g2-shedding-scene"
+        add(attachment)
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: "/private/tmp/claude-501/-Users-haribazri-Hair-Compass-AI-5/ff0a543b-cd29-4e99-83c4-0d3dc9b8f4cb/scratchpad/g2-shedding-scene.png"))
     }
 
     /// Polls an element's accessibility `value` rather than sleeping a fixed amount — the write

@@ -18,6 +18,12 @@ struct WidgetSnapshotTests {
     /// rename/type change fail in the app test target even though the two targets cannot import
     /// one another.
     private struct WidgetTargetSnapshot: Codable, Equatable {
+        struct DueItem: Codable, Equatable {
+            let title: String
+            let treatmentName: String
+            let slot: String
+        }
+
         let generatedAt: Date
         let hasLoggedToday: Bool
         let score: Int
@@ -29,6 +35,8 @@ struct WidgetSnapshotTests {
         let streakDays: Int
         let shieldsHeld: Int
         let dueTitles: [String]
+        let dueItems: [DueItem]
+        let pendingKeys: [String]
     }
 
     private struct WidgetTargetRitualAttributes: Codable, Equatable {
@@ -97,6 +105,9 @@ struct WidgetSnapshotTests {
         )
 
         #expect(snap.dueTitles == ["Minoxidil · 21:00"])
+        #expect(snap.dueItems == [WidgetSnapshot.DueItem(
+            title: "Minoxidil · 21:00", treatmentName: "Minoxidil", slot: "21:00"
+        )])
         #expect(snap.ringCare == 0.5)   // 1 of 2 slots logged
     }
 
@@ -189,7 +200,8 @@ struct WidgetSnapshotTests {
         #expect(back == snap)
         let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(Set(obj.keys) == ["generatedAt","hasLoggedToday","score","ringLog","ringCare",
-            "ringLens","shedLabel","scalpLabel","streakDays","shieldsHeld","dueTitles"])
+            "ringLens","shedLabel","scalpLabel","streakDays","shieldsHeld","dueTitles",
+            "dueItems","pendingKeys"])
     }
 
     @Test func appAndWidgetSnapshotShapesCrossDecode() throws {

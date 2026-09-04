@@ -249,6 +249,33 @@ final class Treatment {
     }
 }
 
+/// One clock-format boundary for treatment schedules. SwiftUI edits `Date` values, while the
+/// model, reminders, widget, and adherence engine continue to share stable `HH:mm` strings.
+enum TreatmentSchedule {
+    static func encode(_ dates: [Date], calendar: Calendar = .current) -> String {
+        let minutes = Set(dates.map { date in
+            let components = calendar.dateComponents([.hour, .minute], from: date)
+            return (components.hour ?? 0) * 60 + (components.minute ?? 0)
+        })
+        return minutes.sorted().map { value in
+            String(format: "%02d:%02d", value / 60, value % 60)
+        }.joined(separator: ",")
+    }
+
+    static func dates(from raw: String, anchor: Date = .now, calendar: Calendar = .current) -> [Date] {
+        let anchorDay = calendar.dateComponents([.year, .month, .day], from: anchor)
+        return raw.split(separator: ",").compactMap { token in
+            let pieces = token.trimmingCharacters(in: .whitespaces).split(separator: ":")
+            guard pieces.count == 2, let hour = Int(pieces[0]), let minute = Int(pieces[1]),
+                  (0..<24).contains(hour), (0..<60).contains(minute) else { return nil }
+            var components = anchorDay
+            components.hour = hour
+            components.minute = minute
+            return calendar.date(from: components)
+        }.sorted()
+    }
+}
+
 /// A scheduled (or already-done) in-clinic procedure — PRP, microneedling, a transplant, LLLT.
 /// Unlike a daily `Treatment`, a procedure is a dated event the user books, gets reminded about,
 /// and marks done (from its detail view or the daily check-in).
