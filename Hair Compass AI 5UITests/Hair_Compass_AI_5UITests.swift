@@ -14,14 +14,51 @@ final class Hair_Compass_AI_5UITests: XCTestCase {
         app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_TAB", "care", "HC_MOTION_STATIC"]
         app.launch()
 
+        let evidenceJump = app.buttons["planJump.evidence"]
+        XCTAssertTrue(evidenceJump.waitForExistence(timeout: 10))
+        evidenceJump.tap()
         let path = app.otherElements["evidencePath"]
-        XCTAssertTrue(path.waitForExistence(timeout: 10), "the evidence path should lead the Plan screen")
+        XCTAssertTrue(path.waitForExistence(timeout: 10), "the evidence shortcut should reveal the evidence path")
         let week4 = app.buttons["evidenceMilestone.4"]
         XCTAssertTrue(week4.waitForExistence(timeout: 4))
         week4.tap()
         XCTAssertTrue(app.descendants(matching: .any)["evidenceMilestoneDetail.4"].waitForExistence(timeout: 4))
         XCTAssertEqual(week4.value as? String, "Expanded")
         XCTAssertTrue(app.descendants(matching: .any)["planStrands"].exists)
+    }
+
+    /// Plan's long-form record has a persistent table of contents, Products is one tap away, and
+    /// Wren's separate lane no longer shifts the five primary destinations to the left.
+    @MainActor
+    func testPlanNavigatorReachesProductsAndTabsAreCentered() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["HC_SEED_DEMO", "HC_NORITUAL", "HC_TAB", "care", "HC_MOTION_STATIC"]
+        app.launch()
+
+        let jumpBar = app.descendants(matching: .any)["planJumpBar"]
+        XCTAssertTrue(jumpBar.waitForExistence(timeout: 10), "Plan should expose its table of contents immediately")
+
+        let todayTab = app.buttons["tab.today"]
+        let photosTab = app.buttons["tab.photos"]
+        XCTAssertTrue(todayTab.waitForExistence(timeout: 4))
+        XCTAssertTrue(photosTab.exists)
+        XCTAssertEqual(
+            (todayTab.frame.midX + photosTab.frame.midX) / 2,
+            app.frame.midX,
+            accuracy: 2,
+            "the five-tab group should be centered on the screen"
+        )
+
+        let products = app.buttons["planJump.products"]
+        XCTAssertTrue(products.isHittable, "Products must be visible without horizontal discovery")
+        products.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["scienceProductsSection"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Rosemary oil"].isHittable, "one tap should land on the first product")
+        XCTAssertTrue(app.buttons["planJump.today"].isHittable, "the navigator should remain pinned at depth")
+
+        app.buttons["planJump.today"].tap()
+        XCTAssertTrue(app.staticTexts["Your starting plan"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your starting plan"].isHittable, "Today should return to the actionable plan")
     }
 
     /// "I'm worried" starts with a bounded picker rather than a blank chat, answers in four

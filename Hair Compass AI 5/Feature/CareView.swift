@@ -2,6 +2,81 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+/// Stable destinations in Plan's long-form record. These are navigation commands, not filters:
+/// nothing is hidden, and the full clinical context stays in its original order.
+private enum PlanJumpDestination: String, CaseIterable, Identifiable {
+    case today
+    case evidence
+    case treatments
+    case products
+
+    var id: String { rawValue }
+    var anchor: String { "planJump.\(rawValue)" }
+    var title: String {
+        switch self {
+        case .today: return "Today"
+        case .evidence: return "Evidence"
+        case .treatments: return "Treatments"
+        case .products: return "Products"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .today: return "sun.max"
+        case .evidence: return "point.topleft.down.curvedto.point.bottomright.up"
+        case .treatments: return "cross.case"
+        case .products: return "bag"
+        }
+    }
+}
+
+/// A compact, persistent table of contents for Plan. Four equal-width actions keep Products
+/// visible on every iPhone width without making the person horizontally scroll to discover it.
+private struct PlanJumpBar: View {
+    let destinations: [PlanJumpDestination]
+    let onSelect: (PlanJumpDestination) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(destinations) { destination in
+                Button { onSelect(destination) } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: destination.symbol)
+                            .font(Clinical.body(11, weight: .semibold))
+                        Text(destination.title)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                    .font(Clinical.body(10.5, weight: .semibold))
+                    .foregroundStyle(destination == .products ? Clinical.accent : Clinical.ink)
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .background(
+                        destination == .products
+                            ? Clinical.accent.opacity(0.11)
+                            : Clinical.surface.opacity(0.86),
+                        in: Capsule()
+                    )
+                    .overlay {
+                        Capsule().strokeBorder(
+                            destination == .products
+                                ? Clinical.accent.opacity(0.36)
+                                : Clinical.hairline,
+                            lineWidth: 1
+                        )
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.clinicalPressable)
+                .minimumHitTarget()
+                .accessibilityIdentifier("planJump.\(destination.rawValue)")
+                .accessibilityHint("Jumps to the \(destination.title.lowercased()) section")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("planJumpBar")
+    }
+}
+
 /// The Plan tab: what to do today (routine), how you're doing (coach + milestones), reminders to
 /// keep you on track, and the treatment regimen with its 24-week judging gate. Guidance is
 /// non-prescriptive — it helps you follow treatments you added, it doesn't tell you what to start.
@@ -80,7 +155,7 @@ struct CareView: View {
     var body: some View {
         ScrollViewReader { proxy in
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
                 ScreenHeader(
                     eyebrow: "Ritual",
                     title: "Plan",
@@ -99,6 +174,13 @@ struct CareView: View {
                     .background(alignment: .topTrailing) {
                         CornerSprig(width: 190, opacity: 0.42)
                     }
+
+                Section {
+                // A stable zero-content landing point keeps "Today" useful even when the
+                // conditional starter plan or safety banner changes between visits.
+                Color.clear
+                    .frame(height: 1)
+                    .id(PlanJumpDestination.today.anchor)
 
                 // One entrance sequence down the card stack; indices are fixed positions, so a
                 // missing conditional card just leaves an invisible 50ms gap. The coach card —
@@ -130,13 +212,16 @@ struct CareView: View {
                         strands: planStrands,
                         overall: overallRhythm
                     )
-                    .id("evidencePathAnchor")
+                    .id(PlanJumpDestination.evidence.anchor)
                     .staggeredEntrance(index: 6)
                 }
                 if let report = progressReport { progressReportCard(report).staggeredEntrance(index: 7) }
 
                 // The page changes subject here: everything above is what you do today, everything
                 // below is the longer record of what you're on and what you've had done.
+                Color.clear
+                    .frame(height: 1)
+                    .id(PlanJumpDestination.treatments.anchor)
                 StrandDivider()
 
                 if treatments.isEmpty {
@@ -165,12 +250,32 @@ struct CareView: View {
 
                 // No entrance on the science section — HC_SCROLL_PRODUCTS screenshots jump
                 // straight to it and must never catch a mid-fade frame.
-                ScienceProductsSection().id("science")
+                ScienceProductsSection()
+                    .id(PlanJumpDestination.products.anchor)
 
                 // Closes the app's longest scroll. Deliberately after the science section rather
                 // than before it: a garland placed above would read as decoration *for* the
                 // product rows, and this page needs an ending more than it needs another seam.
                 PageCloser(opacity: 0.8)
+                } header: {
+                    PlanJumpBar(destinations: planJumpDestinations) { destination in
+                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.38)) {
+                            proxy.scrollTo(destination.anchor, anchor: .top)
+                        }
+                    }
+                    .padding(.vertical, 5)
+                    // A pinned navigator must fully erase content moving beneath it. The material
+                    // keeps the journal texture while the canvas wash preserves label contrast.
+                    .background {
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                            .overlay(Clinical.canvas.opacity(0.72))
+                            .padding(.horizontal, -20)
+                    }
+                    .zIndex(20)
+                    .staggeredEntrance(index: 1)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -252,7 +357,7 @@ struct CareView: View {
             if ProcessInfo.processInfo.arguments.contains("HC_INCLINIC") { showInClinicOptions = true }
             if ProcessInfo.processInfo.arguments.contains("HC_SCROLL_PRODUCTS") {
                 try? await Task.sleep(for: .milliseconds(250))
-                withAnimation { proxy.scrollTo("science", anchor: .top) }
+                withAnimation { proxy.scrollTo(PlanJumpDestination.products.anchor, anchor: .top) }
             }
             if ProcessInfo.processInfo.arguments.contains("HC_TREATMENT_DETAIL") {
                 try? await Task.sleep(for: .milliseconds(250))
@@ -276,7 +381,7 @@ struct CareView: View {
             }
             if ProcessInfo.processInfo.arguments.contains("HC_SCROLL_EVIDENCE") {
                 try? await Task.sleep(for: .milliseconds(350))
-                proxy.scrollTo("evidencePathAnchor", anchor: .top)
+                proxy.scrollTo(PlanJumpDestination.evidence.anchor, anchor: .top)
             }
             #endif
         }
@@ -467,6 +572,15 @@ struct CareView: View {
 
     private var evidencePhase: EvidencePhase? {
         EvidencePhase.current(treatments: treatments, entries: entries, now: .now, calendar: calendar)
+    }
+
+    /// Never render a shortcut with nowhere to land. Before a person has a treatment timeline,
+    /// Plan stays a simpler three-button map; Evidence joins automatically once its section exists.
+    private var planJumpDestinations: [PlanJumpDestination] {
+        var destinations: [PlanJumpDestination] = [.today]
+        if evidencePhase != nil { destinations.append(.evidence) }
+        destinations.append(contentsOf: [.treatments, .products])
+        return destinations
     }
 
     private var evidenceMilestones: [EvidenceMilestone] {

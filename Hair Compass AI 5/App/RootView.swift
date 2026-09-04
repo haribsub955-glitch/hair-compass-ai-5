@@ -252,14 +252,13 @@ struct RootView: View {
         // frame speaks the same ink grammar wherever it's hosted, not just in RootView.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ZStack(alignment: .bottomTrailing) {
-                // Wren used to occupy a second 44pt row above navigation. Scroll content can
-                // legitimately paint behind a safe-area inset, which put her hit target directly
-                // over trailing plan actions such as Undo. Give her a reserved lane in the bar
-                // itself: still always available, never stealing a care-action tap, and with much
-                // less navigation chrome competing with the journal.
-                FloatingTabBar(selection: $tab, trailingAccessoryWidth: 52)
+                // The five destinations use the complete width, so their collective midpoint is
+                // the screen midpoint. Wren gets a protected upper berth inside this same safe-area
+                // inset: the padding contributes real layout height, so she cannot steal a tap from
+                // content, while no invisible trailing spacer can push navigation off-centre.
+                FloatingTabBar(selection: $tab)
                 WrenChatButton(tab: tab, profile: profile)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 64)
             }
             // Charts can establish their own compositing layers. Flatten the complete bar
             // above them so no tab item is painted underneath a scrolling chart card.
