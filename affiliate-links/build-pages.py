@@ -72,6 +72,29 @@ def render(template: str, route: dict, live: bool) -> str:
     return page
 
 
+def render_test_redirect() -> str:
+    """Owner-requested navigation test, without affiliate tracking or product claims."""
+    return '''<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="refresh" content="0;url=https://www.iherb.com/">
+<title>Opening iHerb — Hair Compass AI</title>
+</head>
+<body>
+<main>
+<h1>Opening iHerb</h1>
+<p>This is a navigation test using an ordinary link. No affiliate commission is tracked.</p>
+<p><a href="https://www.iherb.com/" rel="nofollow noreferrer">Continue to iHerb</a></p>
+</main>
+</body>
+</html>
+'''
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="validate without writing")
@@ -83,7 +106,7 @@ def main() -> int:
     template = TEMPLATE.read_text(encoding="utf-8")
     out = pathlib.Path(args.out)
 
-    written, holding, problems, seen = [], [], [], set()
+    written, holding, testing, problems, seen = [], [], [], [], set()
     for route in data["routes"]:
         slug = route["path"].lstrip("/")
         if slug in seen:
@@ -92,6 +115,10 @@ def main() -> int:
         seen.add(slug)
 
         destination = (route.get("destination") or "").strip()
+        test_redirect = route.get("testIHerbRedirect", False)
+        if not isinstance(test_redirect, bool) or (test_redirect and destination):
+            problems.append(f"{slug}: testIHerbRedirect must be boolean and cannot coexist with a destination")
+            continue
         live = bool(destination)
         if live:
             if problem := destination_problem(destination):
@@ -101,8 +128,9 @@ def main() -> int:
                 problems.append(f"{slug}: destination set but no merchant named")
                 continue
 
-        page = render(template, {**route, "destination": destination}, live=live)
-        (written if live else holding).append(slug)
+        page = (render_test_redirect() if test_redirect else
+                render(template, {**route, "destination": destination}, live=live))
+        (testing if test_redirect else written if live else holding).append(slug)
         if not args.check:
             # Directory form, so /go/<slug> resolves without depending on the host's
             # extension-stripping behaviour. GitHub Pages serves <slug>/index.html for both
@@ -127,12 +155,14 @@ def main() -> int:
 
     for slug in written:
         print(f"  live     {slug}")
+    for slug in testing:
+        print(f"  test     {slug} → iHerb homepage (no affiliate tracking)")
     if holding:
         print(f"  holding  {len(holding)} route(s) with no destination yet: {', '.join(holding)}")
     for p in problems:
         print(f"  PROBLEM  {p}", file=sys.stderr)
 
-    print(f"\n{len(written)} live, {len(holding)} holding, {len(problems)} problem(s)")
+    print(f"\n{len(written)} live, {len(testing)} test, {len(holding)} holding, {len(problems)} problem(s)")
     return 1 if problems else 0
 
 

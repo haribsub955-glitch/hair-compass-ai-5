@@ -7,6 +7,7 @@
   "routes": [
     {
       "productID": "rosemary",
+      "testIHerbRedirect": true,
       "path": "/rosemary",
       "appURL": "https://haircompass-ai.com/go/rosemary",
       "name": "Rosemary oil",
