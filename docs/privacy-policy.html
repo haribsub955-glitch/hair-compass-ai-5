@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Privacy Policy — Hair Compass AI</title>
-  <meta name="description" content="Hair Compass AI privacy policy: your records, photos, and Health data stay on your device. Optional cloud AI answers use a limited tracking summary — only with your consent. No third-party analytics, no data sales.">
+  <meta name="description" content="How Hair Compass AI stores your records and handles optional cloud AI, Apple purchases, consent, and privacy choices.">
   <link rel="icon" type="image/png" href="./assets/brand/appicon.png">
   <link rel="apple-touch-icon" href="./assets/brand/appicon.png">
   <link rel="stylesheet" href="./assets/site.css">
@@ -20,13 +20,13 @@
       <header class="doc-header">
         <p class="eyebrow">Hair Compass AI</p>
         <h1>Privacy Policy</h1>
-        <p>Effective date: August 22, 2026</p>
+        <p>Effective date: September 11, 2026</p>
         <p>Hair Compass AI helps users track hair, scalp, routine, photo, lab, trigger, and procedure information for personal monitoring and clinician discussion support.</p>
       </header>
 
       <div class="callout">
         <span class="callout-mark" aria-hidden="true">i</span>
-        <p><strong>Private by design.</strong> Hair Compass AI stores everything on your device. Your records, photos, and Health data are not uploaded to any server of ours, and there is no account. One exception exists, and it is opt-in: if you turn on cloud AI answers, a limited tracking summary — never your name, contact details, or photos — is sent to an AI provider to write the answer you asked for. You are asked before the first request, and you can turn it off at any time.</p>
+        <p><strong>Your choices control cloud use.</strong> Your tracking record, progress photos, and saved conversations are stored on your iPhone. If you choose cloud AI, your question, selected conversation history, and a tracking summary pass through Hair Compass's hosted gateway to the model provider. The gateway uses a pseudonymous account to verify access and record consent. You can turn cloud AI off at any time. Names and contact fields are not deliberately attached, but information you type in questions or notes can identify you.</p>
       </div>
 
       <h2>Information we collect</h2>
@@ -34,14 +34,14 @@
       <ul>
         <li>Profile details you enter, such as hair goals, scalp sensitivity, and hair-loss context</li>
         <li>Hair and scalp check-in entries</li>
-        <li>Routine, medication, supplement, procedure, lab, and trigger logs</li>
+        <li>Routine, medication, supplement, procedure, lab, and trigger logs, which may include childbirth or other sensitive health context</li>
         <li>Photos you choose to capture or import</li>
         <li>Subscription and purchase status</li>
         <li>Optional Health data, including sleep, mindful sessions, heart-rate variability, resting heart rate, body mass, body mass index, and dietary protein</li>
       </ul>
 
       <h2>Health data</h2>
-      <p>If you grant permission, Hair Compass AI reads selected HealthKit data from Apple Health. This data is used only to display health-related context inside the app and compare it with your tracking history. Hair Compass AI does not write health data back to Apple Health.</p>
+      <p>If you grant permission, Hair Compass AI reads selected HealthKit data from Apple Health to display context and compare it with your tracking history. If you separately enable cloud AI, selected health-derived values can be included in the tracking summary sent for your requested answer. Hair Compass AI does not write health data back to Apple Health. We do not use Health data for advertising or sell it.</p>
 
       <h2>Photos and camera</h2>
       <p>If you grant permission, Hair Compass AI can use the camera and photo library to capture, import, store, and display standardized scalp and hair images for progress tracking and comparison.</p>
@@ -50,9 +50,16 @@
       <p>Hair Compass AI's AI features are optional and are not intended to provide medical advice, diagnosis, or treatment. They work in two ways:</p>
       <ul>
         <li><strong>On your device.</strong> Daily insights run entirely on your iPhone (Apple Intelligence, where supported) and never leave it. Label text recognition also happens on your iPhone — though if cloud AI is on, the recognized text (not the photo) is sent for the summary, as described below.</li>
-        <li><strong>Cloud AI answers (opt-in).</strong> The hair chat ("Ask Wren"), deep analysis, and ingredient summaries can be answered by a cloud AI model. This is off until you agree to it in the app. When on, each request sends a limited, structured summary of your tracking record — check-in values, dates, treatment names and adherence, lab values, logged notes, and health-derived values you chose to track (such as sleep or heart-rate variability) — plus your typed questions, and, for ingredient summaries, the text the app reads off the product label photo (the photo itself never leaves your device). It never includes your name, contact details, precise location, or photos; nothing sent is tied to an account, because there are no accounts.</li>
+        <li><strong>Cloud AI answers (opt-in).</strong> Ask Wren, record summaries, and ingredient explanations can use cloud AI after you agree in the app. Chat and record-summary requests can include check-in values, dates, treatment names and adherence, lab values, logged notes, and selected health-derived values, plus your questions and selected recent conversation. Ingredient explanations send the recognized label text. Photos and profile contact fields are not attached to these text requests. Typed questions, notes, and label text may still contain identifying information; avoid including it.</li>
       </ul>
-      <p>Cloud AI requests are processed by <strong>DeepSeek</strong> (the AI model provider) to generate the answer. DeepSeek processes this content as a service provider under its own privacy policy, and its servers may be located outside your country, including in China. We do not use your requests for advertising, do not sell them, and do not build profiles from them. If you decline or turn cloud AI off, these features run on-device where your iPhone supports Apple Intelligence, or simply stay off — the rest of the app is unaffected.</p>
+      <p>Cloud text requests pass through our gateway hosted on <strong>Railway</strong> to <strong>DeepSeek</strong> for inference. Processing can occur outside your country. DeepSeek's <a href="https://cdn.deepseek.com/policies/en-US/deepseek-open-platform-terms-of-service.html">Open Platform terms</a> distinguish developer applications from its consumer services; its consumer privacy policy does not establish all processing rules for this app's users. We have not confirmed a fixed provider retention period, a no-training commitment, or an API-specific processing location for this deployment. Cloud AI is undergoing controlled beta validation; use fictional, non-identifying records for that testing until this review is complete. We do not sell requests or use them for advertising. Declining cloud AI keeps model requests on your device where supported.</p>
+
+      <h2>Gateway identity and retention</h2>
+      <p>The gateway verifies an Apple-signed app transaction, device-key proof, and subscription transaction. It stores a pseudonymous account identifier, device public key, consent decisions, purchase/refund identifiers, and request counters to authenticate requests, enforce entitlements, and prevent abuse. Session tokens expire after fifteen minutes. Chat questions and answers are not written to the gateway database; local saved conversations remain on your iPhone. Network infrastructure and providers may process connection information such as IP addresses.</p>
+      <p>Consent, account, purchase, and anti-abuse metadata do not currently have a fixed automatic deletion period in the beta service. Turning off cloud AI blocks new requests locally and records withdrawal on the gateway when reachable. Requests already received by a provider may finish; withdrawal cannot recall previously transmitted information. Contact us to request access, correction, or erasure of server-held information. Erasure may retain limited purchase and abuse-prevention records. Provider deletion may require a separate request, and deleting local records does not remove exported copies or automatically erase provider-held data.</p>
+
+      <h2>Cosmetic preview testing</h2>
+      <p>AI-generated cosmetic previews are separate from ordinary progress photos and text chat. Where enabled for reviewed test accounts, a separate consent flow uploads a selected photo to our gateway for an operator-reviewed illustration using OpenAI. Source and output image blobs are encrypted on the gateway. Unfinished jobs expire after one hour; accepted output has a twenty-four-hour recovery window. Purchase, credit, and attempt metadata can remain after image expiry. Generated previews are labelled illustrations, not evidence of regrowth or treatment results. Image access and credit purchases are not enabled for general customer use while privacy, backup, and quality checks remain open.</p>
 
       <h2>Subscriptions</h2>
       <p>Hair Compass AI offers optional premium subscriptions to unlock advanced features such as analysis and export tools. Purchase processing is handled by Apple through StoreKit. We do not receive your full payment card information.</p>
@@ -70,7 +77,7 @@
       </ul>
 
       <h2>Data sharing</h2>
-      <p>We do not sell your personal information, and your photos and full records never leave your device. Information is shared in exactly three situations: with Apple to process an optional subscription through StoreKit; with DeepSeek to answer a cloud AI request, if — and only if — you have turned cloud AI on; and, if you tap an affiliate link, the standard web request your browser makes to open that link.</p>
+      <p>We do not sell personal information. Data can be shared with Apple for purchases and beta distribution; Railway and the model provider for optional cloud requests; OpenAI and authorized reviewers for separately consented cosmetic-preview tests; and destinations you choose when exporting a report, sharing a photo, contacting support, or opening an affiliate link. TestFlight may provide Apple and the developer with beta feedback and diagnostic information under Apple's beta-testing controls. No third-party advertising or analytics SDK is included in the app.</p>
 
       <h2>Your choices</h2>
       <ul>
@@ -79,6 +86,7 @@
         <li>Avoid using AI-powered features entirely</li>
         <li>Choose not to use affiliate links</li>
         <li>Manage or cancel subscriptions through Apple</li>
+        <li>Delete local records or saved chats, and contact us about server-held information</li>
       </ul>
 
       <h2>Medical disclaimer</h2>
