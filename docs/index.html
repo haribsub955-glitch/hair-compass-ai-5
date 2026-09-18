@@ -100,6 +100,17 @@
       text-transform: uppercase;
       color: var(--tertiary);
     }
+    .share-button {
+      appearance: none;
+      border: 0;
+      padding: 10px 12px;
+      background: transparent;
+      cursor: pointer;
+    }
+    .share-button:hover { color: var(--copper); }
+    .conversion { padding-bottom: 56px; }
+    .conversion .hero-cta { margin-top: 26px; }
+    .share-status { min-height: 1.4em; margin-top: 12px; }
     .centered { text-align: center; }
     .centered .lede { max-width: 580px; margin-left: auto; margin-right: auto; }
     .tier-caption {
@@ -210,6 +221,21 @@
         <p class="tier-caption">When the science is thin, the label says so — and the design lets it recede.</p>
       </div>
     </section>
+
+    <section class="conversion" aria-labelledby="download-title">
+      <div class="col centered">
+        <p class="eyebrow">Available now on iPhone</p>
+        <h2 id="download-title">Keep the long view.</h2>
+        <p class="lede">Start a calmer, more consistent record of shedding, scalp comfort,
+          routines, treatments, labs and progress photos.</p>
+        <div class="hero-cta">
+          <a class="store-button" href="https://apps.apple.com/app/id6803796144"
+            aria-label="Download Hair Compass AI on the App Store">Download on the App Store</a>
+          <button class="support-link share-button" id="share-app" type="button">Share Hair Compass</button>
+        </div>
+        <p class="tier-caption share-status" id="share-status" aria-live="polite"></p>
+      </div>
+    </section>
   </main>
 
   <footer>
@@ -226,6 +252,34 @@
     </div>
     <img class="meadow" src="./assets/brand/meadow.png" alt="" aria-hidden="true">
   </footer>
+
+  <script>
+    const shareButton = document.getElementById("share-app");
+    const shareStatus = document.getElementById("share-status");
+    const appStoreURL = "https://apps.apple.com/app/id6803796144";
+
+    shareButton.addEventListener("click", async () => {
+      const shareData = {
+        title: "Hair Compass AI",
+        text: "A calmer iPhone record for hair and scalp changes over time.",
+        url: appStoreURL
+      };
+
+      try {
+        if (navigator.share) {
+          await navigator.share(shareData);
+          shareStatus.textContent = "Thanks for sharing Hair Compass AI.";
+        } else if (navigator.clipboard) {
+          await navigator.clipboard.writeText(appStoreURL);
+          shareStatus.textContent = "App Store link copied.";
+        } else {
+          shareStatus.textContent = appStoreURL;
+        }
+      } catch (error) {
+        if (error.name !== "AbortError") shareStatus.textContent = appStoreURL;
+      }
+    });
+  </script>
 
 </body>
 </html>
