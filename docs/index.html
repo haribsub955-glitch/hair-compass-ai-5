@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hair Compass AI — an honest record of slow change</title>
   <meta name="description" content="Hair Compass AI is a private field journal for hair and scalp health on iPhone: daily check-ins, standardized photos, routines, labs, and triggers — read back to you by AI. Your photos and your full record stay on your phone; cloud answers are opt-in.">
+  <meta name="apple-itunes-app" content="app-id=6803796144">
+  <link rel="canonical" href="https://haircompass-ai.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://haircompass-ai.com/">
+  <meta property="og:title" content="Hair Compass AI — Track Hair. Understand Change.">
+  <meta property="og:description" content="Keep shedding, scalp, routines, progress photos and labs in one calm iPhone record. See patterns over time without before-and-after theater.">
+  <meta property="og:image" content="https://haircompass-ai.com/assets/brand/screen-today.jpg">
+  <meta property="og:image:alt" content="Hair Compass AI Today screen showing a daily hair and scalp record">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Hair Compass AI — Track Hair. Understand Change.">
+  <meta name="twitter:description" content="A calmer iPhone record for shedding, scalp, routines, progress photos and labs.">
+  <meta name="twitter:image" content="https://haircompass-ai.com/assets/brand/screen-today.jpg">
   <link rel="icon" type="image/png" href="./assets/brand/appicon.png">
   <link rel="apple-touch-icon" href="./assets/brand/appicon.png">
   <link rel="stylesheet" href="./assets/site.css">
@@ -35,17 +47,38 @@
       font-size: 1.08rem;
     }
     .hero-cta {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin: 0;
+    }
+    .store-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 12px 22px;
+      border-radius: 999px;
+      background: var(--ink);
+      color: var(--surface);
+      font-weight: 650;
+      box-shadow: 0 10px 28px rgba(43, 33, 26, 0.18);
+    }
+    .store-button:hover {
+      color: var(--surface);
+      text-decoration: none;
+      transform: translateY(-1px);
+    }
+    .support-link {
       font-family: var(--mono);
       font-size: 11px;
       font-weight: 600;
-      letter-spacing: 0.16em;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: var(--copper);
-      margin: 0;
+      color: var(--tertiary);
     }
-    .hero-cta .sep { color: var(--hairline); padding: 0 10px; }
-    .hero-cta a { color: var(--tertiary); }
-    .hero-cta a:hover { color: var(--copper); }
     .centered { text-align: center; }
     .centered .lede { max-width: 580px; margin-left: auto; margin-right: auto; }
     .tier-caption {
@@ -65,7 +98,10 @@
         <p class="eyebrow rise rise-1">Hair Compass AI &nbsp;·&nbsp; for iPhone</p>
         <h1 class="rise rise-2">An honest record<br>of slow change.</h1>
         <p class="lede rise rise-3">Hair changes over months, not mornings. Hair Compass AI keeps the daily record — scalp, shedding, routine, photos, labs — and reads it back to you in plain language. Your photos and your full record stay on your iPhone; cloud answers are opt-in.</p>
-        <p class="hero-cta rise rise-4">Arriving on the App&nbsp;Store<span class="sep">|</span><a href="./support.html">Support</a></p>
+        <p class="hero-cta rise rise-4">
+          <a class="store-button" href="https://apps.apple.com/app/id6803796144" aria-label="Download Hair Compass AI on the App Store">Download on the App Store</a>
+          <a class="support-link" href="./support.html">Support</a>
+        </p>
       </div>
 
       <div class="wide">
